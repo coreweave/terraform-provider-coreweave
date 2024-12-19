@@ -2,8 +2,6 @@ buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.36.0-2024112718024
 buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.36.0-20241127180247-a33202765966.1/go.mod h1:AxRT+qTj5PJCz2nyQzsR/qxAcveW5USRhJTt/edTO5w=
 buf.build/gen/go/coreweave/cks/connectrpc/go v1.17.0-20241207000828-5e540e523535.1 h1:kmUGK2zPk2NQbgjLhlrzpAWnRxcdH7d7c8EwVJ/zOnk=
 buf.build/gen/go/coreweave/cks/connectrpc/go v1.17.0-20241207000828-5e540e523535.1/go.mod h1:6Q2NkRKoM8/zpDMNeEUYxVMjvMNnIsZiPSisaTgBS8s=
-buf.build/gen/go/coreweave/cks/protocolbuffers/go v1.36.0-20241218234621-0c093569c8c6.1 h1:iI/xfT5jLlttImC3fZp0woY+QVAV9/uu+PqxfwHwq1g=
-buf.build/gen/go/coreweave/cks/protocolbuffers/go v1.36.0-20241218234621-0c093569c8c6.1/go.mod h1:knhm2tKnnoHspAqMh3rkhzymlbSKpcadpWyxcyVkBCs=
 buf.build/gen/go/coreweave/cks/protocolbuffers/go v1.36.0-20241219033203-9e6145c6d0ec.1 h1:fW7i6KV1ZXGN8IcRtjHp6gkHtVmpGcd/6YuA15eI+60=
 buf.build/gen/go/coreweave/cks/protocolbuffers/go v1.36.0-20241219033203-9e6145c6d0ec.1/go.mod h1:knhm2tKnnoHspAqMh3rkhzymlbSKpcadpWyxcyVkBCs=
 buf.build/gen/go/coreweave/networking/connectrpc/go v1.17.0-20241206055841-eec6f6cbf29d.1 h1:F/vT6t1KBz+lBJTIZI0GDc8yRDMi0Olen3kuwTr4Lg4=
@@ -165,8 +163,8 @@ github.com/vmihailenco/tagparser/v2 v2.0.0/go.mod h1:Wri+At7QHww0WTrCBeu4J6bNtoV
 github.com/xanzy/ssh-agent v0.3.3 h1:+/15pJfg/RsTxqYcX6fHqOXZwwMP+2VyYWJeWM2qQFM=
 github.com/xanzy/ssh-agent v0.3.3/go.mod h1:6dzNDKs0J9rVPHPhaGCukekBHKqfl+L3KghI1Bc68Uw=
 github.com/yuin/goldmark v1.4.13/go.mod h1:6yULJ656Px+3vBD8DxQVa3kxgyrAnzto9xy5taEt/CY=
-github.com/zclconf/go-cty v1.15.0 h1:tTCRWxsexYUmtt/wVxgDClUe+uQusuI443uL6e+5sXQ=
-github.com/zclconf/go-cty v1.15.0/go.mod h1:VvMs5i0vgZdhYawQNq5kePSpLAoz8u1xvZgrPIxfnZE=
+github.com/zclconf/go-cty v1.15.1 h1:RgQYm4j2EvoBRXOPxhUvxPzRrGDo1eCOhHXuGfrj5S0=
+github.com/zclconf/go-cty v1.15.1/go.mod h1:VvMs5i0vgZdhYawQNq5kePSpLAoz8u1xvZgrPIxfnZE=
 github.com/zclconf/go-cty-debug v0.0.0-20240509010212-0d6042c53940 h1:4r45xpDWB6ZMSMNJFMOjqrGHynW3DIBuR2H9j0ug+Mo=
 github.com/zclconf/go-cty-debug v0.0.0-20240509010212-0d6042c53940/go.mod h1:CmBdvvj3nqzfzJ6nTCIwDTPZ56aVGvDrmztiO5g3qrM=
 golang.org/x/crypto v0.0.0-20190308221718-c2843e01d9a2/go.mod h1:djNgcEr1/C05ACkg1iLfiJU5Ep61QUkGW8qpdssI0+w=
