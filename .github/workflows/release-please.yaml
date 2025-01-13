@@ -1,0 +1,25 @@
+name: Release Please
+
+# 1. Run release-please on every push to main
+# 2. Trigger publishing only when a new tag is pushed
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:  # Allow manual triggering
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run Release Please
+        uses: googleapis/release-please-action@v4
+        with:
+          release-type: go
+          package-name: terraform-provider-coreweave
+          token: ${{ secrets.GITHUB_TOKEN }}
+          skip-github-release: true

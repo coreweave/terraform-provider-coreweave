@@ -1,16 +1,15 @@
-CoreWeave Terraform Provider
-==================
+Copyright (c) 2024 CoreWeave, Inc.
+
+# CoreWeave Terraform Provider
 
 - Documentation: https://registry.terraform.io/providers/coreweave/coreweave/latest/docs
 
-Requirements
-------------
+## Requirements
 
 - [Terraform](https://developer.hashicorp.com/terraform/downloads) >= 1.0
 - [Go](https://golang.org/doc/install) >= 1.22
 
-Building The Provider
----------------------
+## Building The Provider
 
 Clone repository to: `$GOPATH/src/github.com/coreweave/terraform-provider-coreweave`
 
@@ -26,12 +25,10 @@ $ cd $GOPATH/src/github.com/coreweave/terraform-provider-coreweave
 $ make build
 ```
 
-Using the provider
-----------------------
+## Using the provider
 
 See the [CoreWeave Provider documentation](https://registry.terraform.io/providers/coreweave/coreweave/latest/docs) to get started using the CoreWeave provider.
 
-Developing the Provider
----------------------------
+## License
 
-See [CONTRIBUTING.md](./CONTRIBUTING.md) for information about contributing to this project.
+MIT Licensed. See [LICENSE](https://github.com/coreweave/terraform-provider-coreweave/tree/main/LICENSE) for full details.
