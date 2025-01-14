@@ -1,0 +1,61 @@
+name: Tag Release
+
+on:
+  push:
+    branches:
+      - main  # Trigger only when PRs are merged into main
+
+permissions:
+  contents: write  # ✅ Required to push tags
+
+jobs:
+  tag-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # ✅ Fetch all commits and tags
+
+      - name: Extract Version from Latest Commit
+        id: extract_version
+        run: |
+          # Get the latest commit message
+          COMMIT_MSG=$(git log -1 --pretty=%B)
+
+          # Match "chore: release vX.Y.Z"
+          if [[ "$COMMIT_MSG" =~ ^chore:\ release\ v([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+            VERSION="v${BASH_REMATCH[1]}"
+            echo "Found release commit for version $VERSION"
+            echo "version=$VERSION" >> $GITHUB_ENV
+            echo "skip=false" >> $GITHUB_ENV
+          else
+            echo "No tag found in the latest commit. Exiting."
+            echo "skip=true" >> $GITHUB_ENV
+            exit 0  # Exit silently if no release commit
+          fi
+
+      - name: Check if Tag Already Exists
+        if: env.skip != 'true'  # ✅ Runs only if a release commit is found
+        id: check_tag
+        run: |
+          # Check if the tag already exists
+          TAG_EXISTS=$(git tag -l "v${VERSION}")
+          if [ -n "$TAG_EXISTS" ]; then
+            echo "Tag $VERSION already exists. Skipping."
+            echo "skip=true" >> $GITHUB_ENV
+            exit 0
+          else
+            echo "skip=false" >> $GITHUB_ENV
+          fi
+
+      - name: Create and Push Git Tag
+        if: env.skip != 'true'  # ✅ Only runs if tag doesn't exist
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Create and push the tag (auth is already configured)
+          git tag "v${VERSION}"
+          git push origin "v${VERSION}"
