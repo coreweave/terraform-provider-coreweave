@@ -2,6 +2,7 @@
     "pull-request-title-pattern": "chore: release ${version}",
     "include-component-in-tag": false,
     "include-v-in-tag": true,
+    "initial-version": "v0.1.0",
     "packages": {
       ".": {
         "release-type": "go",
