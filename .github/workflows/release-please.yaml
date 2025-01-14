@@ -22,4 +22,5 @@ jobs:
           release-type: go
           package-name: terraform-provider-coreweave
           token: ${{ secrets.GITHUB_TOKEN }}
+          config-file: release-please-config.json
           skip-github-release: true
