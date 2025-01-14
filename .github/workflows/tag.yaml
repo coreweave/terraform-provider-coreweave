@@ -25,7 +25,7 @@ jobs:
           COMMIT_MSG=$(git log -1 --pretty=%B)
 
           # Match "chore: release vX.Y.Z"
-          if [[ "$COMMIT_MSG" =~ ^chore:\ release\ v([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+          if [[ "$COMMIT_MSG" =~ ^chore:\ release\ ([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
             VERSION="v${BASH_REMATCH[1]}"
             echo "Found release commit for version $VERSION"
             echo "version=$VERSION" >> $GITHUB_ENV

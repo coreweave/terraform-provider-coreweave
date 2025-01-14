@@ -99,6 +99,23 @@ func HandleAPIError(ctx context.Context, err error, diagnostics *diag.Diagnostic
 			connectErr.Error(),
 		)
 
+	case connect.CodeResourceExhausted:
+		for _, d := range details {
+			msg, valueErr := d.Value()
+			if valueErr != nil {
+				diagnostics.AddError(connectErr.Error(), connectErr.Message())
+				break
+			}
+			if quotaFailure, ok := msg.(*errdetails.QuotaFailure); ok {
+				for _, violation := range quotaFailure.Violations {
+					diagnostics.AddError(
+						"Quota Exceeded",
+						violation.Subject+": "+violation.Description,
+					)
+				}
+			}
+		}
+
 	default:
 		// Log and return a generic internal error for unexpected cases
 		tflog.Error(ctx, "unexpected error code", map[string]interface{}{
