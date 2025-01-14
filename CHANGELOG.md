@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.1](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.1.0...v0.1.1) (2025-01-14)
+
+
+### Bug Fixes
+
+* handle quota failure errors ([#30](https://github.com/coreweave/terraform-provider-coreweave/issues/30)) ([d575fef](https://github.com/coreweave/terraform-provider-coreweave/commit/d575fef833bef80b1d797b1359657b520054d929))
+
 ## 0.1.0 (2025-01-14)
 
 
