@@ -41,7 +41,7 @@ jobs:
         id: check_tag
         run: |
           # Check if the tag already exists
-          TAG_EXISTS=$(git tag -l "v${VERSION}")
+          TAG_EXISTS=$(git tag -l "${VERSION}")
           if [ -n "$TAG_EXISTS" ]; then
             echo "Tag $VERSION already exists. Skipping."
             echo "skip=true" >> $GITHUB_ENV
@@ -57,5 +57,5 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
           # Create and push the tag (auth is already configured)
-          git tag "v${VERSION}"
-          git push origin "v${VERSION}"
+          git tag "${VERSION}"
+          git push origin "${VERSION}"
