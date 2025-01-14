@@ -24,8 +24,5 @@ jobs:
       - name: Run Release Please
         uses: googleapis/release-please-action@v4.1.3
         with:
-          release-type: go
-          package-name: terraform-provider-coreweave
           token: ${{ secrets.GITHUB_TOKEN }}
-          config-file: release-please-config.json
           skip-github-release: true
