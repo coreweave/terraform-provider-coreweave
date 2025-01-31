@@ -23,6 +23,8 @@ jobs:
         run: |
           # Get the latest commit message
           COMMIT_MSG=$(git log -1 --pretty=%B)
+          # only use the first line
+          COMMIT_MSG=$(echo "$COMMIT_MSG" | head -n 1)
 
           # Match "chore: release vX.Y.Z"
           if [[ "$COMMIT_MSG" =~ ^chore:\ release\ ([0-9]+\.[0-9]+\.[0-9]+)(\ \(.+\))?$ ]]; then
