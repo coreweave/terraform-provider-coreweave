@@ -4,7 +4,7 @@ go 1.22.7
 
 require (
 	buf.build/gen/go/coreweave/cks/connectrpc/go v1.18.1-20250131171906-f4a268dddc86.1
-	buf.build/gen/go/coreweave/cks/protocolbuffers/go v1.36.4-20250131171906-f4a268dddc86.1
+	buf.build/gen/go/coreweave/cks/protocolbuffers/go v1.36.4-20250131183318-f8c13a07581d.1
 	buf.build/gen/go/coreweave/networking/connectrpc/go v1.18.1-20250131171826-bf6c8bf61953.1
 	buf.build/gen/go/coreweave/networking/protocolbuffers/go v1.36.2-20250131171826-bf6c8bf61953.1
 	connectrpc.com/connect v1.18.1
