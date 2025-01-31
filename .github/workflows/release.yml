@@ -66,7 +66,7 @@ jobs:
           echo "Found PR: #$PR_NUMBER"
 
           # Remove 'autorelease:pending' label from the PR
-          gh pr edit $PR_NUMBER --remove-label "autorelease:pending"
+          gh pr edit $PR_NUMBER --remove-label "autorelease: pending"
 
           # Add 'autorelease:tagged' label to the PR
           gh pr edit $PR_NUMBER --add-label "autorelease:tagged"
