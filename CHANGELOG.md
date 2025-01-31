@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.3](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.1.2...v0.1.3) (2025-01-31)
+
+
+### Bug Fixes
+
+* only parse first line of commit message ([#47](https://github.com/coreweave/terraform-provider-coreweave/issues/47)) ([5448b94](https://github.com/coreweave/terraform-provider-coreweave/commit/5448b94541ea4c3c812ea7501426d577c63bc451))
+* proper release job permissions ([#48](https://github.com/coreweave/terraform-provider-coreweave/issues/48)) ([4e1a431](https://github.com/coreweave/terraform-provider-coreweave/commit/4e1a4313cc073ad8dd5dc920addc587b45785ee2))
+
 ## [0.1.2](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.1.1...v0.1.2) (2025-01-31)
 
 
