@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.2](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.1.1...v0.1.2) (2025-01-31)
+
+
+### Bug Fixes
+
+* update tagging logic to ignore PR numbers in commit message ([#45](https://github.com/coreweave/terraform-provider-coreweave/issues/45)) ([5a3b276](https://github.com/coreweave/terraform-provider-coreweave/commit/5a3b2764bd519eb061df8346bbbb9d67d675cb0d))
+
 ## [0.1.1](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.1.0...v0.1.1) (2025-01-31)
 
 
