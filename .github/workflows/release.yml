@@ -24,6 +24,8 @@ jobs:
         with:
           go-version-file: 'go.mod'
           cache: true
+      - name: Update GitHub CLI
+        run: sudo apt-get install gh -y
       - name: Import GPG key
         uses: crazy-max/ghaction-import-gpg@v6.2.0 # v6.2.0
         id: import_gpg
@@ -38,3 +40,35 @@ jobs:
           # GitHub sets the GITHUB_TOKEN secret automatically.
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GPG_FINGERPRINT: ${{ steps.import_gpg.outputs.fingerprint }}
+      - name: Relabel Release Please PR
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Get the tag that triggered the workflow
+          CURRENT_TAG=${{ github.ref_name }}
+          echo "Current Tag: $CURRENT_TAG"
+
+          # Find the commit SHA associated with the current tag
+          TAG_COMMIT_SHA=$(git rev-list -n 1 $CURRENT_TAG)
+          echo "Tag Commit SHA: $TAG_COMMIT_SHA"
+
+          # Use the GitHub API to find the PR linked to this commit
+          PR_NUMBER=$(gh api \
+            -H "Accept: application/vnd.github+json" \
+            "/repos/${{ github.repository }}/commits/$TAG_COMMIT_SHA/pulls" \
+            --jq '.[0].number')
+
+          if [ -z "$PR_NUMBER" ]; then
+            echo "No merged PR found for commit $TAG_COMMIT_SHA"
+            exit 0
+          fi
+
+          echo "Found PR: #$PR_NUMBER"
+
+          # Remove 'autorelease:pending' label from the PR
+          gh pr edit $PR_NUMBER --remove-label "autorelease:pending"
+
+          # Add 'autorelease:tagged' label to the PR
+          gh pr edit $PR_NUMBER --add-label "autorelease:tagged"
+
+          echo "Updated labels for PR #$PR_NUMBER"
