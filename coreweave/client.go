@@ -1,15 +1,14 @@
 package coreweave
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"time"
 
-	"buf.build/gen/go/coreweave/cks/connectrpc/go/coreweave/cks/v1/cksv1connect"
-	"buf.build/gen/go/coreweave/networking/connectrpc/go/coreweave/networking/v1/networkingv1connect"
+	"buf.build/gen/go/coreweave/cks/connectrpc/go/coreweave/cks/v1beta1/cksv1beta1connect"
+	"buf.build/gen/go/coreweave/networking/connectrpc/go/coreweave/networking/v1beta1/networkingv1beta1connect"
 	"connectrpc.com/connect"
-
-	"context"
 
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
@@ -26,14 +25,14 @@ func NewClient(endpoint string, interceptors ...connect.Interceptor) *Client {
 	}
 
 	return &Client{
-		ClusterServiceClient: cksv1connect.NewClusterServiceClient(&c, endpoint, connect.WithInterceptors(interceptors...)),
-		VPCServiceClient:     networkingv1connect.NewVPCServiceClient(&c, endpoint, connect.WithInterceptors(interceptors...)),
+		ClusterServiceClient: cksv1beta1connect.NewClusterServiceClient(&c, endpoint, connect.WithInterceptors(interceptors...)),
+		VPCServiceClient:     networkingv1beta1connect.NewVPCServiceClient(&c, endpoint, connect.WithInterceptors(interceptors...)),
 	}
 }
 
 type Client struct {
-	cksv1connect.ClusterServiceClient
-	networkingv1connect.VPCServiceClient
+	cksv1beta1connect.ClusterServiceClient
+	networkingv1beta1connect.VPCServiceClient
 }
 
 func HandleAPIError(ctx context.Context, err error, diagnostics *diag.Diagnostics) {

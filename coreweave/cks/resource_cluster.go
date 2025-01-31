@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"time"
 
-	cksv1 "buf.build/gen/go/coreweave/cks/protocolbuffers/go/coreweave/cks/v1"
+	cksv1beta1 "buf.build/gen/go/coreweave/cks/protocolbuffers/go/coreweave/cks/v1beta1"
 	"connectrpc.com/connect"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
@@ -27,8 +27,10 @@ import (
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
-var _ resource.Resource = &ClusterResource{}
-var _ resource.ResourceWithImportState = &ClusterResource{}
+var (
+	_ resource.Resource                = &ClusterResource{}
+	_ resource.ResourceWithImportState = &ClusterResource{}
+)
 
 func NewClusterResource() resource.Resource {
 	return &ClusterResource{}
@@ -56,7 +58,7 @@ type OidcResourceModel struct {
 	SigningAlgs    types.Set    `tfsdk:"signing_algs"`
 }
 
-func (o *OidcResourceModel) Set(oidc *cksv1.OIDCConfig) {
+func (o *OidcResourceModel) Set(oidc *cksv1beta1.OIDCConfig) {
 	if oidc == nil {
 		return
 	}
@@ -80,7 +82,6 @@ func (o *OidcResourceModel) Set(oidc *cksv1.OIDCConfig) {
 	} else {
 		o.SigningAlgs = types.SetNull(types.StringType)
 	}
-
 }
 
 // ClusterResourceModel describes the resource data model.
@@ -100,7 +101,7 @@ type ClusterResourceModel struct {
 	AuthZWebhook        *AuthWebhookResourceModel `tfsdk:"authz_webhook"`
 }
 
-func oidcIsEmpty(oidc *cksv1.OIDCConfig) bool {
+func oidcIsEmpty(oidc *cksv1beta1.OIDCConfig) bool {
 	if oidc == nil {
 		return true
 	}
@@ -116,7 +117,7 @@ func oidcIsEmpty(oidc *cksv1.OIDCConfig) bool {
 		oidc.UsernamePrefix == ""
 }
 
-func authWebhookEmpty(webhook *cksv1.AuthWebhookConfig) bool {
+func authWebhookEmpty(webhook *cksv1beta1.AuthWebhookConfig) bool {
 	if webhook == nil {
 		return true
 	}
@@ -124,7 +125,7 @@ func authWebhookEmpty(webhook *cksv1.AuthWebhookConfig) bool {
 	return webhook.Server == "" && webhook.Ca == ""
 }
 
-func (c *ClusterResourceModel) Set(cluster *cksv1.Cluster) {
+func (c *ClusterResourceModel) Set(cluster *cksv1beta1.Cluster) {
 	if cluster == nil {
 		return
 	}
@@ -179,15 +180,15 @@ func (c *ClusterResourceModel) Set(cluster *cksv1.Cluster) {
 	}
 }
 
-func (c *ClusterResourceModel) oidcSigningAlgs(ctx context.Context) []cksv1.SigningAlgorithm {
+func (c *ClusterResourceModel) oidcSigningAlgs(ctx context.Context) []cksv1beta1.SigningAlgorithm {
 	algs := []types.String{}
 	c.Oidc.SigningAlgs.ElementsAs(ctx, &algs, false)
 
-	result := []cksv1.SigningAlgorithm{}
+	result := []cksv1beta1.SigningAlgorithm{}
 	for _, a := range algs {
 		switch a.ValueString() {
-		case cksv1.SigningAlgorithm_SIGNING_ALGORITHM_RS256.String():
-			result = append(result, cksv1.SigningAlgorithm_SIGNING_ALGORITHM_RS256)
+		case cksv1beta1.SigningAlgorithm_SIGNING_ALGORITHM_RS256.String():
+			result = append(result, cksv1beta1.SigningAlgorithm_SIGNING_ALGORITHM_RS256)
 		}
 	}
 
@@ -204,14 +205,14 @@ func (c *ClusterResourceModel) internalLbCidrNames(ctx context.Context) []string
 	return lbs
 }
 
-func (c *ClusterResourceModel) ToCreateRequest(ctx context.Context) *cksv1.CreateClusterRequest {
-	req := &cksv1.CreateClusterRequest{
+func (c *ClusterResourceModel) ToCreateRequest(ctx context.Context) *cksv1beta1.CreateClusterRequest {
+	req := &cksv1beta1.CreateClusterRequest{
 		Name:    c.Name.ValueString(),
 		Zone:    c.Zone.ValueString(),
 		VpcId:   c.VpcId.ValueString(),
 		Public:  c.Public.ValueBool(),
 		Version: c.Version.ValueString(),
-		Network: &cksv1.ClusterNetworkConfig{
+		Network: &cksv1beta1.ClusterNetworkConfig{
 			PodCidrName:         c.PodCidrName.ValueString(),
 			ServiceCidrName:     c.ServiceCidrName.ValueString(),
 			InternalLbCidrNames: c.internalLbCidrNames(ctx),
@@ -220,21 +221,21 @@ func (c *ClusterResourceModel) ToCreateRequest(ctx context.Context) *cksv1.Creat
 	}
 
 	if c.AuthNWebhook != nil {
-		req.AuthnWebhook = &cksv1.AuthWebhookConfig{
+		req.AuthnWebhook = &cksv1beta1.AuthWebhookConfig{
 			Server: c.AuthNWebhook.Server.ValueString(),
 			Ca:     c.AuthNWebhook.CA.ValueString(),
 		}
 	}
 
 	if c.AuthZWebhook != nil {
-		req.AuthzWebhook = &cksv1.AuthWebhookConfig{
+		req.AuthzWebhook = &cksv1beta1.AuthWebhookConfig{
 			Server: c.AuthZWebhook.Server.ValueString(),
 			Ca:     c.AuthZWebhook.CA.ValueString(),
 		}
 	}
 
 	if c.Oidc != nil {
-		req.Oidc = &cksv1.OIDCConfig{
+		req.Oidc = &cksv1beta1.OIDCConfig{
 			IssuerUrl:         c.Oidc.IssuerURL.ValueString(),
 			ClientId:          c.Oidc.ClientID.ValueString(),
 			UsernameClaim:     c.Oidc.UsernameClaim.ValueString(),
@@ -250,8 +251,8 @@ func (c *ClusterResourceModel) ToCreateRequest(ctx context.Context) *cksv1.Creat
 	return req
 }
 
-func (c *ClusterResourceModel) ToUpdateRequest(ctx context.Context) *cksv1.UpdateClusterRequest {
-	req := cksv1.UpdateClusterRequest{
+func (c *ClusterResourceModel) ToUpdateRequest(ctx context.Context) *cksv1beta1.UpdateClusterRequest {
+	req := cksv1beta1.UpdateClusterRequest{
 		Id:                  c.Id.ValueString(),
 		Public:              c.Public.ValueBool(),
 		Version:             c.Version.ValueString(),
@@ -260,21 +261,21 @@ func (c *ClusterResourceModel) ToUpdateRequest(ctx context.Context) *cksv1.Updat
 	}
 
 	if c.AuthNWebhook != nil {
-		req.AuthnWebhook = &cksv1.AuthWebhookConfig{
+		req.AuthnWebhook = &cksv1beta1.AuthWebhookConfig{
 			Server: c.AuthNWebhook.Server.ValueString(),
 			Ca:     c.AuthNWebhook.CA.ValueString(),
 		}
 	}
 
 	if c.AuthZWebhook != nil {
-		req.AuthzWebhook = &cksv1.AuthWebhookConfig{
+		req.AuthzWebhook = &cksv1beta1.AuthWebhookConfig{
 			Server: c.AuthZWebhook.Server.ValueString(),
 			Ca:     c.AuthZWebhook.CA.ValueString(),
 		}
 	}
 
 	if c.Oidc != nil {
-		req.Oidc = &cksv1.OIDCConfig{
+		req.Oidc = &cksv1beta1.OIDCConfig{
 			IssuerUrl:         c.Oidc.IssuerURL.ValueString(),
 			ClientId:          c.Oidc.ClientID.ValueString(),
 			UsernameClaim:     c.Oidc.UsernameClaim.ValueString(),
@@ -386,7 +387,6 @@ func (r *ClusterResource) Schema(ctx context.Context, req resource.SchemaRequest
 						if resp.Diagnostics.WarningsCount() > 0 {
 							resp.RequiresReplace = true
 						}
-
 					}, "", ""),
 				},
 			},
@@ -492,19 +492,19 @@ func (r *ClusterResource) Create(ctx context.Context, req resource.CreateRequest
 	// wait for the cluster to become ready
 	conf := retry.StateChangeConf{
 		Pending: []string{
-			cksv1.Cluster_STATUS_CREATING.String(),
-			cksv1.Cluster_STATUS_UNSPECIFIED.String(),
+			cksv1beta1.Cluster_STATUS_CREATING.String(),
+			cksv1beta1.Cluster_STATUS_UNSPECIFIED.String(),
 		},
-		Target: []string{cksv1.Cluster_STATUS_RUNNING.String()},
+		Target: []string{cksv1beta1.Cluster_STATUS_RUNNING.String()},
 		Refresh: func() (result interface{}, state string, err error) {
-			resp, err := r.client.GetCluster(ctx, connect.NewRequest(&cksv1.GetClusterRequest{
+			resp, err := r.client.GetCluster(ctx, connect.NewRequest(&cksv1beta1.GetClusterRequest{
 				Id: createResp.Msg.Cluster.Id,
 			}))
 			if err != nil {
 				tflog.Error(ctx, "failed to fetch cluster resource", map[string]interface{}{
 					"error": err,
 				})
-				return nil, cksv1.Cluster_STATUS_UNSPECIFIED.String(), err
+				return nil, cksv1beta1.Cluster_STATUS_UNSPECIFIED.String(), err
 			}
 
 			return resp.Msg.Cluster, resp.Msg.Cluster.Status.String(), nil
@@ -518,11 +518,11 @@ func (r *ClusterResource) Create(ctx context.Context, req resource.CreateRequest
 		return
 	}
 
-	cluster, ok := rawCluster.(*cksv1.Cluster)
+	cluster, ok := rawCluster.(*cksv1beta1.Cluster)
 	if !ok {
 		resp.Diagnostics.AddError(
 			"Unexpected Resource Create Type",
-			"Expected *cksv1.Cluster. Please report this issue to the provider developers.",
+			"Expected *cksv1beta1.Cluster. Please report this issue to the provider developers.",
 		)
 		return
 	}
@@ -540,7 +540,7 @@ func (r *ClusterResource) Read(ctx context.Context, req resource.ReadRequest, re
 		return
 	}
 
-	cluster, err := r.client.GetCluster(ctx, connect.NewRequest(&cksv1.GetClusterRequest{
+	cluster, err := r.client.GetCluster(ctx, connect.NewRequest(&cksv1beta1.GetClusterRequest{
 		Id: data.Id.ValueString(),
 	}))
 	if err != nil {
@@ -571,19 +571,19 @@ func (r *ClusterResource) Update(ctx context.Context, req resource.UpdateRequest
 	// wait for the cluster to become ready
 	conf := retry.StateChangeConf{
 		Pending: []string{
-			cksv1.Cluster_STATUS_UPDATING.String(),
-			cksv1.Cluster_STATUS_UNSPECIFIED.String(),
+			cksv1beta1.Cluster_STATUS_UPDATING.String(),
+			cksv1beta1.Cluster_STATUS_UNSPECIFIED.String(),
 		},
-		Target: []string{cksv1.Cluster_STATUS_RUNNING.String()},
+		Target: []string{cksv1beta1.Cluster_STATUS_RUNNING.String()},
 		Refresh: func() (result interface{}, state string, err error) {
-			resp, err := r.client.GetCluster(ctx, connect.NewRequest(&cksv1.GetClusterRequest{
+			resp, err := r.client.GetCluster(ctx, connect.NewRequest(&cksv1beta1.GetClusterRequest{
 				Id: updateResp.Msg.Cluster.Id,
 			}))
 			if err != nil {
 				tflog.Error(ctx, "failed to fetch cluster resource", map[string]interface{}{
 					"error": err.Error(),
 				})
-				return nil, cksv1.Cluster_STATUS_UNSPECIFIED.String(), err
+				return nil, cksv1beta1.Cluster_STATUS_UNSPECIFIED.String(), err
 			}
 
 			return resp.Msg.Cluster, resp.Msg.Cluster.Status.String(), nil
@@ -597,11 +597,11 @@ func (r *ClusterResource) Update(ctx context.Context, req resource.UpdateRequest
 		return
 	}
 
-	cluster, ok := rawCluster.(*cksv1.Cluster)
+	cluster, ok := rawCluster.(*cksv1beta1.Cluster)
 	if !ok {
 		resp.Diagnostics.AddError(
 			"Unexpected Resource Update Type",
-			"Expected *cksv1.VPC. Please report this issue to the provider developers.",
+			"Expected *cksv1beta1.VPC. Please report this issue to the provider developers.",
 		)
 		return
 	}
@@ -618,7 +618,7 @@ func (r *ClusterResource) Delete(ctx context.Context, req resource.DeleteRequest
 		return
 	}
 
-	deleteResp, err := r.client.DeleteCluster(ctx, connect.NewRequest(&cksv1.DeleteClusterRequest{
+	deleteResp, err := r.client.DeleteCluster(ctx, connect.NewRequest(&cksv1beta1.DeleteClusterRequest{
 		Id: data.Id.ValueString(),
 	}))
 	if err != nil {
@@ -628,24 +628,24 @@ func (r *ClusterResource) Delete(ctx context.Context, req resource.DeleteRequest
 
 	conf := retry.StateChangeConf{
 		Pending: []string{
-			cksv1.Cluster_STATUS_DELETING.String(),
-			cksv1.Cluster_STATUS_UNSPECIFIED.String(),
+			cksv1beta1.Cluster_STATUS_DELETING.String(),
+			cksv1beta1.Cluster_STATUS_UNSPECIFIED.String(),
 		},
-		Target: []string{cksv1.Cluster_STATUS_DELETED.String()},
+		Target: []string{cksv1beta1.Cluster_STATUS_DELETED.String()},
 		Refresh: func() (result interface{}, state string, err error) {
-			resp, err := r.client.GetCluster(ctx, connect.NewRequest(&cksv1.GetClusterRequest{
+			resp, err := r.client.GetCluster(ctx, connect.NewRequest(&cksv1beta1.GetClusterRequest{
 				Id: deleteResp.Msg.Cluster.Id,
 			}))
 			if err != nil {
 				var connectErr *connect.Error
 				if errors.As(err, &connectErr) && connectErr.Code() == connect.CodeNotFound {
-					return struct{}{}, cksv1.Cluster_STATUS_DELETED.String(), nil
+					return struct{}{}, cksv1beta1.Cluster_STATUS_DELETED.String(), nil
 				}
 
 				tflog.Error(ctx, "failed to fetch cluster resource", map[string]interface{}{
 					"error": err.Error(),
 				})
-				return nil, cksv1.Cluster_STATUS_UNSPECIFIED.String(), err
+				return nil, cksv1beta1.Cluster_STATUS_UNSPECIFIED.String(), err
 			}
 
 			return resp.Msg.Cluster, resp.Msg.Cluster.Status.String(), nil
