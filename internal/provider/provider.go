@@ -34,8 +34,10 @@ var TestProtoV6ProviderFactories = map[string]func() (tfprotov6.ProviderServer, 
 }
 
 // Ensure CoreweaveProvider satisfies various provider interfaces.
-var _ provider.Provider = &CoreweaveProvider{}
-var _ provider.ProviderWithFunctions = &CoreweaveProvider{}
+var (
+	_ provider.Provider              = &CoreweaveProvider{}
+	_ provider.ProviderWithFunctions = &CoreweaveProvider{}
+)
 
 // CoreweaveProvider defines the provider implementation.
 type CoreweaveProvider struct {

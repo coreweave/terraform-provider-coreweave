@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"time"
 
-	networkingv1 "buf.build/gen/go/coreweave/networking/protocolbuffers/go/coreweave/networking/v1"
+	networkingv1beta1 "buf.build/gen/go/coreweave/networking/protocolbuffers/go/coreweave/networking/v1beta1"
 	"connectrpc.com/connect"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
 	"github.com/hashicorp/hcl/v2/hclwrite"
@@ -26,8 +26,10 @@ import (
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
-var _ resource.Resource = &VpcResource{}
-var _ resource.ResourceWithImportState = &VpcResource{}
+var (
+	_ resource.Resource                = &VpcResource{}
+	_ resource.ResourceWithImportState = &VpcResource{}
+)
 
 func NewVpcResource() resource.Resource {
 	return &VpcResource{}
@@ -47,8 +49,8 @@ type VpcPrefixResourceModel struct {
 	Public                   types.Bool   `tfsdk:"public"`
 }
 
-func (v *VpcPrefixResourceModel) ToProto() *networkingv1.Prefix {
-	return &networkingv1.Prefix{
+func (v *VpcPrefixResourceModel) ToProto() *networkingv1beta1.Prefix {
+	return &networkingv1beta1.Prefix{
 		Name:                     v.Name.ValueString(),
 		Value:                    v.Value.ValueString(),
 		DisableExternalPropagate: v.DisableExternalPropagate.ValueBool(),
@@ -58,7 +60,7 @@ func (v *VpcPrefixResourceModel) ToProto() *networkingv1.Prefix {
 	}
 }
 
-func (v *VpcPrefixResourceModel) Set(prefix *networkingv1.Prefix) {
+func (v *VpcPrefixResourceModel) Set(prefix *networkingv1beta1.Prefix) {
 	if prefix == nil {
 		return
 	}
@@ -82,7 +84,7 @@ type VpcResourceModel struct {
 	DnsServers   types.Set                `tfsdk:"dns_servers"`
 }
 
-func (v *VpcResourceModel) Set(vpc *networkingv1.VPC) {
+func (v *VpcResourceModel) Set(vpc *networkingv1beta1.VPC) {
 	if vpc == nil {
 		return
 	}
@@ -147,16 +149,16 @@ func (v *VpcResourceModel) GetDnsServers(ctx context.Context) []string {
 	return ds
 }
 
-func (v *VpcResourceModel) vpcPrefixes() []*networkingv1.Prefix {
-	vp := []*networkingv1.Prefix{}
+func (v *VpcResourceModel) vpcPrefixes() []*networkingv1beta1.Prefix {
+	vp := []*networkingv1beta1.Prefix{}
 	for _, p := range v.VpcPrefixes {
 		vp = append(vp, p.ToProto())
 	}
 	return vp
 }
 
-func (v *VpcResourceModel) ToCreateRequest(ctx context.Context) *networkingv1.CreateVPCRequest {
-	req := &networkingv1.CreateVPCRequest{
+func (v *VpcResourceModel) ToCreateRequest(ctx context.Context) *networkingv1beta1.CreateVPCRequest {
+	req := &networkingv1beta1.CreateVPCRequest{
 		Name:         v.Name.ValueString(),
 		Zone:         v.Zone.ValueString(),
 		PubImport:    v.PubImport.ValueBool(),
@@ -167,8 +169,8 @@ func (v *VpcResourceModel) ToCreateRequest(ctx context.Context) *networkingv1.Cr
 	return req
 }
 
-func (v *VpcResourceModel) ToUpdateRequest(ctx context.Context) *networkingv1.UpdateVPCRequest {
-	req := networkingv1.UpdateVPCRequest{
+func (v *VpcResourceModel) ToUpdateRequest(ctx context.Context) *networkingv1beta1.UpdateVPCRequest {
+	req := networkingv1beta1.UpdateVPCRequest{
 		Id:           v.Id.ValueString(),
 		PubImport:    v.PubImport.ValueBool(),
 		HostPrefixes: v.GetHostPrefixes(ctx),
@@ -253,7 +255,6 @@ func (r *VpcResource) Schema(ctx context.Context, req resource.SchemaRequest, re
 						if resp.Diagnostics.WarningsCount() > 0 {
 							resp.RequiresReplace = true
 						}
-
 					}, "", ""),
 				},
 			},
@@ -334,19 +335,19 @@ func (r *VpcResource) Create(ctx context.Context, req resource.CreateRequest, re
 	// wait for the vpc to become ready
 	conf := retry.StateChangeConf{
 		Pending: []string{
-			networkingv1.VPC_STATUS_CREATING.String(),
-			networkingv1.VPC_STATUS_UNSPECIFIED.String(),
+			networkingv1beta1.VPC_STATUS_CREATING.String(),
+			networkingv1beta1.VPC_STATUS_UNSPECIFIED.String(),
 		},
-		Target: []string{networkingv1.VPC_STATUS_READY.String()},
+		Target: []string{networkingv1beta1.VPC_STATUS_READY.String()},
 		Refresh: func() (result interface{}, state string, err error) {
-			resp, err := r.client.GetVPC(ctx, connect.NewRequest(&networkingv1.GetVPCRequest{
+			resp, err := r.client.GetVPC(ctx, connect.NewRequest(&networkingv1beta1.GetVPCRequest{
 				Id: createResp.Msg.Vpc.Id,
 			}))
 			if err != nil {
 				tflog.Error(ctx, "failed to fetch vpc resource", map[string]interface{}{
 					"error": err,
 				})
-				return nil, networkingv1.VPC_STATUS_UNSPECIFIED.String(), err
+				return nil, networkingv1beta1.VPC_STATUS_UNSPECIFIED.String(), err
 			}
 
 			return resp.Msg.Vpc, resp.Msg.Vpc.Status.String(), nil
@@ -360,11 +361,11 @@ func (r *VpcResource) Create(ctx context.Context, req resource.CreateRequest, re
 		return
 	}
 
-	vpc, ok := rawVpc.(*networkingv1.VPC)
+	vpc, ok := rawVpc.(*networkingv1beta1.VPC)
 	if !ok {
 		resp.Diagnostics.AddError(
 			"Unexpected Resource Create Type",
-			"Expected *networkingv1.VPC. Please report this issue to the provider developers.",
+			"Expected *networkingv1beta1.VPC. Please report this issue to the provider developers.",
 		)
 		return
 	}
@@ -381,7 +382,7 @@ func (r *VpcResource) Read(ctx context.Context, req resource.ReadRequest, resp *
 		return
 	}
 
-	vpc, err := r.client.GetVPC(ctx, connect.NewRequest(&networkingv1.GetVPCRequest{
+	vpc, err := r.client.GetVPC(ctx, connect.NewRequest(&networkingv1beta1.GetVPCRequest{
 		Id: data.Id.ValueString(),
 	}))
 	if err != nil {
@@ -412,19 +413,19 @@ func (r *VpcResource) Update(ctx context.Context, req resource.UpdateRequest, re
 	// wait for the vpc to become ready
 	conf := retry.StateChangeConf{
 		Pending: []string{
-			networkingv1.VPC_STATUS_UPDATING.String(),
-			networkingv1.VPC_STATUS_UNSPECIFIED.String(),
+			networkingv1beta1.VPC_STATUS_UPDATING.String(),
+			networkingv1beta1.VPC_STATUS_UNSPECIFIED.String(),
 		},
-		Target: []string{networkingv1.VPC_STATUS_READY.String()},
+		Target: []string{networkingv1beta1.VPC_STATUS_READY.String()},
 		Refresh: func() (result interface{}, state string, err error) {
-			resp, err := r.client.GetVPC(ctx, connect.NewRequest(&networkingv1.GetVPCRequest{
+			resp, err := r.client.GetVPC(ctx, connect.NewRequest(&networkingv1beta1.GetVPCRequest{
 				Id: updateResp.Msg.Vpc.Id,
 			}))
 			if err != nil {
 				tflog.Error(ctx, "failed to fetch vpc resource", map[string]interface{}{
 					"error": err.Error(),
 				})
-				return nil, networkingv1.VPC_STATUS_UNSPECIFIED.String(), err
+				return nil, networkingv1beta1.VPC_STATUS_UNSPECIFIED.String(), err
 			}
 
 			tflog.Info(ctx, "fetching vpc", map[string]interface{}{
@@ -442,11 +443,11 @@ func (r *VpcResource) Update(ctx context.Context, req resource.UpdateRequest, re
 		return
 	}
 
-	vpc, ok := rawvpc.(*networkingv1.VPC)
+	vpc, ok := rawvpc.(*networkingv1beta1.VPC)
 	if !ok {
 		resp.Diagnostics.AddError(
 			"Unexpected Resource Update Type",
-			"Expected *networkingv1.VPC. Please report this issue to the provider developers.",
+			"Expected *networkingv1beta1.VPC. Please report this issue to the provider developers.",
 		)
 		return
 	}
@@ -463,7 +464,7 @@ func (r *VpcResource) Delete(ctx context.Context, req resource.DeleteRequest, re
 		return
 	}
 
-	deleteResp, err := r.client.DeleteVPC(ctx, connect.NewRequest(&networkingv1.DeleteVPCRequest{
+	deleteResp, err := r.client.DeleteVPC(ctx, connect.NewRequest(&networkingv1beta1.DeleteVPCRequest{
 		Id: data.Id.ValueString(),
 	}))
 	if err != nil {
@@ -473,12 +474,12 @@ func (r *VpcResource) Delete(ctx context.Context, req resource.DeleteRequest, re
 
 	conf := retry.StateChangeConf{
 		Pending: []string{
-			networkingv1.VPC_STATUS_DELETING.String(),
-			networkingv1.VPC_STATUS_UNSPECIFIED.String(),
+			networkingv1beta1.VPC_STATUS_DELETING.String(),
+			networkingv1beta1.VPC_STATUS_UNSPECIFIED.String(),
 		},
 		Target: []string{""},
 		Refresh: func() (result interface{}, state string, err error) {
-			resp, err := r.client.GetVPC(ctx, connect.NewRequest(&networkingv1.GetVPCRequest{
+			resp, err := r.client.GetVPC(ctx, connect.NewRequest(&networkingv1beta1.GetVPCRequest{
 				Id: deleteResp.Msg.Vpc.Id,
 			}))
 			if err != nil {
@@ -490,7 +491,7 @@ func (r *VpcResource) Delete(ctx context.Context, req resource.DeleteRequest, re
 				tflog.Error(ctx, "failed to fetch vpc", map[string]interface{}{
 					"error": err.Error(),
 				})
-				return nil, networkingv1.VPC_STATUS_UNSPECIFIED.String(), err
+				return nil, networkingv1beta1.VPC_STATUS_UNSPECIFIED.String(), err
 			}
 
 			return resp.Msg.Vpc, resp.Msg.Vpc.Status.String(), nil
