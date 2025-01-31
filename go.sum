@@ -1,7 +1,7 @@
 buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.36.4-20250130201111-63bb56e20495.1 h1:4erM3WLgEG/HIBrpBDmRbs1puhd7p0z7kNXDuhHthwM=
 buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.36.4-20250130201111-63bb56e20495.1/go.mod h1:novQBstnxcGpfKf8qGRATqn1anQKwMJIbH5Q581jibU=
-buf.build/gen/go/coreweave/cks/connectrpc/go v1.18.1-20250131171906-f4a268dddc86.1 h1:AxNRcdTb7n3XW4zrVNvm8Z/abNnNa8gmLq9pEm1cWbA=
-buf.build/gen/go/coreweave/cks/connectrpc/go v1.18.1-20250131171906-f4a268dddc86.1/go.mod h1:WyeXdbkEaiLe0/gO6mhRkleXI8PUa0a9Ex+1cLWpUYw=
+buf.build/gen/go/coreweave/cks/connectrpc/go v1.18.1-20250131183318-f8c13a07581d.1 h1:VA1dXLRUP1TuI9d4KDiMiL+xXj/Y6ba+R2Hj1eZFU54=
+buf.build/gen/go/coreweave/cks/connectrpc/go v1.18.1-20250131183318-f8c13a07581d.1/go.mod h1:03klz0ys1WsJzdMP2FZnlRv4xRtyzH4l3zZ5sUiGjns=
 buf.build/gen/go/coreweave/cks/protocolbuffers/go v1.36.4-20250131171906-f4a268dddc86.1 h1:EMlNLR5OagRAetntGQ5+CWOsJIlaouyaboiPHacFTb0=
 buf.build/gen/go/coreweave/cks/protocolbuffers/go v1.36.4-20250131171906-f4a268dddc86.1/go.mod h1:Ht5M+5psva+EfCu4A7iMNDb3VHiotQFp3qgy87rcHpg=
 buf.build/gen/go/coreweave/networking/connectrpc/go v1.18.1-20250131171826-bf6c8bf61953.1 h1:+haQsxWZrgVZI5cVw48OeA1FeFDnIBTPY/sKsO1LwUs=
