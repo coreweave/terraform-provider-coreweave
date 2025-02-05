@@ -45,9 +45,9 @@ func TestClusterSchema(t *testing.T) {
 }
 
 func TestClusterResource(t *testing.T) {
-	randomInt := rand.IntN(3)
-	clusterName := fmt.Sprintf("test-cluster-%x", randomInt)
-	resourceName := fmt.Sprintf("test_cluster_%x", randomInt)
+	randomInt := rand.IntN(100)
+	clusterName := fmt.Sprintf("test-acc-cks-cluster-%x", randomInt)
+	resourceName := fmt.Sprintf("test_acc_cks_cluster_%x", randomInt)
 	fullResourceName := fmt.Sprintf("coreweave_cks_cluster.%s", resourceName)
 	vpc := &networking.VpcResourceModel{
 		Name:         types.StringValue(clusterName),

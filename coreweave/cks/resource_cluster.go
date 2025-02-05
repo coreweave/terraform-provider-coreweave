@@ -253,11 +253,13 @@ func (c *ClusterResourceModel) ToCreateRequest(ctx context.Context) *cksv1beta1.
 
 func (c *ClusterResourceModel) ToUpdateRequest(ctx context.Context) *cksv1beta1.UpdateClusterRequest {
 	req := cksv1beta1.UpdateClusterRequest{
-		Id:                  c.Id.ValueString(),
-		Public:              c.Public.ValueBool(),
-		Version:             c.Version.ValueString(),
-		AuditPolicy:         c.AuditPolicy.ValueString(),
-		InternalLbCidrNames: c.internalLbCidrNames(ctx),
+		Id:          c.Id.ValueString(),
+		Public:      c.Public.ValueBool(),
+		Version:     c.Version.ValueString(),
+		AuditPolicy: c.AuditPolicy.ValueString(),
+		Network: &cksv1beta1.UpdateClusterRequest_Network{
+			InternalLbCidrNames: c.internalLbCidrNames(ctx),
+		},
 	}
 
 	if c.AuthNWebhook != nil {

@@ -41,8 +41,8 @@ func TestVpcSchema(t *testing.T) {
 }
 
 func TestVpcResource(t *testing.T) {
-	randomInt := rand.IntN(3)
-	vpcName := fmt.Sprintf("test-vpc-%x", randomInt)
+	randomInt := rand.IntN(100)
+	vpcName := fmt.Sprintf("test-acc-vpc-%x", randomInt)
 	resourceName := fmt.Sprintf("test_vpc_%x", randomInt)
 	fullResourceName := fmt.Sprintf("coreweave_networking_vpc.%s", resourceName)
 	initial := &networking.VpcResourceModel{
