@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.4](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.1.3...v0.1.4) (2025-02-05)
+
+
+### Bug Fixes
+
+* update cks client ([#50](https://github.com/coreweave/terraform-provider-coreweave/issues/50)) ([e18fbd7](https://github.com/coreweave/terraform-provider-coreweave/commit/e18fbd72867b25759e64cc442d30cef55b4e6d0b))
+
 ## [0.1.3](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.1.2...v0.1.3) (2025-01-31)
 
 
