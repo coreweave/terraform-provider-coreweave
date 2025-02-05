@@ -6,7 +6,7 @@ require (
 	buf.build/gen/go/coreweave/cks/connectrpc/go v1.18.1-20250205174429-6ea55fad55f4.1
 	buf.build/gen/go/coreweave/cks/protocolbuffers/go v1.36.4-20250205174429-6ea55fad55f4.1
 	buf.build/gen/go/coreweave/networking/connectrpc/go v1.18.1-20250131171826-bf6c8bf61953.1
-	buf.build/gen/go/coreweave/networking/protocolbuffers/go v1.36.2-20250131171826-bf6c8bf61953.1
+	buf.build/gen/go/coreweave/networking/protocolbuffers/go v1.36.4-20250131182526-594d7f919898.1
 	connectrpc.com/connect v1.18.1
 	github.com/hashicorp/hcl/v2 v2.23.0
 	github.com/hashicorp/terraform-plugin-framework v1.13.0
