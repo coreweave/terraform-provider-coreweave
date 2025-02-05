@@ -18,46 +18,31 @@ jobs:
         with:
           fetch-depth: 0  # ✅ Fetch all commits and tags
 
-      - name: Extract Version from Latest Commit
-        id: extract_version
+      - name: Push Tag for Release
+        id: push_tag
         run: |
-          # Get the latest commit message
-          COMMIT_MSG=$(git log -1 --pretty=%B)
-          # only use the first line
-          COMMIT_MSG=$(echo "$COMMIT_MSG" | head -n 1)
+          # Get the latest commit message that matches the pattern "chore: release vX.Y.Z"
+          COMMIT_MSG=$(git log --grep="^chore: release [0-9]\+\.[0-9]\+\.[0-9]\+" -n 1 --format="%s")
 
           # Match "chore: release vX.Y.Z"
           if [[ "$COMMIT_MSG" =~ ^chore:\ release\ ([0-9]+\.[0-9]+\.[0-9]+)(\ \(.+\))?$ ]]; then
             VERSION="v${BASH_REMATCH[1]}"
             echo "Found release commit for version $VERSION"
-            echo "version=$VERSION" >> $GITHUB_ENV
-            echo "skip=false" >> $GITHUB_ENV
+
+            TAG_EXISTS=$(git tag -l "${VERSION}")
+            if [ -n "$TAG_EXISTS" ]; then
+              echo "Tag $VERSION already exists. Skipping."
+              exit 0
+            else
+              echo "Pushing tag $VERSION"
+              git config user.name "github-actions[bot]"
+              git config user.email "github-actions[bot]@users.noreply.github.com"
+              
+              # Create and push the tag (auth is already configured)
+              git tag "$VERSION"
+              git push origin "$VERSION"
+            fi
           else
-            echo "No tag found in the latest commit. Exiting."
-            echo "skip=true" >> $GITHUB_ENV
-            exit 0  # Exit silently if no release commit
+            echo "Commit message '$COMMIT_MSG' does not match the pattern 'chore: release vX.Y.Z'. Skipping."
           fi
-
-      - name: Check if Tag Already Exists
-        if: env.skip != 'true'  # ✅ Runs only if a release commit is found
-        id: check_tag
-        run: |
-          # Check if the tag already exists
-          TAG_EXISTS=$(git tag -l "${VERSION}")
-          if [ -n "$TAG_EXISTS" ]; then
-            echo "Tag $VERSION already exists. Skipping."
-            echo "skip=true" >> $GITHUB_ENV
-            exit 0
-          else
-            echo "skip=false" >> $GITHUB_ENV
-          fi
-
-      - name: Create and Push Git Tag
-        if: env.skip != 'true'  # ✅ Only runs if tag doesn't exist
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-
-          # Create and push the tag (auth is already configured)
-          git tag "${VERSION}"
-          git push origin "${VERSION}"
+          
