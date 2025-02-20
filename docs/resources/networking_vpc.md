@@ -17,19 +17,54 @@ CoreWeave VPC
 
 ### Required
 
-- `name` (String)
-- `zone` (String)
+- `name` (String) The name of the VPC. Must not be longer than 30 characters.
+- `zone` (String) The Availability Zone in which the VPC is located.
 
 ### Optional
 
-- `dns_servers` (Set of String)
-- `host_prefixes` (Set of String)
-- `pub_import` (Boolean)
-- `vpc_prefixes` (Attributes Set) (see [below for nested schema](#nestedatt--vpc_prefixes))
+- `dhcp` (Attributes) Settings affecting DHCP behavior within the VPC. (see [below for nested schema](#nestedatt--dhcp))
+- `egress` (Attributes) Settings affecting traffic leaving the VPC. (see [below for nested schema](#nestedatt--egress))
+- `host_prefix` (String) An IPv4 CIDR range used to allocate host addresses when booting compute into a VPC.
+This CIDR must be have a mask size of /18. If left unspecified, a Zone-specific default value will be applied by the server.
+This field is immutable once set.
+- `ingress` (Attributes) Settings affecting traffic entering the VPC. (see [below for nested schema](#nestedatt--ingress))
+- `vpc_prefixes` (Attributes Set) A list of additional prefixes associated with the VPC. For example, CKS clusters use these prefixes for Pod and service CIDR ranges. (see [below for nested schema](#nestedatt--vpc_prefixes))
 
 ### Read-Only
 
-- `id` (String) The unique identifier of the vpc.
+- `id` (String) The unique identifier for the VPC.
+
+<a id="nestedatt--dhcp"></a>
+### Nested Schema for `dhcp`
+
+Optional:
+
+- `dns` (Attributes) Settings affecting DNS for DHCP within the VPC (see [below for nested schema](#nestedatt--dhcp--dns))
+
+<a id="nestedatt--dhcp--dns"></a>
+### Nested Schema for `dhcp.dns`
+
+Optional:
+
+- `servers` (Set of String) The DNS servers to be used by DHCP clients within the VPC.
+
+
+
+<a id="nestedatt--egress"></a>
+### Nested Schema for `egress`
+
+Optional:
+
+- `disable_public_access` (Boolean) Specifies whether the VPC should be blocked from consuming public Internet.
+
+
+<a id="nestedatt--ingress"></a>
+### Nested Schema for `ingress`
+
+Optional:
+
+- `disable_public_services` (Boolean) Specifies whether the VPC should prevent public prefixes advertised from Nodes from being imported into public-facing networks, making them inaccessible from the Internet.
+
 
 <a id="nestedatt--vpc_prefixes"></a>
 ### Nested Schema for `vpc_prefixes`
@@ -38,10 +73,3 @@ Required:
 
 - `name` (String)
 - `value` (String)
-
-Optional:
-
-- `disable_external_propagate` (Boolean)
-- `disable_host_bgp_peering` (Boolean)
-- `host_dhcp_route` (Boolean)
-- `public` (Boolean)

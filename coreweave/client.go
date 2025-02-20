@@ -66,7 +66,10 @@ func HandleAPIError(ctx context.Context, err error, diagnostics *diag.Diagnostic
 						violation.Type+": "+violation.Description,
 					)
 				}
+				break
 			}
+
+			diagnostics.AddError(connectErr.Error(), connectErr.Message())
 		}
 
 	case connect.CodeInvalidArgument:
@@ -83,7 +86,10 @@ func HandleAPIError(ctx context.Context, err error, diagnostics *diag.Diagnostic
 						field.Field+": "+field.Description,
 					)
 				}
+				break
 			}
+
+			diagnostics.AddError(connectErr.Error(), connectErr.Message())
 		}
 
 	case connect.CodeUnauthenticated:
@@ -112,7 +118,10 @@ func HandleAPIError(ctx context.Context, err error, diagnostics *diag.Diagnostic
 						violation.Subject+": "+violation.Description,
 					)
 				}
+				break
 			}
+
+			diagnostics.AddError(connectErr.Error(), connectErr.Message())
 		}
 
 	default:
@@ -125,5 +134,10 @@ func HandleAPIError(ctx context.Context, err error, diagnostics *diag.Diagnostic
 			"Internal Error",
 			"An unexpected error occurred. Please check the provider logs for more details.",
 		)
+	}
+
+	// safeguard for any buggy case statements
+	if !diagnostics.HasError() {
+		diagnostics.AddError(connectErr.Error(), connectErr.Message())
 	}
 }

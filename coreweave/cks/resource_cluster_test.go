@@ -45,14 +45,15 @@ func TestClusterSchema(t *testing.T) {
 }
 
 func TestClusterResource(t *testing.T) {
+	t.Parallel()
 	randomInt := rand.IntN(100)
 	clusterName := fmt.Sprintf("test-acc-cks-cluster-%x", randomInt)
 	resourceName := fmt.Sprintf("test_acc_cks_cluster_%x", randomInt)
 	fullResourceName := fmt.Sprintf("coreweave_cks_cluster.%s", resourceName)
 	vpc := &networking.VpcResourceModel{
-		Name:         types.StringValue(clusterName),
-		Zone:         types.StringValue("US-EAST-04A"),
-		HostPrefixes: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("10.16.192.0/18")}),
+		Name:       types.StringValue(clusterName),
+		Zone:       types.StringValue("US-EAST-04A"),
+		HostPrefix: types.StringValue("10.16.192.0/18"),
 		VpcPrefixes: []networking.VpcPrefixResourceModel{
 			{
 				Name:  types.StringValue("pod cidr"),
