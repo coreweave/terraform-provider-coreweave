@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.5](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.1.4...v0.1.5) (2025-02-20)
+
+
+### Bug Fixes
+
+* update terraform provider with latest vpc api schema changes ([#58](https://github.com/coreweave/terraform-provider-coreweave/issues/58)) ([2e4a8b2](https://github.com/coreweave/terraform-provider-coreweave/commit/2e4a8b2cbe6f1784c719b46526392ee6f94ace75))
+
 ## [0.1.4](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.1.3...v0.1.4) (2025-02-05)
 
 
