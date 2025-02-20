@@ -15,9 +15,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/setplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
@@ -40,23 +39,54 @@ type VpcResource struct {
 	client *coreweave.Client
 }
 
+type VpcDhcpDnsResourceModel struct {
+	Servers types.Set `tfsdk:"servers"`
+}
+
+func (v *VpcDhcpDnsResourceModel) IsEmpty() bool {
+	return v.Servers.IsNull() || len(v.Servers.Elements()) == 0
+}
+
+type VpcDhcpResourceModel struct {
+	Dns *VpcDhcpDnsResourceModel `tfsdk:"dns"`
+}
+
+func (v *VpcDhcpResourceModel) IsEmpty() bool {
+	if v.Dns == nil {
+		return true
+	}
+
+	return v.Dns.IsEmpty()
+}
+
+func (v *VpcDhcpResourceModel) Set(dhcp *networkingv1beta1.DHCP) {
+	if dhcp == nil {
+		return
+	}
+
+	if dhcp.Dns != nil {
+		v.Dns = &VpcDhcpDnsResourceModel{}
+
+		servers := []attr.Value{}
+		for _, s := range dhcp.Dns.Servers {
+			servers = append(servers, types.StringValue(s))
+		}
+		ds := types.SetValueMust(types.StringType, servers)
+		v.Dns.Servers = ds
+
+		return
+	}
+}
+
 type VpcPrefixResourceModel struct {
-	Name                     types.String `tfsdk:"name"`
-	Value                    types.String `tfsdk:"value"`
-	DisableExternalPropagate types.Bool   `tfsdk:"disable_external_propagate"`
-	DisableHostBgpPeering    types.Bool   `tfsdk:"disable_host_bgp_peering"`
-	HostDhcpRoute            types.Bool   `tfsdk:"host_dhcp_route"`
-	Public                   types.Bool   `tfsdk:"public"`
+	Name  types.String `tfsdk:"name"`
+	Value types.String `tfsdk:"value"`
 }
 
 func (v *VpcPrefixResourceModel) ToProto() *networkingv1beta1.Prefix {
 	return &networkingv1beta1.Prefix{
-		Name:                     v.Name.ValueString(),
-		Value:                    v.Value.ValueString(),
-		DisableExternalPropagate: v.DisableExternalPropagate.ValueBool(),
-		DisableHostBgpPeering:    v.DisableHostBgpPeering.ValueBool(),
-		HostDhcpRoute:            v.HostDhcpRoute.ValueBool(),
-		Public:                   v.Public.ValueBool(),
+		Name:  v.Name.ValueString(),
+		Value: v.Value.ValueString(),
 	}
 }
 
@@ -67,21 +97,46 @@ func (v *VpcPrefixResourceModel) Set(prefix *networkingv1beta1.Prefix) {
 
 	v.Name = types.StringValue(prefix.Name)
 	v.Value = types.StringValue(prefix.Value)
-	v.DisableExternalPropagate = types.BoolValue(prefix.DisableExternalPropagate)
-	v.DisableHostBgpPeering = types.BoolValue(prefix.DisableHostBgpPeering)
-	v.HostDhcpRoute = types.BoolValue(prefix.HostDhcpRoute)
-	v.Public = types.BoolValue(prefix.Public)
+}
+
+type VpcIngressResourceModel struct {
+	DisablePublicServices types.Bool `tfsdk:"disable_public_services"`
+}
+
+func (v *VpcIngressResourceModel) ToProto() *networkingv1beta1.Ingress {
+	if v == nil {
+		return nil
+	}
+
+	return &networkingv1beta1.Ingress{
+		DisablePublicServices: v.DisablePublicServices.ValueBool(),
+	}
+}
+
+type VpcEgressResourceModel struct {
+	DisablePublicAccess types.Bool `tfsdk:"disable_public_access"`
+}
+
+func (v *VpcEgressResourceModel) ToProto() *networkingv1beta1.Egress {
+	if v == nil {
+		return nil
+	}
+
+	return &networkingv1beta1.Egress{
+		DisablePublicAccess: v.DisablePublicAccess.ValueBool(),
+	}
 }
 
 // VpcResourceModel describes the resource data model.
 type VpcResourceModel struct {
-	Id           types.String             `tfsdk:"id"`
-	Zone         types.String             `tfsdk:"zone"`
-	Name         types.String             `tfsdk:"name"`
-	PubImport    types.Bool               `tfsdk:"pub_import"`
-	HostPrefixes types.Set                `tfsdk:"host_prefixes"`
-	VpcPrefixes  []VpcPrefixResourceModel `tfsdk:"vpc_prefixes"`
-	DnsServers   types.Set                `tfsdk:"dns_servers"`
+	Id          types.String             `tfsdk:"id"`
+	Zone        types.String             `tfsdk:"zone"`
+	Name        types.String             `tfsdk:"name"`
+	HostPrefix  types.String             `tfsdk:"host_prefix"`
+	VpcPrefixes []VpcPrefixResourceModel `tfsdk:"vpc_prefixes"`
+	Ingress     *VpcIngressResourceModel `tfsdk:"ingress"`
+	Egress      *VpcEgressResourceModel  `tfsdk:"egress"`
+	Dhcp        *VpcDhcpResourceModel    `tfsdk:"dhcp"`
 }
 
 func (v *VpcResourceModel) Set(vpc *networkingv1beta1.VPC) {
@@ -92,17 +147,21 @@ func (v *VpcResourceModel) Set(vpc *networkingv1beta1.VPC) {
 	v.Id = types.StringValue(vpc.Id)
 	v.Name = types.StringValue(vpc.Name)
 	v.Zone = types.StringValue(vpc.Zone)
-	v.PubImport = types.BoolValue(vpc.PubImport)
+	v.HostPrefix = types.StringValue(vpc.HostPrefix)
+	v.Egress = &VpcEgressResourceModel{
+		DisablePublicAccess: types.BoolValue(false),
+	}
 
-	if len(vpc.HostPrefixes) > 0 {
-		hostPrefixes := []attr.Value{}
-		for _, p := range vpc.HostPrefixes {
-			hostPrefixes = append(hostPrefixes, types.StringValue(p))
+	if vpc.Ingress != nil {
+		v.Ingress = &VpcIngressResourceModel{
+			DisablePublicServices: types.BoolValue(vpc.Ingress.DisablePublicServices),
 		}
-		hp := types.SetValueMust(types.StringType, hostPrefixes)
-		v.HostPrefixes = hp
-	} else {
-		v.HostPrefixes = types.SetNull(types.StringType)
+	}
+
+	if vpc.Egress != nil {
+		v.Egress = &VpcEgressResourceModel{
+			DisablePublicAccess: types.BoolValue(vpc.Egress.DisablePublicAccess),
+		}
 	}
 
 	if len(vpc.VpcPrefixes) > 0 {
@@ -113,40 +172,30 @@ func (v *VpcResourceModel) Set(vpc *networkingv1beta1.VPC) {
 			vpcPrefixes = append(vpcPrefixes, vp)
 		}
 		v.VpcPrefixes = vpcPrefixes
-	} else {
-		v.VpcPrefixes = nil
 	}
 
-	if len(vpc.DnsServers) > 0 {
-		dnsServers := []attr.Value{}
-		for _, s := range vpc.DnsServers {
-			dnsServers = append(dnsServers, types.StringValue(s))
-		}
-		ds := types.SetValueMust(types.StringType, dnsServers)
-		v.DnsServers = ds
-	} else {
-		v.DnsServers = types.SetNull(types.StringType)
+	dhcp := &VpcDhcpResourceModel{}
+	dhcp.Set(vpc.Dhcp)
+	if !dhcp.IsEmpty() {
+		v.Dhcp = dhcp
 	}
 }
 
-func (v *VpcResourceModel) GetHostPrefixes(ctx context.Context) []string {
-	hp := []string{}
-	if v.HostPrefixes.IsNull() {
-		return hp
+func (v *VpcResourceModel) GetDhcp(ctx context.Context) *networkingv1beta1.DHCP {
+	if v.Dhcp == nil {
+		return nil
 	}
 
-	v.HostPrefixes.ElementsAs(ctx, &hp, true)
-	return hp
-}
-
-func (v *VpcResourceModel) GetDnsServers(ctx context.Context) []string {
 	ds := []string{}
-	if v.DnsServers.IsNull() {
-		return ds
+	v.Dhcp.Dns.Servers.ElementsAs(ctx, &ds, true)
+
+	dhcp := &networkingv1beta1.DHCP{
+		Dns: &networkingv1beta1.DHCP_DNS{
+			Servers: ds,
+		},
 	}
 
-	v.DnsServers.ElementsAs(ctx, &ds, true)
-	return ds
+	return dhcp
 }
 
 func (v *VpcResourceModel) vpcPrefixes() []*networkingv1beta1.Prefix {
@@ -159,24 +208,43 @@ func (v *VpcResourceModel) vpcPrefixes() []*networkingv1beta1.Prefix {
 
 func (v *VpcResourceModel) ToCreateRequest(ctx context.Context) *networkingv1beta1.CreateVPCRequest {
 	req := &networkingv1beta1.CreateVPCRequest{
-		Name:         v.Name.ValueString(),
-		Zone:         v.Zone.ValueString(),
-		PubImport:    v.PubImport.ValueBool(),
-		HostPrefixes: v.GetHostPrefixes(ctx),
-		VpcPrefixes:  v.vpcPrefixes(),
-		DnsServers:   v.GetDnsServers(ctx),
+		Name:        v.Name.ValueString(),
+		Zone:        v.Zone.ValueString(),
+		Ingress:     v.Ingress.ToProto(),
+		Egress:      v.Egress.ToProto(),
+		HostPrefix:  v.HostPrefix.ValueString(),
+		VpcPrefixes: v.vpcPrefixes(),
+		Dhcp:        v.GetDhcp(ctx),
 	}
+
+	// temporary until we deprecate the pubImport field
+	if req.Ingress != nil {
+		req.PubImport = !req.Ingress.DisablePublicServices
+	} else {
+		// default it to true so that ingress.disablePublicServices is false
+		req.PubImport = true
+	}
+
 	return req
 }
 
 func (v *VpcResourceModel) ToUpdateRequest(ctx context.Context) *networkingv1beta1.UpdateVPCRequest {
 	req := networkingv1beta1.UpdateVPCRequest{
-		Id:           v.Id.ValueString(),
-		PubImport:    v.PubImport.ValueBool(),
-		HostPrefixes: v.GetHostPrefixes(ctx),
-		VpcPrefixes:  v.vpcPrefixes(),
-		DnsServers:   v.GetDnsServers(ctx),
+		Id:          v.Id.ValueString(),
+		VpcPrefixes: v.vpcPrefixes(),
+		Dhcp:        v.GetDhcp(ctx),
+		Ingress:     v.Ingress.ToProto(),
+		Egress:      v.Egress.ToProto(),
 	}
+
+	// temporary until we deprecate the pubImport field
+	if req.Ingress != nil {
+		req.PubImport = !req.Ingress.DisablePublicServices
+	} else {
+		// default it to true so that ingress.disablePublicServices is false
+		req.PubImport = true
+	}
+
 	return &req
 }
 
@@ -208,48 +276,46 @@ func (r *VpcResource) Schema(ctx context.Context, req resource.SchemaRequest, re
 					stringplanmodifier.RequiresReplace(),
 				},
 			},
-			"pub_import": schema.BoolAttribute{
+			"ingress": schema.SingleNestedAttribute{
 				Optional: true,
 				Computed: true,
-				Default:  booldefault.StaticBool(false),
+				Attributes: map[string]schema.Attribute{
+					"disable_public_services": schema.BoolAttribute{
+						Optional: true,
+					},
+				},
+				Default: objectdefault.StaticValue(types.ObjectValueMust(map[string]attr.Type{
+					"disable_public_services": types.BoolType,
+				}, map[string]attr.Value{
+					"disable_public_services": types.BoolValue(false),
+				})),
 			},
-			"host_prefixes": schema.SetAttribute{
-				Optional:    true,
-				ElementType: types.StringType,
-				PlanModifiers: []planmodifier.Set{
-					setplanmodifier.RequiresReplaceIf(func(ctx context.Context, req planmodifier.SetRequest, resp *setplanmodifier.RequiresReplaceIfFuncResponse) {
+			"egress": schema.SingleNestedAttribute{
+				Optional: true,
+				Computed: true,
+				Attributes: map[string]schema.Attribute{
+					"disable_public_access": schema.BoolAttribute{
+						Optional: true,
+					},
+				},
+				Default: objectdefault.StaticValue(types.ObjectValueMust(map[string]attr.Type{
+					"disable_public_access": types.BoolType,
+				}, map[string]attr.Value{
+					"disable_public_access": types.BoolValue(false),
+				})),
+			},
+			"host_prefix": schema.StringAttribute{
+				Optional: true,
+				Computed: true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplaceIf(func(ctx context.Context, req planmodifier.StringRequest, resp *stringplanmodifier.RequiresReplaceIfFuncResponse) {
 						// Skip if there's no prior state or if the config is unknown
 						if req.StateValue.IsNull() || req.PlanValue.IsUnknown() || req.ConfigValue.IsUnknown() {
 							return
 						}
 
-						prior := []types.String{}
-						planned := []types.String{}
-
-						if diag := req.StateValue.ElementsAs(ctx, &prior, false); diag.HasError() {
-							resp.Diagnostics = diag
-							return
-						}
-
-						if diag := req.PlanValue.ElementsAs(ctx, &planned, false); diag.HasError() {
-							resp.Diagnostics = diag
-							return
-						}
-
-						priorSet := map[string]struct{}{}
-						for _, p := range prior {
-							priorSet[p.ValueString()] = struct{}{}
-						}
-
-						plannedSet := map[string]struct{}{}
-						for _, p := range planned {
-							plannedSet[p.ValueString()] = struct{}{}
-						}
-
-						for key := range priorSet {
-							if _, ok := plannedSet[key]; !ok {
-								resp.Diagnostics.AddWarning("host_prefixes is append-only, removing an existing value will force replacement", fmt.Sprintf("cannot remove existing prefix '%s'", key))
-							}
+						if req.StateValue.ValueString() != req.PlanValue.ValueString() {
+							resp.Diagnostics.AddWarning("host_prefix is immutable, changing this value will force a replacement", fmt.Sprintf("cannot change existing host_prefix '%s' to '%s'", req.StateValue.ValueString(), req.PlanValue.ValueString()))
 						}
 
 						if resp.Diagnostics.WarningsCount() > 0 {
@@ -268,32 +334,22 @@ func (r *VpcResource) Schema(ctx context.Context, req resource.SchemaRequest, re
 						"value": schema.StringAttribute{
 							Required: true,
 						},
-						"disable_external_propagate": schema.BoolAttribute{
-							Optional: true,
-							Computed: true,
-							Default:  booldefault.StaticBool(false),
-						},
-						"disable_host_bgp_peering": schema.BoolAttribute{
-							Optional: true,
-							Computed: true,
-							Default:  booldefault.StaticBool(false),
-						},
-						"host_dhcp_route": schema.BoolAttribute{
-							Optional: true,
-							Computed: true,
-							Default:  booldefault.StaticBool(false),
-						},
-						"public": schema.BoolAttribute{
-							Optional: true,
-							Computed: true,
-							Default:  booldefault.StaticBool(false),
-						},
 					},
 				},
 			},
-			"dns_servers": schema.SetAttribute{
-				Optional:    true,
-				ElementType: types.StringType,
+			"dhcp": schema.SingleNestedAttribute{
+				Optional: true,
+				Attributes: map[string]schema.Attribute{
+					"dns": schema.SingleNestedAttribute{
+						Optional: true,
+						Attributes: map[string]schema.Attribute{
+							"servers": schema.SetAttribute{
+								Optional:    true,
+								ElementType: types.StringType,
+							},
+						},
+					},
+				},
 			},
 		},
 	}
@@ -521,26 +577,28 @@ func MustRenderVpcResource(ctx context.Context, resourceName string, vpc *VpcRes
 
 	resourceBody.SetAttributeValue("name", cty.StringVal(vpc.Name.ValueString()))
 	resourceBody.SetAttributeValue("zone", cty.StringVal(vpc.Zone.ValueString()))
-	resourceBody.SetAttributeValue("pub_import", cty.BoolVal(vpc.PubImport.ValueBool()))
 
-	hostPrefixes := []cty.Value{}
-	for _, p := range vpc.GetHostPrefixes(ctx) {
-		hostPrefixes = append(hostPrefixes, cty.StringVal(p))
+	if vpc.Ingress != nil {
+		resourceBody.SetAttributeValue("ingress", cty.ObjectVal(map[string]cty.Value{
+			"disable_public_services": cty.BoolVal(vpc.Ingress.DisablePublicServices.ValueBool()),
+		}))
 	}
 
-	if len(hostPrefixes) > 0 {
-		resourceBody.SetAttributeValue("host_prefixes", cty.SetVal(hostPrefixes))
+	if vpc.Egress != nil {
+		resourceBody.SetAttributeValue("egress", cty.ObjectVal(map[string]cty.Value{
+			"disable_public_access": cty.BoolVal(vpc.Egress.DisablePublicAccess.ValueBool()),
+		}))
+	}
+
+	if !vpc.HostPrefix.IsNull() {
+		resourceBody.SetAttributeValue("host_prefix", cty.StringVal(vpc.HostPrefix.ValueString()))
 	}
 
 	vpcPrefixes := []cty.Value{}
 	for _, p := range vpc.VpcPrefixes {
 		vpcPrefixes = append(vpcPrefixes, cty.ObjectVal(map[string]cty.Value{
-			"name":                       cty.StringVal(p.Name.ValueString()),
-			"value":                      cty.StringVal(p.Value.ValueString()),
-			"disable_external_propagate": cty.BoolVal(p.DisableExternalPropagate.ValueBool()),
-			"disable_host_bgp_peering":   cty.BoolVal(p.DisableHostBgpPeering.ValueBool()),
-			"host_dhcp_route":            cty.BoolVal(p.HostDhcpRoute.ValueBool()),
-			"public":                     cty.BoolVal(p.Public.ValueBool()),
+			"name":  cty.StringVal(p.Name.ValueString()),
+			"value": cty.StringVal(p.Value.ValueString()),
 		}))
 	}
 
@@ -548,13 +606,30 @@ func MustRenderVpcResource(ctx context.Context, resourceName string, vpc *VpcRes
 		resourceBody.SetAttributeValue("vpc_prefixes", cty.ListVal(vpcPrefixes))
 	}
 
-	dnsServers := []cty.Value{}
-	for _, s := range vpc.GetDnsServers(ctx) {
-		dnsServers = append(dnsServers, cty.StringVal(s))
-	}
+	if vpc.Dhcp != nil {
+		dhcp := map[string]cty.Value{}
+		if vpc.Dhcp.Dns != nil {
+			dns := map[string]cty.Value{}
+			if !vpc.Dhcp.Dns.Servers.IsNull() {
+				servers := []types.String{}
+				vpc.Dhcp.Dns.Servers.ElementsAs(ctx, &servers, false)
+				serverVals := []cty.Value{}
+				for _, s := range servers {
+					serverVals = append(serverVals, cty.StringVal(s.ValueString()))
+				}
 
-	if len(dnsServers) > 0 {
-		resourceBody.SetAttributeValue("dns_servers", cty.SetVal(dnsServers))
+				if len(serverVals) > 0 {
+					dns["servers"] = cty.SetVal(serverVals)
+				}
+			}
+			if len(dns) > 0 {
+				dhcp["dns"] = cty.ObjectVal(dns)
+			}
+		}
+
+		if len(dhcp) > 0 {
+			resourceBody.SetAttributeValue("dhcp", cty.ObjectVal(dhcp))
+		}
 	}
 
 	var buf bytes.Buffer
