@@ -309,47 +309,55 @@ func (r *ClusterResource) Schema(ctx context.Context, req resource.SchemaRequest
 					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
-			"vpc_id": schema.StringAttribute{
-				Required: true,
+			"name": schema.StringAttribute{
+				Required:            true,
+				MarkdownDescription: "The name of the cluster. Must not be longer than 30 characters.",
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
 				},
 			},
 			"zone": schema.StringAttribute{
-				Required: true,
+				Required:            true,
+				MarkdownDescription: "The Availability Zone in which the cluster is located.",
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
 				},
 			},
-			"name": schema.StringAttribute{
-				Required: true,
+			"vpc_id": schema.StringAttribute{
+				Required:            true,
+				MarkdownDescription: "The ID of the VPC in which the cluster is located. Must be a VPC in the same Availability Zone as the cluster.",
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
 				},
-			},
-			"version": schema.StringAttribute{
-				Required: true,
 			},
 			"public": schema.BoolAttribute{
-				Optional: true,
-				Computed: true,
-				Default:  booldefault.StaticBool(false),
+				Optional:            true,
+				Computed:            true,
+				MarkdownDescription: "Whether the cluster's api-server is publicly accessible from the internet.",
+				Default:             booldefault.StaticBool(false),
+			},
+			"version": schema.StringAttribute{
+				Required:            true,
+				MarkdownDescription: "The version of Kubernetes to run on the cluster, in minor version format (e.g. 'v1.32'). Patch versions are automatically applied by CKS as they are released.",
 			},
 			"pod_cidr_name": schema.StringAttribute{
-				Required: true,
+				Required:            true,
+				MarkdownDescription: "The name of the vpc prefix to use as the pod CIDR range. The prefix must exist in the cluster's VPC.",
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
 				},
 			},
 			"service_cidr_name": schema.StringAttribute{
-				Required: true,
+				Required:            true,
+				MarkdownDescription: "The name of the vpc prefix to use as the service CIDR range. The prefix must exist in the cluster's VPC.",
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
 				},
 			},
 			"internal_lb_cidr_names": schema.SetAttribute{
-				ElementType: types.StringType,
-				Required:    true,
+				ElementType:         types.StringType,
+				Required:            true,
+				MarkdownDescription: "The names of the vpc prefixes to use as internal load balancer CIDR ranges. Internal load balancers are reachable within the VPC but not accessible from the internet.\nThe prefixes must exist in the cluster's VPC. This field is append-only.",
 				PlanModifiers: []planmodifier.Set{
 					setplanmodifier.RequiresReplaceIf(func(ctx context.Context, req planmodifier.SetRequest, resp *setplanmodifier.RequiresReplaceIfFuncResponse) {
 						// Skip if there's no prior state or if the config is unknown
@@ -393,61 +401,77 @@ func (r *ClusterResource) Schema(ctx context.Context, req resource.SchemaRequest
 				},
 			},
 			"audit_policy": schema.StringAttribute{
-				Optional: true,
+				Optional:            true,
+				MarkdownDescription: "Audit policy for the cluster. Must be provided as a base64-encoded JSON/YAML string.",
 			},
 			"authn_webhook": schema.SingleNestedAttribute{
-				Optional: true,
+				Optional:            true,
+				MarkdownDescription: "Authentication webhook configuration for the cluster.",
 				Attributes: map[string]schema.Attribute{
 					"server": schema.StringAttribute{
-						Required: true,
+						Required:            true,
+						MarkdownDescription: "The URL of the webhook server.",
 					},
 					"ca": schema.StringAttribute{
-						Optional: true,
+						Optional:            true,
+						MarkdownDescription: "The CA certificate for the webhook server. Must be a base64-encoded PEM-encoded certificate.",
 					},
 				},
 			},
 			"authz_webhook": schema.SingleNestedAttribute{
-				Optional: true,
+				Optional:            true,
+				MarkdownDescription: "Authorization webhook configuration for the cluster.",
 				Attributes: map[string]schema.Attribute{
 					"server": schema.StringAttribute{
-						Required: true,
+						Required:            true,
+						MarkdownDescription: "The URL of the webhook server.",
 					},
 					"ca": schema.StringAttribute{
-						Optional: true,
+						Optional:            true,
+						MarkdownDescription: "The CA certificate for the webhook server. Must be a base64-encoded PEM-encoded certificate.",
 					},
 				},
 			},
 			"oidc": schema.SingleNestedAttribute{
-				MarkdownDescription: "Kubernetes OIDC Configuration",
+				MarkdownDescription: "OpenID Connect (OIDC) configuration for authentication to the api-server.",
 				Optional:            true,
 				Attributes: map[string]schema.Attribute{
 					"issuer_url": schema.StringAttribute{
-						Required: true,
+						Required:            true,
+						MarkdownDescription: "The URL of the OIDC issuer.",
 					},
 					"client_id": schema.StringAttribute{
-						Required: true,
+						Required:            true,
+						MarkdownDescription: "The client ID for the OIDC client.",
 					},
 					"username_claim": schema.StringAttribute{
-						Optional: true,
+						Optional:            true,
+						MarkdownDescription: "The claim to use as the username.",
 					},
 					"username_prefix": schema.StringAttribute{
-						Optional: true,
+						Optional:            true,
+						MarkdownDescription: "The prefix to use for the username.",
 					},
 					"groups_claim": schema.StringAttribute{
-						Optional: true,
+						Optional:            true,
+						MarkdownDescription: "The claim to use as the groups.",
 					},
 					"groups_prefix": schema.StringAttribute{
-						Optional: true,
+						Optional:            true,
+						MarkdownDescription: "The prefix to use for the groups.",
 					},
 					"ca": schema.StringAttribute{
-						Optional: true,
+						Optional:            true,
+						MarkdownDescription: "The CA certificate for the OIDC issuer. Must be a base64-encoded PEM-encoded certificate.",
 					},
 					"required_claim": schema.StringAttribute{
-						Optional: true,
+						Optional:            true,
+						MarkdownDescription: "The claim to require for authentication.",
 					},
 					"signing_algs": schema.SetAttribute{
-						ElementType: types.StringType,
-						Optional:    true,
+						ElementType:         types.StringType,
+						Optional:            true,
+						MarkdownDescription: "A list of signing algorithms that the OpenID Connect discovery endpoint uses.",
 					},
 				},
 			},

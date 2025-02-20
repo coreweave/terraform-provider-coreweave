@@ -260,54 +260,43 @@ func (r *VpcResource) Schema(ctx context.Context, req resource.SchemaRequest, re
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Computed:            true,
-				MarkdownDescription: "The unique identifier of the vpc.",
+				MarkdownDescription: "The unique identifier for the VPC.",
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
-			"zone": schema.StringAttribute{
-				Required: true,
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.RequiresReplace(),
-				},
-			},
 			"name": schema.StringAttribute{
-				Required: true,
+				Required:            true,
+				MarkdownDescription: "The name of the VPC. Must not be longer than 30 characters.",
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
 				},
 			},
-			"ingress": schema.SingleNestedAttribute{
-				Optional: true,
-				Computed: true,
-				Attributes: map[string]schema.Attribute{
-					"disable_public_services": schema.BoolAttribute{
-						Optional: true,
-					},
+			"zone": schema.StringAttribute{
+				Required:            true,
+				MarkdownDescription: "The Availability Zone in which the VPC is located.",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
 				},
-				Default: objectdefault.StaticValue(types.ObjectValueMust(map[string]attr.Type{
-					"disable_public_services": types.BoolType,
-				}, map[string]attr.Value{
-					"disable_public_services": types.BoolValue(false),
-				})),
 			},
-			"egress": schema.SingleNestedAttribute{
-				Optional: true,
-				Computed: true,
-				Attributes: map[string]schema.Attribute{
-					"disable_public_access": schema.BoolAttribute{
-						Optional: true,
+			"vpc_prefixes": schema.SetNestedAttribute{
+				Optional:            true,
+				MarkdownDescription: "A list of additional prefixes associated with the VPC. For example, CKS clusters use these prefixes for Pod and service CIDR ranges.",
+				NestedObject: schema.NestedAttributeObject{
+					Attributes: map[string]schema.Attribute{
+						"name": schema.StringAttribute{
+							Required: true,
+						},
+						"value": schema.StringAttribute{
+							Required: true,
+						},
 					},
 				},
-				Default: objectdefault.StaticValue(types.ObjectValueMust(map[string]attr.Type{
-					"disable_public_access": types.BoolType,
-				}, map[string]attr.Value{
-					"disable_public_access": types.BoolValue(false),
-				})),
 			},
 			"host_prefix": schema.StringAttribute{
-				Optional: true,
-				Computed: true,
+				Optional:            true,
+				Computed:            true,
+				MarkdownDescription: "An IPv4 CIDR range used to allocate host addresses when booting compute into a VPC.\nThis CIDR must be have a mask size of /18. If left unspecified, a Zone-specific default value will be applied by the server.\nThis field is immutable once set.",
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplaceIf(func(ctx context.Context, req planmodifier.StringRequest, resp *stringplanmodifier.RequiresReplaceIfFuncResponse) {
 						// Skip if there's no prior state or if the config is unknown
@@ -325,28 +314,50 @@ func (r *VpcResource) Schema(ctx context.Context, req resource.SchemaRequest, re
 					}, "", ""),
 				},
 			},
-			"vpc_prefixes": schema.SetNestedAttribute{
-				Optional: true,
-				NestedObject: schema.NestedAttributeObject{
-					Attributes: map[string]schema.Attribute{
-						"name": schema.StringAttribute{
-							Required: true,
-						},
-						"value": schema.StringAttribute{
-							Required: true,
-						},
+			"ingress": schema.SingleNestedAttribute{
+				Optional:            true,
+				Computed:            true,
+				MarkdownDescription: "Settings affecting traffic entering the VPC.",
+				Attributes: map[string]schema.Attribute{
+					"disable_public_services": schema.BoolAttribute{
+						Optional:            true,
+						MarkdownDescription: "Specifies whether the VPC should prevent public prefixes advertised from Nodes from being imported into public-facing networks, making them inaccessible from the Internet.",
 					},
 				},
+				Default: objectdefault.StaticValue(types.ObjectValueMust(map[string]attr.Type{
+					"disable_public_services": types.BoolType,
+				}, map[string]attr.Value{
+					"disable_public_services": types.BoolValue(false),
+				})),
+			},
+			"egress": schema.SingleNestedAttribute{
+				Optional:            true,
+				Computed:            true,
+				MarkdownDescription: "Settings affecting traffic leaving the VPC.",
+				Attributes: map[string]schema.Attribute{
+					"disable_public_access": schema.BoolAttribute{
+						Optional:            true,
+						MarkdownDescription: "Specifies whether the VPC should be blocked from consuming public Internet.",
+					},
+				},
+				Default: objectdefault.StaticValue(types.ObjectValueMust(map[string]attr.Type{
+					"disable_public_access": types.BoolType,
+				}, map[string]attr.Value{
+					"disable_public_access": types.BoolValue(false),
+				})),
 			},
 			"dhcp": schema.SingleNestedAttribute{
-				Optional: true,
+				Optional:            true,
+				MarkdownDescription: "Settings affecting DHCP behavior within the VPC.",
 				Attributes: map[string]schema.Attribute{
 					"dns": schema.SingleNestedAttribute{
-						Optional: true,
+						Optional:            true,
+						MarkdownDescription: "Settings affecting DNS for DHCP within the VPC",
 						Attributes: map[string]schema.Attribute{
 							"servers": schema.SetAttribute{
-								Optional:    true,
-								ElementType: types.StringType,
+								Optional:            true,
+								MarkdownDescription: "The DNS servers to be used by DHCP clients within the VPC.",
+								ElementType:         types.StringType,
 							},
 						},
 					},
