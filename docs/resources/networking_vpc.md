@@ -22,14 +22,47 @@ CoreWeave VPC
 
 ### Optional
 
-- `dns_servers` (Set of String)
-- `host_prefixes` (Set of String)
-- `pub_import` (Boolean)
+- `dhcp` (Attributes) (see [below for nested schema](#nestedatt--dhcp))
+- `egress` (Attributes) (see [below for nested schema](#nestedatt--egress))
+- `host_prefix` (String)
+- `ingress` (Attributes) (see [below for nested schema](#nestedatt--ingress))
 - `vpc_prefixes` (Attributes Set) (see [below for nested schema](#nestedatt--vpc_prefixes))
 
 ### Read-Only
 
 - `id` (String) The unique identifier of the vpc.
+
+<a id="nestedatt--dhcp"></a>
+### Nested Schema for `dhcp`
+
+Optional:
+
+- `dns` (Attributes) (see [below for nested schema](#nestedatt--dhcp--dns))
+
+<a id="nestedatt--dhcp--dns"></a>
+### Nested Schema for `dhcp.dns`
+
+Optional:
+
+- `servers` (Set of String)
+
+
+
+<a id="nestedatt--egress"></a>
+### Nested Schema for `egress`
+
+Optional:
+
+- `disable_public_access` (Boolean)
+
+
+<a id="nestedatt--ingress"></a>
+### Nested Schema for `ingress`
+
+Optional:
+
+- `disable_public_services` (Boolean)
+
 
 <a id="nestedatt--vpc_prefixes"></a>
 ### Nested Schema for `vpc_prefixes`
@@ -38,10 +71,3 @@ Required:
 
 - `name` (String)
 - `value` (String)
-
-Optional:
-
-- `disable_external_propagate` (Boolean)
-- `disable_host_bgp_peering` (Boolean)
-- `host_dhcp_route` (Boolean)
-- `public` (Boolean)

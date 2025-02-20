@@ -1,7 +1,7 @@
 resource "coreweave_networking_vpc" "default" {
-  name          = "default"
-  zone          = "US-EAST-04A"
-  host_prefixes = ["10.16.192.0/18", "172.0.0.0/18"]
+  name        = "default"
+  zone        = "US-EAST-04A"
+  host_prefix = "10.16.192.0/18"
   vpc_prefixes = [
     {
       name  = "pod cidr"
@@ -16,7 +16,6 @@ resource "coreweave_networking_vpc" "default" {
       value = "10.32.4.0/22"
     },
   ]
-  dns_servers = ["1.1.1.1", "8.8.8.8"]
 }
 
 resource "coreweave_cks_cluster" "default" {
