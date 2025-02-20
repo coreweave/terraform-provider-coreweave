@@ -17,6 +17,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0  # ✅ Fetch all commits and tags
+          token: ${{ secrets.GHA_PAT_TAGS }}
 
       - name: Push Tag for Release
         id: push_tag
@@ -35,9 +36,6 @@ jobs:
               exit 0
             else
               echo "Pushing tag $VERSION"
-              git config user.name "github-actions[bot]"
-              git config user.email "github-actions[bot]@users.noreply.github.com"
-              
               # Create and push the tag (auth is already configured)
               git tag "$VERSION"
               git push origin "$VERSION"
