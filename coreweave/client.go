@@ -3,6 +3,7 @@ package coreweave
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -52,6 +53,23 @@ func HandleAPIError(ctx context.Context, err error, diagnostics *diag.Diagnostic
 	details := connectErr.Details()
 
 	switch connectErr.Code() {
+	case connect.CodeAlreadyExists:
+		for _, d := range details {
+			msg, valueErr := d.Value()
+			if valueErr != nil {
+				diagnostics.AddError(connectErr.Error(), connectErr.Message())
+				break
+			}
+			if alreadyExists, ok := msg.(*errdetails.ResourceInfo); ok {
+				diagnostics.AddError(
+					"Already Exists",
+					fmt.Sprintf("%s '%s' already exists: %s", alreadyExists.ResourceType, alreadyExists.ResourceName, alreadyExists.Description),
+				)
+				break
+			}
+
+			diagnostics.AddError(connectErr.Error(), connectErr.Message())
+		}
 	case connect.CodeFailedPrecondition:
 		for _, d := range details {
 			msg, valueErr := d.Value()
