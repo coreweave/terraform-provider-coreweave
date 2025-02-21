@@ -62,11 +62,11 @@ func (p *CoreweaveProvider) Schema(ctx context.Context, req provider.SchemaReque
 	resp.Schema = schema.Schema{
 		Attributes: map[string]schema.Attribute{
 			"endpoint": schema.StringAttribute{
-				MarkdownDescription: "CoreWeave API Endpoint",
+				MarkdownDescription: "CoreWeave API Endpoint. Defaults to https://api.coreweave.com/",
 				Optional:            true,
 			},
 			"token": schema.StringAttribute{
-				MarkdownDescription: "CoreWeave API Token",
+				MarkdownDescription: "CoreWeave API Token. In the form CW-SECRET-<secret>. This can also be set via the COREWEAVE_API_TOKEN environment variable, which takes precedence.",
 				Optional:            true,
 				Sensitive:           true,
 			},
@@ -87,9 +87,13 @@ func (p *CoreweaveProvider) Configure(ctx context.Context, req provider.Configur
 	token := os.Getenv("COREWEAVE_API_TOKEN")
 	endpoint := os.Getenv("COREWEAVE_API_ENDPOINT")
 
-	if token == "" && data.Token.IsNull() {
+	if token == "" && data.Token.ValueString() == "" {
 		resp.Diagnostics.AddError("token is required for provider instantiation", "")
 		return
+	}
+
+	if token == "" {
+		token = data.Token.ValueString()
 	}
 
 	if endpoint == "" {
@@ -103,7 +107,7 @@ func (p *CoreweaveProvider) Configure(ctx context.Context, req provider.Configur
 	interceptor := connect.UnaryInterceptorFunc(
 		func(next connect.UnaryFunc) connect.UnaryFunc {
 			return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
-				req.Header().Add("Authorization", fmt.Sprintf("Bearer CW-SECRET-%s", token))
+				req.Header().Add("Authorization", fmt.Sprintf("Bearer %s", token))
 				return next(ctx, req)
 			}
 		},
