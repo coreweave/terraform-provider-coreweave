@@ -20,7 +20,7 @@ resource "coreweave_networking_vpc" "default" {
 
 resource "coreweave_cks_cluster" "default" {
   name                   = "default"
-  version                = "v1.30"
+  version                = "v1.32"
   zone                   = "US-EAST-04A"
   vpc_id                 = coreweave_networking_vpc.default.id
   public                 = false
