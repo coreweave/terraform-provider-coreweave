@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.6](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.1.5...v0.1.6) (2025-02-21)
+
+
+### Bug Fixes
+
+* do not update terraform-registry-manifest on release ([#65](https://github.com/coreweave/terraform-provider-coreweave/issues/65)) ([f307091](https://github.com/coreweave/terraform-provider-coreweave/commit/f3070916d4eb7c823110b572bbc20c3df4d75a2f))
+
 ## [0.1.5](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.1.4...v0.1.5) (2025-02-20)
 
 
