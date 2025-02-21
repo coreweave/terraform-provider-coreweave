@@ -1,3 +1,3 @@
 provider "coreweave" {
-  token = "my-api-token"
+  token = "CW-SECRET-XXXXXXXXXXXXX"
 }

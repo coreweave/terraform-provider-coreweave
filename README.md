@@ -1,4 +1,4 @@
-Copyright (c) 2024 CoreWeave, Inc.
+Copyright (c) 2024-2-25 CoreWeave, Inc.
 
 # CoreWeave Terraform Provider
 
