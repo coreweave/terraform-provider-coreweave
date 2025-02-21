@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.7](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.1.6...v0.1.7) (2025-02-21)
+
+
+### Bug Fixes
+
+* handle resource already exists error ([#69](https://github.com/coreweave/terraform-provider-coreweave/issues/69)) ([a07f3ff](https://github.com/coreweave/terraform-provider-coreweave/commit/a07f3ffc09bbd896342373f98f95b27ff6e4f925))
+* provider token initialization, update docs ([#67](https://github.com/coreweave/terraform-provider-coreweave/issues/67)) ([f7995b0](https://github.com/coreweave/terraform-provider-coreweave/commit/f7995b0d0a67042d63bd238ba9acd9ac57f8acec))
+
 ## [0.1.6](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.1.5...v0.1.6) (2025-02-21)
 
 
