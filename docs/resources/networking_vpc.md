@@ -105,3 +105,11 @@ Required:
 
 - `name` (String)
 - `value` (String)
+
+## Import
+
+Import is supported using the following syntax:
+
+```shell
+terraform import coreweave_networking_vpc.default {{id}}
+```

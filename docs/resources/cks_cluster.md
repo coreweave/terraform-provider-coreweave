@@ -132,3 +132,11 @@ Optional:
 - `signing_algs` (Set of String) A list of signing algorithms that the OpenID Connect discovery endpoint uses.
 - `username_claim` (String) The claim to use as the username.
 - `username_prefix` (String) The prefix to use for the username.
+
+## Import
+
+Import is supported using the following syntax:
+
+```shell
+terraform import coreweave_cks_cluster.default {{id}}
+```
