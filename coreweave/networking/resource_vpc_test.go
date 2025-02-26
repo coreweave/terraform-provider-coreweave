@@ -4,11 +4,11 @@ import (
 	"context"
 	"fmt"
 	"math/rand/v2"
-	"os"
 	"testing"
 
 	"github.com/coreweave/terraform-provider-coreweave/coreweave/networking"
 	"github.com/coreweave/terraform-provider-coreweave/internal/provider"
+	"github.com/coreweave/terraform-provider-coreweave/internal/testutil"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	fwresource "github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -106,7 +106,7 @@ func TestVpcResource(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
 		PreCheck: func() {
-			os.Setenv("COREWEAVE_API_TOKEN", "test")
+			_ = testutil.SetEnvIfUnset("COREWEAVE_API_TOKEN", "test")
 		},
 		Steps: []resource.TestStep{
 			{
@@ -247,7 +247,7 @@ func TestHostPrefixReplace(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
 		PreCheck: func() {
-			os.Setenv("COREWEAVE_API_TOKEN", "test")
+			_ = testutil.SetEnvIfUnset("COREWEAVE_API_TOKEN", "test")
 		},
 		Steps: []resource.TestStep{
 			{
@@ -311,7 +311,7 @@ func TestHostPrefixDefault(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
 		PreCheck: func() {
-			os.Setenv("COREWEAVE_API_TOKEN", "test")
+			_ = testutil.SetEnvIfUnset("COREWEAVE_API_TOKEN", "test")
 		},
 		Steps: []resource.TestStep{
 			{
