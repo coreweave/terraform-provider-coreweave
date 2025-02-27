@@ -1,0 +1,51 @@
+---
+name: Acceptance Tests
+
+on:
+  pull_request:
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - 'examples/**'
+      - LICENSE
+      - README.md
+
+concurrency:
+  group: acceptance-tests
+  cancel-in-progress: false
+
+jobs:
+  test:
+    name: Run acceptance tests
+    runs-on: cw
+    container: ghcr.io/coreweave/github-actions-images/github-base-runner:v1.4.0
+    environment: QA
+    env:
+      COREWEAVE_API_ENDPOINT: ${{ vars.COREWEAVE_API_ENDPOINT }}
+      COREWEAVE_API_TOKEN: ${{ secrets.COREWEAVE_API_TOKEN }}
+      TF_IN_AUTOMATION: '1'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+
+      - name: Install dependencies
+        run: go mod download
+
+      - name: Run diagnostics
+        run: |
+          set -x
+          curl -v "${COREWEAVE_API_ENDPOINT}/healthz"
+
+      - name: Sweep unused resources
+        env:
+          SWEEP_DRY_RUN: 'true'
+        run: make testacc-sweep
+
+      - name: Run acceptance tests
+        run: make testacc
