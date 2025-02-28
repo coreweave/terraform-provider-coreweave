@@ -658,6 +658,9 @@ func (r *ClusterResource) Delete(ctx context.Context, req resource.DeleteRequest
 		Id: data.Id.ValueString(),
 	}))
 	if err != nil {
+		if coreweave.IsNotFoundError(err) {
+			return
+		}
 		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
 		return
 	}

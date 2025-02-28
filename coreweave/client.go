@@ -36,6 +36,11 @@ type Client struct {
 	networkingv1beta1connect.VPCServiceClient
 }
 
+func IsNotFoundError(err error) bool {
+	var connectErr *connect.Error
+	return errors.As(err, &connectErr) && connectErr.Code() == connect.CodeNotFound
+}
+
 func HandleAPIError(ctx context.Context, err error, diagnostics *diag.Diagnostics) {
 	// Check if the error is a ConnectRPC error
 	var connectErr *connect.Error
@@ -53,6 +58,23 @@ func HandleAPIError(ctx context.Context, err error, diagnostics *diag.Diagnostic
 	details := connectErr.Details()
 
 	switch connectErr.Code() {
+	case connect.CodeNotFound:
+		for _, d := range details {
+			msg, valueErr := d.Value()
+			if valueErr != nil {
+				diagnostics.AddError(connectErr.Error(), connectErr.Message())
+				break
+			}
+			if notFound, ok := msg.(*errdetails.ResourceInfo); ok {
+				diagnostics.AddError(
+					"Not Found",
+					fmt.Sprintf("%s '%s' not found: %s", notFound.ResourceType, notFound.ResourceName, notFound.Description),
+				)
+				break
+			}
+
+			diagnostics.AddError(connectErr.Error(), connectErr.Message())
+		}
 	case connect.CodeAlreadyExists:
 		for _, d := range details {
 			msg, valueErr := d.Value()

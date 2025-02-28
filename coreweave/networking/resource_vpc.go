@@ -536,6 +536,9 @@ func (r *VpcResource) Delete(ctx context.Context, req resource.DeleteRequest, re
 		Id: data.Id.ValueString(),
 	}))
 	if err != nil {
+		if coreweave.IsNotFoundError(err) {
+			return
+		}
 		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
 		return
 	}
