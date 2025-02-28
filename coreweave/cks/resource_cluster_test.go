@@ -152,6 +152,7 @@ func TestClusterResource(t *testing.T) {
 				),
 				ConfigStateChecks: []statecheck.StateCheck{
 					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("id"), knownvalue.NotNull()),
+					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("api_server_endpoint"), knownvalue.NotNull()),
 					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("vpc_id"), knownvalue.NotNull()),
 					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("version"), knownvalue.StringExact(initial.Version.ValueString())),
 					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("public"), knownvalue.Bool(initial.Public.ValueBool())),
@@ -179,6 +180,7 @@ func TestClusterResource(t *testing.T) {
 				),
 				ConfigStateChecks: []statecheck.StateCheck{
 					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("id"), knownvalue.NotNull()),
+					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("api_server_endpoint"), knownvalue.NotNull()),
 					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("vpc_id"), knownvalue.NotNull()),
 					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("version"), knownvalue.StringExact(update.Version.ValueString())),
 					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("public"), knownvalue.Bool(update.Public.ValueBool())),
@@ -228,6 +230,7 @@ func TestClusterResource(t *testing.T) {
 				},
 				ConfigStateChecks: []statecheck.StateCheck{
 					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("id"), knownvalue.NotNull()),
+					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("api_server_endpoint"), knownvalue.NotNull()),
 					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("vpc_id"), knownvalue.NotNull()),
 					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("version"), knownvalue.StringExact(requiresReplace.Version.ValueString())),
 					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("public"), knownvalue.Bool(requiresReplace.Public.ValueBool())),
