@@ -99,6 +99,7 @@ type ClusterResourceModel struct {
 	Oidc                *OidcResourceModel        `tfsdk:"oidc"`
 	AuthNWebhook        *AuthWebhookResourceModel `tfsdk:"authn_webhook"`
 	AuthZWebhook        *AuthWebhookResourceModel `tfsdk:"authz_webhook"`
+	ApiServerEndpoint   types.String              `tfsdk:"api_server_endpoint"`
 }
 
 func oidcIsEmpty(oidc *cksv1beta1.OIDCConfig) bool {
@@ -178,6 +179,8 @@ func (c *ClusterResourceModel) Set(cluster *cksv1beta1.Cluster) {
 	} else {
 		c.AuthZWebhook = nil
 	}
+
+	c.ApiServerEndpoint = types.StringValue(cluster.ApiServerEndpoint)
 }
 
 func (c *ClusterResourceModel) oidcSigningAlgs(ctx context.Context) []cksv1beta1.SigningAlgorithm {
@@ -475,6 +478,13 @@ func (r *ClusterResource) Schema(ctx context.Context, req resource.SchemaRequest
 					},
 				},
 			},
+			"api_server_endpoint": schema.StringAttribute{
+				MarkdownDescription: "The endpoint for the cluster's api-server.",
+				Computed:            true,
+				Optional:            false,
+				Required:            false,
+				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
 		},
 	}
 }
@@ -570,6 +580,11 @@ func (r *ClusterResource) Read(ctx context.Context, req resource.ReadRequest, re
 		Id: data.Id.ValueString(),
 	}))
 	if err != nil {
+		if coreweave.IsNotFoundError(err) {
+			resp.State.RemoveResource(ctx)
+			return
+		}
+
 		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
 		return
 	}
@@ -648,6 +663,9 @@ func (r *ClusterResource) Delete(ctx context.Context, req resource.DeleteRequest
 		Id: data.Id.ValueString(),
 	}))
 	if err != nil {
+		if coreweave.IsNotFoundError(err) {
+			return
+		}
 		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
 		return
 	}
