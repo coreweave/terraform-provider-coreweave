@@ -580,6 +580,11 @@ func (r *ClusterResource) Read(ctx context.Context, req resource.ReadRequest, re
 		Id: data.Id.ValueString(),
 	}))
 	if err != nil {
+		if coreweave.IsNotFoundError(err) {
+			resp.State.RemoveResource(ctx)
+			return
+		}
+
 		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
 		return
 	}
