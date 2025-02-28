@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.8](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.1.7...v0.1.8) (2025-02-28)
+
+
+### Bug Fixes
+
+* add api_server_endpoint field to cluster resource, handle not found errors correctly ([#77](https://github.com/coreweave/terraform-provider-coreweave/issues/77)) ([e2d7b84](https://github.com/coreweave/terraform-provider-coreweave/commit/e2d7b84d2ed0b8d6494d7464cbf75e50aa53fa0a))
+* **docs:** add import syntax ([#73](https://github.com/coreweave/terraform-provider-coreweave/issues/73)) ([f2c9633](https://github.com/coreweave/terraform-provider-coreweave/commit/f2c9633db92ad9257c3824e10a26be97354f1b55))
+
 ## [0.1.7](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.1.6...v0.1.7) (2025-02-21)
 
 
