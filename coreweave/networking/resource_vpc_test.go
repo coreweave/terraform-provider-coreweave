@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"github.com/coreweave/terraform-provider-coreweave/coreweave"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave/networking"
 	"github.com/coreweave/terraform-provider-coreweave/internal/provider"
 	"github.com/coreweave/terraform-provider-coreweave/internal/testutil"
@@ -30,70 +31,126 @@ const (
 )
 
 func init() {
-	resource.AddTestSweepers("coreweave_vpc", &resource.Sweeper{
-		Name:         "coreweave_networking_vpc",
-		Dependencies: []string{},
+	resourceName := testutil.MustGetTerraformResourceName[*networking.VpcResource]()
+
+	vpcSweeper := testutil.CoreweaveSweeper[*networkingv1beta1.VPC]{
+		ListFunc: func(ctx context.Context, client *coreweave.Client) ([]*networkingv1beta1.VPC, error) {
+			resp, err := client.ListVPCs(ctx, &connect.Request[networkingv1beta1.ListVPCsRequest]{})
+			if err != nil {
+				return nil, fmt.Errorf("failed to list VPCs: %w", err)
+			}
+			return resp.Msg.Items, nil
+		},
+		GetFunc: func(ctx context.Context, client *coreweave.Client, vpc *networkingv1beta1.VPC) (*networkingv1beta1.VPC, error) {
+			resp, err := client.GetVPC(ctx, connect.NewRequest(&networkingv1beta1.GetVPCRequest{Id: vpc.Id}))
+			if err != nil {
+				return nil, fmt.Errorf("failed to get VPC %s: %w", vpc.Name, err)
+			}
+			return resp.Msg.Vpc, nil
+		},
+		DeleteFunc: func(ctx context.Context, client *coreweave.Client, vpc *networkingv1beta1.VPC) error {
+			_, err := client.DeleteVPC(ctx, connect.NewRequest(&networkingv1beta1.DeleteVPCRequest{Id: vpc.Id}))
+			if err != nil {
+				return fmt.Errorf("failed to delete VPC %s: %w", vpc.Name, err)
+			}
+			return nil
+		},
+	}
+
+	resource.AddTestSweepers(resourceName, &resource.Sweeper{
+		Name:         resourceName,
 		F: func(r string) error {
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 			defer cancel()
+
+			vpcSweeper.AddFilters(func(v *networkingv1beta1.VPC) bool {
+				return strings.HasPrefix(v.Name, AcceptanceTestPrefix) && v.Zone == r
+			})
 
 			client, err := provider.BuildClient(ctx, provider.CoreweaveProviderModel{})
 			if err != nil {
 				return fmt.Errorf("failed to build client: %w", err)
 			}
 
-			listResp, err := client.ListVPCs(ctx, &connect.Request[networkingv1beta1.ListVPCsRequest]{})
+			deletedResources, err := vpcSweeper.Sweep(ctx, client)
+			if deletedResources != nil {
+				vpcNames := make([]string, len(deletedResources))
+				for i, v := range deletedResources {
+					vpcNames[i] = v.Name
+				}
+				log.Printf("swept %d VPCs: %s", len(deletedResources), strings.Join(vpcNames, ", "))
+			}
 			if err != nil {
-				return fmt.Errorf("failed to list VPCs: %w", err)
+				return fmt.Errorf("failed to sweep VPCs: %w", err)
 			}
-			for _, vpc := range listResp.Msg.Items {
-				if !strings.HasPrefix(vpc.Name, AcceptanceTestPrefix) {
-					log.Printf("skipping VPC %s because it does not have prefix %s", vpc.Name, AcceptanceTestPrefix)
-					continue
-				}
-
-				if vpc.GetZone() != r {
-					log.Printf("skipping VPC %s in zone %s because it does not match sweep zone %s", vpc.Name, vpc.Zone, r)
-					continue
-				}
-
-				log.Printf("sweeping VPC %s", vpc.Name)
-				if testutil.SweepDryRun() {
-					log.Printf("skipping VPC %s because of dry-run mode", vpc.Name)
-					continue
-				}
-				deleteResp, err := client.DeleteVPC(ctx, connect.NewRequest(&networkingv1beta1.DeleteVPCRequest{
-					Id: vpc.Id,
-				}))
-				if err != nil {
-					return fmt.Errorf("failed to delete VPC %s: %w", vpc.Name, err)
-				}
-				deletedVpc := deleteResp.Msg.Vpc
-
-				timeout := time.After(20 * time.Minute)
-				ticker := time.NewTicker(30 * time.Second)
-				defer ticker.Stop()
-				for {
-					select {
-					case <-timeout:
-						return fmt.Errorf("timed out waiting for VPC %s to be deleted", vpc.Name)
-					case <-ticker.C:
-						_, err = client.GetVPC(ctx, connect.NewRequest(&networkingv1beta1.GetVPCRequest{
-							Id: deletedVpc.Id,
-						}))
-
-						if err != nil && connect.CodeOf(err) == connect.CodeNotFound {
-							return nil
-						} else if err != nil {
-							return fmt.Errorf("failed to get VPC %s for unexpected reason: %w", deletedVpc.Name, err)
-						}
-					}
-				}
-			}
-
 			return nil
 		},
 	})
+
+	// resource.AddTestSweepers(resourceName, &resource.Sweeper{
+	// 	Name:         resourceName,
+	// 	Dependencies: []string{},
+	// 	F: func(r string) error {
+	// 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+	// 		defer cancel()
+
+	// 		client, err := provider.BuildClient(ctx, provider.CoreweaveProviderModel{})
+	// 		if err != nil {
+	// 			return fmt.Errorf("failed to build client: %w", err)
+	// 		}
+
+	// 		listResp, err := client.ListVPCs(ctx, &connect.Request[networkingv1beta1.ListVPCsRequest]{})
+	// 		if err != nil {
+	// 			return fmt.Errorf("failed to list VPCs: %w", err)
+	// 		}
+	// 		for _, vpc := range listResp.Msg.Items {
+	// 			if !strings.HasPrefix(vpc.Name, AcceptanceTestPrefix) {
+	// 				log.Printf("skipping VPC %s because it does not have prefix %s", vpc.Name, AcceptanceTestPrefix)
+	// 				continue
+	// 			}
+
+	// 			if vpc.GetZone() != r {
+	// 				log.Printf("skipping VPC %s in zone %s because it does not match sweep zone %s", vpc.Name, vpc.Zone, r)
+	// 				continue
+	// 			}
+
+	// 			log.Printf("sweeping VPC %s", vpc.Name)
+	// 			if testutil.SweepDryRun() {
+	// 				log.Printf("skipping VPC %s because of dry-run mode", vpc.Name)
+	// 				continue
+	// 			}
+	// 			deleteResp, err := client.DeleteVPC(ctx, connect.NewRequest(&networkingv1beta1.DeleteVPCRequest{
+	// 				Id: vpc.Id,
+	// 			}))
+	// 			if err != nil {
+	// 				return fmt.Errorf("failed to delete VPC %s: %w", vpc.Name, err)
+	// 			}
+	// 			deletedVpc := deleteResp.Msg.Vpc
+
+	// 			timeout := time.After(20 * time.Minute)
+	// 			ticker := time.NewTicker(30 * time.Second)
+	// 			defer ticker.Stop()
+	// 			for {
+	// 				select {
+	// 				case <-timeout:
+	// 					return fmt.Errorf("timed out waiting for VPC %s to be deleted", vpc.Name)
+	// 				case <-ticker.C:
+	// 					_, err = client.GetVPC(ctx, connect.NewRequest(&networkingv1beta1.GetVPCRequest{
+	// 						Id: deletedVpc.Id,
+	// 					}))
+
+	// 					if err != nil && connect.CodeOf(err) == connect.CodeNotFound {
+	// 						return nil
+	// 					} else if err != nil {
+	// 						return fmt.Errorf("failed to get VPC %s for unexpected reason: %w", deletedVpc.Name, err)
+	// 					}
+	// 				}
+	// 			}
+	// 		}
+
+	// 		return nil
+	// 	},
+	// })
 }
 
 func TestVpcSchema(t *testing.T) {

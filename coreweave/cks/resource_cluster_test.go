@@ -12,6 +12,7 @@ import (
 	cksv1beta1 "buf.build/gen/go/coreweave/cks/protocolbuffers/go/coreweave/cks/v1beta1"
 
 	"connectrpc.com/connect"
+	"github.com/coreweave/terraform-provider-coreweave/coreweave"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave/cks"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave/networking"
 	"github.com/coreweave/terraform-provider-coreweave/internal/provider"
@@ -33,66 +34,58 @@ const (
 )
 
 func init() {
-	resource.AddTestSweepers("coreweave_cks_cluster", &resource.Sweeper{
-		Name:         "coreweave_cks_cluster",
-		Dependencies: []string{}, // left as a placeholder; more types are likely to be added that would need to be torn down first.
+	resourceName := testutil.MustGetTerraformResourceName[*cks.ClusterResource]()
+
+	cksClusterSweeper := testutil.CoreweaveSweeper[*cksv1beta1.Cluster]{
+		ListFunc: func(ctx context.Context, client *coreweave.Client) ([]*cksv1beta1.Cluster, error) {
+			resp, err := client.ListClusters(ctx, &connect.Request[cksv1beta1.ListClustersRequest]{})
+			if err != nil {
+				return nil, fmt.Errorf("failed to list Clusters: %w", err)
+			}
+			return resp.Msg.Items, nil
+		},
+		GetFunc: func(ctx context.Context, client *coreweave.Client, cksCluster *cksv1beta1.Cluster) (*cksv1beta1.Cluster, error) {
+			resp, err := client.GetCluster(ctx, connect.NewRequest(&cksv1beta1.GetClusterRequest{Id: cksCluster.Id}))
+			if err != nil {
+				return nil, fmt.Errorf("failed to get Cluster %s: %w", cksCluster.Name, err)
+			}
+			return resp.Msg.Cluster, nil
+		},
+		DeleteFunc: func(ctx context.Context, client *coreweave.Client, cksCluster *cksv1beta1.Cluster) error {
+			_, err := client.DeleteCluster(ctx, connect.NewRequest(&cksv1beta1.DeleteClusterRequest{Id: cksCluster.Id}))
+			if err != nil {
+				return fmt.Errorf("failed to delete Cluster %s: %w", cksCluster.Name, err)
+			}
+			return nil
+		},
+	}
+
+	resource.AddTestSweepers(resourceName, &resource.Sweeper{
+		Name: resourceName,
 		F: func(r string) error {
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 			defer cancel()
+
+			cksClusterSweeper.AddFilters(func(v *cksv1beta1.Cluster) bool {
+				return strings.HasPrefix(v.Name, AcceptanceTestPrefix) && v.Zone == r
+			})
 
 			client, err := provider.BuildClient(ctx, provider.CoreweaveProviderModel{})
 			if err != nil {
 				return fmt.Errorf("failed to build client: %w", err)
 			}
 
-			listResp, err := client.ListClusters(ctx, &connect.Request[cksv1beta1.ListClustersRequest]{})
+			deletedResources, err := cksClusterSweeper.Sweep(ctx, client)
+			if deletedResources != nil {
+				clusterNames := make([]string, len(deletedResources))
+				for i, v := range deletedResources {
+					clusterNames[i] = v.Name
+				}
+				log.Printf("swept %d Clusters: %s", len(deletedResources), strings.Join(clusterNames, ", "))
+			}
 			if err != nil {
-				return fmt.Errorf("failed to list clusters: %w", err)
+				return fmt.Errorf("failed to sweep Clusters: %w", err)
 			}
-			for _, cluster := range listResp.Msg.Items {
-				if !strings.HasPrefix(cluster.Name, AcceptanceTestPrefix) {
-					log.Printf("skipping cluster %s because it does not have prefix %s", cluster.Name, AcceptanceTestPrefix)
-					continue
-				}
-
-				if cluster.GetZone() != r {
-					log.Printf("skipping cluster %s in zone %s because it does not match sweep zone %s", cluster.Name, cluster.Zone, r)
-					continue
-				}
-
-				log.Printf("sweeping cluster %s", cluster.Name)
-				if testutil.SweepDryRun() {
-					continue
-				}
-				deleteResp, err := client.DeleteCluster(ctx, connect.NewRequest(&cksv1beta1.DeleteClusterRequest{
-					Id: cluster.Id,
-				}))
-				if err != nil {
-					return fmt.Errorf("failed to delete cluster %s: %w", cluster.Name, err)
-				}
-				deletedCluster := deleteResp.Msg.Cluster
-
-				timeout := time.After(20 * time.Minute)
-				ticker := time.NewTicker(30 * time.Second)
-				defer ticker.Stop()
-				for {
-					select {
-					case <-timeout:
-						return fmt.Errorf("timed out waiting for cluster %s to be deleted", cluster.Name)
-					case <-ticker.C:
-						_, err = client.GetCluster(ctx, connect.NewRequest(&cksv1beta1.GetClusterRequest{
-							Id: deletedCluster.Id,
-						}))
-
-						if err != nil && connect.CodeOf(err) == connect.CodeNotFound {
-							return nil
-						} else if err != nil {
-							return fmt.Errorf("failed to get cluster %s for unexpected reason: %w", deletedCluster.Name, err)
-						}
-					}
-				}
-			}
-
 			return nil
 		},
 	})
