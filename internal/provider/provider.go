@@ -69,11 +69,11 @@ func (p *CoreweaveProvider) Schema(ctx context.Context, req provider.SchemaReque
 	resp.Schema = schema.Schema{
 		Attributes: map[string]schema.Attribute{
 			"endpoint": schema.StringAttribute{
-				MarkdownDescription: "CoreWeave API Endpoint. Defaults to https://api.coreweave.com/",
+				MarkdownDescription: fmt.Sprintf("CoreWeave API Endpoint. This can also be set via the %s environment variable, which takes precedence. Defaults to https://api.coreweave.com/", CoreweaveApiEndpointEnvVar),
 				Optional:            true,
 			},
 			"token": schema.StringAttribute{
-				MarkdownDescription: "CoreWeave API Token. In the form CW-SECRET-<secret>. This can also be set via the COREWEAVE_API_TOKEN environment variable, which takes precedence.",
+				MarkdownDescription: fmt.Sprintf("CoreWeave API Token. In the form CW-SECRET-<secret>. This can also be set via the %s environment variable, which takes precedence.", CoreweaveApiTokenEnvVar),
 				Optional:            true,
 				Sensitive:           true,
 			},
