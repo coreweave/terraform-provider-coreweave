@@ -129,19 +129,19 @@ func TestClusterResource(t *testing.T) {
 		HostPrefix: types.StringValue("10.16.192.0/18"),
 		VpcPrefixes: []networking.VpcPrefixResourceModel{
 			{
-				Name:  types.StringValue("pod cidr"),
+				Name:  types.StringValue("pod-cidr"),
 				Value: types.StringValue("10.0.0.0/13"),
 			},
 			{
-				Name:  types.StringValue("service cidr"),
+				Name:  types.StringValue("service-cidr"),
 				Value: types.StringValue("10.16.0.0/22"),
 			},
 			{
-				Name:  types.StringValue("internal lb cidr"),
+				Name:  types.StringValue("internal-lb-cidr"),
 				Value: types.StringValue("10.32.4.0/22"),
 			},
 			{
-				Name:  types.StringValue("internal lb cidr 2"),
+				Name:  types.StringValue("internal-lb-cidr-2"),
 				Value: types.StringValue("10.45.4.0/22"),
 			},
 		},

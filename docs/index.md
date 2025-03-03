@@ -23,5 +23,5 @@ provider "coreweave" {
 
 ### Optional
 
-- `endpoint` (String) CoreWeave API Endpoint. Defaults to https://api.coreweave.com/
+- `endpoint` (String) CoreWeave API Endpoint. This can also be set via the COREWEAVE_API_ENDPOINT environment variable, which takes precedence. Defaults to https://api.coreweave.com/
 - `token` (String, Sensitive) CoreWeave API Token. In the form CW-SECRET-<secret>. This can also be set via the COREWEAVE_API_TOKEN environment variable, which takes precedence.
