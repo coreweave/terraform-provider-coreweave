@@ -37,6 +37,7 @@ func init() {
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 			defer cancel()
 
+			testutil.SetEnvIfUnset(provider.CoreweaveApiTokenEnvVar, "test")
 			client, err := provider.BuildClient(ctx, provider.CoreweaveProviderModel{})
 			if err != nil {
 				return fmt.Errorf("failed to build client: %w", err)
@@ -62,30 +63,39 @@ func init() {
 					log.Printf("skipping VPC %s because of dry-run mode", vpc.Name)
 					continue
 				}
-				deleteResp, err := client.DeleteVPC(ctx, connect.NewRequest(&networkingv1beta1.DeleteVPCRequest{
+
+				deleteReq := connect.NewRequest(&networkingv1beta1.DeleteVPCRequest{
 					Id: vpc.Id,
-				}))
+				})
+				deleteResp, err := client.DeleteVPC(ctx, deleteReq)
 				if err != nil {
 					return fmt.Errorf("failed to delete VPC %s: %w", vpc.Name, err)
 				}
 				deletedVpc := deleteResp.Msg.Vpc
 
-				timeout := time.After(20 * time.Minute)
-				ticker := time.NewTicker(30 * time.Second)
+				timeout := time.After(1 * time.Minute)
+				ticker := time.NewTicker(10 * time.Second)
 				defer ticker.Stop()
 				for {
+					_, err = client.GetVPC(ctx, connect.NewRequest(&networkingv1beta1.GetVPCRequest{
+						Id: deletedVpc.Id,
+					}))
+					if err != nil && connect.CodeOf(err) == connect.CodeNotFound {
+						log.Printf("cluster %s has been deleted\n", deletedVpc.Name)
+						break
+					} else if err != nil {
+						return fmt.Errorf("failed to get cluster %s for unexpected reason: %w", deletedVpc.Name, err)
+					}
+
 					select {
 					case <-timeout:
 						return fmt.Errorf("timed out waiting for VPC %s to be deleted", vpc.Name)
 					case <-ticker.C:
-						_, err = client.GetVPC(ctx, connect.NewRequest(&networkingv1beta1.GetVPCRequest{
-							Id: deletedVpc.Id,
-						}))
-
-						if err != nil && connect.CodeOf(err) == connect.CodeNotFound {
-							return nil
-						} else if err != nil {
-							return fmt.Errorf("failed to get VPC %s for unexpected reason: %w", deletedVpc.Name, err)
+						select {
+						case <-timeout:
+							return fmt.Errorf("timed out waiting for cluster %s to be deleted", deletedVpc.Name)
+						case <-ticker.C:
+							continue
 						}
 					}
 				}
