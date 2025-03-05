@@ -40,6 +40,7 @@ func init() {
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 			defer cancel()
 
+			testutil.SetEnvIfUnset(provider.CoreweaveApiTokenEnvVar, "test")
 			client, err := provider.BuildClient(ctx, provider.CoreweaveProviderModel{})
 			if err != nil {
 				return fmt.Errorf("failed to build client: %w", err)
@@ -72,23 +73,25 @@ func init() {
 				}
 				deletedCluster := deleteResp.Msg.Cluster
 
-				timeout := time.After(20 * time.Minute)
-				ticker := time.NewTicker(30 * time.Second)
+				timeout := time.After(10 * time.Minute)
+				ticker := time.NewTicker(10 * time.Second)
 				defer ticker.Stop()
 				for {
+					getResp, err := client.GetCluster(ctx, connect.NewRequest(&cksv1beta1.GetClusterRequest{
+						Id: deletedCluster.Id,
+					}))
+					if (err == nil && getResp.Msg.Cluster.Status == cksv1beta1.Cluster_STATUS_DELETED) || (err != nil && connect.CodeOf(err) == connect.CodeNotFound) {
+						log.Printf("cluster %s has been deleted\n", deletedCluster.Name)
+						break
+					} else if err != nil {
+						return fmt.Errorf("failed to get cluster %s for unexpected reason: %w", deletedCluster.Name, err)
+					}
+
 					select {
 					case <-timeout:
 						return fmt.Errorf("timed out waiting for cluster %s to be deleted", cluster.Name)
 					case <-ticker.C:
-						_, err = client.GetCluster(ctx, connect.NewRequest(&cksv1beta1.GetClusterRequest{
-							Id: deletedCluster.Id,
-						}))
-
-						if err != nil && connect.CodeOf(err) == connect.CodeNotFound {
-							return nil
-						} else if err != nil {
-							return fmt.Errorf("failed to get cluster %s for unexpected reason: %w", deletedCluster.Name, err)
-						}
+						continue
 					}
 				}
 			}
@@ -153,9 +156,9 @@ func TestClusterResource(t *testing.T) {
 		Zone:                types.StringValue("US-EAST-04A"),
 		Version:             types.StringValue("v1.30"),
 		Public:              types.BoolValue(false),
-		PodCidrName:         types.StringValue("pod cidr"),
-		ServiceCidrName:     types.StringValue("service cidr"),
-		InternalLBCidrNames: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("internal lb cidr")}),
+		PodCidrName:         types.StringValue("pod-cidr"),
+		ServiceCidrName:     types.StringValue("service-cidr"),
+		InternalLBCidrNames: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr")}),
 	}
 
 	update := &cks.ClusterResourceModel{
@@ -164,9 +167,9 @@ func TestClusterResource(t *testing.T) {
 		Zone:                types.StringValue("US-EAST-04A"),
 		Version:             types.StringValue("v1.30"),
 		Public:              types.BoolValue(true),
-		PodCidrName:         types.StringValue("pod cidr"),
-		ServiceCidrName:     types.StringValue("service cidr"),
-		InternalLBCidrNames: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("internal lb cidr"), types.StringValue("internal lb cidr 2")}),
+		PodCidrName:         types.StringValue("pod-cidr"),
+		ServiceCidrName:     types.StringValue("service-cidr"),
+		InternalLBCidrNames: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr"), types.StringValue("internal-lb-cidr-2")}),
 		AuditPolicy:         types.StringValue(AuditPolicyB64),
 		Oidc: &cks.OidcResourceModel{
 			IssuerURL:      types.StringValue("https://samples.auth0.com/"),
@@ -195,9 +198,9 @@ func TestClusterResource(t *testing.T) {
 		Zone:                types.StringValue("US-EAST-04A"),
 		Version:             types.StringValue("v1.30"),
 		Public:              types.BoolValue(true),
-		PodCidrName:         types.StringValue("pod cidr"),
-		ServiceCidrName:     types.StringValue("service cidr"),
-		InternalLBCidrNames: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("internal lb cidr")}),
+		PodCidrName:         types.StringValue("pod-cidr"),
+		ServiceCidrName:     types.StringValue("service-cidr"),
+		InternalLBCidrNames: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr")}),
 	}
 
 	ctx := context.Background()
@@ -232,7 +235,7 @@ func TestClusterResource(t *testing.T) {
 					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("pod_cidr_name"), knownvalue.StringExact(initial.PodCidrName.ValueString())),
 					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("service_cidr_name"), knownvalue.StringExact(initial.ServiceCidrName.ValueString())),
 					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("internal_lb_cidr_names"), knownvalue.SetExact([]knownvalue.Check{
-						knownvalue.StringExact("internal lb cidr"),
+						knownvalue.StringExact("internal-lb-cidr"),
 					})),
 				},
 			},
@@ -260,8 +263,8 @@ func TestClusterResource(t *testing.T) {
 					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("pod_cidr_name"), knownvalue.StringExact(update.PodCidrName.ValueString())),
 					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("service_cidr_name"), knownvalue.StringExact(update.ServiceCidrName.ValueString())),
 					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("internal_lb_cidr_names"), knownvalue.SetExact([]knownvalue.Check{
-						knownvalue.StringExact("internal lb cidr"),
-						knownvalue.StringExact("internal lb cidr 2"),
+						knownvalue.StringExact("internal-lb-cidr"),
+						knownvalue.StringExact("internal-lb-cidr-2"),
 					})),
 					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("oidc"), knownvalue.ObjectExact(
 						map[string]knownvalue.Check{
@@ -310,7 +313,7 @@ func TestClusterResource(t *testing.T) {
 					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("pod_cidr_name"), knownvalue.StringExact(requiresReplace.PodCidrName.ValueString())),
 					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("service_cidr_name"), knownvalue.StringExact(requiresReplace.ServiceCidrName.ValueString())),
 					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("internal_lb_cidr_names"), knownvalue.SetExact([]knownvalue.Check{
-						knownvalue.StringExact("internal lb cidr"),
+						knownvalue.StringExact("internal-lb-cidr"),
 					})),
 				},
 			},
