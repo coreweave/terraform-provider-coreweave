@@ -4,10 +4,10 @@ buf.build/gen/go/coreweave/cks/connectrpc/go v1.18.1-20250205174429-6ea55fad55f4
 buf.build/gen/go/coreweave/cks/connectrpc/go v1.18.1-20250205174429-6ea55fad55f4.1/go.mod h1:6/sV7QJkmwbBG43CTj7UmMrh4ElqyX2uZ46pZF+GIjY=
 buf.build/gen/go/coreweave/cks/protocolbuffers/go v1.36.4-20250205174429-6ea55fad55f4.1 h1:6KYdJt1MkJiNzcdK9ufgVLtzvWP9MZh9qsF2zXQ2ZxY=
 buf.build/gen/go/coreweave/cks/protocolbuffers/go v1.36.4-20250205174429-6ea55fad55f4.1/go.mod h1:Ht5M+5psva+EfCu4A7iMNDb3VHiotQFp3qgy87rcHpg=
-buf.build/gen/go/coreweave/networking/connectrpc/go v1.18.1-20250218204158-e00093c82f5a.1 h1:LwogzDCmf7R6RblDUhYTjVi3Y1eLOkBwB+t7ZJPEmkA=
-buf.build/gen/go/coreweave/networking/connectrpc/go v1.18.1-20250218204158-e00093c82f5a.1/go.mod h1:Z18jhBDWs9H3gSHb3jjA8Jkxo8aBTZnK0bOg9S+qB5U=
-buf.build/gen/go/coreweave/networking/protocolbuffers/go v1.36.2-20250218204158-e00093c82f5a.1 h1:+iKynLbxMKcny3Oosy2Q/1M6vvLuZUw89/ABebjA7j0=
-buf.build/gen/go/coreweave/networking/protocolbuffers/go v1.36.2-20250218204158-e00093c82f5a.1/go.mod h1:oif54Os/DO7CVZIcM8ZBWmxbgfOodMx4LYW/4g1/tQg=
+buf.build/gen/go/coreweave/networking/connectrpc/go v1.18.1-20250304223431-7f67c2bf47a2.1 h1:LcMfHRGNO54SbIB9q8RNHhh2Mh+y6rNXdwcR+A9ujgY=
+buf.build/gen/go/coreweave/networking/connectrpc/go v1.18.1-20250304223431-7f67c2bf47a2.1/go.mod h1:WXntImcVd07viB7BfMWBF9EVPNuw5Xixv2oycV0VU/0=
+buf.build/gen/go/coreweave/networking/protocolbuffers/go v1.36.2-20250304223431-7f67c2bf47a2.1 h1:5xKqNdnzah0n1FZtGwGW+5adZzbHI2sUeboroqSK8pc=
+buf.build/gen/go/coreweave/networking/protocolbuffers/go v1.36.2-20250304223431-7f67c2bf47a2.1/go.mod h1:330QGSky6LAyvMBod/71TyRGKtrEl/OpKY+iJkSTBw8=
 connectrpc.com/connect v1.18.1 h1:PAg7CjSAGvscaf6YZKUefjoih5Z/qYkyaTrBW8xvYPw=
 connectrpc.com/connect v1.18.1/go.mod h1:0292hj1rnx8oFrStN7cB4jjVBeqs+Yx5yDIC2prWDO8=
 dario.cat/mergo v1.0.0 h1:AGCNq9Evsj31mOgNPcLyXc+4PNABt905YmuqPYYpBWk=
