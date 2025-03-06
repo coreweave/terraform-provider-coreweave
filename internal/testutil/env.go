@@ -2,22 +2,20 @@ package testutil
 
 import (
 	"os"
+
+	"github.com/coreweave/terraform-provider-coreweave/internal/provider"
 )
 
-// SetEnvIfUnset sets the environment variable with the given name to the specified value
-// if it is not already set. It returns true if the environment variable was not previously set,
-// and false if it was already set.
-//
-// Parameters:
-//   - name: The name of the environment variable.
-//   - value: The value to set the environment variable to if it is not already set.
-//
-// Returns:
-//   - bool: True if the environment variable was not previously set, false otherwise.
-func SetEnvIfUnset(name, value string) bool {
-	_, found := os.LookupEnv(name)
-	if !found {
-		os.Setenv(name, value)
+// SetEnvDefaults sets default values for environment variables used in tests.
+func SetEnvDefaults() {
+	defaultPairs := map[string]string{
+		provider.CoreweaveApiTokenEnvVar:    "test",
+		provider.CoreweaveApiEndpointEnvVar: "http://172.17.111.5",
 	}
-	return !found
+
+	for name, value := range defaultPairs {
+		if _, found := os.LookupEnv(name); !found {
+			os.Setenv(name, value)
+		}
+	}
 }

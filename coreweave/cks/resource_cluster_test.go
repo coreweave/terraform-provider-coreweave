@@ -40,7 +40,7 @@ func init() {
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 			defer cancel()
 
-			testutil.SetEnvIfUnset(provider.CoreweaveApiTokenEnvVar, "test")
+			testutil.SetEnvDefaults()
 			client, err := provider.BuildClient(ctx, provider.CoreweaveProviderModel{})
 			if err != nil {
 				return fmt.Errorf("failed to build client: %w", err)
@@ -73,26 +73,12 @@ func init() {
 				}
 				deletedCluster := deleteResp.Msg.Cluster
 
-				timeout := time.After(10 * time.Minute)
-				ticker := time.NewTicker(10 * time.Second)
-				defer ticker.Stop()
-				for {
-					getResp, err := client.GetCluster(ctx, connect.NewRequest(&cksv1beta1.GetClusterRequest{
-						Id: deletedCluster.Id,
-					}))
-					if (err == nil && getResp.Msg.Cluster.Status == cksv1beta1.Cluster_STATUS_DELETED) || (err != nil && connect.CodeOf(err) == connect.CodeNotFound) {
-						log.Printf("cluster %s has been deleted\n", deletedCluster.Name)
-						break
-					} else if err != nil {
-						return fmt.Errorf("failed to get cluster %s for unexpected reason: %w", deletedCluster.Name, err)
-					}
-
-					select {
-					case <-timeout:
-						return fmt.Errorf("timed out waiting for cluster %s to be deleted", cluster.Name)
-					case <-ticker.C:
-						continue
-					}
+				waitCtx, waitCancel := context.WithTimeout(ctx, 10*time.Minute)
+				defer waitCancel()
+				if err := testutil.WaitForDelete(waitCtx, 5*time.Minute, 15*time.Second, client.GetCluster, &cksv1beta1.GetClusterRequest{
+					Id: deletedCluster.Id,
+				}); err != nil {
+					return fmt.Errorf("failed to wait for cluster %s to be deleted: %w", deletedCluster.Name, err)
 				}
 			}
 
@@ -208,7 +194,7 @@ func TestClusterResource(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
 		PreCheck: func() {
-			_ = testutil.SetEnvIfUnset(provider.CoreweaveApiTokenEnvVar, "test")
+			testutil.SetEnvDefaults()
 		},
 		Steps: []resource.TestStep{
 			{

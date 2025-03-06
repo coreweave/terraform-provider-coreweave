@@ -37,7 +37,7 @@ func init() {
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 			defer cancel()
 
-			testutil.SetEnvIfUnset(provider.CoreweaveApiTokenEnvVar, "test")
+			testutil.SetEnvDefaults()
 			client, err := provider.BuildClient(ctx, provider.CoreweaveProviderModel{})
 			if err != nil {
 				return fmt.Errorf("failed to build client: %w", err)
@@ -73,31 +73,10 @@ func init() {
 				}
 				deletedVpc := deleteResp.Msg.Vpc
 
-				timeout := time.After(1 * time.Minute)
-				ticker := time.NewTicker(10 * time.Second)
-				defer ticker.Stop()
-				for {
-					_, err = client.GetVPC(ctx, connect.NewRequest(&networkingv1beta1.GetVPCRequest{
-						Id: deletedVpc.Id,
-					}))
-					if err != nil && connect.CodeOf(err) == connect.CodeNotFound {
-						log.Printf("cluster %s has been deleted\n", deletedVpc.Name)
-						break
-					} else if err != nil {
-						return fmt.Errorf("failed to get cluster %s for unexpected reason: %w", deletedVpc.Name, err)
-					}
-
-					select {
-					case <-timeout:
-						return fmt.Errorf("timed out waiting for VPC %s to be deleted", vpc.Name)
-					case <-ticker.C:
-						select {
-						case <-timeout:
-							return fmt.Errorf("timed out waiting for cluster %s to be deleted", deletedVpc.Name)
-						case <-ticker.C:
-							continue
-						}
-					}
+				if err := testutil.WaitForDelete(ctx, 5*time.Minute, 15*time.Second, client.GetVPC, &networkingv1beta1.GetVPCRequest{
+					Id: deletedVpc.Id,
+				}); err != nil {
+					return fmt.Errorf("failed to wait for VPC %s to be deleted: %w", deletedVpc.Name, err)
 				}
 			}
 
@@ -193,7 +172,7 @@ func TestVpcResource(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
 		PreCheck: func() {
-			_ = testutil.SetEnvIfUnset(provider.CoreweaveApiTokenEnvVar, "test")
+			testutil.SetEnvDefaults()
 		},
 		Steps: []resource.TestStep{
 			{
@@ -334,7 +313,7 @@ func TestHostPrefixReplace(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
 		PreCheck: func() {
-			_ = testutil.SetEnvIfUnset(provider.CoreweaveApiTokenEnvVar, "test")
+			testutil.SetEnvDefaults()
 		},
 		Steps: []resource.TestStep{
 			{
@@ -398,7 +377,7 @@ func TestHostPrefixDefault(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
 		PreCheck: func() {
-			_ = testutil.SetEnvIfUnset(provider.CoreweaveApiTokenEnvVar, "test")
+			testutil.SetEnvDefaults()
 		},
 		Steps: []resource.TestStep{
 			{
