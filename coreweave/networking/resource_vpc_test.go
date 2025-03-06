@@ -3,12 +3,16 @@ package networking_test
 import (
 	"context"
 	"fmt"
+	"log"
 	"math/rand/v2"
-	"os"
+	"strings"
 	"testing"
+	"time"
 
+	"connectrpc.com/connect"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave/networking"
 	"github.com/coreweave/terraform-provider-coreweave/internal/provider"
+	"github.com/coreweave/terraform-provider-coreweave/internal/testutil"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	fwresource "github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -17,7 +21,69 @@ import (
 	"github.com/hashicorp/terraform-plugin-testing/plancheck"
 	"github.com/hashicorp/terraform-plugin-testing/statecheck"
 	"github.com/hashicorp/terraform-plugin-testing/tfjsonpath"
+
+	networkingv1beta1 "buf.build/gen/go/coreweave/networking/protocolbuffers/go/coreweave/networking/v1beta1"
 )
+
+const (
+	AcceptanceTestPrefix = "test-acc-"
+)
+
+func init() {
+	resource.AddTestSweepers("coreweave_vpc", &resource.Sweeper{
+		Name:         "coreweave_networking_vpc",
+		Dependencies: []string{},
+		F: func(r string) error {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+			defer cancel()
+
+			testutil.SetEnvDefaults()
+			client, err := provider.BuildClient(ctx, provider.CoreweaveProviderModel{})
+			if err != nil {
+				return fmt.Errorf("failed to build client: %w", err)
+			}
+
+			listResp, err := client.ListVPCs(ctx, &connect.Request[networkingv1beta1.ListVPCsRequest]{})
+			if err != nil {
+				return fmt.Errorf("failed to list VPCs: %w", err)
+			}
+			for _, vpc := range listResp.Msg.Items {
+				if !strings.HasPrefix(vpc.Name, AcceptanceTestPrefix) {
+					log.Printf("skipping VPC %s because it does not have prefix %s", vpc.Name, AcceptanceTestPrefix)
+					continue
+				}
+
+				if vpc.GetZone() != r {
+					log.Printf("skipping VPC %s in zone %s because it does not match sweep zone %s", vpc.Name, vpc.Zone, r)
+					continue
+				}
+
+				log.Printf("sweeping VPC %s", vpc.Name)
+				if testutil.SweepDryRun() {
+					log.Printf("skipping VPC %s because of dry-run mode", vpc.Name)
+					continue
+				}
+
+				deleteReq := connect.NewRequest(&networkingv1beta1.DeleteVPCRequest{
+					Id: vpc.Id,
+				})
+				deleteResp, err := client.DeleteVPC(ctx, deleteReq)
+				if err != nil {
+					return fmt.Errorf("failed to delete VPC %s: %w", vpc.Name, err)
+				}
+				deletedVpc := deleteResp.Msg.Vpc
+
+				if err := testutil.WaitForDelete(ctx, 5*time.Minute, 15*time.Second, client.GetVPC, &networkingv1beta1.GetVPCRequest{
+					Id: deletedVpc.Id,
+				}); err != nil {
+					return fmt.Errorf("failed to wait for VPC %s to be deleted: %w", deletedVpc.Name, err)
+				}
+			}
+
+			return nil
+		},
+	})
+}
 
 func TestVpcSchema(t *testing.T) {
 	t.Parallel()
@@ -106,7 +172,7 @@ func TestVpcResource(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
 		PreCheck: func() {
-			os.Setenv("COREWEAVE_API_TOKEN", "test")
+			testutil.SetEnvDefaults()
 		},
 		Steps: []resource.TestStep{
 			{
@@ -247,7 +313,7 @@ func TestHostPrefixReplace(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
 		PreCheck: func() {
-			os.Setenv("COREWEAVE_API_TOKEN", "test")
+			testutil.SetEnvDefaults()
 		},
 		Steps: []resource.TestStep{
 			{
@@ -311,7 +377,7 @@ func TestHostPrefixDefault(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
 		PreCheck: func() {
-			os.Setenv("COREWEAVE_API_TOKEN", "test")
+			testutil.SetEnvDefaults()
 		},
 		Steps: []resource.TestStep{
 			{

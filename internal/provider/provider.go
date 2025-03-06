@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 
@@ -17,6 +18,12 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
+)
+
+const (
+	CoreweaveApiTokenEnvVar     = "COREWEAVE_API_TOKEN"
+	CoreweaveApiEndpointEnvVar  = "COREWEAVE_API_ENDPOINT"
+	CoreweaveApiEndpointDefault = "https://api.coreweave.com/"
 )
 
 // TestProtoV6ProviderFactories are used to instantiate a provider during
@@ -62,11 +69,11 @@ func (p *CoreweaveProvider) Schema(ctx context.Context, req provider.SchemaReque
 	resp.Schema = schema.Schema{
 		Attributes: map[string]schema.Attribute{
 			"endpoint": schema.StringAttribute{
-				MarkdownDescription: "CoreWeave API Endpoint. Defaults to https://api.coreweave.com/",
+				MarkdownDescription: fmt.Sprintf("CoreWeave API Endpoint. This can also be set via the %s environment variable, which takes precedence. Defaults to https://api.coreweave.com/", CoreweaveApiEndpointEnvVar),
 				Optional:            true,
 			},
 			"token": schema.StringAttribute{
-				MarkdownDescription: "CoreWeave API Token. In the form CW-SECRET-<secret>. This can also be set via the COREWEAVE_API_TOKEN environment variable, which takes precedence.",
+				MarkdownDescription: fmt.Sprintf("CoreWeave API Token. In the form CW-SECRET-<secret>. This can also be set via the %s environment variable, which takes precedence.", CoreweaveApiTokenEnvVar),
 				Optional:            true,
 				Sensitive:           true,
 			},
@@ -78,33 +85,41 @@ func (p *CoreweaveProvider) Configure(ctx context.Context, req provider.Configur
 	var data CoreweaveProviderModel
 
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
-
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	// env vars take precedence
-	token := os.Getenv("COREWEAVE_API_TOKEN")
-	endpoint := os.Getenv("COREWEAVE_API_ENDPOINT")
-
-	if token == "" && data.Token.ValueString() == "" {
-		resp.Diagnostics.AddError("token is required for provider instantiation", "")
+	client, err := BuildClient(ctx, data)
+	if err != nil {
+		resp.Diagnostics.AddError("failed to create coreweave client", err.Error())
 		return
+	}
+	resp.DataSourceData = client
+	resp.ResourceData = client
+}
+
+// Builds a CW client using the provided model, including any defaults or environment variables.
+// Returns an error if the token is not provided.
+// Variable precedence: 1) env, 2) config, 3) default/error.
+func BuildClient(ctx context.Context, model CoreweaveProviderModel) (*coreweave.Client, error) {
+	endpoint := model.Endpoint.ValueString()
+	token := model.Token.ValueString()
+
+	if tokenFromEnv, ok := os.LookupEnv(CoreweaveApiTokenEnvVar); ok {
+		token = tokenFromEnv
+	}
+	if endpointFromEnv, ok := os.LookupEnv(CoreweaveApiEndpointEnvVar); ok {
+		endpoint = endpointFromEnv
 	}
 
 	if token == "" {
-		token = data.Token.ValueString()
+		return nil, errors.New("token is required for coreweave client instantiation")
 	}
-
 	if endpoint == "" {
-		if data.Endpoint.IsNull() {
-			endpoint = "https://api.coreweave.com/"
-		} else {
-			endpoint = data.Endpoint.ValueString()
-		}
+		endpoint = CoreweaveApiEndpointDefault
 	}
 
-	interceptor := connect.UnaryInterceptorFunc(
+	tokenInterceptor := connect.UnaryInterceptorFunc(
 		func(next connect.UnaryFunc) connect.UnaryFunc {
 			return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
 				req.Header().Add("Authorization", fmt.Sprintf("Bearer %s", token))
@@ -113,9 +128,7 @@ func (p *CoreweaveProvider) Configure(ctx context.Context, req provider.Configur
 		},
 	)
 
-	client := coreweave.NewClient(endpoint, interceptor)
-	resp.DataSourceData = client
-	resp.ResourceData = client
+	return coreweave.NewClient(endpoint, tokenInterceptor), nil
 }
 
 func (p *CoreweaveProvider) Resources(ctx context.Context) []func() resource.Resource {
