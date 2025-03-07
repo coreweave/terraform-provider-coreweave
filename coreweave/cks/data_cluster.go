@@ -10,7 +10,6 @@ import (
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/hashicorp/hcl/v2/hclwrite"
-	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -28,79 +27,7 @@ type ClusterDataSource struct {
 	client *coreweave.Client
 }
 
-type ClusterDataSourceModel struct {
-	Id                  types.String              `tfsdk:"id"`
-	VpcId               types.String              `tfsdk:"vpc_id"`
-	Zone                types.String              `tfsdk:"zone"`
-	Name                types.String              `tfsdk:"name"`
-	Version             types.String              `tfsdk:"version"`
-	Public              types.Bool                `tfsdk:"public"`
-	PodCidrName         types.String              `tfsdk:"pod_cidr_name"`
-	ServiceCidrName     types.String              `tfsdk:"service_cidr_name"`
-	InternalLBCidrNames types.Set                 `tfsdk:"internal_lb_cidr_names"`
-	AuditPolicy         types.String              `tfsdk:"audit_policy"`
-	Oidc                *OidcResourceModel        `tfsdk:"oidc"`
-	AuthNWebhook        *AuthWebhookResourceModel `tfsdk:"authn_webhook"`
-	AuthZWebhook        *AuthWebhookResourceModel `tfsdk:"authz_webhook"`
-	ApiServerEndpoint   types.String              `tfsdk:"api_server_endpoint"`
-}
-
-func (d *ClusterDataSourceModel) Set(cluster *cksv1beta1.Cluster) {
-	if cluster == nil {
-		return
-	}
-
-	d.Id = types.StringValue(cluster.Id)
-	d.VpcId = types.StringValue(cluster.VpcId)
-	d.Zone = types.StringValue(cluster.Zone)
-	d.Name = types.StringValue(cluster.Name)
-	d.Version = types.StringValue(cluster.Version)
-	d.Public = types.BoolValue(cluster.Public)
-
-	if cluster.AuditPolicy == "" {
-		d.AuditPolicy = types.StringNull()
-	} else {
-		d.AuditPolicy = types.StringValue(cluster.AuditPolicy)
-	}
-
-	if cluster.Network != nil {
-		d.PodCidrName = types.StringValue(cluster.Network.PodCidrName)
-		d.ServiceCidrName = types.StringValue(cluster.Network.ServiceCidrName)
-		internalLbCidrs := []attr.Value{}
-		for _, c := range cluster.Network.InternalLbCidrNames {
-			internalLbCidrs = append(internalLbCidrs, types.StringValue(c))
-		}
-		d.InternalLBCidrNames = types.SetValueMust(types.StringType, internalLbCidrs)
-	}
-
-	if !oidcIsEmpty(cluster.Oidc) {
-		oidc := OidcResourceModel{}
-		oidc.Set(cluster.Oidc)
-		d.Oidc = &oidc
-	} else {
-		d.Oidc = nil
-	}
-
-	if !authWebhookEmpty(cluster.AuthnWebhook) {
-		d.AuthNWebhook = &AuthWebhookResourceModel{
-			Server: types.StringValue(cluster.AuthnWebhook.Server),
-			CA:     types.StringValue(cluster.AuthnWebhook.Ca),
-		}
-	} else {
-		d.AuthNWebhook = nil
-	}
-
-	if !authWebhookEmpty(cluster.AuthzWebhook) {
-		d.AuthZWebhook = &AuthWebhookResourceModel{
-			Server: types.StringValue(cluster.AuthzWebhook.Server),
-			CA:     types.StringValue(cluster.AuthzWebhook.Ca),
-		}
-	} else {
-		d.AuthZWebhook = nil
-	}
-
-	d.ApiServerEndpoint = types.StringValue(cluster.ApiServerEndpoint)
-}
+type ClusterDataSourceModel = ClusterResourceModel // aliased so that, if implementations between datasource and resource ever need to deviate, the symbols are appropriately coupled.
 
 func MustRenderClusterDataSopurce(ctx context.Context, resourceName string, cluster *ClusterDataSourceModel) string {
 	file := hclwrite.NewEmptyFile()
