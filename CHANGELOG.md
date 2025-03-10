@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.0](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.1.8...v0.2.0) (2025-03-10)
+
+
+### Features
+
+* add coreweave_cks_cluster data source ([#80](https://github.com/coreweave/terraform-provider-coreweave/issues/80)) ([da2e2fc](https://github.com/coreweave/terraform-provider-coreweave/commit/da2e2fcf7b8c16628f23799ca82f3516bee1bfd8))
+* add coreweave_networking_vpc data source ([#82](https://github.com/coreweave/terraform-provider-coreweave/issues/82)) ([256e094](https://github.com/coreweave/terraform-provider-coreweave/commit/256e094e0e7fe48b46bf4d9c72f062f87970f4a1))
+
 ## [0.1.8](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.1.7...v0.1.8) (2025-02-28)
 
 
