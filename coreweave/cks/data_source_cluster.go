@@ -29,17 +29,6 @@ type ClusterDataSource struct {
 
 type ClusterDataSourceModel = ClusterResourceModel // aliased so that, if implementations between datasource and resource ever need to deviate, the symbols are appropriately coupled.
 
-func MustRenderClusterDataSopurce(ctx context.Context, resourceName string, cluster *ClusterDataSourceModel) string {
-	file := hclwrite.NewEmptyFile()
-	body := file.Body()
-
-	block := body.AppendNewBlock("data", []string{"coreweave_cks_cluster", resourceName})
-	// todo: we should probably delineate better between when fields are tokens, and when they are not. However, since ID is derived, it makes little sense to assume it is a known value.
-	block.Body().SetAttributeRaw("id", hclwrite.Tokens{{Type: hclsyntax.TokenIdent, Bytes: []byte(cluster.Id.ValueString())}})
-
-	return string(file.Bytes())
-}
-
 // Metadata implements datasource.DataSource.
 func (d *ClusterDataSource) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + "_cks_cluster"
