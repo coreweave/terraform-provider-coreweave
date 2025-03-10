@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.2.0...v0.2.1) (2025-03-10)
+
+
+### Documentation
+
+* add cluster and vpc data source examples ([#87](https://github.com/coreweave/terraform-provider-coreweave/issues/87)) ([5d3079e](https://github.com/coreweave/terraform-provider-coreweave/commit/5d3079e2a1096dd49ec3cc4b3902298a10c0da18))
+
 ## [0.2.0](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.1.8...v0.2.0) (2025-03-10)
 
 
