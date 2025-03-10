@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"math/rand/v2"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -182,6 +183,15 @@ func TestVpcResource(t *testing.T) {
 			testutil.SetEnvDefaults()
 		},
 		Steps: []resource.TestStep{
+			{
+				PreConfig: func() {
+					t.Log("Beginning data source not found test")
+				},
+				Config: strings.Join([]string{
+					fmt.Sprintf(`data "%s" "%s" { id = "%s" }`, "coreweave_networking_vpc", resourceName, "1b5274f2-8012-4b68-9010-cc4c51613302"),
+				}, "\n"),
+				ExpectError: regexp.MustCompile(`(?i)VPC .*not found`),
+			},
 			{
 				PreConfig: func() {
 					t.Log("Beginning coreweave_networking_vpc create test")
