@@ -125,6 +125,10 @@ func (d *ClusterDataSource) Schema(ctx context.Context, req datasource.SchemaReq
 				MarkdownDescription: "The API server endpoint of the cluster.",
 				Computed:            true,
 			},
+			"status": schema.StringAttribute{
+				MarkdownDescription: "The status of the cluster.",
+				Computed:            true,
+			},
 		},
 	}
 }

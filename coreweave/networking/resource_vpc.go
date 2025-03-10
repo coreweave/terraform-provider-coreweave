@@ -211,19 +211,11 @@ func (v *VpcResourceModel) ToCreateRequest(ctx context.Context) *networkingv1bet
 	req := &networkingv1beta1.CreateVPCRequest{
 		Name:        v.Name.ValueString(),
 		Zone:        v.Zone.ValueString(),
+		VpcPrefixes: v.vpcPrefixes(),
+		HostPrefix:  v.HostPrefix.ValueString(),
 		Ingress:     v.Ingress.ToProto(),
 		Egress:      v.Egress.ToProto(),
-		HostPrefix:  v.HostPrefix.ValueString(),
-		VpcPrefixes: v.vpcPrefixes(),
 		Dhcp:        v.GetDhcp(ctx),
-	}
-
-	// temporary until we deprecate the pubImport field
-	if req.Ingress != nil {
-		req.PubImport = !req.Ingress.DisablePublicServices
-	} else {
-		// default it to true so that ingress.disablePublicServices is false
-		req.PubImport = true
 	}
 
 	return req
@@ -233,17 +225,9 @@ func (v *VpcResourceModel) ToUpdateRequest(ctx context.Context) *networkingv1bet
 	req := networkingv1beta1.UpdateVPCRequest{
 		Id:          v.Id.ValueString(),
 		VpcPrefixes: v.vpcPrefixes(),
-		Dhcp:        v.GetDhcp(ctx),
 		Ingress:     v.Ingress.ToProto(),
 		Egress:      v.Egress.ToProto(),
-	}
-
-	// temporary until we deprecate the pubImport field
-	if req.Ingress != nil {
-		req.PubImport = !req.Ingress.DisablePublicServices
-	} else {
-		// default it to true so that ingress.disablePublicServices is false
-		req.PubImport = true
+		Dhcp:        v.GetDhcp(ctx),
 	}
 
 	return &req
