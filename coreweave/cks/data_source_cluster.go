@@ -170,11 +170,6 @@ func (d *ClusterDataSource) Read(ctx context.Context, req datasource.ReadRequest
 		Id: data.Id.ValueString(),
 	}))
 	if err != nil {
-		if coreweave.IsNotFoundError(err) {
-			resp.State.RemoveResource(ctx)
-			return
-		}
-
 		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
 		return
 	}
