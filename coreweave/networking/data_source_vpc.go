@@ -138,11 +138,6 @@ func (d *VpcDataSource) Read(ctx context.Context, req datasource.ReadRequest, re
 		Id: data.Id.ValueString(),
 	}))
 	if err != nil {
-		if coreweave.IsNotFoundError(err) {
-			resp.State.RemoveResource(ctx)
-			return
-		}
-
 		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
 		return
 	}
