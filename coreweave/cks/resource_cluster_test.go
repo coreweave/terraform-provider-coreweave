@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"math/rand/v2"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -203,6 +204,15 @@ func TestClusterResource(t *testing.T) {
 			testutil.SetEnvDefaults()
 		},
 		Steps: []resource.TestStep{
+			{
+				PreConfig: func() {
+					t.Log("Beginning data source not found test")
+				},
+				Config: strings.Join([]string{
+					fmt.Sprintf(`data "%s" "%s" { id = "%s" }`, "coreweave_cks_cluster", resourceName, "1b5274f2-8012-4b68-9010-cc4c51613302"),
+				}, "\n"),
+				ExpectError: regexp.MustCompile(`(?i)cluster .*not found`),
+			},
 			{
 				PreConfig: func() {
 					t.Log("Beginning coreweave_cks_cluster create test")
