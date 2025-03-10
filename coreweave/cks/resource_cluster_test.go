@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"math/rand/v2"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -19,6 +20,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	fwresource "github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-testing/compare"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/knownvalue"
 	"github.com/hashicorp/terraform-plugin-testing/plancheck"
@@ -112,6 +114,7 @@ func TestClusterResource(t *testing.T) {
 	clusterName := fmt.Sprintf("%scks-cluster-%x", AcceptanceTestPrefix, randomInt)
 	resourceName := fmt.Sprintf("test_acc_cks_cluster_%x", randomInt)
 	fullResourceName := fmt.Sprintf("coreweave_cks_cluster.%s", resourceName)
+	fullDataSourceName := fmt.Sprintf("data.coreweave_cks_cluster.%s", resourceName)
 	vpc := &networking.VpcResourceModel{
 		Name:       types.StringValue(clusterName),
 		Zone:       types.StringValue("US-EAST-04A"),
@@ -145,6 +148,10 @@ func TestClusterResource(t *testing.T) {
 		PodCidrName:         types.StringValue("pod-cidr"),
 		ServiceCidrName:     types.StringValue("service-cidr"),
 		InternalLBCidrNames: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr")}),
+	}
+
+	dataSource := &cks.ClusterDataSourceModel{
+		Id: types.StringValue(fmt.Sprintf("coreweave_cks_cluster.%s.id", resourceName)),
 	}
 
 	update := &cks.ClusterResourceModel{
@@ -199,6 +206,15 @@ func TestClusterResource(t *testing.T) {
 		Steps: []resource.TestStep{
 			{
 				PreConfig: func() {
+					t.Log("Beginning data source not found test")
+				},
+				Config: strings.Join([]string{
+					fmt.Sprintf(`data "%s" "%s" { id = "%s" }`, "coreweave_cks_cluster", resourceName, "1b5274f2-8012-4b68-9010-cc4c51613302"),
+				}, "\n"),
+				ExpectError: regexp.MustCompile(`(?i)cluster .*not found`),
+			},
+			{
+				PreConfig: func() {
 					t.Log("Beginning coreweave_cks_cluster create test")
 				},
 				// create both the VPC and the cluster, since a cluster must have a VPC
@@ -223,6 +239,35 @@ func TestClusterResource(t *testing.T) {
 					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("internal_lb_cidr_names"), knownvalue.SetExact([]knownvalue.Check{
 						knownvalue.StringExact("internal-lb-cidr"),
 					})),
+				},
+			},
+			{
+				PreConfig: func() {
+					t.Log("Beginning coreweave_cks_cluster data source test")
+				},
+				Config: strings.Join([]string{
+					networking.MustRenderVpcResource(ctx, resourceName, vpc),
+					cks.MustRenderClusterResource(ctx, resourceName, initial),
+					cks.MustRenderClusterDataSource(ctx, resourceName, dataSource),
+				}, "\n"),
+				ConfigPlanChecks: resource.ConfigPlanChecks{
+					PreApply: []plancheck.PlanCheck{
+						plancheck.ExpectResourceAction(fullResourceName, plancheck.ResourceActionNoop),
+					},
+				},
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttrPair(fullDataSourceName, "id", fullResourceName, "id"),
+				),
+				ConfigStateChecks: []statecheck.StateCheck{
+					statecheck.ExpectKnownValue(fullDataSourceName, tfjsonpath.New("name"), knownvalue.StringExact(clusterName)),
+					// Note: for values which are not known at plan time, we need to compare the value pairs instead of expecting a known value.
+					statecheck.CompareValuePairs(fullDataSourceName, tfjsonpath.New("id"), fullResourceName, tfjsonpath.New("id"), compare.ValuesSame()),
+					statecheck.CompareValuePairs(fullDataSourceName, tfjsonpath.New("vpc_id"), fullResourceName, tfjsonpath.New("vpc_id"), compare.ValuesSame()),
+					statecheck.ExpectKnownValue(fullDataSourceName, tfjsonpath.New("zone"), knownvalue.StringExact(initial.Zone.ValueString())),
+					statecheck.ExpectKnownValue(fullDataSourceName, tfjsonpath.New("version"), knownvalue.StringExact(initial.Version.ValueString())),
+					statecheck.ExpectKnownValue(fullDataSourceName, tfjsonpath.New("public"), knownvalue.Bool(initial.Public.ValueBool())),
+					statecheck.ExpectKnownValue(fullDataSourceName, tfjsonpath.New("pod_cidr_name"), knownvalue.StringExact(initial.PodCidrName.ValueString())),
+					statecheck.ExpectKnownValue(fullDataSourceName, tfjsonpath.New("service_cidr_name"), knownvalue.StringExact(initial.ServiceCidrName.ValueString())),
 				},
 			},
 			{

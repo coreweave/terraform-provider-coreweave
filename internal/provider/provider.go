@@ -141,6 +141,7 @@ func (p *CoreweaveProvider) Resources(ctx context.Context) []func() resource.Res
 func (p *CoreweaveProvider) DataSources(ctx context.Context) []func() datasource.DataSource {
 	return []func() datasource.DataSource{
 		networking.NewVpcDataSource,
+		cks.NewClusterDataSource,
 	}
 }
 
