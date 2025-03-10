@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"math/rand/v2"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -16,6 +17,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	fwresource "github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-testing/compare"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/knownvalue"
 	"github.com/hashicorp/terraform-plugin-testing/plancheck"
@@ -112,6 +114,8 @@ func TestVpcResource(t *testing.T) {
 	vpcName := fmt.Sprintf("test-acc-vpc-%x", randomInt)
 	resourceName := fmt.Sprintf("test_vpc_%x", randomInt)
 	fullResourceName := fmt.Sprintf("coreweave_networking_vpc.%s", resourceName)
+	fullDataSourceName := fmt.Sprintf("data.coreweave_networking_vpc.%s", resourceName)
+
 	initial := &networking.VpcResourceModel{
 		Name:       types.StringValue(vpcName),
 		Zone:       types.StringValue("US-EAST-04A"),
@@ -135,6 +139,10 @@ func TestVpcResource(t *testing.T) {
 				Servers: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("1.1.1.1")}),
 			},
 		},
+	}
+
+	dataSource := &networking.VpcDataSourceModel{
+		Id: types.StringValue(fmt.Sprintf("%s.id", fullResourceName)),
 	}
 
 	update := &networking.VpcResourceModel{
@@ -177,6 +185,15 @@ func TestVpcResource(t *testing.T) {
 		Steps: []resource.TestStep{
 			{
 				PreConfig: func() {
+					t.Log("Beginning data source not found test")
+				},
+				Config: strings.Join([]string{
+					fmt.Sprintf(`data "%s" "%s" { id = "%s" }`, "coreweave_networking_vpc", resourceName, "1b5274f2-8012-4b68-9010-cc4c51613302"),
+				}, "\n"),
+				ExpectError: regexp.MustCompile(`(?i)VPC .*not found`),
+			},
+			{
+				PreConfig: func() {
 					t.Log("Beginning coreweave_networking_vpc create test")
 				},
 				Config: networking.MustRenderVpcResource(ctx, resourceName, initial),
@@ -217,6 +234,64 @@ func TestVpcResource(t *testing.T) {
 						}),
 					})),
 					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("dhcp"), knownvalue.ObjectExact(
+						map[string]knownvalue.Check{
+							"dns": knownvalue.ObjectExact(
+								map[string]knownvalue.Check{
+									"servers": knownvalue.SetExact([]knownvalue.Check{
+										knownvalue.StringExact("1.1.1.1"),
+									}),
+								},
+							),
+						},
+					)),
+				},
+			},
+			{
+				PreConfig: func() {
+					t.Log("Beginning coreweave_networking_vpc data source test")
+				},
+				Config: strings.Join([]string{
+					networking.MustRenderVpcResource(ctx, resourceName, initial),
+					networking.MustRenderVpcDataSource(ctx, resourceName, dataSource),
+				}, "\n"),
+				ConfigPlanChecks: resource.ConfigPlanChecks{
+					PreApply: []plancheck.PlanCheck{
+						plancheck.ExpectResourceAction(fullResourceName, plancheck.ResourceActionNoop),
+					},
+				},
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttrPair(fullDataSourceName, "id", fullResourceName, "id"),
+				),
+				ConfigStateChecks: []statecheck.StateCheck{
+					statecheck.ExpectKnownValue(fullDataSourceName, tfjsonpath.New("name"), knownvalue.StringExact(vpcName)),
+					statecheck.CompareValuePairs(fullDataSourceName, tfjsonpath.New("id"), fullResourceName, tfjsonpath.New("id"), compare.ValuesSame()),
+					statecheck.ExpectKnownValue(fullDataSourceName, tfjsonpath.New("zone"), knownvalue.StringExact("US-EAST-04A")),
+					statecheck.ExpectKnownValue(fullDataSourceName, tfjsonpath.New("ingress"), knownvalue.ObjectExact(
+						map[string]knownvalue.Check{
+							"disable_public_services": knownvalue.Bool(false),
+						},
+					)),
+					statecheck.ExpectKnownValue(fullDataSourceName, tfjsonpath.New("egress"), knownvalue.ObjectExact(
+						map[string]knownvalue.Check{
+							"disable_public_access": knownvalue.Bool(false),
+						},
+					)),
+					statecheck.ExpectKnownValue(fullDataSourceName, tfjsonpath.New("host_prefix"), knownvalue.StringExact("10.16.192.0/18")),
+					statecheck.ExpectKnownValue(fullDataSourceName, tfjsonpath.New("vpc_prefixes"), knownvalue.SetExact([]knownvalue.Check{
+						knownvalue.ObjectExact(map[string]knownvalue.Check{
+							"name":  knownvalue.StringExact("pod cidr"),
+							"value": knownvalue.StringExact("10.0.0.0/13"),
+						}),
+						knownvalue.ObjectExact(map[string]knownvalue.Check{
+							"name":  knownvalue.StringExact("service cidr"),
+							"value": knownvalue.StringExact("10.16.0.0/22"),
+						}),
+						knownvalue.ObjectExact(map[string]knownvalue.Check{
+							"name":  knownvalue.StringExact("internal lb cidr"),
+							"value": knownvalue.StringExact("10.32.4.0/22"),
+						}),
+					})),
+					statecheck.ExpectKnownValue(fullDataSourceName, tfjsonpath.New("dhcp"), knownvalue.ObjectExact(
 						map[string]knownvalue.Check{
 							"dns": knownvalue.ObjectExact(
 								map[string]knownvalue.Check{
