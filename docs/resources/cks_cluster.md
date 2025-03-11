@@ -91,6 +91,7 @@ The prefixes must exist in the cluster's VPC. This field is append-only.
 
 - `api_server_endpoint` (String) The endpoint for the cluster's api-server.
 - `id` (String) The unique identifier of the cluster.
+- `status` (String) The current status of the cluster.
 
 <a id="nestedatt--authn_webhook"></a>
 ### Nested Schema for `authn_webhook`

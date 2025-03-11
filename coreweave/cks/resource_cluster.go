@@ -28,8 +28,9 @@ import (
 
 // Ensure provider defined types fully satisfy framework interfaces.
 var (
-	_ resource.Resource                = &ClusterResource{}
-	_ resource.ResourceWithImportState = &ClusterResource{}
+	_                     resource.Resource                = &ClusterResource{}
+	_                     resource.ResourceWithImportState = &ClusterResource{}
+	clusterCreationFailed error                            = errors.New("cluster creation failed")
 )
 
 func NewClusterResource() resource.Resource {
@@ -100,6 +101,7 @@ type ClusterResourceModel struct {
 	AuthNWebhook        *AuthWebhookResourceModel `tfsdk:"authn_webhook"`
 	AuthZWebhook        *AuthWebhookResourceModel `tfsdk:"authz_webhook"`
 	ApiServerEndpoint   types.String              `tfsdk:"api_server_endpoint"`
+	Status              types.String              `tfsdk:"status"`
 }
 
 func oidcIsEmpty(oidc *cksv1beta1.OIDCConfig) bool {
@@ -137,6 +139,7 @@ func (c *ClusterResourceModel) Set(cluster *cksv1beta1.Cluster) {
 	c.Name = types.StringValue(cluster.Name)
 	c.Version = types.StringValue(cluster.Version)
 	c.Public = types.BoolValue(cluster.Public)
+	c.Status = types.StringValue(cluster.Status.String())
 
 	if cluster.AuditPolicy == "" {
 		c.AuditPolicy = types.StringNull()
@@ -400,7 +403,7 @@ func (r *ClusterResource) Schema(ctx context.Context, req resource.SchemaRequest
 						if resp.Diagnostics.WarningsCount() > 0 {
 							resp.RequiresReplace = true
 						}
-					}, "", ""),
+					}, "", "Field `internal_lb_cidr_names` is append-only. Removing an existing value will force replacement."),
 				},
 			},
 			"audit_policy": schema.StringAttribute{
@@ -485,6 +488,26 @@ func (r *ClusterResource) Schema(ctx context.Context, req resource.SchemaRequest
 				Required:            false,
 				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
+			"status": schema.StringAttribute{
+				MarkdownDescription: "The current status of the cluster.",
+				Computed:            true,
+				Optional:            false,
+				Required:            false,
+				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown(), stringplanmodifier.RequiresReplaceIf(
+					func(ctx context.Context, req planmodifier.StringRequest, resp *stringplanmodifier.RequiresReplaceIfFuncResponse) {
+						// Skip if there's no prior state or if the config is unknown
+						if req.StateValue.IsNull() || req.PlanValue.IsUnknown() || req.ConfigValue.IsUnknown() {
+							return
+						}
+
+						// If the status is FAILED, the cluster must be destroyed and re-created
+						if req.StateValue.ValueString() == cksv1beta1.Cluster_STATUS_FAILED.String() || req.PlanValue.ValueString() == cksv1beta1.Cluster_STATUS_FAILED.String() {
+							resp.Diagnostics.AddWarning("Failed cluster must be destroyed and re-created", "The cluster is in a failed state. You must destroy and re-create the cluster to retry.")
+							resp.RequiresReplace = true
+						}
+					},
+					"", "Field `status` is read-only. If the status is `FAILED`, the cluster must be destroyed and re-created again.")},
+			},
 		},
 	}
 }
@@ -543,13 +566,17 @@ func (r *ClusterResource) Create(ctx context.Context, req resource.CreateRequest
 				return nil, cksv1beta1.Cluster_STATUS_UNSPECIFIED.String(), err
 			}
 
+			if resp.Msg.Cluster.Status == cksv1beta1.Cluster_STATUS_FAILED {
+				return resp.Msg.Cluster, resp.Msg.Cluster.Status.String(), clusterCreationFailed
+			}
+
 			return resp.Msg.Cluster, resp.Msg.Cluster.Status.String(), nil
 		},
 		Timeout: 20 * time.Minute,
 	}
 
 	rawCluster, err := conf.WaitForStateContext(ctx)
-	if err != nil {
+	if err != nil && !errors.Is(err, clusterCreationFailed) {
 		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
 		return
 	}
@@ -561,6 +588,12 @@ func (r *ClusterResource) Create(ctx context.Context, req resource.CreateRequest
 			"Expected *cksv1beta1.Cluster. Please report this issue to the provider developers.",
 		)
 		return
+	}
+
+	// If the cluster failed to create, we need to save the resource in the state
+	// Upon a fresh read, the resource will be marked as tainted and the user will be able to retry the create
+	if cluster.Status == cksv1beta1.Cluster_STATUS_FAILED {
+		resp.Diagnostics.AddError("Cluster creation failed", "The cluster creation failed. You must delete and recreate this cluster to retry.")
 	}
 
 	data.Set(cluster)

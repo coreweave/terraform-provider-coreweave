@@ -37,6 +37,7 @@ data "coreweave_cks_cluster" "default" {
 - `pod_cidr_name` (String) The pod CIDR name of the cluster.
 - `public` (Boolean) Whether the cluster is public.
 - `service_cidr_name` (String) The service CIDR name of the cluster.
+- `status` (String) The status of the cluster.
 - `version` (String) The version of the cluster.
 - `vpc_id` (String) The VPC ID of the cluster.
 - `zone` (String) The zone of the cluster.
