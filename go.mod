@@ -6,7 +6,7 @@ require (
 	buf.build/gen/go/coreweave/cks/connectrpc/go v1.18.1-20250310185152-f420fd79513c.1
 	buf.build/gen/go/coreweave/cks/protocolbuffers/go v1.36.5-20250310185152-f420fd79513c.1
 	buf.build/gen/go/coreweave/networking/connectrpc/go v1.18.1-20250310211902-b930cb89bad3.1
-	buf.build/gen/go/coreweave/networking/protocolbuffers/go v1.36.2-20250310211902-b930cb89bad3.1
+	buf.build/gen/go/coreweave/networking/protocolbuffers/go v1.36.5-20250310211902-b930cb89bad3.1
 	connectrpc.com/connect v1.18.1
 	github.com/hashicorp/hcl/v2 v2.23.0
 	github.com/hashicorp/terraform-plugin-framework v1.13.0
@@ -19,7 +19,7 @@ require (
 )
 
 require (
-	buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.36.5-20250219170025-d39267d9df8f.1 // indirect
+	buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.36.5-20250307204501-0409229c3780.1 // indirect
 	github.com/ProtonMail/go-crypto v1.1.0-alpha.2 // indirect
 	github.com/agext/levenshtein v1.2.2 // indirect
 	github.com/apparentlymart/go-textseg/v15 v15.0.0 // indirect
