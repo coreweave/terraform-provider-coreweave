@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.2](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.2.1...v0.2.2) (2025-03-11)
+
+
+### Bug Fixes
+
+* update clients, handle cluster creation failures ([#90](https://github.com/coreweave/terraform-provider-coreweave/issues/90)) ([ee5123f](https://github.com/coreweave/terraform-provider-coreweave/commit/ee5123fa369ba5f0d195e6e563c06771d92a5d07))
+
 ## [0.2.1](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.2.0...v0.2.1) (2025-03-10)
 
 
