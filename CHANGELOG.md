@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.3](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.2.2...v0.2.3) (2025-03-17)
+
+
+### Bug Fixes
+
+* increase cks_cluster resource timeout to 45 minutes ([#97](https://github.com/coreweave/terraform-provider-coreweave/issues/97)) ([60782de](https://github.com/coreweave/terraform-provider-coreweave/commit/60782deec663f45b1e851581a5ffc822d30132ed))
+
 ## [0.2.2](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.2.1...v0.2.2) (2025-03-11)
 
 
