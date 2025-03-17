@@ -572,7 +572,7 @@ func (r *ClusterResource) Create(ctx context.Context, req resource.CreateRequest
 
 			return resp.Msg.Cluster, resp.Msg.Cluster.Status.String(), nil
 		},
-		Timeout: 20 * time.Minute,
+		Timeout: 45 * time.Minute,
 	}
 
 	rawCluster, err := conf.WaitForStateContext(ctx)
