@@ -65,6 +65,7 @@ func init() {
 
 				log.Printf("sweeping cluster %s", cluster.Name)
 				if testutil.SweepDryRun() {
+					log.Printf("skipping Cluster %s because of dry-run mode", cluster.Name)
 					continue
 				}
 				deleteResp, err := client.DeleteCluster(ctx, connect.NewRequest(&cksv1beta1.DeleteClusterRequest{
