@@ -43,8 +43,6 @@ jobs:
           curl -v "${COREWEAVE_API_ENDPOINT}/healthz"
 
       - name: Sweep unused resources
-        env:
-          SWEEP_DRY_RUN: 'true'
         run: make testacc-sweep
 
       - name: Run acceptance tests
