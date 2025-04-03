@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"buf.build/gen/go/coreweave/cks/connectrpc/go/coreweave/cks/v1beta1/cksv1beta1connect"
+	"buf.build/gen/go/coreweave/cwobject/connectrpc/go/cwobject/v1/cwobjectv1connect"
 	"buf.build/gen/go/coreweave/networking/connectrpc/go/coreweave/networking/v1beta1/networkingv1beta1connect"
 	"connectrpc.com/connect"
 
@@ -34,6 +35,7 @@ func NewClient(endpoint string, interceptors ...connect.Interceptor) *Client {
 type Client struct {
 	cksv1beta1connect.ClusterServiceClient
 	networkingv1beta1connect.VPCServiceClient
+	cwobjectv1connect.CWObjectClient
 }
 
 func IsNotFoundError(err error) bool {

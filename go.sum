@@ -4,10 +4,16 @@ buf.build/gen/go/coreweave/cks/connectrpc/go v1.18.1-20250310185152-f420fd79513c
 buf.build/gen/go/coreweave/cks/connectrpc/go v1.18.1-20250310185152-f420fd79513c.1/go.mod h1:Aux7U3iMk+6AJ5/bxoMX7vIoyMf9hp7jiaecn1nxcds=
 buf.build/gen/go/coreweave/cks/protocolbuffers/go v1.36.5-20250310185152-f420fd79513c.1 h1:Czm+A+vs7aIYXZxWZRKkXUE0O4cRp6XtTf0GBcm7Tc8=
 buf.build/gen/go/coreweave/cks/protocolbuffers/go v1.36.5-20250310185152-f420fd79513c.1/go.mod h1:QZYxs49JQ0Zolw3O9IyoESY5cuL8rpvkvfcXCSYPHag=
+buf.build/gen/go/coreweave/cwobject/connectrpc/go v1.18.1-20250403162753-4c0812bb3654.1 h1:wxDXPztc/s2TqBOOJ4XIpRrS3FtOvFp0Iwn3iWsuzTo=
+buf.build/gen/go/coreweave/cwobject/connectrpc/go v1.18.1-20250403162753-4c0812bb3654.1/go.mod h1:8w292XPe47MG1t56KWEVYZ/aBG0X955yRcXpvOYDBh0=
+buf.build/gen/go/coreweave/cwobject/protocolbuffers/go v1.36.2-20250403162753-4c0812bb3654.1 h1:miV73/89tmKP2q5MvaERgT3X0TR1F7f5ZNcofZckHQw=
+buf.build/gen/go/coreweave/cwobject/protocolbuffers/go v1.36.2-20250403162753-4c0812bb3654.1/go.mod h1:c1JOkcyAewtxGP7NAK7grdCoJ3z90wSbjid50M+GTFE=
 buf.build/gen/go/coreweave/networking/connectrpc/go v1.18.1-20250310211902-b930cb89bad3.1 h1:20HuK7yHrPUx3NZcaJk+nkbQMvIK2vN2L8QKrz8MnLI=
 buf.build/gen/go/coreweave/networking/connectrpc/go v1.18.1-20250310211902-b930cb89bad3.1/go.mod h1:tkRTy41poTxI8SgRGCbt9goNeRgykFNQ7E2M8gRfrJo=
 buf.build/gen/go/coreweave/networking/protocolbuffers/go v1.36.2-20250310211902-b930cb89bad3.1 h1:z1oMDw7nhqzMmkpa1VRVLHk4G7VYF1UUKH0cEgUUqzQ=
 buf.build/gen/go/coreweave/networking/protocolbuffers/go v1.36.2-20250310211902-b930cb89bad3.1/go.mod h1:18J+C9ULMrXj4CZQ2uXkJjtWkWa/aFPh5PxYrxNNbyY=
+buf.build/gen/go/grpc-ecosystem/grpc-gateway/protocolbuffers/go v1.36.2-20241220201140-4c5ba75caaf8.1 h1:AjyYh6i8bsmef6OIvSK+7K5ZwkzBQxgVPb4F+zhRSOA=
+buf.build/gen/go/grpc-ecosystem/grpc-gateway/protocolbuffers/go v1.36.2-20241220201140-4c5ba75caaf8.1/go.mod h1:hTOBKINwGHfMDBYzf2rUhU43p7h+ySnNrgEDmT+iOQY=
 connectrpc.com/connect v1.18.1 h1:PAg7CjSAGvscaf6YZKUefjoih5Z/qYkyaTrBW8xvYPw=
 connectrpc.com/connect v1.18.1/go.mod h1:0292hj1rnx8oFrStN7cB4jjVBeqs+Yx5yDIC2prWDO8=
 dario.cat/mergo v1.0.0 h1:AGCNq9Evsj31mOgNPcLyXc+4PNABt905YmuqPYYpBWk=
