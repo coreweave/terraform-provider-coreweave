@@ -4,13 +4,17 @@ resource "coreweave_networking_vpc" "example" {
   host_prefix = "10.16.192.0/18"
   vpc_prefixes = [
     {
-      name  = "cidr a"
-      value = "10.32.4.0/22"
+      name  = "pod cidr"
+      value = "10.0.0.0/13"
     },
     {
-      name  = "cidr b"
-      value = "10.45.4.0/22"
-    }
+      name  = "service cidr"
+      value = "10.16.0.0/22"
+    },
+    {
+      name  = "internal lb cidr"
+      value = "10.32.4.0/22"
+    },
   ]
 
   egress = {
