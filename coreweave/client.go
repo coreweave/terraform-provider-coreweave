@@ -19,6 +19,7 @@ import (
 func NewClient(endpoint string, interceptors ...connect.Interceptor) *Client {
 	c := http.Client{
 		Transport: &http.Transport{
+			Proxy:                 http.ProxyFromEnvironment,
 			ResponseHeaderTimeout: 5 * time.Second,
 			ExpectContinueTimeout: 1 * time.Second,
 		},
