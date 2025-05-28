@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.5](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.2.4...v0.2.5) (2025-05-28)
+
+
+### Bug Fixes
+
+* set http.ProxyFromEnvironment in client transport ([#102](https://github.com/coreweave/terraform-provider-coreweave/issues/102)) ([ae63d8b](https://github.com/coreweave/terraform-provider-coreweave/commit/ae63d8b70221e23353023b35718534d581582a33))
+
 ## [0.2.4](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.2.3...v0.2.4) (2025-04-25)
 
 
