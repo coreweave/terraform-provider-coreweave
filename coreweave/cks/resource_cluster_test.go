@@ -65,6 +65,7 @@ func init() {
 
 				log.Printf("sweeping cluster %s", cluster.Name)
 				if testutil.SweepDryRun() {
+					log.Printf("skipping Cluster %s because of dry-run mode", cluster.Name)
 					continue
 				}
 				deleteResp, err := client.DeleteCluster(ctx, connect.NewRequest(&cksv1beta1.DeleteClusterRequest{
@@ -115,9 +116,12 @@ func TestClusterResource(t *testing.T) {
 	resourceName := fmt.Sprintf("test_acc_cks_cluster_%x", randomInt)
 	fullResourceName := fmt.Sprintf("coreweave_cks_cluster.%s", resourceName)
 	fullDataSourceName := fmt.Sprintf("data.coreweave_cks_cluster.%s", resourceName)
+	zone := testutil.AcceptanceTestZone
+	kubeVersion := testutil.AcceptanceTestKubeVersion
+
 	vpc := &networking.VpcResourceModel{
 		Name:       types.StringValue(clusterName),
-		Zone:       types.StringValue("US-EAST-04A"),
+		Zone:       types.StringValue(zone),
 		HostPrefix: types.StringValue("10.16.192.0/18"),
 		VpcPrefixes: []networking.VpcPrefixResourceModel{
 			{
@@ -142,8 +146,8 @@ func TestClusterResource(t *testing.T) {
 	initial := &cks.ClusterResourceModel{
 		VpcId:               types.StringValue(fmt.Sprintf("coreweave_networking_vpc.%s.id", resourceName)),
 		Name:                types.StringValue(clusterName),
-		Zone:                types.StringValue("US-EAST-04A"),
-		Version:             types.StringValue("v1.30"),
+		Zone:                types.StringValue(zone),
+		Version:             types.StringValue(kubeVersion),
 		Public:              types.BoolValue(false),
 		PodCidrName:         types.StringValue("pod-cidr"),
 		ServiceCidrName:     types.StringValue("service-cidr"),
@@ -157,8 +161,8 @@ func TestClusterResource(t *testing.T) {
 	update := &cks.ClusterResourceModel{
 		VpcId:               types.StringValue(fmt.Sprintf("coreweave_networking_vpc.%s.id", resourceName)),
 		Name:                types.StringValue(clusterName),
-		Zone:                types.StringValue("US-EAST-04A"),
-		Version:             types.StringValue("v1.30"),
+		Zone:                types.StringValue(zone),
+		Version:             types.StringValue(kubeVersion),
 		Public:              types.BoolValue(true),
 		PodCidrName:         types.StringValue("pod-cidr"),
 		ServiceCidrName:     types.StringValue("service-cidr"),
@@ -188,8 +192,8 @@ func TestClusterResource(t *testing.T) {
 	requiresReplace := &cks.ClusterResourceModel{
 		VpcId:               types.StringValue(fmt.Sprintf("coreweave_networking_vpc.%s.id", resourceName)),
 		Name:                types.StringValue(clusterName),
-		Zone:                types.StringValue("US-EAST-04A"),
-		Version:             types.StringValue("v1.30"),
+		Zone:                types.StringValue(zone),
+		Version:             types.StringValue(kubeVersion),
 		Public:              types.BoolValue(true),
 		PodCidrName:         types.StringValue("pod-cidr"),
 		ServiceCidrName:     types.StringValue("service-cidr"),
