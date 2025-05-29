@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.6](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.2.5...v0.2.6) (2025-05-29)
+
+
+### Bug Fixes
+
+* add retryable-http client ([#104](https://github.com/coreweave/terraform-provider-coreweave/issues/104)) ([e208d97](https://github.com/coreweave/terraform-provider-coreweave/commit/e208d9711b5f0ec06d6cabccbf664c2a9cfb660e))
+
 ## [0.2.5](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.2.4...v0.2.5) (2025-05-28)
 
 
