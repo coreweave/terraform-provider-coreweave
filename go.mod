@@ -10,6 +10,7 @@ require (
 	buf.build/gen/go/coreweave/networking/connectrpc/go v1.18.1-20250310211902-b930cb89bad3.1
 	buf.build/gen/go/coreweave/networking/protocolbuffers/go v1.36.2-20250310211902-b930cb89bad3.1
 	connectrpc.com/connect v1.18.1
+	github.com/hashicorp/go-retryablehttp v0.7.7
 	github.com/hashicorp/hcl/v2 v2.23.0
 	github.com/hashicorp/terraform-plugin-framework v1.13.0
 	github.com/hashicorp/terraform-plugin-go v0.25.0
@@ -36,7 +37,6 @@ require (
 	github.com/hashicorp/go-hclog v1.6.3 // indirect
 	github.com/hashicorp/go-multierror v1.1.1 // indirect
 	github.com/hashicorp/go-plugin v1.6.2 // indirect
-	github.com/hashicorp/go-retryablehttp v0.7.7 // indirect
 	github.com/hashicorp/go-uuid v1.0.3 // indirect
 	github.com/hashicorp/go-version v1.7.0 // indirect
 	github.com/hashicorp/hc-install v0.9.0 // indirect
