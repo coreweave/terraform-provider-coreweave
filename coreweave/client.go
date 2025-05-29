@@ -11,13 +11,15 @@ import (
 	"buf.build/gen/go/coreweave/networking/connectrpc/go/coreweave/networking/v1beta1/networkingv1beta1connect"
 	"connectrpc.com/connect"
 
+	retryablehttp "github.com/hashicorp/go-retryablehttp"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
 )
 
 func NewClient(endpoint string, interceptors ...connect.Interceptor) *Client {
-	c := http.Client{
+	rc := retryablehttp.NewClient()
+	rc.HTTPClient = &http.Client{
 		Transport: &http.Transport{
 			Proxy:                 http.ProxyFromEnvironment,
 			ResponseHeaderTimeout: 5 * time.Second,
@@ -25,10 +27,19 @@ func NewClient(endpoint string, interceptors ...connect.Interceptor) *Client {
 		},
 		Timeout: 10 * time.Second,
 	}
+	rc.RetryMax = 10 // 1 original try + 4 retries
+	rc.RetryWaitMin = 200 * time.Millisecond
+	rc.RetryWaitMax = 5 * time.Second
+	// Jittered exponential back-off (min*2^n) with capping.
+	rc.Backoff = retryablehttp.DefaultBackoff
+	// Treat only idempotent verbs + 502/503/504 + transport errors as retryable.
+	rc.CheckRetry = retryablehttp.DefaultRetryPolicy
+
+	c := rc.StandardClient()
 
 	return &Client{
-		ClusterServiceClient: cksv1beta1connect.NewClusterServiceClient(&c, endpoint, connect.WithInterceptors(interceptors...)),
-		VPCServiceClient:     networkingv1beta1connect.NewVPCServiceClient(&c, endpoint, connect.WithInterceptors(interceptors...)),
+		ClusterServiceClient: cksv1beta1connect.NewClusterServiceClient(c, endpoint, connect.WithInterceptors(interceptors...)),
+		VPCServiceClient:     networkingv1beta1connect.NewVPCServiceClient(c, endpoint, connect.WithInterceptors(interceptors...)),
 	}
 }
 
