@@ -27,7 +27,7 @@ func NewClient(endpoint string, interceptors ...connect.Interceptor) *Client {
 		},
 		Timeout: 10 * time.Second,
 	}
-	rc.RetryMax = 10 // 1 original try + 4 retries
+	rc.RetryMax = 10
 	rc.RetryWaitMin = 200 * time.Millisecond
 	rc.RetryWaitMax = 5 * time.Second
 	// Jittered exponential back-off (min*2^n) with capping.
