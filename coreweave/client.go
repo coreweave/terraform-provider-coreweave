@@ -112,14 +112,7 @@ func RetryPolicy(ctx context.Context, resp *http.Response, err error) (bool, err
 
 func NewClient(endpoint string, timeout time.Duration, interceptors ...connect.Interceptor) *Client {
 	rc := retryablehttp.NewClient()
-	rc.HTTPClient = &http.Client{
-		Transport: &http.Transport{
-			Proxy:                 http.ProxyFromEnvironment,
-			ResponseHeaderTimeout: 5 * time.Second,
-			ExpectContinueTimeout: 1 * time.Second,
-		},
-		Timeout: timeout,
-	}
+	rc.HTTPClient.Timeout = timeout
 	rc.RetryMax = 10
 	rc.RetryWaitMin = 200 * time.Millisecond
 	rc.RetryWaitMax = 5 * time.Second
