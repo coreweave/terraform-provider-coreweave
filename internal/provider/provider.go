@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"time"
 
 	"connectrpc.com/connect"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
@@ -16,14 +17,18 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/provider/schema"
 	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
+	"github.com/hashicorp/terraform-plugin-log/tflog"
 )
 
 const (
-	CoreweaveApiTokenEnvVar     = "COREWEAVE_API_TOKEN"
-	CoreweaveApiEndpointEnvVar  = "COREWEAVE_API_ENDPOINT"
-	CoreweaveApiEndpointDefault = "https://api.coreweave.com/"
+	CoreweaveApiTokenEnvVar     string        = "COREWEAVE_API_TOKEN"
+	CoreweaveApiEndpointEnvVar  string        = "COREWEAVE_API_ENDPOINT"
+	CoreweaveHTTPTimeoutEnvVar  string        = "COREWEAVE_HTTP_TIMEOUT"
+	CoreweaveApiEndpointDefault string        = "https://api.coreweave.com/"
+	DefaultHTTPTimeout          time.Duration = 10 * time.Second
 )
 
 // TestProtoV6ProviderFactories are used to instantiate a provider during
@@ -56,8 +61,9 @@ type CoreweaveProvider struct {
 
 // CoreweaveProviderModel describes the provider data model.
 type CoreweaveProviderModel struct {
-	Endpoint types.String `tfsdk:"endpoint"`
-	Token    types.String `tfsdk:"token"`
+	Endpoint    types.String `tfsdk:"endpoint"`
+	Token       types.String `tfsdk:"token"`
+	HTTPTimeout types.String `tfsdk:"http_timeout"`
 }
 
 func (p *CoreweaveProvider) Metadata(ctx context.Context, req provider.MetadataRequest, resp *provider.MetadataResponse) {
@@ -76,6 +82,13 @@ func (p *CoreweaveProvider) Schema(ctx context.Context, req provider.SchemaReque
 				MarkdownDescription: fmt.Sprintf("CoreWeave API Token. In the form CW-SECRET-<secret>. This can also be set via the %s environment variable, which takes precedence.", CoreweaveApiTokenEnvVar),
 				Optional:            true,
 				Sensitive:           true,
+			},
+			"http_timeout": schema.StringAttribute{
+				MarkdownDescription: fmt.Sprintf("Timeout duration for the HTTP client to use. This can also be set via the %s environment variable, which takes precedence. If unset, defaults to 10 seconds", CoreweaveHTTPTimeoutEnvVar),
+				Optional:            true,
+				Validators: []validator.String{
+					durationValidator{},
+				},
 			},
 		},
 	}
@@ -98,18 +111,48 @@ func (p *CoreweaveProvider) Configure(ctx context.Context, req provider.Configur
 	resp.ResourceData = client
 }
 
+func parseDuration(raw string) (*time.Duration, error) {
+	parsed, err := time.ParseDuration(raw)
+	if err != nil {
+		// Try appending “s” to treat it as seconds
+		if parsed, err2 := time.ParseDuration(raw + "s"); err2 == nil {
+			return &parsed, nil
+		}
+
+		return nil, err
+	}
+
+	return &parsed, nil
+}
+
 // Builds a CW client using the provided model, including any defaults or environment variables.
 // Returns an error if the token is not provided.
 // Variable precedence: 1) env, 2) config, 3) default/error.
 func BuildClient(ctx context.Context, model CoreweaveProviderModel) (*coreweave.Client, error) {
 	endpoint := model.Endpoint.ValueString()
 	token := model.Token.ValueString()
+	httpTimeout := model.HTTPTimeout.ValueString()
+	timeout := DefaultHTTPTimeout
+
+	// An error should not be able to happen in this case, as we specify a validator on the StringAttribute on the provider schema
+	// but for posterity we check for the error anyway
+	if userSpecified, err := parseDuration(httpTimeout); err == nil {
+		timeout = *userSpecified
+	}
 
 	if tokenFromEnv, ok := os.LookupEnv(CoreweaveApiTokenEnvVar); ok {
 		token = tokenFromEnv
 	}
 	if endpointFromEnv, ok := os.LookupEnv(CoreweaveApiEndpointEnvVar); ok {
 		endpoint = endpointFromEnv
+	}
+	if timeoutStr, ok := os.LookupEnv(CoreweaveHTTPTimeoutEnvVar); ok {
+		timeoutOverride, err := parseDuration(timeoutStr)
+		if err == nil {
+			timeout = *timeoutOverride
+		} else {
+			tflog.Error(ctx, fmt.Sprintf("got invalid duration '%s' for %s, using default timeout %v", timeoutStr, CoreweaveHTTPTimeoutEnvVar, DefaultHTTPTimeout))
+		}
 	}
 
 	if token == "" {
@@ -118,6 +161,8 @@ func BuildClient(ctx context.Context, model CoreweaveProviderModel) (*coreweave.
 	if endpoint == "" {
 		endpoint = CoreweaveApiEndpointDefault
 	}
+
+	tflog.Debug(ctx, fmt.Sprintf("using http client timeout: %v", timeout))
 
 	tokenInterceptor := connect.UnaryInterceptorFunc(
 		func(next connect.UnaryFunc) connect.UnaryFunc {
@@ -128,7 +173,7 @@ func BuildClient(ctx context.Context, model CoreweaveProviderModel) (*coreweave.
 		},
 	)
 
-	return coreweave.NewClient(endpoint, tokenInterceptor), nil
+	return coreweave.NewClient(endpoint, timeout, tokenInterceptor), nil
 }
 
 func (p *CoreweaveProvider) Resources(ctx context.Context) []func() resource.Resource {
