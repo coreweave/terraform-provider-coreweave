@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.7](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.2.6...v0.2.7) (2025-06-02)
+
+
+### Bug Fixes
+
+* update retry policy to allow context.DeadlineExceeded errors ([#106](https://github.com/coreweave/terraform-provider-coreweave/issues/106)) ([be3f77a](https://github.com/coreweave/terraform-provider-coreweave/commit/be3f77aca1b1a934370ab3bb117e627448b2ea81))
+
 ## [0.2.6](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.2.5...v0.2.6) (2025-05-29)
 
 
