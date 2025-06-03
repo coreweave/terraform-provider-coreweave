@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.8](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.2.7...v0.2.8) (2025-06-03)
+
+
+### Bug Fixes
+
+* set intermediate state before continuing to poll ([#108](https://github.com/coreweave/terraform-provider-coreweave/issues/108)) ([a00a91e](https://github.com/coreweave/terraform-provider-coreweave/commit/a00a91e2061572cee96e210af40da791fa5ff6cb))
+
 ## [0.2.7](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.2.6...v0.2.7) (2025-06-02)
 
 
