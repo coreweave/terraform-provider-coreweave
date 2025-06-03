@@ -384,6 +384,14 @@ func (r *VpcResource) Create(ctx context.Context, req resource.CreateRequest, re
 		return
 	}
 
+	// set state once vpc is created
+	data.Set(createResp.Msg.Vpc)
+	// if we fail to set state, return early as the resource will be orphaned
+	if diag := resp.State.Set(ctx, &data); diag.HasError() {
+		resp.Diagnostics.Append(diag...)
+		return
+	}
+
 	// wait for the vpc to become ready
 	conf := retry.StateChangeConf{
 		Pending: []string{
@@ -464,6 +472,14 @@ func (r *VpcResource) Update(ctx context.Context, req resource.UpdateRequest, re
 	updateResp, err := r.client.UpdateVPC(ctx, connect.NewRequest(data.ToUpdateRequest(ctx)))
 	if err != nil {
 		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
+		return
+	}
+
+	// set state once vpc is updated
+	data.Set(updateResp.Msg.Vpc)
+	// if we fail to set state, return early
+	if diag := resp.State.Set(ctx, &data); diag.HasError() {
+		resp.Diagnostics.Append(diag...)
 		return
 	}
 

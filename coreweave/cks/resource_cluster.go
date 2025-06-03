@@ -548,6 +548,14 @@ func (r *ClusterResource) Create(ctx context.Context, req resource.CreateRequest
 		return
 	}
 
+	// set state once cluster is created
+	data.Set(createResp.Msg.Cluster)
+	// if we fail to set state, return early as the resource will be orphaned
+	if diag := resp.State.Set(ctx, &data); diag.HasError() {
+		resp.Diagnostics.Append(diag...)
+		return
+	}
+
 	// wait for the cluster to become ready
 	conf := retry.StateChangeConf{
 		Pending: []string{
@@ -639,6 +647,14 @@ func (r *ClusterResource) Update(ctx context.Context, req resource.UpdateRequest
 	updateResp, err := r.client.UpdateCluster(ctx, connect.NewRequest(data.ToUpdateRequest(ctx)))
 	if err != nil {
 		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
+		return
+	}
+
+	// set state once cluster is updated
+	data.Set(updateResp.Msg.Cluster)
+	// if we fail to set state, return early
+	if diag := resp.State.Set(ctx, &data); diag.HasError() {
+		resp.Diagnostics.Append(diag...)
 		return
 	}
 
