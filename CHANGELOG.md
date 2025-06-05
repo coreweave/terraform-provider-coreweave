@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.9](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.2.8...v0.2.9) (2025-06-05)
+
+
+### Bug Fixes
+
+* retry deadline exceeded errors ([#110](https://github.com/coreweave/terraform-provider-coreweave/issues/110)) ([5bf6099](https://github.com/coreweave/terraform-provider-coreweave/commit/5bf60995b47c2d978e740250b4110cca90cf1ee1))
+
 ## [0.2.8](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.2.7...v0.2.8) (2025-06-03)
 
 
