@@ -115,10 +115,11 @@ func TestVpcResource(t *testing.T) {
 	resourceName := fmt.Sprintf("test_vpc_%x", randomInt)
 	fullResourceName := fmt.Sprintf("coreweave_networking_vpc.%s", resourceName)
 	fullDataSourceName := fmt.Sprintf("data.coreweave_networking_vpc.%s", resourceName)
+	zone := testutil.AcceptanceTestZone
 
 	initial := &networking.VpcResourceModel{
 		Name:       types.StringValue(vpcName),
-		Zone:       types.StringValue("US-EAST-04A"),
+		Zone:       types.StringValue(zone),
 		HostPrefix: types.StringValue("10.16.192.0/18"),
 		VpcPrefixes: []networking.VpcPrefixResourceModel{
 			{
@@ -147,7 +148,7 @@ func TestVpcResource(t *testing.T) {
 
 	update := &networking.VpcResourceModel{
 		Name: types.StringValue(vpcName),
-		Zone: types.StringValue("US-EAST-04A"),
+		Zone: types.StringValue(zone),
 		Ingress: &networking.VpcIngressResourceModel{
 			DisablePublicServices: types.BoolValue(true),
 		},
@@ -265,7 +266,7 @@ func TestVpcResource(t *testing.T) {
 				ConfigStateChecks: []statecheck.StateCheck{
 					statecheck.ExpectKnownValue(fullDataSourceName, tfjsonpath.New("name"), knownvalue.StringExact(vpcName)),
 					statecheck.CompareValuePairs(fullDataSourceName, tfjsonpath.New("id"), fullResourceName, tfjsonpath.New("id"), compare.ValuesSame()),
-					statecheck.ExpectKnownValue(fullDataSourceName, tfjsonpath.New("zone"), knownvalue.StringExact("US-EAST-04A")),
+					statecheck.ExpectKnownValue(fullDataSourceName, tfjsonpath.New("zone"), knownvalue.StringExact(zone)),
 					statecheck.ExpectKnownValue(fullDataSourceName, tfjsonpath.New("ingress"), knownvalue.ObjectExact(
 						map[string]knownvalue.Check{
 							"disable_public_services": knownvalue.Bool(false),
@@ -370,16 +371,17 @@ func TestHostPrefixReplace(t *testing.T) {
 	vpcName := fmt.Sprintf("test-acc-hostprefix-replace-%x", randomInt)
 	resourceName := fmt.Sprintf("test_hostprefix_replace_%x", randomInt)
 	fullResourceName := fmt.Sprintf("coreweave_networking_vpc.%s", resourceName)
+	zone := testutil.AcceptanceTestZone
 
 	initial := &networking.VpcResourceModel{
 		Name:       types.StringValue(vpcName),
-		Zone:       types.StringValue("US-EAST-04A"),
+		Zone:       types.StringValue(zone),
 		HostPrefix: types.StringNull(),
 	}
 
 	replace := &networking.VpcResourceModel{
 		Name:       types.StringValue(vpcName),
-		Zone:       types.StringValue("US-EAST-04A"),
+		Zone:       types.StringValue(zone),
 		HostPrefix: types.StringValue("172.0.0.0/18"),
 	}
 
@@ -407,8 +409,8 @@ func TestHostPrefixReplace(t *testing.T) {
 				),
 				ConfigStateChecks: []statecheck.StateCheck{
 					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("id"), knownvalue.NotNull()),
-					// 10.176.192.0/18 is the default host prefix for US-EAST-04A
-					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("host_prefix"), knownvalue.StringExact("10.176.192.0/18")),
+					// 10.194.192.0/18 is the default host prefix for US-LAB-01A
+					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("host_prefix"), knownvalue.StringExact("10.194.192.0/18")),
 				},
 			},
 			{
@@ -440,10 +442,11 @@ func TestHostPrefixDefault(t *testing.T) {
 	vpcName := fmt.Sprintf("test-acc-hostprefix-default-%x", randomInt)
 	resourceName := fmt.Sprintf("test_hostprefix_default_%x", randomInt)
 	fullResourceName := fmt.Sprintf("coreweave_networking_vpc.%s", resourceName)
+	zone := testutil.AcceptanceTestZone
 
 	vpc := &networking.VpcResourceModel{
 		Name:       types.StringValue(vpcName),
-		Zone:       types.StringValue("US-EAST-04A"),
+		Zone:       types.StringValue(zone),
 		HostPrefix: types.StringNull(),
 	}
 
@@ -471,8 +474,8 @@ func TestHostPrefixDefault(t *testing.T) {
 				),
 				ConfigStateChecks: []statecheck.StateCheck{
 					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("id"), knownvalue.NotNull()),
-					// 10.176.192.0/18 is the default host prefix for US-EAST-04A
-					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("host_prefix"), knownvalue.StringExact("10.176.192.0/18")),
+					// 10.194.192.0/18 is the default host prefix for US-EAST-04A
+					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("host_prefix"), knownvalue.StringExact("10.194.192.0/18")),
 				},
 			},
 			{
