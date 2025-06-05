@@ -107,6 +107,10 @@ func RetryPolicy(ctx context.Context, resp *http.Response, err error) (bool, err
 		return true, ctx.Err()
 	}
 
+	if errors.Is(err, context.DeadlineExceeded) {
+		return true, err
+	}
+
 	return baseRetryPolicy(resp, err)
 }
 
