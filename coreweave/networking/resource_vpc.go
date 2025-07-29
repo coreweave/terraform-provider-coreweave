@@ -175,10 +175,13 @@ func (v *VpcResourceModel) Set(vpc *networkingv1beta1.VPC) {
 		v.VpcPrefixes = vpcPrefixes
 	}
 
-	dhcp := &VpcDhcpResourceModel{}
+	dhcp := VpcDhcpResourceModel{}
 	dhcp.Set(vpc.Dhcp)
+	// if there is any dhcp config returned from the API, set it
 	if !dhcp.IsEmpty() {
-		v.Dhcp = dhcp
+		v.Dhcp = &dhcp
+	} else { // otherwise, remove it
+		v.Dhcp = nil
 	}
 }
 
