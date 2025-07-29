@@ -177,9 +177,7 @@ func (v *VpcResourceModel) Set(vpc *networkingv1beta1.VPC) {
 
 	dhcp := &VpcDhcpResourceModel{}
 	dhcp.Set(vpc.Dhcp)
-	if !dhcp.IsEmpty() {
-		v.Dhcp = dhcp
-	}
+	v.Dhcp = dhcp
 }
 
 func (v *VpcResourceModel) GetDhcp(ctx context.Context) *networkingv1beta1.DHCP {
