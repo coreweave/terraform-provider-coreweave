@@ -109,6 +109,7 @@ func TestClusterSchema(t *testing.T) {
 	}
 }
 
+//nolint:unparam
 func defaultVpc(name, zone string) *networking.VpcResourceModel {
 	return &networking.VpcResourceModel{
 		Name:       types.StringValue(name),
