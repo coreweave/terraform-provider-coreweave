@@ -175,10 +175,13 @@ func (v *VpcResourceModel) Set(vpc *networkingv1beta1.VPC) {
 		v.VpcPrefixes = vpcPrefixes
 	}
 
-	dhcp := &VpcDhcpResourceModel{}
+	dhcp := VpcDhcpResourceModel{}
 	dhcp.Set(vpc.Dhcp)
+	// if there is any dhcp config returned from the API, set it
 	if !dhcp.IsEmpty() {
-		v.Dhcp = dhcp
+		v.Dhcp = &dhcp
+	} else { // otherwise, remove it
+		v.Dhcp = nil
 	}
 }
 
@@ -472,14 +475,6 @@ func (r *VpcResource) Update(ctx context.Context, req resource.UpdateRequest, re
 	updateResp, err := r.client.UpdateVPC(ctx, connect.NewRequest(data.ToUpdateRequest(ctx)))
 	if err != nil {
 		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
-		return
-	}
-
-	// set state once vpc is updated
-	data.Set(updateResp.Msg.Vpc)
-	// if we fail to set state, return early
-	if diag := resp.State.Set(ctx, &data); diag.HasError() {
-		resp.Diagnostics.Append(diag...)
 		return
 	}
 

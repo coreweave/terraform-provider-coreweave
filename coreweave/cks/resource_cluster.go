@@ -59,9 +59,15 @@ type OidcResourceModel struct {
 	SigningAlgs    types.Set    `tfsdk:"signing_algs"`
 }
 
-func (o *OidcResourceModel) Set(oidc *cksv1beta1.OIDCConfig) {
+func (o *OidcResourceModel) Set(plan *ClusterResourceModel, oidc *cksv1beta1.OIDCConfig) {
 	if oidc == nil {
 		return
+	}
+
+	oidcPlan := plan.Oidc
+	if oidcPlan == nil {
+		// prevent panics for imports
+		oidcPlan = &OidcResourceModel{}
 	}
 
 	o.IssuerURL = types.StringValue(oidc.IssuerUrl)
@@ -73,15 +79,41 @@ func (o *OidcResourceModel) Set(oidc *cksv1beta1.OIDCConfig) {
 	o.CA = types.StringValue(oidc.Ca)
 	o.RequiredClaim = types.StringValue(oidc.RequiredClaim)
 
-	if len(oidc.SigningAlgorithms) > 0 {
+	// if we don't have any saved state for these fields, and the API returns empty
+	// set these fields to null so as to match unset HCL
+	if oidcPlan.UsernameClaim.IsNull() && oidc.UsernameClaim == "" {
+		o.UsernameClaim = types.StringNull()
+	}
+
+	if oidcPlan.UsernamePrefix.IsNull() && oidc.UsernamePrefix == "" {
+		o.UsernamePrefix = types.StringNull()
+	}
+
+	if oidcPlan.GroupsClaim.IsNull() && oidc.GroupsClaim == "" {
+		o.GroupsClaim = types.StringNull()
+	}
+
+	if oidcPlan.GroupsPrefix.IsNull() && oidc.GroupsPrefix == "" {
+		o.GroupsPrefix = types.StringNull()
+	}
+
+	if oidcPlan.CA.IsNull() && oidc.Ca == "" {
+		o.CA = types.StringNull()
+	}
+
+	if oidcPlan.RequiredClaim.IsNull() && oidc.RequiredClaim == "" {
+		o.RequiredClaim = types.StringNull()
+	}
+
+	if oidcPlan.SigningAlgs.IsNull() && len(oidc.SigningAlgorithms) == 0 {
+		o.SigningAlgs = types.SetNull(types.StringType)
+	} else {
 		algs := []attr.Value{}
 		for _, a := range oidc.SigningAlgorithms {
 			algs = append(algs, types.StringValue(a.String()))
 		}
 		signingAlgs := types.SetValueMust(types.StringType, algs)
 		o.SigningAlgs = signingAlgs
-	} else {
-		o.SigningAlgs = types.SetNull(types.StringType)
 	}
 }
 
@@ -141,7 +173,8 @@ func (c *ClusterResourceModel) Set(cluster *cksv1beta1.Cluster) {
 	c.Public = types.BoolValue(cluster.Public)
 	c.Status = types.StringValue(cluster.Status.String())
 
-	if cluster.AuditPolicy == "" {
+	// if the plan value is null & the API returns an empty string, do not write to state
+	if cluster.AuditPolicy == "" && c.AuditPolicy.IsNull() {
 		c.AuditPolicy = types.StringNull()
 	} else {
 		c.AuditPolicy = types.StringValue(cluster.AuditPolicy)
@@ -159,26 +192,39 @@ func (c *ClusterResourceModel) Set(cluster *cksv1beta1.Cluster) {
 
 	if !oidcIsEmpty(cluster.Oidc) {
 		oidc := OidcResourceModel{}
-		oidc.Set(cluster.Oidc)
+		oidc.Set(c, cluster.Oidc)
 		c.Oidc = &oidc
 	} else {
 		c.Oidc = nil
 	}
 
-	if !authWebhookEmpty(cluster.AuthnWebhook) {
-		c.AuthNWebhook = &AuthWebhookResourceModel{
+	if !authWebhookEmpty(cluster.AuthnWebhook) && c.AuthNWebhook != nil {
+		authnWebhook := &AuthWebhookResourceModel{
 			Server: types.StringValue(cluster.AuthnWebhook.Server),
 			CA:     types.StringValue(cluster.AuthnWebhook.Ca),
 		}
+
+		// if the plan value is null & the API is empty, do not store an empty string
+		if c.AuthNWebhook.CA.IsNull() && cluster.AuthnWebhook.Ca == "" {
+			authnWebhook.CA = types.StringNull()
+		}
+
+		c.AuthNWebhook = authnWebhook
 	} else {
 		c.AuthNWebhook = nil
 	}
 
-	if !authWebhookEmpty(cluster.AuthzWebhook) {
-		c.AuthZWebhook = &AuthWebhookResourceModel{
+	if !authWebhookEmpty(cluster.AuthzWebhook) && c.AuthZWebhook != nil {
+		authzWebhook := &AuthWebhookResourceModel{
 			Server: types.StringValue(cluster.AuthzWebhook.Server),
 			CA:     types.StringValue(cluster.AuthzWebhook.Ca),
 		}
+
+		// if the plan value is null & the API is empty, do not store an empty string
+		if c.AuthZWebhook.CA.IsNull() && cluster.AuthzWebhook.Ca == "" {
+			authzWebhook.CA = types.StringNull()
+		}
+		c.AuthZWebhook = authzWebhook
 	} else {
 		c.AuthZWebhook = nil
 	}
@@ -201,7 +247,7 @@ func (c *ClusterResourceModel) oidcSigningAlgs(ctx context.Context) []cksv1beta1
 	return result
 }
 
-func (c *ClusterResourceModel) internalLbCidrNames(ctx context.Context) []string {
+func (c *ClusterResourceModel) InternalLbCidrNames(ctx context.Context) []string {
 	lbs := []string{}
 	if c.InternalLBCidrNames.IsNull() {
 		return lbs
@@ -221,7 +267,7 @@ func (c *ClusterResourceModel) ToCreateRequest(ctx context.Context) *cksv1beta1.
 		Network: &cksv1beta1.ClusterNetworkConfig{
 			PodCidrName:         c.PodCidrName.ValueString(),
 			ServiceCidrName:     c.ServiceCidrName.ValueString(),
-			InternalLbCidrNames: c.internalLbCidrNames(ctx),
+			InternalLbCidrNames: c.InternalLbCidrNames(ctx),
 		},
 		AuditPolicy: c.AuditPolicy.ValueString(),
 	}
@@ -264,7 +310,7 @@ func (c *ClusterResourceModel) ToUpdateRequest(ctx context.Context) *cksv1beta1.
 		Version:     c.Version.ValueString(),
 		AuditPolicy: c.AuditPolicy.ValueString(),
 		Network: &cksv1beta1.UpdateClusterRequest_Network{
-			InternalLbCidrNames: c.internalLbCidrNames(ctx),
+			InternalLbCidrNames: c.InternalLbCidrNames(ctx),
 		},
 	}
 
@@ -539,9 +585,6 @@ func (r *ClusterResource) Create(ctx context.Context, req resource.CreateRequest
 		return
 	}
 
-	tflog.Info(ctx, "CREATING CLUSTER", map[string]interface{}{
-		"req": data.ToCreateRequest(ctx).String(),
-	})
 	createResp, err := r.client.CreateCluster(ctx, connect.NewRequest(data.ToCreateRequest(ctx)))
 	if err != nil {
 		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
@@ -605,7 +648,6 @@ func (r *ClusterResource) Create(ctx context.Context, req resource.CreateRequest
 	}
 
 	data.Set(cluster)
-
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -636,7 +678,6 @@ func (r *ClusterResource) Read(ctx context.Context, req resource.ReadRequest, re
 
 func (r *ClusterResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	var data ClusterResourceModel
-
 	// Read Terraform plan data into the model
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
 
@@ -647,14 +688,6 @@ func (r *ClusterResource) Update(ctx context.Context, req resource.UpdateRequest
 	updateResp, err := r.client.UpdateCluster(ctx, connect.NewRequest(data.ToUpdateRequest(ctx)))
 	if err != nil {
 		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
-		return
-	}
-
-	// set state once cluster is updated
-	data.Set(updateResp.Msg.Cluster)
-	// if we fail to set state, return early
-	if diag := resp.State.Set(ctx, &data); diag.HasError() {
-		resp.Diagnostics.Append(diag...)
 		return
 	}
 
@@ -784,6 +817,14 @@ func MustRenderClusterResource(ctx context.Context, resourceName string, cluster
 		resourceBody.SetAttributeValue("audit_policy", cty.StringVal(cluster.AuditPolicy.ValueString()))
 	}
 
+	stringOrNull := func(s types.String) cty.Value {
+		if s.IsNull() || s.IsUnknown() {
+			return cty.NullVal(cty.String)
+		}
+
+		return cty.StringVal(s.ValueString())
+	}
+
 	if cluster.Oidc != nil {
 		signingAlgVals := []cty.Value{}
 		if !cluster.Oidc.SigningAlgs.IsNull() {
@@ -802,14 +843,14 @@ func MustRenderClusterResource(ctx context.Context, resourceName string, cluster
 		}
 
 		resourceBody.SetAttributeValue("oidc", cty.ObjectVal(map[string]cty.Value{
-			"issuer_url":      cty.StringVal(cluster.Oidc.IssuerURL.ValueString()),
-			"client_id":       cty.StringVal(cluster.Oidc.ClientID.ValueString()),
-			"username_claim":  cty.StringVal(cluster.Oidc.UsernameClaim.ValueString()),
-			"username_prefix": cty.StringVal(cluster.Oidc.UsernamePrefix.ValueString()),
-			"groups_claim":    cty.StringVal(cluster.Oidc.GroupsClaim.ValueString()),
-			"groups_prefix":   cty.StringVal(cluster.Oidc.GroupsPrefix.ValueString()),
-			"ca":              cty.StringVal(cluster.Oidc.CA.ValueString()),
-			"required_claim":  cty.StringVal(cluster.Oidc.RequiredClaim.ValueString()),
+			"issuer_url":      stringOrNull(cluster.Oidc.IssuerURL),
+			"client_id":       stringOrNull(cluster.Oidc.ClientID),
+			"username_claim":  stringOrNull(cluster.Oidc.UsernameClaim),
+			"username_prefix": stringOrNull(cluster.Oidc.UsernamePrefix),
+			"groups_claim":    stringOrNull(cluster.Oidc.GroupsClaim),
+			"groups_prefix":   stringOrNull(cluster.Oidc.GroupsPrefix),
+			"ca":              stringOrNull(cluster.Oidc.CA),
+			"required_claim":  stringOrNull(cluster.Oidc.RequiredClaim),
 			"signing_algs":    signingAlgs,
 		}))
 	}
@@ -817,14 +858,14 @@ func MustRenderClusterResource(ctx context.Context, resourceName string, cluster
 	if cluster.AuthNWebhook != nil {
 		resourceBody.SetAttributeValue("authn_webhook", cty.ObjectVal(map[string]cty.Value{
 			"server": cty.StringVal(cluster.AuthNWebhook.Server.ValueString()),
-			"ca":     cty.StringVal(cluster.AuthNWebhook.CA.ValueString()),
+			"ca":     stringOrNull(cluster.AuthNWebhook.CA),
 		}))
 	}
 
 	if cluster.AuthZWebhook != nil {
 		resourceBody.SetAttributeValue("authz_webhook", cty.ObjectVal(map[string]cty.Value{
 			"server": cty.StringVal(cluster.AuthZWebhook.Server.ValueString()),
-			"ca":     cty.StringVal(cluster.AuthZWebhook.CA.ValueString()),
+			"ca":     stringOrNull(cluster.AuthZWebhook.CA),
 		}))
 	}
 
