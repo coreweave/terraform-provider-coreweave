@@ -68,12 +68,54 @@ func init() {
 					log.Printf("skipping Cluster %s because of dry-run mode", cluster.Name)
 					continue
 				}
-				deleteResp, err := client.DeleteCluster(ctx, connect.NewRequest(&cksv1beta1.DeleteClusterRequest{
-					Id: cluster.Id,
-				}))
-				if err != nil {
-					return fmt.Errorf("failed to delete cluster %s: %w", cluster.Name, err)
+
+				deleteCtx, deleteCancel := context.WithTimeout(ctx, 30*time.Minute)
+				defer deleteCancel()
+
+				var deleteResp *connect.Response[cksv1beta1.DeleteClusterResponse]
+				retryDelay := 30 * time.Second
+				for {
+					if cluster.Status == cksv1beta1.Cluster_STATUS_CREATING || cluster.Status == cksv1beta1.Cluster_STATUS_UPDATING || cluster.Status == cksv1beta1.Cluster_STATUS_DELETING {
+						log.Printf("cluster %s is in creating or updating state, waiting before deletion", cluster.Name)
+						select {
+						case <-deleteCtx.Done():
+							return fmt.Errorf("timed out waiting for cluster %s to reach stable state: %w", cluster.Name, deleteCtx.Err())
+						case <-time.After(retryDelay):
+						}
+						clusterResp, err := client.GetCluster(ctx, connect.NewRequest(&cksv1beta1.GetClusterRequest{
+							Id: cluster.Id,
+						}))
+						if connect.CodeOf(err) == connect.CodeNotFound {
+							log.Printf("cluster %s has already been deleted", cluster.Name)
+							break
+						} else if err != nil {
+							return fmt.Errorf("failed to get cluster %s: %w", cluster.Name, err)
+						}
+
+						cluster = clusterResp.Msg.Cluster
+					} else {
+						deleteResp, err = client.DeleteCluster(deleteCtx, connect.NewRequest(&cksv1beta1.DeleteClusterRequest{
+							Id: cluster.Id,
+						}))
+						if err == nil {
+							log.Printf("cluster %s deleted successfully", cluster.Name)
+							break
+						} else if connect.CodeOf(err) == connect.CodeNotFound {
+							log.Printf("cluster %s has already been deleted", cluster.Name)
+							return nil
+						} else {
+							return fmt.Errorf("failed to delete cluster %s: %w", cluster.Name, err)
+						}
+					}
+
+					select {
+					case <-deleteCtx.Done():
+						return fmt.Errorf("timed out waiting to delete cluster %s: %w", cluster.Name, deleteCtx.Err())
+					case <-time.After(retryDelay):
+						continue
+					}
 				}
+
 				deletedCluster := deleteResp.Msg.Cluster
 
 				waitCtx, waitCancel := context.WithTimeout(ctx, 10*time.Minute)

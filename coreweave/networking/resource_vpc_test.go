@@ -69,8 +69,12 @@ func init() {
 				deleteReq := connect.NewRequest(&networkingv1beta1.DeleteVPCRequest{
 					Id: vpc.Id,
 				})
+
 				deleteResp, err := client.DeleteVPC(ctx, deleteReq)
-				if err != nil {
+				if connect.CodeOf(err) == connect.CodeNotFound {
+					log.Printf("VPC %s already deleted", vpc.Name)
+					continue
+				} else if err != nil {
 					return fmt.Errorf("failed to delete VPC %s: %w", vpc.Name, err)
 				}
 				deletedVpc := deleteResp.Msg.Vpc
