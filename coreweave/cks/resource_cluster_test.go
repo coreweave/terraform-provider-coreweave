@@ -259,7 +259,7 @@ func createClusterTestStep(ctx context.Context, t *testing.T, config testStepCon
 
 func TestClusterResource(t *testing.T) {
 	config := generateResourceNames("cks-cluster")
-	zone := testutil.AcceptanceTestZone
+	zone := "US-EAST-04A"
 	kubeVersion := testutil.AcceptanceTestKubeVersion
 
 	vpc := defaultVpc(config.ClusterName, zone)
