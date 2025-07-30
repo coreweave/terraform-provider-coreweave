@@ -13,6 +13,7 @@ import (
 	cksv1beta1 "buf.build/gen/go/coreweave/cks/protocolbuffers/go/coreweave/cks/v1beta1"
 
 	"connectrpc.com/connect"
+	"github.com/coreweave/terraform-provider-coreweave/coreweave"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave/cks"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave/networking"
 	"github.com/coreweave/terraform-provider-coreweave/internal/provider"
@@ -33,6 +34,50 @@ const (
 	ExampleCAB64         = "LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSURnekNDQW11Z0F3SUJBZ0lRVGhhQitUNmdtdVVYN3dXZi9XUitmekFOQmdrcWhraUc5dzBCQVFzRkFEQUEKTUI0WERUSTBNRFl5TlRJeE1UY3pNVm9YRFRJME1Ea3lNekl4TVRjek1Wb3dBRENDQVNJd0RRWUpLb1pJaHZjTgpBUUVCQlFBRGdnRVBBRENDQVFvQ2dnRUJBT240VkVpRWJoL29GRkoxcG1QZXZxb1pBbWtVUjRqeWd5Y0MvRFhCCmVEWjYxd1NzV1FPU21peFg1bDZDd1FXNzdkV3NRVGhsU0RqN003RytxYjZCWHBSUWcrMndJOFVsVHp6Y0NpM0UKN1pib2M2LzI1YXd3NVpLOW1GVWVGWlBWemI4ZHNuVUFkbmFNa2V2ckFGQXNoL0NmSEh0cThzSUZnOVF2SWJnUApNRFJJcnZnSmlGY1NLS1E5clgxOWkzcFY3ZE9UaGxaYW11UWRGUjhGSVgyQ3BVQithajdSWkdMTFFra3AzMzhUCjFTRk5hK3V1THk3Mlh6MldIdEdqOTE5OFVENFFTRzByd2JUYXEvQVdxNjcvblhRS2FOQ2xHYzlGajNRSjU2NEUKK3cvWXBvK1krc053OXY0M1NVSVdyQXRMNGRicHNadlBEK0FKS1RDRXArUExZWlVDQXdFQUFhT0IrRENCOVRBTwpCZ05WSFE4QkFmOEVCQU1DQmFBd0RBWURWUjBUQVFIL0JBSXdBRENCMUFZRFZSMFJBUUgvQklISk1JSEdnaVJsCmVHVmpkWFJ2Y2kxcllYUmhiRzluTFdWNFpXTjFkRzl5TFhKbFkyOXVZMmxzWlhLQ0xHVjRaV04xZEc5eUxXdGgKZEdGc2IyY3RaWGhsWTNWMGIzSXRjbVZqYjI1amFXeGxjaTVyWVhSaGJHOW5nakJsZUdWamRYUnZjaTFyWVhSaApiRzluTFdWNFpXTjFkRzl5TFhKbFkyOXVZMmxzWlhJdWEyRjBZV3h2Wnk1emRtT0NQbVY0WldOMWRHOXlMV3RoCmRHRnNiMmN0WlhobFkzVjBiM0l0Y21WamIyNWphV3hsY2k1cllYUmhiRzluTG5OMll5NWpiSFZ6ZEdWeUxteHYKWTJGc01BMEdDU3FHU0liM0RRRUJDd1VBQTRJQkFRQlEvQ2JBdEFCQkZORUE5d1hYaE9vYUNrRFY1dTc3VFlzMQpFV2FJcFJFNjV5QmVtTDc2eXpYeEtoc2RmR3RJSmJ0THBWS1lUYlpBVTQrem9IS1NVTWs4REY4bXN0dGhOMWQ5CnR6a1d4ZXZ3UGViL2NtMVZVWlBzWkxvNnFRblJRUFJCUXc0dFpWdkhTWmtsSjBVb2lvVk5zOWJJY3ZQZ2Z4UW0KNkhDU3NEWU9sWnlPRHlrY045U21nbFZtVWFNeVkxMGcrL3BWRzg4WkRyLy9zdUI1ZERPaktUcDNGbjRPSGR0VwpnRmpuY3RVOEV4Zk5YNTR1Yndja2ZTMGdiOXRtejcyaHN3OU5KaTV2QXlMS2ZIcmxNNTJTeWhwUVZKbkpPYzF6ClhqQVlLTHE1M1E1TGt3RXBZMXpkL21XdVhkRWswWldZcHlXemk3WWN4UXQreUJkWVNJQzEKLS0tLS1FTkQgQ0VSVElGSUNBVEUtLS0tLQo="
 	AcceptanceTestPrefix = "test-acc-"
 )
+
+func deleteCluster(ctx context.Context, client *coreweave.Client, cluster *cksv1beta1.Cluster) error {
+	retryDelay := 30 * time.Second
+	for {
+		if cluster.Status == cksv1beta1.Cluster_STATUS_CREATING || cluster.Status == cksv1beta1.Cluster_STATUS_UPDATING || cluster.Status == cksv1beta1.Cluster_STATUS_DELETING {
+			log.Printf("cluster %s is in creating or updating state, waiting before deletion", cluster.Name)
+			select {
+			case <-ctx.Done():
+				return fmt.Errorf("timed out waiting for cluster %s to reach stable state: %w", cluster.Name, ctx.Err())
+			case <-time.After(retryDelay):
+			}
+			clusterResp, err := client.GetCluster(ctx, connect.NewRequest(&cksv1beta1.GetClusterRequest{
+				Id: cluster.Id,
+			}))
+			if connect.CodeOf(err) == connect.CodeNotFound {
+				log.Printf("cluster %s has already been deleted", cluster.Name)
+				return nil
+			} else if err != nil {
+				return fmt.Errorf("failed to get cluster %s: %w", cluster.Name, err)
+			}
+
+			cluster = clusterResp.Msg.Cluster
+		} else {
+			_, err := client.DeleteCluster(ctx, connect.NewRequest(&cksv1beta1.DeleteClusterRequest{
+				Id: cluster.Id,
+			}))
+			if err == nil {
+				return nil
+			} else if connect.CodeOf(err) == connect.CodeNotFound {
+				log.Printf("cluster %s has already been deleted", cluster.Name)
+				return nil
+			} else {
+				return fmt.Errorf("failed to delete cluster %s: %w", cluster.Name, err)
+			}
+		}
+
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("timed out waiting to delete cluster %s: %w", cluster.Name, ctx.Err())
+		case <-time.After(retryDelay):
+			continue
+		}
+	}
+}
 
 func init() {
 	resource.AddTestSweepers("coreweave_cks_cluster", &resource.Sweeper{
@@ -68,20 +113,20 @@ func init() {
 					log.Printf("skipping Cluster %s because of dry-run mode", cluster.Name)
 					continue
 				}
-				deleteResp, err := client.DeleteCluster(ctx, connect.NewRequest(&cksv1beta1.DeleteClusterRequest{
-					Id: cluster.Id,
-				}))
-				if err != nil {
+
+				deleteCtx, deleteCancel := context.WithTimeout(ctx, 30*time.Minute)
+				defer deleteCancel()
+
+				if err := deleteCluster(deleteCtx, client, cluster); err != nil {
 					return fmt.Errorf("failed to delete cluster %s: %w", cluster.Name, err)
 				}
-				deletedCluster := deleteResp.Msg.Cluster
 
 				waitCtx, waitCancel := context.WithTimeout(ctx, 10*time.Minute)
 				defer waitCancel()
 				if err := testutil.WaitForDelete(waitCtx, 5*time.Minute, 15*time.Second, client.GetCluster, &cksv1beta1.GetClusterRequest{
-					Id: deletedCluster.Id,
+					Id: cluster.Id,
 				}); err != nil {
-					return fmt.Errorf("failed to wait for cluster %s to be deleted: %w", deletedCluster.Name, err)
+					return fmt.Errorf("failed to wait for cluster %s to be deleted: %w", cluster.Name, err)
 				}
 			}
 
