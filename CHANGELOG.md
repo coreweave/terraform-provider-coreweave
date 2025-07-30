@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.10](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.2.9...v0.2.10) (2025-07-30)
+
+
+### Bug Fixes
+
+* add user-agent header with terraform & provider version ([#117](https://github.com/coreweave/terraform-provider-coreweave/issues/117)) ([1b803c0](https://github.com/coreweave/terraform-provider-coreweave/commit/1b803c0ed7a9e0ab208840e6a416f929bd69547b))
+* state handling bugs for vpc.dhcp & cluster.oidc ([#114](https://github.com/coreweave/terraform-provider-coreweave/issues/114)) ([400587f](https://github.com/coreweave/terraform-provider-coreweave/commit/400587f46bbcfbb8f57dffe5895fba63bdc4d341))
+
 ## [0.2.9](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.2.8...v0.2.9) (2025-06-05)
 
 
