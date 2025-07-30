@@ -109,18 +109,9 @@ func TestClusterSchema(t *testing.T) {
 	}
 }
 
-func TestClusterResource(t *testing.T) {
-	t.Parallel()
-	randomInt := rand.IntN(100)
-	clusterName := fmt.Sprintf("%scks-cluster-%x", AcceptanceTestPrefix, randomInt)
-	resourceName := fmt.Sprintf("test_acc_cks_cluster_%x", randomInt)
-	fullResourceName := fmt.Sprintf("coreweave_cks_cluster.%s", resourceName)
-	fullDataSourceName := fmt.Sprintf("data.coreweave_cks_cluster.%s", resourceName)
-	zone := testutil.AcceptanceTestZone
-	kubeVersion := testutil.AcceptanceTestKubeVersion
-
-	vpc := &networking.VpcResourceModel{
-		Name:       types.StringValue(clusterName),
+func defaultVpc(name, zone string) *networking.VpcResourceModel {
+	return &networking.VpcResourceModel{
+		Name:       types.StringValue(name),
 		Zone:       types.StringValue(zone),
 		HostPrefix: types.StringValue("10.16.192.0/18"),
 		VpcPrefixes: []networking.VpcPrefixResourceModel{
@@ -142,10 +133,141 @@ func TestClusterResource(t *testing.T) {
 			},
 		},
 	}
+}
+
+type resourceNames struct {
+	ClusterName        string
+	ResourceName       string
+	FullResourceName   string
+	FullDataSourceName string
+}
+
+func generateResourceNames(clusterNamePrefix string) resourceNames {
+	randomInt := rand.IntN(100)
+
+	clusterName := fmt.Sprintf("%s%s-%x", AcceptanceTestPrefix, clusterNamePrefix, randomInt)
+	resourceName := fmt.Sprintf("test_acc_cks_cluster_%x", randomInt)
+	fullResourceName := fmt.Sprintf("coreweave_cks_cluster.%s", resourceName)
+	fullDataSourceName := fmt.Sprintf("data.coreweave_cks_cluster.%s", resourceName)
+
+	return resourceNames{
+		ClusterName:        clusterName,
+		ResourceName:       resourceName,
+		FullResourceName:   fullResourceName,
+		FullDataSourceName: fullDataSourceName,
+	}
+}
+
+type testStepConfig struct {
+	TestName         string
+	Resources        resourceNames
+	ConfigPlanChecks resource.ConfigPlanChecks
+	vpc              networking.VpcResourceModel
+	cluster          cks.ClusterResourceModel
+}
+
+func stringOrNull(s types.String) knownvalue.Check {
+	if s.IsNull() || s.IsUnknown() {
+		return knownvalue.Null()
+	}
+
+	return knownvalue.StringExact(s.ValueString())
+}
+
+func createClusterTestStep(ctx context.Context, t *testing.T, config testStepConfig) resource.TestStep {
+	t.Helper()
+	statechecks := []statecheck.StateCheck{
+		// immutable fields
+		statecheck.ExpectKnownValue(config.Resources.FullResourceName, tfjsonpath.New("id"), knownvalue.NotNull()),
+		statecheck.ExpectKnownValue(config.Resources.FullResourceName, tfjsonpath.New("api_server_endpoint"), knownvalue.NotNull()),
+		statecheck.ExpectKnownValue(config.Resources.FullResourceName, tfjsonpath.New("status"), knownvalue.NotNull()),
+		statecheck.ExpectKnownValue(config.Resources.FullResourceName, tfjsonpath.New("vpc_id"), knownvalue.NotNull()),
+		statecheck.ExpectKnownValue(config.Resources.FullResourceName, tfjsonpath.New("version"), knownvalue.StringExact(config.cluster.Version.ValueString())),
+		statecheck.ExpectKnownValue(config.Resources.FullResourceName, tfjsonpath.New("public"), knownvalue.Bool(config.cluster.Public.ValueBool())),
+		statecheck.ExpectKnownValue(config.Resources.FullResourceName, tfjsonpath.New("pod_cidr_name"), knownvalue.StringExact(config.cluster.PodCidrName.ValueString())),
+		statecheck.ExpectKnownValue(config.Resources.FullResourceName, tfjsonpath.New("service_cidr_name"), knownvalue.StringExact(config.cluster.ServiceCidrName.ValueString())),
+	}
+
+	// internal lb cidrs
+	internalLbCidrs := []knownvalue.Check{}
+	for _, c := range config.cluster.InternalLbCidrNames(ctx) {
+		internalLbCidrs = append(internalLbCidrs, knownvalue.StringExact(c))
+	}
+	statechecks = append(statechecks, statecheck.ExpectKnownValue(config.Resources.FullResourceName, tfjsonpath.New("internal_lb_cidr_names"), knownvalue.SetExact(internalLbCidrs)))
+
+	// oidc
+	if config.cluster.Oidc != nil {
+		oidc := map[string]knownvalue.Check{
+			"issuer_url":      stringOrNull(config.cluster.Oidc.IssuerURL),
+			"client_id":       stringOrNull(config.cluster.Oidc.ClientID),
+			"username_claim":  stringOrNull(config.cluster.Oidc.UsernameClaim),
+			"username_prefix": stringOrNull(config.cluster.Oidc.UsernamePrefix),
+			"groups_claim":    stringOrNull(config.cluster.Oidc.GroupsClaim),
+			"groups_prefix":   stringOrNull(config.cluster.Oidc.GroupsPrefix),
+			"ca":              stringOrNull(config.cluster.Oidc.CA),
+			"signing_algs":    knownvalue.SetExact([]knownvalue.Check{knownvalue.StringExact("SIGNING_ALGORITHM_RS256")}),
+			"required_claim":  stringOrNull(config.cluster.Oidc.RequiredClaim),
+		}
+		if len(config.cluster.Oidc.SigningAlgs.Elements()) == 0 {
+			oidc["signing_algs"] = knownvalue.SetSizeExact(0)
+		} else {
+			algs := []types.String{}
+			if diag := config.cluster.Oidc.SigningAlgs.ElementsAs(ctx, &algs, false); diag.HasError() {
+				t.Logf("failed to cast oidc signing algs to string slice: %v", diag.Errors())
+				t.FailNow()
+			}
+
+			checks := []knownvalue.Check{}
+			for _, a := range algs {
+				checks = append(checks, knownvalue.StringExact(a.ValueString()))
+			}
+			oidc["signing_algs"] = knownvalue.SetExact(checks)
+		}
+		statechecks = append(statechecks, statecheck.ExpectKnownValue(config.Resources.FullResourceName, tfjsonpath.New("oidc"), knownvalue.ObjectExact(oidc)))
+	}
+
+	// webhooks
+	if config.cluster.AuthNWebhook != nil {
+		authn := map[string]knownvalue.Check{
+			"server": knownvalue.StringExact(config.cluster.AuthNWebhook.Server.ValueString()),
+			"ca":     stringOrNull(config.cluster.AuthNWebhook.CA),
+		}
+		statechecks = append(statechecks, statecheck.ExpectKnownValue(config.Resources.FullResourceName, tfjsonpath.New("authn_webhook"), knownvalue.ObjectExact(authn)))
+	}
+
+	if config.cluster.AuthZWebhook != nil {
+		authz := map[string]knownvalue.Check{
+			"server": knownvalue.StringExact(config.cluster.AuthZWebhook.Server.ValueString()),
+			"ca":     stringOrNull(config.cluster.AuthZWebhook.CA),
+		}
+		statechecks = append(statechecks, statecheck.ExpectKnownValue(config.Resources.FullResourceName, tfjsonpath.New("authz_webhook"), knownvalue.ObjectExact(authz)))
+	}
+
+	return resource.TestStep{
+		PreConfig: func() {
+			t.Logf("Beginning coreweave_cks_cluster %s test", config.TestName)
+		},
+		// create both the VPC and the cluster, since a cluster must have a VPC
+		Config:           networking.MustRenderVpcResource(ctx, config.Resources.ResourceName, &config.vpc) + "\n" + cks.MustRenderClusterResource(ctx, config.Resources.ResourceName, &config.cluster),
+		ConfigPlanChecks: config.ConfigPlanChecks,
+		Check: resource.ComposeAggregateTestCheckFunc(
+			resource.TestCheckResourceAttr(config.Resources.FullResourceName, "name", config.cluster.Name.ValueString()),
+			resource.TestCheckResourceAttr(config.Resources.FullResourceName, "zone", config.cluster.Zone.ValueString()),
+		),
+		ConfigStateChecks: statechecks,
+	}
+}
+
+func TestClusterResource(t *testing.T) {
+	config := generateResourceNames("cks-cluster")
+	zone := testutil.AcceptanceTestZone
+	kubeVersion := testutil.AcceptanceTestKubeVersion
+
+	vpc := defaultVpc(config.ClusterName, zone)
 
 	initial := &cks.ClusterResourceModel{
-		VpcId:               types.StringValue(fmt.Sprintf("coreweave_networking_vpc.%s.id", resourceName)),
-		Name:                types.StringValue(clusterName),
+		VpcId:               types.StringValue(fmt.Sprintf("coreweave_networking_vpc.%s.id", config.ResourceName)),
+		Name:                types.StringValue(config.ClusterName),
 		Zone:                types.StringValue(zone),
 		Version:             types.StringValue(kubeVersion),
 		Public:              types.BoolValue(false),
@@ -155,12 +277,12 @@ func TestClusterResource(t *testing.T) {
 	}
 
 	dataSource := &cks.ClusterDataSourceModel{
-		Id: types.StringValue(fmt.Sprintf("coreweave_cks_cluster.%s.id", resourceName)),
+		Id: types.StringValue(fmt.Sprintf("coreweave_cks_cluster.%s.id", config.ResourceName)),
 	}
 
 	update := &cks.ClusterResourceModel{
-		VpcId:               types.StringValue(fmt.Sprintf("coreweave_networking_vpc.%s.id", resourceName)),
-		Name:                types.StringValue(clusterName),
+		VpcId:               types.StringValue(fmt.Sprintf("coreweave_networking_vpc.%s.id", config.ResourceName)),
+		Name:                types.StringValue(config.ClusterName),
 		Zone:                types.StringValue(zone),
 		Version:             types.StringValue(kubeVersion),
 		Public:              types.BoolValue(true),
@@ -190,8 +312,8 @@ func TestClusterResource(t *testing.T) {
 	}
 
 	requiresReplace := &cks.ClusterResourceModel{
-		VpcId:               types.StringValue(fmt.Sprintf("coreweave_networking_vpc.%s.id", resourceName)),
-		Name:                types.StringValue(clusterName),
+		VpcId:               types.StringValue(fmt.Sprintf("coreweave_networking_vpc.%s.id", config.ResourceName)),
+		Name:                types.StringValue(config.ClusterName),
 		Zone:                types.StringValue(zone),
 		Version:             types.StringValue(kubeVersion),
 		Public:              types.BoolValue(true),
@@ -202,167 +324,322 @@ func TestClusterResource(t *testing.T) {
 
 	ctx := context.Background()
 
-	resource.Test(t, resource.TestCase{
+	steps := []resource.TestStep{
+		{
+			PreConfig: func() {
+				t.Log("Beginning data source not found test")
+			},
+			Config: strings.Join([]string{
+				fmt.Sprintf(`data "%s" "%s" { id = "%s" }`, "coreweave_cks_cluster", config.ResourceName, "1b5274f2-8012-4b68-9010-cc4c51613302"),
+			}, "\n"),
+			ExpectError: regexp.MustCompile(`(?i)cluster .*not found`),
+		},
+		createClusterTestStep(ctx, t, testStepConfig{
+			TestName: "create",
+			ConfigPlanChecks: resource.ConfigPlanChecks{
+				PreApply: []plancheck.PlanCheck{
+					plancheck.ExpectResourceAction(config.FullResourceName, plancheck.ResourceActionCreate),
+				},
+			},
+			Resources: config,
+			cluster:   *initial,
+			vpc:       *vpc,
+		}),
+		{
+			PreConfig: func() {
+				t.Log("Beginning coreweave_cks_cluster data source test")
+			},
+			Config: strings.Join([]string{
+				networking.MustRenderVpcResource(ctx, config.ResourceName, vpc),
+				cks.MustRenderClusterResource(ctx, config.ResourceName, initial),
+				cks.MustRenderClusterDataSource(ctx, config.ResourceName, dataSource),
+			}, "\n"),
+			ConfigPlanChecks: resource.ConfigPlanChecks{
+				PreApply: []plancheck.PlanCheck{
+					plancheck.ExpectResourceAction(config.FullResourceName, plancheck.ResourceActionNoop),
+				},
+			},
+			Check: resource.ComposeAggregateTestCheckFunc(
+				resource.TestCheckResourceAttrPair(config.FullDataSourceName, "id", config.FullResourceName, "id"),
+			),
+			ConfigStateChecks: []statecheck.StateCheck{
+				statecheck.ExpectKnownValue(config.FullDataSourceName, tfjsonpath.New("name"), knownvalue.StringExact(config.ClusterName)),
+				// Note: for values which are not known at plan time, we need to compare the value pairs instead of expecting a known value.
+				statecheck.CompareValuePairs(config.FullDataSourceName, tfjsonpath.New("id"), config.FullResourceName, tfjsonpath.New("id"), compare.ValuesSame()),
+				statecheck.CompareValuePairs(config.FullDataSourceName, tfjsonpath.New("vpc_id"), config.FullResourceName, tfjsonpath.New("vpc_id"), compare.ValuesSame()),
+				statecheck.ExpectKnownValue(config.FullDataSourceName, tfjsonpath.New("zone"), knownvalue.StringExact(initial.Zone.ValueString())),
+				statecheck.ExpectKnownValue(config.FullDataSourceName, tfjsonpath.New("version"), knownvalue.StringExact(initial.Version.ValueString())),
+				statecheck.ExpectKnownValue(config.FullDataSourceName, tfjsonpath.New("public"), knownvalue.Bool(initial.Public.ValueBool())),
+				statecheck.ExpectKnownValue(config.FullDataSourceName, tfjsonpath.New("pod_cidr_name"), knownvalue.StringExact(initial.PodCidrName.ValueString())),
+				statecheck.ExpectKnownValue(config.FullDataSourceName, tfjsonpath.New("service_cidr_name"), knownvalue.StringExact(initial.ServiceCidrName.ValueString())),
+			},
+		},
+		createClusterTestStep(ctx, t, testStepConfig{
+			TestName: "update",
+			ConfigPlanChecks: resource.ConfigPlanChecks{
+				PreApply: []plancheck.PlanCheck{
+					plancheck.ExpectResourceAction(config.FullResourceName, plancheck.ResourceActionUpdate),
+				},
+			},
+			Resources: config,
+			vpc:       *vpc,
+			cluster:   *update,
+		}),
+		createClusterTestStep(ctx, t, testStepConfig{
+			TestName: "requires replace",
+			ConfigPlanChecks: resource.ConfigPlanChecks{
+				PreApply: []plancheck.PlanCheck{
+					plancheck.ExpectResourceAction(config.FullResourceName, plancheck.ResourceActionDestroyBeforeCreate),
+				},
+			},
+			Resources: config,
+			vpc:       *vpc,
+			cluster:   *requiresReplace,
+		}),
+		{
+			PreConfig: func() {
+				t.Log("Beginning coreweave_cks_cluster import test")
+			},
+			ResourceName:      config.FullResourceName,
+			ImportState:       true,
+			ImportStateVerify: true,
+		},
+	}
+
+	resource.ParallelTest(t, resource.TestCase{
 		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
 		PreCheck: func() {
 			testutil.SetEnvDefaults()
 		},
-		Steps: []resource.TestStep{
-			{
-				PreConfig: func() {
-					t.Log("Beginning data source not found test")
-				},
-				Config: strings.Join([]string{
-					fmt.Sprintf(`data "%s" "%s" { id = "%s" }`, "coreweave_cks_cluster", resourceName, "1b5274f2-8012-4b68-9010-cc4c51613302"),
-				}, "\n"),
-				ExpectError: regexp.MustCompile(`(?i)cluster .*not found`),
-			},
-			{
-				PreConfig: func() {
-					t.Log("Beginning coreweave_cks_cluster create test")
-				},
-				// create both the VPC and the cluster, since a cluster must have a VPC
-				Config: networking.MustRenderVpcResource(ctx, resourceName, vpc) + "\n" + cks.MustRenderClusterResource(ctx, resourceName, initial),
-				ConfigPlanChecks: resource.ConfigPlanChecks{
-					PreApply: []plancheck.PlanCheck{
-						plancheck.ExpectResourceAction(fullResourceName, plancheck.ResourceActionCreate),
-					},
-				},
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr(fullResourceName, "name", initial.Name.ValueString()),
-					resource.TestCheckResourceAttr(fullResourceName, "zone", initial.Zone.ValueString()),
-				),
-				ConfigStateChecks: []statecheck.StateCheck{
-					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("id"), knownvalue.NotNull()),
-					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("api_server_endpoint"), knownvalue.NotNull()),
-					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("status"), knownvalue.NotNull()),
-					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("vpc_id"), knownvalue.NotNull()),
-					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("version"), knownvalue.StringExact(initial.Version.ValueString())),
-					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("public"), knownvalue.Bool(initial.Public.ValueBool())),
-					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("pod_cidr_name"), knownvalue.StringExact(initial.PodCidrName.ValueString())),
-					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("service_cidr_name"), knownvalue.StringExact(initial.ServiceCidrName.ValueString())),
-					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("internal_lb_cidr_names"), knownvalue.SetExact([]knownvalue.Check{
-						knownvalue.StringExact("internal-lb-cidr"),
-					})),
-				},
-			},
-			{
-				PreConfig: func() {
-					t.Log("Beginning coreweave_cks_cluster data source test")
-				},
-				Config: strings.Join([]string{
-					networking.MustRenderVpcResource(ctx, resourceName, vpc),
-					cks.MustRenderClusterResource(ctx, resourceName, initial),
-					cks.MustRenderClusterDataSource(ctx, resourceName, dataSource),
-				}, "\n"),
-				ConfigPlanChecks: resource.ConfigPlanChecks{
-					PreApply: []plancheck.PlanCheck{
-						plancheck.ExpectResourceAction(fullResourceName, plancheck.ResourceActionNoop),
-					},
-				},
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttrPair(fullDataSourceName, "id", fullResourceName, "id"),
-				),
-				ConfigStateChecks: []statecheck.StateCheck{
-					statecheck.ExpectKnownValue(fullDataSourceName, tfjsonpath.New("name"), knownvalue.StringExact(clusterName)),
-					// Note: for values which are not known at plan time, we need to compare the value pairs instead of expecting a known value.
-					statecheck.CompareValuePairs(fullDataSourceName, tfjsonpath.New("id"), fullResourceName, tfjsonpath.New("id"), compare.ValuesSame()),
-					statecheck.CompareValuePairs(fullDataSourceName, tfjsonpath.New("vpc_id"), fullResourceName, tfjsonpath.New("vpc_id"), compare.ValuesSame()),
-					statecheck.ExpectKnownValue(fullDataSourceName, tfjsonpath.New("zone"), knownvalue.StringExact(initial.Zone.ValueString())),
-					statecheck.ExpectKnownValue(fullDataSourceName, tfjsonpath.New("version"), knownvalue.StringExact(initial.Version.ValueString())),
-					statecheck.ExpectKnownValue(fullDataSourceName, tfjsonpath.New("public"), knownvalue.Bool(initial.Public.ValueBool())),
-					statecheck.ExpectKnownValue(fullDataSourceName, tfjsonpath.New("pod_cidr_name"), knownvalue.StringExact(initial.PodCidrName.ValueString())),
-					statecheck.ExpectKnownValue(fullDataSourceName, tfjsonpath.New("service_cidr_name"), knownvalue.StringExact(initial.ServiceCidrName.ValueString())),
-				},
-			},
-			{
-				PreConfig: func() {
-					t.Log("Beginning coreweave_cks_cluster update test")
-				},
-				// create both the VPC and the cluster, since a cluster must have a VPC
-				Config: networking.MustRenderVpcResource(ctx, resourceName, vpc) + "\n" + cks.MustRenderClusterResource(ctx, resourceName, update),
-				ConfigPlanChecks: resource.ConfigPlanChecks{
-					PreApply: []plancheck.PlanCheck{
-						plancheck.ExpectResourceAction(fullResourceName, plancheck.ResourceActionUpdate),
-					},
-				},
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr(fullResourceName, "name", initial.Name.ValueString()),
-					resource.TestCheckResourceAttr(fullResourceName, "zone", initial.Zone.ValueString()),
-				),
-				ConfigStateChecks: []statecheck.StateCheck{
-					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("id"), knownvalue.NotNull()),
-					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("api_server_endpoint"), knownvalue.NotNull()),
-					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("status"), knownvalue.NotNull()),
-					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("vpc_id"), knownvalue.NotNull()),
-					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("version"), knownvalue.StringExact(update.Version.ValueString())),
-					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("public"), knownvalue.Bool(update.Public.ValueBool())),
-					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("pod_cidr_name"), knownvalue.StringExact(update.PodCidrName.ValueString())),
-					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("service_cidr_name"), knownvalue.StringExact(update.ServiceCidrName.ValueString())),
-					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("internal_lb_cidr_names"), knownvalue.SetExact([]knownvalue.Check{
-						knownvalue.StringExact("internal-lb-cidr"),
-						knownvalue.StringExact("internal-lb-cidr-2"),
-					})),
-					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("oidc"), knownvalue.ObjectExact(
-						map[string]knownvalue.Check{
-							"issuer_url":      knownvalue.StringExact(update.Oidc.IssuerURL.ValueString()),
-							"client_id":       knownvalue.StringExact(update.Oidc.ClientID.ValueString()),
-							"username_claim":  knownvalue.StringExact(update.Oidc.UsernameClaim.ValueString()),
-							"username_prefix": knownvalue.StringExact(update.Oidc.UsernamePrefix.ValueString()),
-							"groups_claim":    knownvalue.StringExact(update.Oidc.GroupsClaim.ValueString()),
-							"groups_prefix":   knownvalue.StringExact(update.Oidc.GroupsPrefix.ValueString()),
-							"ca":              knownvalue.StringExact(update.Oidc.CA.ValueString()),
-							"signing_algs":    knownvalue.SetExact([]knownvalue.Check{knownvalue.StringExact("SIGNING_ALGORITHM_RS256")}),
-							"required_claim":  knownvalue.StringExact(update.Oidc.RequiredClaim.ValueString()),
-						},
-					)),
-					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("authn_webhook"), knownvalue.ObjectExact(
-						map[string]knownvalue.Check{
-							"server": knownvalue.StringExact(update.AuthNWebhook.Server.ValueString()),
-							"ca":     knownvalue.StringExact(update.AuthNWebhook.CA.ValueString()),
-						},
-					)),
-					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("authz_webhook"), knownvalue.ObjectExact(
-						map[string]knownvalue.Check{
-							"server": knownvalue.StringExact(update.AuthZWebhook.Server.ValueString()),
-							"ca":     knownvalue.StringExact(update.AuthZWebhook.CA.ValueString()),
-						},
-					)),
-				},
-			},
-			{
-				PreConfig: func() {
-					t.Log("Beginning coreweave_cks_cluster requires replace test")
-				},
-				// create both the VPC and the cluster, since a cluster must have a VPC
-				Config: networking.MustRenderVpcResource(ctx, resourceName, vpc) + "\n" + cks.MustRenderClusterResource(ctx, resourceName, requiresReplace),
-				ConfigPlanChecks: resource.ConfigPlanChecks{
-					PreApply: []plancheck.PlanCheck{
-						plancheck.ExpectResourceAction(fullResourceName, plancheck.ResourceActionDestroyBeforeCreate),
-					},
-				},
-				ConfigStateChecks: []statecheck.StateCheck{
-					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("id"), knownvalue.NotNull()),
-					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("api_server_endpoint"), knownvalue.NotNull()),
-					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("status"), knownvalue.NotNull()),
-					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("vpc_id"), knownvalue.NotNull()),
-					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("version"), knownvalue.StringExact(requiresReplace.Version.ValueString())),
-					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("public"), knownvalue.Bool(requiresReplace.Public.ValueBool())),
-					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("pod_cidr_name"), knownvalue.StringExact(requiresReplace.PodCidrName.ValueString())),
-					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("service_cidr_name"), knownvalue.StringExact(requiresReplace.ServiceCidrName.ValueString())),
-					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("internal_lb_cidr_names"), knownvalue.SetExact([]knownvalue.Check{
-						knownvalue.StringExact("internal-lb-cidr"),
-					})),
-				},
-			},
-			{
-				PreConfig: func() {
-					t.Log("Beginning coreweave_cks_cluster import test")
-				},
-				ResourceName:      fullResourceName,
-				ImportState:       true,
-				ImportStateVerify: true,
-			},
-		},
+		Steps: steps,
 	})
 }
+
+func TestPartialOidcConfig(t *testing.T) {
+	config := generateResourceNames("partial-oidc")
+	zone := "US-EAST-04A"
+	kubeVersion := testutil.AcceptanceTestKubeVersion
+
+	vpc := defaultVpc(config.ClusterName, zone)
+
+	initial := &cks.ClusterResourceModel{
+		VpcId:               types.StringValue(fmt.Sprintf("coreweave_networking_vpc.%s.id", config.ResourceName)),
+		Name:                types.StringValue(config.ClusterName),
+		Zone:                types.StringValue(zone),
+		Version:             types.StringValue(kubeVersion),
+		Public:              types.BoolValue(false),
+		PodCidrName:         types.StringValue("pod-cidr"),
+		ServiceCidrName:     types.StringValue("service-cidr"),
+		InternalLBCidrNames: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr")}),
+		Oidc: &cks.OidcResourceModel{
+			CA:          types.StringNull(),
+			IssuerURL:   types.StringValue("https://samples.auth0.com/"),
+			ClientID:    types.StringValue("kbyuFDidLLm280LIwVFiazOqjO3ty8KH"),
+			SigningAlgs: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("SIGNING_ALGORITHM_RS256")}),
+		},
+	}
+
+	updateToFull := &cks.ClusterResourceModel{
+		VpcId:               types.StringValue(fmt.Sprintf("coreweave_networking_vpc.%s.id", config.ResourceName)),
+		Name:                types.StringValue(config.ClusterName),
+		Zone:                types.StringValue(zone),
+		Version:             types.StringValue(kubeVersion),
+		Public:              types.BoolValue(true),
+		PodCidrName:         types.StringValue("pod-cidr"),
+		ServiceCidrName:     types.StringValue("service-cidr"),
+		InternalLBCidrNames: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr"), types.StringValue("internal-lb-cidr-2")}),
+		AuditPolicy:         types.StringValue(AuditPolicyB64),
+		Oidc: &cks.OidcResourceModel{
+			IssuerURL:      types.StringValue("https://samples.auth0.com/"),
+			ClientID:       types.StringValue("kbyuFDidLLm280LIwVFiazOqjO3ty8KH"),
+			UsernameClaim:  types.StringValue("user_id"),
+			UsernamePrefix: types.StringValue("cw"),
+			GroupsClaim:    types.StringValue("read-only"),
+			GroupsPrefix:   types.StringValue("cw"),
+			CA:             types.StringValue(ExampleCAB64),
+			SigningAlgs:    types.SetValueMust(types.StringType, []attr.Value{types.StringValue("SIGNING_ALGORITHM_RS256")}),
+			RequiredClaim:  types.StringValue("group=admin"),
+		},
+	}
+
+	updateToEmpty := &cks.ClusterResourceModel{
+		VpcId:               types.StringValue(fmt.Sprintf("coreweave_networking_vpc.%s.id", config.ResourceName)),
+		Name:                types.StringValue(config.ClusterName),
+		Zone:                types.StringValue(zone),
+		Version:             types.StringValue(kubeVersion),
+		Public:              types.BoolValue(true),
+		PodCidrName:         types.StringValue("pod-cidr"),
+		ServiceCidrName:     types.StringValue("service-cidr"),
+		InternalLBCidrNames: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr"), types.StringValue("internal-lb-cidr-2")}),
+		AuditPolicy:         types.StringValue(AuditPolicyB64),
+	}
+
+	updateToPartial := &cks.ClusterResourceModel{
+		VpcId:               types.StringValue(fmt.Sprintf("coreweave_networking_vpc.%s.id", config.ResourceName)),
+		Name:                types.StringValue(config.ClusterName),
+		Zone:                types.StringValue(zone),
+		Version:             types.StringValue(kubeVersion),
+		Public:              types.BoolValue(true),
+		PodCidrName:         types.StringValue("pod-cidr"),
+		ServiceCidrName:     types.StringValue("service-cidr"),
+		InternalLBCidrNames: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr"), types.StringValue("internal-lb-cidr-2")}),
+		AuditPolicy:         types.StringValue(AuditPolicyB64),
+		Oidc: &cks.OidcResourceModel{
+			IssuerURL:      types.StringValue("https://samples.auth0.com/"),
+			ClientID:       types.StringValue("kbyuFDidLLm280LIwVFiazOqjO3ty8KH"),
+			UsernameClaim:  types.StringValue("user_id"),
+			UsernamePrefix: types.StringValue("cw"),
+		},
+	}
+
+	ctx := context.Background()
+
+	steps := []resource.TestStep{
+		createClusterTestStep(ctx, t, testStepConfig{
+			TestName: "partial oidc initial",
+			ConfigPlanChecks: resource.ConfigPlanChecks{
+				PreApply: []plancheck.PlanCheck{
+					plancheck.ExpectResourceAction(config.FullResourceName, plancheck.ResourceActionCreate),
+				},
+			},
+			Resources: config,
+			vpc:       *vpc,
+			cluster:   *initial,
+		}),
+		createClusterTestStep(ctx, t, testStepConfig{
+			TestName: "partial oidc update full",
+			ConfigPlanChecks: resource.ConfigPlanChecks{
+				PreApply: []plancheck.PlanCheck{
+					plancheck.ExpectResourceAction(config.FullResourceName, plancheck.ResourceActionUpdate),
+				},
+			},
+			Resources: config,
+			vpc:       *vpc,
+			cluster:   *updateToFull,
+		}),
+		createClusterTestStep(ctx, t, testStepConfig{
+			TestName: "partial oidc update to empty",
+			ConfigPlanChecks: resource.ConfigPlanChecks{
+				PreApply: []plancheck.PlanCheck{
+					plancheck.ExpectResourceAction(config.FullResourceName, plancheck.ResourceActionUpdate),
+				},
+			},
+			Resources: config,
+			vpc:       *vpc,
+			cluster:   *updateToEmpty,
+		}),
+		createClusterTestStep(ctx, t, testStepConfig{
+			TestName: "partial oidc update to partial",
+			ConfigPlanChecks: resource.ConfigPlanChecks{
+				PreApply: []plancheck.PlanCheck{
+					plancheck.ExpectResourceAction(config.FullResourceName, plancheck.ResourceActionUpdate),
+				},
+			},
+			Resources: config,
+			vpc:       *vpc,
+			cluster:   *updateToPartial,
+		}),
+	}
+
+	resource.ParallelTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+		PreCheck: func() {
+			testutil.SetEnvDefaults()
+		},
+		Steps: steps,
+	})
+}
+
+/*
+func TestPartialWebhookConfig(t *testing.T) {
+	config := generateResourceNames("partial-webhook")
+	zone := testutil.AcceptanceTestZone
+	kubeVersion := testutil.AcceptanceTestKubeVersion
+
+	vpc := defaultVpc(config.ClusterName, zone)
+
+	initial := &cks.ClusterResourceModel{
+		VpcId:               types.StringValue(fmt.Sprintf("coreweave_networking_vpc.%s.id", config.ResourceName)),
+		Name:                types.StringValue(config.ClusterName),
+		Zone:                types.StringValue(zone),
+		Version:             types.StringValue(kubeVersion),
+		Public:              types.BoolValue(false),
+		PodCidrName:         types.StringValue("pod-cidr"),
+		ServiceCidrName:     types.StringValue("service-cidr"),
+		InternalLBCidrNames: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr")}),
+		AuthNWebhook: &cks.AuthWebhookResourceModel{
+			Server: types.StringValue("https://samples.auth0.com/"),
+		},
+	}
+
+	updateToFull := &cks.ClusterResourceModel{
+		VpcId:               types.StringValue(fmt.Sprintf("coreweave_networking_vpc.%s.id", config.ResourceName)),
+		Name:                types.StringValue(config.ClusterName),
+		Zone:                types.StringValue(zone),
+		Version:             types.StringValue(kubeVersion),
+		Public:              types.BoolValue(true),
+		PodCidrName:         types.StringValue("pod-cidr"),
+		ServiceCidrName:     types.StringValue("service-cidr"),
+		InternalLBCidrNames: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr"), types.StringValue("internal-lb-cidr-2")}),
+		AuditPolicy:         types.StringValue(AuditPolicyB64),
+		Oidc: &cks.OidcResourceModel{
+			IssuerURL:      types.StringValue("https://samples.auth0.com/"),
+			ClientID:       types.StringValue("kbyuFDidLLm280LIwVFiazOqjO3ty8KH"),
+			UsernameClaim:  types.StringValue("user_id"),
+			UsernamePrefix: types.StringValue("cw"),
+			GroupsClaim:    types.StringValue("read-only"),
+			GroupsPrefix:   types.StringValue("cw"),
+			CA:             types.StringValue(ExampleCAB64),
+			SigningAlgs:    types.SetValueMust(types.StringType, []attr.Value{types.StringValue("SIGNING_ALGORITHM_RS256")}),
+			RequiredClaim:  types.StringValue("group=admin"),
+		},
+		AuthNWebhook: &cks.AuthWebhookResourceModel{
+			Server: types.StringValue("https://samples.auth0.com/"),
+			CA:     types.StringValue(ExampleCAB64),
+		},
+		AuthZWebhook: &cks.AuthWebhookResourceModel{
+			Server: types.StringValue("https://samples.auth0.com/"),
+			CA:     types.StringValue(ExampleCAB64),
+		},
+	}
+
+	updateToPartial := &cks.ClusterResourceModel{
+		VpcId:               types.StringValue(fmt.Sprintf("coreweave_networking_vpc.%s.id", config.ResourceName)),
+		Name:                types.StringValue(config.ClusterName),
+		Zone:                types.StringValue(zone),
+		Version:             types.StringValue(kubeVersion),
+		Public:              types.BoolValue(true),
+		PodCidrName:         types.StringValue("pod-cidr"),
+		ServiceCidrName:     types.StringValue("service-cidr"),
+		InternalLBCidrNames: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr"), types.StringValue("internal-lb-cidr-2")}),
+		AuditPolicy:         types.StringValue(AuditPolicyB64),
+		Oidc: &cks.OidcResourceModel{
+			IssuerURL:      types.StringValue("https://samples.auth0.com/"),
+			ClientID:       types.StringValue("kbyuFDidLLm280LIwVFiazOqjO3ty8KH"),
+			UsernameClaim:  types.StringValue("user_id"),
+			UsernamePrefix: types.StringValue("cw"),
+			GroupsClaim:    types.StringValue("read-only"),
+			GroupsPrefix:   types.StringValue("cw"),
+			SigningAlgs:    types.SetValueMust(types.StringType, []attr.Value{types.StringValue("SIGNING_ALGORITHM_RS256")}),
+		},
+		AuthNWebhook: &cks.AuthWebhookResourceModel{
+			Server: types.StringValue("https://samples.auth0.com/"),
+		},
+		AuthZWebhook: &cks.AuthWebhookResourceModel{
+			Server: types.StringValue("https://samples.auth0.com/"),
+		},
+	}
+
+	updateToEmpty := &cks.ClusterResourceModel{
+		VpcId:               types.StringValue(fmt.Sprintf("coreweave_networking_vpc.%s.id", config.ResourceName)),
+		Name:                types.StringValue(config.ClusterName),
+		Zone:                types.StringValue(zone),
+		Version:             types.StringValue(kubeVersion),
+		Public:              types.BoolValue(true),
+		PodCidrName:         types.StringValue("pod-cidr"),
+		ServiceCidrName:     types.StringValue("service-cidr"),
+		InternalLBCidrNames: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr"), types.StringValue("internal-lb-cidr-2")}),
+		AuditPolicy:         types.StringValue(AuditPolicyB64),
+	}
+}
+*/

@@ -478,14 +478,6 @@ func (r *VpcResource) Update(ctx context.Context, req resource.UpdateRequest, re
 		return
 	}
 
-	// set state once vpc is updated
-	data.Set(updateResp.Msg.Vpc)
-	// if we fail to set state, return early
-	if diag := resp.State.Set(ctx, &data); diag.HasError() {
-		resp.Diagnostics.Append(diag...)
-		return
-	}
-
 	// wait for the vpc to become ready
 	conf := retry.StateChangeConf{
 		Pending: []string{
