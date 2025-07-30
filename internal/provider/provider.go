@@ -102,7 +102,7 @@ func (p *CoreweaveProvider) Configure(ctx context.Context, req provider.Configur
 		return
 	}
 
-	client, err := BuildClient(ctx, data)
+	client, err := BuildClient(ctx, data, req.TerraformVersion, p.version)
 	if err != nil {
 		resp.Diagnostics.AddError("failed to create coreweave client", err.Error())
 		return
@@ -128,7 +128,7 @@ func parseDuration(raw string) (*time.Duration, error) {
 // Builds a CW client using the provided model, including any defaults or environment variables.
 // Returns an error if the token is not provided.
 // Variable precedence: 1) env, 2) config, 3) default/error.
-func BuildClient(ctx context.Context, model CoreweaveProviderModel) (*coreweave.Client, error) {
+func BuildClient(ctx context.Context, model CoreweaveProviderModel, tfVersion, providerVersion string) (*coreweave.Client, error) {
 	endpoint := model.Endpoint.ValueString()
 	token := model.Token.ValueString()
 	httpTimeout := model.HTTPTimeout.ValueString()
@@ -164,16 +164,17 @@ func BuildClient(ctx context.Context, model CoreweaveProviderModel) (*coreweave.
 
 	tflog.Debug(ctx, fmt.Sprintf("using http client timeout: %v", timeout))
 
-	tokenInterceptor := connect.UnaryInterceptorFunc(
+	headerInterceptor := connect.UnaryInterceptorFunc(
 		func(next connect.UnaryFunc) connect.UnaryFunc {
 			return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
 				req.Header().Add("Authorization", fmt.Sprintf("Bearer %s", token))
+				req.Header().Add("User-Agent", fmt.Sprintf("Terraform/%s terraform-provider-coreweave/%s (+https://github.com/coreweave/terraform-provider-coreweave)", tfVersion, providerVersion))
 				return next(ctx, req)
 			}
 		},
 	)
 
-	return coreweave.NewClient(endpoint, timeout, tokenInterceptor), nil
+	return coreweave.NewClient(endpoint, timeout, headerInterceptor), nil
 }
 
 func (p *CoreweaveProvider) Resources(ctx context.Context) []func() resource.Resource {
