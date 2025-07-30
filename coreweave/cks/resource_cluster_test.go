@@ -549,10 +549,9 @@ func TestPartialOidcConfig(t *testing.T) {
 	})
 }
 
-/*
 func TestPartialWebhookConfig(t *testing.T) {
 	config := generateResourceNames("partial-webhook")
-	zone := testutil.AcceptanceTestZone
+	zone := "US-EAST-04A"
 	kubeVersion := testutil.AcceptanceTestKubeVersion
 
 	vpc := defaultVpc(config.ClusterName, zone)
@@ -581,17 +580,6 @@ func TestPartialWebhookConfig(t *testing.T) {
 		ServiceCidrName:     types.StringValue("service-cidr"),
 		InternalLBCidrNames: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr"), types.StringValue("internal-lb-cidr-2")}),
 		AuditPolicy:         types.StringValue(AuditPolicyB64),
-		Oidc: &cks.OidcResourceModel{
-			IssuerURL:      types.StringValue("https://samples.auth0.com/"),
-			ClientID:       types.StringValue("kbyuFDidLLm280LIwVFiazOqjO3ty8KH"),
-			UsernameClaim:  types.StringValue("user_id"),
-			UsernamePrefix: types.StringValue("cw"),
-			GroupsClaim:    types.StringValue("read-only"),
-			GroupsPrefix:   types.StringValue("cw"),
-			CA:             types.StringValue(ExampleCAB64),
-			SigningAlgs:    types.SetValueMust(types.StringType, []attr.Value{types.StringValue("SIGNING_ALGORITHM_RS256")}),
-			RequiredClaim:  types.StringValue("group=admin"),
-		},
 		AuthNWebhook: &cks.AuthWebhookResourceModel{
 			Server: types.StringValue("https://samples.auth0.com/"),
 			CA:     types.StringValue(ExampleCAB64),
@@ -600,6 +588,18 @@ func TestPartialWebhookConfig(t *testing.T) {
 			Server: types.StringValue("https://samples.auth0.com/"),
 			CA:     types.StringValue(ExampleCAB64),
 		},
+	}
+
+	updateToEmpty := &cks.ClusterResourceModel{
+		VpcId:               types.StringValue(fmt.Sprintf("coreweave_networking_vpc.%s.id", config.ResourceName)),
+		Name:                types.StringValue(config.ClusterName),
+		Zone:                types.StringValue(zone),
+		Version:             types.StringValue(kubeVersion),
+		Public:              types.BoolValue(true),
+		PodCidrName:         types.StringValue("pod-cidr"),
+		ServiceCidrName:     types.StringValue("service-cidr"),
+		InternalLBCidrNames: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr"), types.StringValue("internal-lb-cidr-2")}),
+		AuditPolicy:         types.StringValue(AuditPolicyB64),
 	}
 
 	updateToPartial := &cks.ClusterResourceModel{
@@ -629,16 +629,95 @@ func TestPartialWebhookConfig(t *testing.T) {
 		},
 	}
 
-	updateToEmpty := &cks.ClusterResourceModel{
+	ctx := context.Background()
+
+	steps := []resource.TestStep{
+		createClusterTestStep(ctx, t, testStepConfig{
+			TestName: "partial webook initial",
+			ConfigPlanChecks: resource.ConfigPlanChecks{
+				PreApply: []plancheck.PlanCheck{
+					plancheck.ExpectResourceAction(config.FullResourceName, plancheck.ResourceActionCreate),
+				},
+			},
+			Resources: config,
+			vpc:       *vpc,
+			cluster:   *initial,
+		}),
+		createClusterTestStep(ctx, t, testStepConfig{
+			TestName: "partial webhook update full",
+			ConfigPlanChecks: resource.ConfigPlanChecks{
+				PreApply: []plancheck.PlanCheck{
+					plancheck.ExpectResourceAction(config.FullResourceName, plancheck.ResourceActionUpdate),
+				},
+			},
+			Resources: config,
+			vpc:       *vpc,
+			cluster:   *updateToFull,
+		}),
+		createClusterTestStep(ctx, t, testStepConfig{
+			TestName: "partial webook update to empty",
+			ConfigPlanChecks: resource.ConfigPlanChecks{
+				PreApply: []plancheck.PlanCheck{
+					plancheck.ExpectResourceAction(config.FullResourceName, plancheck.ResourceActionUpdate),
+				},
+			},
+			Resources: config,
+			vpc:       *vpc,
+			cluster:   *updateToEmpty,
+		}),
+		createClusterTestStep(ctx, t, testStepConfig{
+			TestName: "partial webook update to partial",
+			ConfigPlanChecks: resource.ConfigPlanChecks{
+				PreApply: []plancheck.PlanCheck{
+					plancheck.ExpectResourceAction(config.FullResourceName, plancheck.ResourceActionUpdate),
+				},
+			},
+			Resources: config,
+			vpc:       *vpc,
+			cluster:   *updateToPartial,
+		}),
+	}
+
+	resource.ParallelTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+		PreCheck: func() {
+			testutil.SetEnvDefaults()
+		},
+		Steps: steps,
+	})
+}
+
+func TestEmptyAuditPolicy(t *testing.T) {
+	config := generateResourceNames("audit-policy")
+	zone := "US-EAST-04A"
+	kubeVersion := testutil.AcceptanceTestKubeVersion
+
+	vpc := defaultVpc(config.ClusterName, zone)
+	cluster := &cks.ClusterResourceModel{
 		VpcId:               types.StringValue(fmt.Sprintf("coreweave_networking_vpc.%s.id", config.ResourceName)),
 		Name:                types.StringValue(config.ClusterName),
 		Zone:                types.StringValue(zone),
 		Version:             types.StringValue(kubeVersion),
-		Public:              types.BoolValue(true),
+		Public:              types.BoolValue(false),
 		PodCidrName:         types.StringValue("pod-cidr"),
 		ServiceCidrName:     types.StringValue("service-cidr"),
-		InternalLBCidrNames: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr"), types.StringValue("internal-lb-cidr-2")}),
-		AuditPolicy:         types.StringValue(AuditPolicyB64),
+		InternalLBCidrNames: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr")}),
+		AuditPolicy:         types.StringValue(""),
 	}
+
+	ctx := context.Background()
+	resource.ParallelTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+		PreCheck: func() {
+			testutil.SetEnvDefaults()
+		},
+		Steps: []resource.TestStep{
+			createClusterTestStep(ctx, t, testStepConfig{
+				TestName:  "empty audit policy",
+				Resources: config,
+				vpc:       *vpc,
+				cluster:   *cluster,
+			}),
+		},
+	})
 }
-*/

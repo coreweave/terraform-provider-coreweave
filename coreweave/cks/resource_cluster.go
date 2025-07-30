@@ -173,7 +173,8 @@ func (c *ClusterResourceModel) Set(cluster *cksv1beta1.Cluster) {
 	c.Public = types.BoolValue(cluster.Public)
 	c.Status = types.StringValue(cluster.Status.String())
 
-	if cluster.AuditPolicy == "" {
+	// if the plan value is null & the API returns an empty string, do not write to state
+	if cluster.AuditPolicy == "" && c.AuditPolicy.IsNull() {
 		c.AuditPolicy = types.StringNull()
 	} else {
 		c.AuditPolicy = types.StringValue(cluster.AuditPolicy)
@@ -197,20 +198,33 @@ func (c *ClusterResourceModel) Set(cluster *cksv1beta1.Cluster) {
 		c.Oidc = nil
 	}
 
-	if !authWebhookEmpty(cluster.AuthnWebhook) {
-		c.AuthNWebhook = &AuthWebhookResourceModel{
+	if !authWebhookEmpty(cluster.AuthnWebhook) && c.AuthNWebhook != nil {
+		authnWebhook := &AuthWebhookResourceModel{
 			Server: types.StringValue(cluster.AuthnWebhook.Server),
 			CA:     types.StringValue(cluster.AuthnWebhook.Ca),
 		}
+
+		// if the plan value is null & the API is empty, do not store an empty string
+		if c.AuthNWebhook.CA.IsNull() && cluster.AuthnWebhook.Ca == "" {
+			authnWebhook.CA = types.StringNull()
+		}
+
+		c.AuthNWebhook = authnWebhook
 	} else {
 		c.AuthNWebhook = nil
 	}
 
-	if !authWebhookEmpty(cluster.AuthzWebhook) {
-		c.AuthZWebhook = &AuthWebhookResourceModel{
+	if !authWebhookEmpty(cluster.AuthzWebhook) && c.AuthZWebhook != nil {
+		authzWebhook := &AuthWebhookResourceModel{
 			Server: types.StringValue(cluster.AuthzWebhook.Server),
 			CA:     types.StringValue(cluster.AuthzWebhook.Ca),
 		}
+
+		// if the plan value is null & the API is empty, do not store an empty string
+		if c.AuthZWebhook.CA.IsNull() && cluster.AuthzWebhook.Ca == "" {
+			authzWebhook.CA = types.StringNull()
+		}
+		c.AuthZWebhook = authzWebhook
 	} else {
 		c.AuthZWebhook = nil
 	}
@@ -803,6 +817,14 @@ func MustRenderClusterResource(ctx context.Context, resourceName string, cluster
 		resourceBody.SetAttributeValue("audit_policy", cty.StringVal(cluster.AuditPolicy.ValueString()))
 	}
 
+	stringOrNull := func(s types.String) cty.Value {
+		if s.IsNull() || s.IsUnknown() {
+			return cty.NullVal(cty.String)
+		}
+
+		return cty.StringVal(s.ValueString())
+	}
+
 	if cluster.Oidc != nil {
 		signingAlgVals := []cty.Value{}
 		if !cluster.Oidc.SigningAlgs.IsNull() {
@@ -818,14 +840,6 @@ func MustRenderClusterResource(ctx context.Context, resourceName string, cluster
 			signingAlgs = cty.SetValEmpty(cty.String)
 		} else {
 			signingAlgs = cty.SetVal(signingAlgVals)
-		}
-
-		stringOrNull := func(s types.String) cty.Value {
-			if s.IsNull() || s.IsUnknown() {
-				return cty.NullVal(cty.String)
-			}
-
-			return cty.StringVal(s.ValueString())
 		}
 
 		resourceBody.SetAttributeValue("oidc", cty.ObjectVal(map[string]cty.Value{
@@ -844,14 +858,14 @@ func MustRenderClusterResource(ctx context.Context, resourceName string, cluster
 	if cluster.AuthNWebhook != nil {
 		resourceBody.SetAttributeValue("authn_webhook", cty.ObjectVal(map[string]cty.Value{
 			"server": cty.StringVal(cluster.AuthNWebhook.Server.ValueString()),
-			"ca":     cty.StringVal(cluster.AuthNWebhook.CA.ValueString()),
+			"ca":     stringOrNull(cluster.AuthNWebhook.CA),
 		}))
 	}
 
 	if cluster.AuthZWebhook != nil {
 		resourceBody.SetAttributeValue("authz_webhook", cty.ObjectVal(map[string]cty.Value{
 			"server": cty.StringVal(cluster.AuthZWebhook.Server.ValueString()),
-			"ca":     cty.StringVal(cluster.AuthZWebhook.CA.ValueString()),
+			"ca":     stringOrNull(cluster.AuthZWebhook.CA),
 		}))
 	}
 
