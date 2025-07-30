@@ -43,7 +43,7 @@ func init() {
 			defer cancel()
 
 			testutil.SetEnvDefaults()
-			client, err := provider.BuildClient(ctx, provider.CoreweaveProviderModel{})
+			client, err := provider.BuildClient(ctx, provider.CoreweaveProviderModel{}, "", "")
 			if err != nil {
 				return fmt.Errorf("failed to build client: %w", err)
 			}
