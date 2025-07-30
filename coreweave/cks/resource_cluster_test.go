@@ -205,7 +205,6 @@ func createClusterTestStep(ctx context.Context, t *testing.T, config testStepCon
 			"groups_claim":    stringOrNull(config.cluster.Oidc.GroupsClaim),
 			"groups_prefix":   stringOrNull(config.cluster.Oidc.GroupsPrefix),
 			"ca":              stringOrNull(config.cluster.Oidc.CA),
-			"signing_algs":    knownvalue.SetExact([]knownvalue.Check{knownvalue.StringExact("SIGNING_ALGORITHM_RS256")}),
 			"required_claim":  stringOrNull(config.cluster.Oidc.RequiredClaim),
 		}
 		if len(config.cluster.Oidc.SigningAlgs.Elements()) == 0 {
