@@ -259,7 +259,7 @@ func createClusterTestStep(ctx context.Context, t *testing.T, config testStepCon
 
 func TestClusterResource(t *testing.T) {
 	config := generateResourceNames("cks-cluster")
-	zone := "US-EAST-04A"
+	zone := testutil.AcceptanceTestZone
 	kubeVersion := testutil.AcceptanceTestKubeVersion
 
 	vpc := defaultVpc(config.ClusterName, zone)
@@ -416,7 +416,7 @@ func TestClusterResource(t *testing.T) {
 
 func TestPartialOidcConfig(t *testing.T) {
 	config := generateResourceNames("partial-oidc")
-	zone := "US-EAST-04A"
+	zone := testutil.AcceptanceTestZone
 	kubeVersion := testutil.AcceptanceTestKubeVersion
 
 	vpc := defaultVpc(config.ClusterName, zone)
@@ -551,7 +551,7 @@ func TestPartialOidcConfig(t *testing.T) {
 
 func TestPartialWebhookConfig(t *testing.T) {
 	config := generateResourceNames("partial-webhook")
-	zone := "US-EAST-04A"
+	zone := testutil.AcceptanceTestZone
 	kubeVersion := testutil.AcceptanceTestKubeVersion
 
 	vpc := defaultVpc(config.ClusterName, zone)
@@ -689,7 +689,7 @@ func TestPartialWebhookConfig(t *testing.T) {
 
 func TestEmptyAuditPolicy(t *testing.T) {
 	config := generateResourceNames("audit-policy")
-	zone := "US-EAST-04A"
+	zone := testutil.AcceptanceTestZone
 	kubeVersion := testutil.AcceptanceTestKubeVersion
 
 	vpc := defaultVpc(config.ClusterName, zone)
