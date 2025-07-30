@@ -11,6 +11,7 @@ import (
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave/cks"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave/networking"
+	objectstorage "github.com/coreweave/terraform-provider-coreweave/coreweave/object_storage"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/function"
 	"github.com/hashicorp/terraform-plugin-framework/provider"
@@ -26,8 +27,10 @@ import (
 const (
 	CoreweaveApiTokenEnvVar     string        = "COREWEAVE_API_TOKEN"
 	CoreweaveApiEndpointEnvVar  string        = "COREWEAVE_API_ENDPOINT"
+	CoreWeaveS3EndpointEnvVar   string        = "COREWEAVE_S3_ENDPOINT"
 	CoreweaveHTTPTimeoutEnvVar  string        = "COREWEAVE_HTTP_TIMEOUT"
 	CoreweaveApiEndpointDefault string        = "https://api.coreweave.com/"
+	CoreWeaveS3EndpointDefault  string        = "https://cwobject.com"
 	DefaultHTTPTimeout          time.Duration = 10 * time.Second
 )
 
@@ -62,6 +65,7 @@ type CoreweaveProvider struct {
 // CoreweaveProviderModel describes the provider data model.
 type CoreweaveProviderModel struct {
 	Endpoint    types.String `tfsdk:"endpoint"`
+	S3Endpoint  types.String `tfsdk:"s3_endpoint"`
 	Token       types.String `tfsdk:"token"`
 	HTTPTimeout types.String `tfsdk:"http_timeout"`
 }
@@ -75,8 +79,18 @@ func (p *CoreweaveProvider) Schema(ctx context.Context, req provider.SchemaReque
 	resp.Schema = schema.Schema{
 		Attributes: map[string]schema.Attribute{
 			"endpoint": schema.StringAttribute{
-				MarkdownDescription: fmt.Sprintf("CoreWeave API Endpoint. This can also be set via the %s environment variable, which takes precedence. Defaults to https://api.coreweave.com/", CoreweaveApiEndpointEnvVar),
+				MarkdownDescription: fmt.Sprintf("CoreWeave API Endpoint. This can also be set via the %s environment variable, which takes precedence. Defaults to %s", CoreweaveApiEndpointEnvVar, CoreweaveApiEndpointDefault),
 				Optional:            true,
+				Validators: []validator.String{
+					uriValidator{},
+				},
+			},
+			"s3_endpoint": schema.StringAttribute{
+				MarkdownDescription: fmt.Sprintf("CoreWeave S3 Endpoint, used for CoreWeave Object Storage. This can also be set via the %s environment variable, which takes precedence. Defaults to %s", CoreWeaveS3EndpointEnvVar, CoreWeaveS3EndpointDefault),
+				Optional:            true,
+				Validators: []validator.String{
+					uriValidator{},
+				},
 			},
 			"token": schema.StringAttribute{
 				MarkdownDescription: fmt.Sprintf("CoreWeave API Token. In the form CW-SECRET-<secret>. This can also be set via the %s environment variable, which takes precedence.", CoreweaveApiTokenEnvVar),
@@ -130,6 +144,7 @@ func parseDuration(raw string) (*time.Duration, error) {
 // Variable precedence: 1) env, 2) config, 3) default/error.
 func BuildClient(ctx context.Context, model CoreweaveProviderModel, tfVersion, providerVersion string) (*coreweave.Client, error) {
 	endpoint := model.Endpoint.ValueString()
+	s3Endpoint := model.S3Endpoint.ValueString()
 	token := model.Token.ValueString()
 	httpTimeout := model.HTTPTimeout.ValueString()
 	timeout := DefaultHTTPTimeout
@@ -146,6 +161,9 @@ func BuildClient(ctx context.Context, model CoreweaveProviderModel, tfVersion, p
 	if endpointFromEnv, ok := os.LookupEnv(CoreweaveApiEndpointEnvVar); ok {
 		endpoint = endpointFromEnv
 	}
+	if s3EndpointFrmEnv, ok := os.LookupEnv(CoreWeaveS3EndpointEnvVar); ok {
+		s3Endpoint = s3EndpointFrmEnv
+	}
 	if timeoutStr, ok := os.LookupEnv(CoreweaveHTTPTimeoutEnvVar); ok {
 		timeoutOverride, err := parseDuration(timeoutStr)
 		if err == nil {
@@ -161,6 +179,9 @@ func BuildClient(ctx context.Context, model CoreweaveProviderModel, tfVersion, p
 	if endpoint == "" {
 		endpoint = CoreweaveApiEndpointDefault
 	}
+	if s3Endpoint == "" {
+		s3Endpoint = CoreWeaveS3EndpointDefault
+	}
 
 	tflog.Debug(ctx, fmt.Sprintf("using http client timeout: %v", timeout))
 
@@ -174,13 +195,14 @@ func BuildClient(ctx context.Context, model CoreweaveProviderModel, tfVersion, p
 		},
 	)
 
-	return coreweave.NewClient(endpoint, timeout, headerInterceptor), nil
+	return coreweave.NewClient(endpoint, s3Endpoint, timeout, headerInterceptor), nil
 }
 
 func (p *CoreweaveProvider) Resources(ctx context.Context) []func() resource.Resource {
 	return []func() resource.Resource{
 		cks.NewClusterResource,
 		networking.NewVpcResource,
+		objectstorage.NewBucketResource,
 	}
 }
 
