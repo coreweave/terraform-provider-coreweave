@@ -114,3 +114,4 @@ linters:
           - errcheck
           - dupl
           - gosec
+          - gocritic
