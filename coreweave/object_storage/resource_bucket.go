@@ -18,7 +18,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"github.com/hashicorp/terraform-plugin-log/tflog"
 
 	s3types "github.com/aws/aws-sdk-go-v2/service/s3/types"
 )
@@ -157,21 +156,13 @@ func waitForBucket(
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
-	tflog.Debug(ctx, "starting retry loop")
-
 	for {
 		select {
 		case <-ctx.Done():
 			return fmt.Errorf("timed out waiting for bucket %q exist=%v: %w", bucket, shouldExist, ctx.Err())
 		case <-ticker.C:
-			tflog.Debug(ctx, fmt.Sprintf("CLIENT REGION: %s", client.Options().Region))
-			tflog.Debug(ctx, "sending head bucket")
 			_, err := client.HeadBucket(ctx, &s3.HeadBucketInput{
 				Bucket: aws.String(bucket),
-			})
-
-			tflog.Debug(ctx, "head bucket complete", map[string]interface{}{
-				"err": err,
 			})
 
 			if shouldExist {
@@ -187,7 +178,6 @@ func waitForBucket(
 				var httpErr *http.ResponseError
 				if errors.As(err, &httpErr) {
 					if httpErr.Response != nil && (httpErr.Response.StatusCode == 400 || httpErr.Response.StatusCode == 404) {
-						tflog.Debug(ctx, "got 4XX response, retrying")
 						continue
 					}
 				}
@@ -208,8 +198,6 @@ func waitForBucket(
 				// any other error (network, permission, etc.) is fatal
 				return err
 			}
-			// still exists, keep waiting
-			tflog.Debug(ctx, "I made it here somehow")
 		}
 	}
 }
@@ -221,11 +209,6 @@ func (b *BucketResource) Create(ctx context.Context, req resource.CreateRequest,
 	if resp.Diagnostics.HasError() {
 		return
 	}
-
-	tflog.Info(ctx, "BUCKET DATA", map[string]interface{}{
-		"zone": data.Zone.ValueString(),
-		"name": data.Name.ValueString(),
-	})
 
 	s3Client, err := b.client.S3Client(ctx, data.Zone.ValueString())
 	if err != nil {
@@ -355,18 +338,11 @@ func (b *BucketResource) Delete(ctx context.Context, req resource.DeleteRequest,
 		return
 	}
 
-	tflog.Info(ctx, "BUCKET DATA", map[string]interface{}{
-		"zone": data.Zone.ValueString(),
-		"name": data.Name.ValueString(),
-	})
-
 	s3Client, err := b.client.S3Client(ctx, data.Zone.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to create S3 client", err.Error())
 		return
 	}
-
-	tflog.Debug(ctx, fmt.Sprintf("CLIENT REGION: %s", s3Client.Options().Region))
 
 	_, err = s3Client.DeleteBucket(ctx, &s3.DeleteBucketInput{
 		Bucket: aws.String(data.Name.ValueString()),
