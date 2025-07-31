@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"sync"
 	"time"
 
 	"buf.build/gen/go/coreweave/cks/connectrpc/go/coreweave/cks/v1beta1/cksv1beta1connect"
@@ -136,6 +137,7 @@ func NewClient(endpoint string, s3Endpoint string, timeout time.Duration, interc
 		VPCServiceClient:     networkingv1beta1connect.NewVPCServiceClient(c, endpoint, connect.WithInterceptors(interceptors...)),
 		CWObjectClient:       cwobjectv1connect.NewCWObjectClient(c, endpoint, connect.WithInterceptors(interceptors...)),
 
+		mu:         new(sync.Mutex),
 		s3Endpoint: s3Endpoint,
 	}
 }
@@ -145,10 +147,13 @@ type Client struct {
 	networkingv1beta1connect.VPCServiceClient
 	cwobjectv1connect.CWObjectClient
 
-	s3Endpoint string
+	mu              *sync.Mutex
+	s3Endpoint      string
+	s3AccessKeyInfo *cwobjectv1.CreateAccessKeyFromJWTResponse
+	s3Client        *s3.Client
 }
 
-func (c *Client) S3Client(ctx context.Context, zone string) (*s3.Client, error) {
+func (c *Client) s3HttpClient() *http.Client {
 	rc := retryablehttp.NewClient()
 	rc.HTTPClient.Timeout = 30 * time.Second
 	// cleanhttp.DefaultTransport disables keep-alives & idle connections
@@ -161,30 +166,64 @@ func (c *Client) S3Client(ctx context.Context, zone string) (*s3.Client, error) 
 	rc.Backoff = retryablehttp.DefaultBackoff
 	// Treat only idempotent verbs + 502/503/504 + transport errors as retryable.
 	rc.CheckRetry = RetryPolicy
-	httpClient := rc.StandardClient()
 
+	return rc.StandardClient()
+}
+
+func (c *Client) createS3Client(ctx context.Context, zone string) (*s3.Client, *cwobjectv1.CreateAccessKeyFromJWTResponse, error) {
 	resp, err := c.CreateAccessKeyFromJWT(ctx, connect.NewRequest(&cwobjectv1.CreateAccessKeyFromJWTRequest{
-		DurationSeconds: wrapperspb.UInt32(600), // 10 minutes
+		DurationSeconds: wrapperspb.UInt32(60 * 15), // 15 minutes
 	}))
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
+	httpClient := c.s3HttpClient()
 	awsConfig, err := config.LoadDefaultConfig(ctx,
 		config.WithHTTPClient(httpClient),
 		config.WithRegion(zone),
 		config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(resp.Msg.AccessKeyId, resp.Msg.SecretKey, "")),
 	)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	s3Client := s3.NewFromConfig(awsConfig, func(o *s3.Options) {
 		o.UsePathStyle = false
 		o.BaseEndpoint = aws.String(c.s3Endpoint)
 	})
+	return s3Client, resp.Msg, nil
+}
 
-	return s3Client, nil
+func (c *Client) S3Client(ctx context.Context, zone string) (*s3.Client, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.s3AccessKeyInfo == nil || c.s3Client == nil {
+		client, keyInfo, err := c.createS3Client(ctx, zone)
+		if err != nil {
+			return nil, err
+		}
+
+		c.s3Client = client
+		c.s3AccessKeyInfo = keyInfo
+		return client, nil
+	}
+
+	// expiry is within 3 minutes from now (or already expired), refresh the client
+	if time.Until(c.s3AccessKeyInfo.Expiry.AsTime()) <= 3*time.Minute {
+		client, keyInfo, err := c.createS3Client(ctx, zone)
+		if err != nil {
+			return nil, err
+		}
+
+		c.s3Client = client
+		c.s3AccessKeyInfo = keyInfo
+		return client, nil
+	}
+
+	// otherwise use the already cached client
+	return c.s3Client, nil
 }
 
 func IsNotFoundError(err error) bool {

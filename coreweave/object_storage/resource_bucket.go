@@ -1,6 +1,7 @@
 package objectstorage
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -12,12 +13,15 @@ import (
 	"github.com/aws/smithy-go"
 	"github.com/aws/smithy-go/transport/http"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
+	"github.com/hashicorp/hcl/v2/hclwrite"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/zclconf/go-cty/cty"
 
 	s3types "github.com/aws/aws-sdk-go-v2/service/s3/types"
 )
@@ -40,6 +44,7 @@ type BucketResource struct {
 type BucketResourceModel struct {
 	Name types.String `tfsdk:"name"`
 	Zone types.String `tfsdk:"zone"`
+	Tags types.Map    `tfsdk:"tags"`
 }
 
 func (b *BucketResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -63,6 +68,11 @@ func (b *BucketResource) Schema(ctx context.Context, req resource.SchemaRequest,
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
 				},
+			},
+			"tags": schema.MapAttribute{
+				Optional:            true,
+				MarkdownDescription: "Map of tags to assign to the bucket.",
+				ElementType:         types.StringType,
 			},
 		},
 	}
@@ -232,12 +242,35 @@ func (b *BucketResource) Create(ctx context.Context, req resource.CreateRequest,
 		return
 	}
 
-	_, err = s3Client.CreateBucket(ctx, &s3.CreateBucketInput{
+	createReq := &s3.CreateBucketInput{
 		Bucket: aws.String(data.Name.ValueString()),
 		CreateBucketConfiguration: &s3types.CreateBucketConfiguration{
 			LocationConstraint: s3types.BucketLocationConstraint(data.Zone.ValueString()),
+			Tags:               []s3types.Tag{},
 		},
-	})
+	}
+
+	if !data.Tags.IsNull() {
+		tags := []s3types.Tag{}
+		tagMap := map[string]string{}
+
+		if diag := data.Tags.ElementsAs(ctx, &tagMap, false); diag.HasError() {
+			detail := diag.Errors()[0].Detail()
+			resp.Diagnostics.AddError("Invalid S3 Bucket Tags", detail)
+			return
+		}
+
+		for key, value := range tagMap {
+			tags = append(tags, s3types.Tag{
+				Key:   aws.String(key),
+				Value: aws.String(value),
+			})
+		}
+
+		createReq.CreateBucketConfiguration.Tags = tags
+	}
+
+	_, err = s3Client.CreateBucket(ctx, createReq)
 	if err != nil {
 		// These two error types are only returned in a situation where a user
 		// tries to create a bucket with the same name but a different zone.
@@ -292,21 +325,15 @@ func (b *BucketResource) Read(ctx context.Context, req resource.ReadRequest, res
 		return
 	}
 
-	_, err = s3Client.HeadBucket(ctx, &s3.HeadBucketInput{
+	tagSet, err := s3Client.GetBucketTagging(ctx, &s3.GetBucketTaggingInput{
 		Bucket: aws.String(data.Name.ValueString()),
 	})
 	if err != nil {
 		var httpErr *http.ResponseError
 		if errors.As(err, &httpErr) && httpErr.Response != nil {
 			// if we get a 404 back from the client, the bucket does not exist & can be removed from state
-			// we don't check 400 here because if we receive that, the bucket is in the process of being created
 			if httpErr.Response.StatusCode == 404 {
 				resp.State.RemoveResource(ctx)
-				return
-			}
-
-			// if the bucket is still creating, return cleanly so that the resource is still reflected in Terraform state
-			if httpErr.Response.StatusCode == 400 {
 				return
 			}
 		}
@@ -315,16 +342,74 @@ func (b *BucketResource) Read(ctx context.Context, req resource.ReadRequest, res
 		return
 	}
 
+	tags := types.MapNull(types.StringType)
+	if len(tagSet.TagSet) > 0 {
+		tagMap := map[string]attr.Value{}
+		for _, t := range tagSet.TagSet {
+			tagMap[*t.Key] = types.StringValue(*t.Value)
+		}
+		tagMapValue, diag := types.MapValue(types.StringType, tagMap)
+		resp.Diagnostics.Append(diag...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+
+		tags = tagMapValue
+	}
+
+	data.Tags = tags
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-// Update is a no-op since the only exposed fields of a bucket are immutable
 func (b *BucketResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	var data BucketResourceModel
-	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
 
 	if resp.Diagnostics.HasError() {
 		return
+	}
+
+	s3Client, err := b.client.S3Client(ctx, data.Zone.ValueString())
+	if err != nil {
+		resp.Diagnostics.AddError("Failed to create S3 client", err.Error())
+		return
+	}
+
+	if !data.Tags.IsNull() {
+		tags := []s3types.Tag{}
+		tagMap := map[string]string{}
+
+		if diag := data.Tags.ElementsAs(ctx, &tagMap, false); diag.HasError() {
+			detail := diag.Errors()[0].Detail()
+			resp.Diagnostics.AddError("Invalid S3 Bucket Tags", detail)
+			return
+		}
+
+		for key, value := range tagMap {
+			tags = append(tags, s3types.Tag{
+				Key:   aws.String(key),
+				Value: aws.String(value),
+			})
+		}
+		_, err = s3Client.PutBucketTagging(ctx, &s3.PutBucketTaggingInput{
+			Bucket: aws.String(data.Name.ValueString()),
+			Tagging: &s3types.Tagging{
+				TagSet: tags,
+			},
+		})
+		if err != nil {
+			handleS3Error(err, &resp.Diagnostics, data.Name.ValueString())
+			return
+		}
+	} else {
+		_, err = s3Client.DeleteBucketTagging(ctx, &s3.DeleteBucketTaggingInput{
+			Bucket: aws.String(data.Name.ValueString()),
+		})
+		if err != nil {
+			handleS3Error(err, &resp.Diagnostics, data.Name.ValueString())
+			return
+		}
+		data.Tags = types.MapNull(types.StringType)
 	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
@@ -366,25 +451,79 @@ func (b *BucketResource) Delete(ctx context.Context, req resource.DeleteRequest,
 }
 
 func (b *BucketResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	// We use 'NOTEMPTY' as the zone here because it doesn't actually matter what it is for cwobject.com
-	// it only matters that it's not empty
-	s3Client, err := b.client.S3Client(ctx, "NOTEMPTY")
+	// We use 'notempty' as the zone here because it doesn't actually matter what region is configured for cwobject.com
+	// it only matters that it's not empty & a valid DNS subdomain
+	s3Client, err := b.client.S3Client(ctx, "notempty")
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to create S3 client", err.Error())
 		return
 	}
 
 	bucket, err := s3Client.GetBucketLocation(ctx, &s3.GetBucketLocationInput{
-		Bucket: func(s string) *string { return &s }(req.ID),
+		Bucket: aws.String(req.ID),
 	})
 	if err != nil {
 		handleS3Error(err, &resp.Diagnostics, req.ID)
 		return
 	}
 
+	bucketTagging, err := s3Client.GetBucketTagging(ctx, &s3.GetBucketTaggingInput{
+		Bucket: aws.String(req.ID),
+	})
+	if err != nil {
+		handleS3Error(err, &resp.Diagnostics, req.ID)
+		return
+	}
+
+	tags := types.MapNull(types.StringType)
+	if len(bucketTagging.TagSet) > 0 {
+		tagMap := map[string]attr.Value{}
+		for _, t := range bucketTagging.TagSet {
+			tagMap[*t.Key] = types.StringValue(*t.Value)
+		}
+		tagMapValue, diag := types.MapValue(types.StringType, tagMap)
+		resp.Diagnostics.Append(diag...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+
+		tags = tagMapValue
+	}
+
 	data := BucketResourceModel{
 		Name: types.StringValue(req.ID),
 		Zone: types.StringValue(string(bucket.LocationConstraint)),
+		Tags: tags,
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+}
+
+// MustRenderBucketResource is a helper to render HCL for use in acceptance testing.
+// It should not be used by clients of this library.
+func MustRenderBucketResource(ctx context.Context, resourceName string, bucket *BucketResourceModel) string {
+	file := hclwrite.NewEmptyFile()
+	body := file.Body()
+
+	resource := body.AppendNewBlock("resource", []string{"coreweave_object_storage_bucket", resourceName})
+	resourceBody := resource.Body()
+
+	resourceBody.SetAttributeValue("name", cty.StringVal(bucket.Name.ValueString()))
+	resourceBody.SetAttributeValue("zone", cty.StringVal(bucket.Zone.ValueString()))
+
+	if !bucket.Tags.IsNull() {
+		tagMap := map[string]string{}
+		bucket.Tags.ElementsAs(ctx, &tagMap, false)
+		tags := map[string]cty.Value{}
+
+		for key, value := range tagMap {
+			tags[key] = cty.StringVal(value)
+		}
+		resourceBody.SetAttributeValue("tags", cty.MapVal(tags))
+	}
+
+	var buf bytes.Buffer
+	if _, err := file.WriteTo(&buf); err != nil {
+		panic(err)
+	}
+	return buf.String()
 }
