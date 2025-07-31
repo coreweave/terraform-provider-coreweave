@@ -69,7 +69,7 @@ func (b *BucketResource) Schema(ctx context.Context, req resource.SchemaRequest,
 	}
 }
 
-func (b *BucketResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+func (b *BucketResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
 	// Prevent panic if the provider has not been configured.
 	if req.ProviderData == nil {
 		return

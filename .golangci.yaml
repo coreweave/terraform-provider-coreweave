@@ -1,0 +1,116 @@
+version: "2"
+run:
+  timeout: 10m
+  relative-path-mode: wd
+
+linters:
+  enable:
+    - gocyclo
+    - misspell
+    - nilerr
+    - unparam
+    - gosec
+    - unused
+    - govet
+    - errorlint
+    - errcheck
+    - dogsled
+    - exhaustive
+    - nestif
+    - goconst
+    - gocritic
+    - revive
+    - makezero
+    - nakedret
+    - prealloc
+    - nolintlint
+    - staticcheck
+    - thelper
+    - whitespace
+
+  settings:
+    errcheck:
+      exclude-functions:
+        - (*http.Response).Body.Close
+        - (io.Closer).Close
+    gocyclo:
+      min-complexity: 25
+
+    misspell:
+      locale: US
+
+    unparam:
+      check-exported: true
+
+    errorlint:
+      errorf: true
+      asserts: true
+      comparison: true
+
+    dogsled:
+      max-blank-identifiers: 2
+
+    exhaustive:
+      default-signifies-exhaustive: false
+
+    nestif:
+      min-complexity: 20
+
+    goconst:
+      min-len: 3
+      min-occurrences: 3
+
+    revive:
+      severity: warning
+
+    makezero:
+      always: false
+
+    nakedret:
+      max-func-lines: 30
+
+    prealloc:
+      simple: true
+      range-loops: true
+      for-loops: false
+
+    nolintlint:
+      allow-unused: false
+      allow-no-explanation: []
+      require-explanation: false
+      require-specific: false
+
+    staticcheck:
+      checks: ["all", "-ST1000"]
+
+    thelper:
+      test:
+        first: true
+        name: true
+        begin: true
+      benchmark:
+        first: true
+        name: true
+        begin: true
+      tb:
+        first: true
+        name: true
+        begin: true
+
+    whitespace:
+      multi-if: false
+      multi-func: false
+
+    lll:
+      line-length: 120
+      tab-width: 1
+
+  exclusions:
+    rules:
+      # Exclude some linters from running on tests files.
+      - path: _test\.go
+        linters:
+          - gocyclo
+          - errcheck
+          - dupl
+          - gosec

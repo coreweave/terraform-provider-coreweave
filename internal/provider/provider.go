@@ -25,11 +25,11 @@ import (
 )
 
 const (
-	CoreweaveApiTokenEnvVar     string        = "COREWEAVE_API_TOKEN"
-	CoreweaveApiEndpointEnvVar  string        = "COREWEAVE_API_ENDPOINT"
+	CoreweaveApiTokenEnvVar     string        = "COREWEAVE_API_TOKEN"    //nolint:gosec,staticcheck
+	CoreweaveApiEndpointEnvVar  string        = "COREWEAVE_API_ENDPOINT" //nolint:gosec,staticcheck
 	CoreWeaveS3EndpointEnvVar   string        = "COREWEAVE_S3_ENDPOINT"
 	CoreweaveHTTPTimeoutEnvVar  string        = "COREWEAVE_HTTP_TIMEOUT"
-	CoreweaveApiEndpointDefault string        = "https://api.coreweave.com/"
+	CoreweaveApiEndpointDefault string        = "https://api.coreweave.com/" //nolint:staticcheck
 	CoreWeaveS3EndpointDefault  string        = "https://cwobject.com"
 	DefaultHTTPTimeout          time.Duration = 10 * time.Second
 )
@@ -139,6 +139,7 @@ func parseDuration(raw string) (*time.Duration, error) {
 	return &parsed, nil
 }
 
+//nolint:staticcheck
 // Builds a CW client using the provided model, including any defaults or environment variables.
 // Returns an error if the token is not provided.
 // Variable precedence: 1) env, 2) config, 3) default/error.

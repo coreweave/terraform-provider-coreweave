@@ -50,14 +50,10 @@ var (
 	notTrustedErrorRe = regexp.MustCompile(`certificate is not trusted`)
 )
 
-func isCertError(err error) bool {
-	_, ok := err.(*tls.CertificateVerificationError)
-	return ok
-}
-
 func baseRetryPolicy(resp *http.Response, err error) (bool, error) {
 	if err != nil {
-		if v, ok := err.(*url.Error); ok {
+		var v *url.Error
+		if errors.Is(err, v) {
 			// Don't retry if the error was due to too many redirects.
 			if redirectsErrorRe.MatchString(v.Error()) {
 				return false, v
@@ -77,7 +73,7 @@ func baseRetryPolicy(resp *http.Response, err error) (bool, error) {
 			if notTrustedErrorRe.MatchString(v.Error()) {
 				return false, v
 			}
-			if isCertError(v.Err) {
+			if errors.Is(v, &tls.CertificateVerificationError{}) {
 				return false, v
 			}
 		}
@@ -167,7 +163,7 @@ func (c *Client) S3Client(ctx context.Context, zone string) (*s3.Client, error) 
 	rc.CheckRetry = RetryPolicy
 	httpClient := rc.StandardClient()
 
-	resp, err := c.CWObjectClient.CreateAccessKeyFromJWT(ctx, connect.NewRequest(&cwobjectv1.CreateAccessKeyFromJWTRequest{
+	resp, err := c.CreateAccessKeyFromJWT(ctx, connect.NewRequest(&cwobjectv1.CreateAccessKeyFromJWTRequest{
 		DurationSeconds: wrapperspb.UInt32(600), // 10 minutes
 	}))
 	if err != nil {
@@ -196,6 +192,7 @@ func IsNotFoundError(err error) bool {
 	return errors.As(err, &connectErr) && connectErr.Code() == connect.CodeNotFound
 }
 
+//nolint:gocyclo
 func HandleAPIError(ctx context.Context, err error, diagnostics *diag.Diagnostics) {
 	// Check if the error is a ConnectRPC error
 	var connectErr *connect.Error
@@ -212,6 +209,7 @@ func HandleAPIError(ctx context.Context, err error, diagnostics *diag.Diagnostic
 
 	details := connectErr.Details()
 
+	//nolint:exhaustive
 	switch connectErr.Code() {
 	case connect.CodeNotFound:
 		for _, d := range details {
