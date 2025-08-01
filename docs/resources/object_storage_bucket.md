@@ -27,6 +27,10 @@ resource "coreweave_object_storage_bucket" "default" {
 - `name` (String) The name of the bucket, must be unique
 - `zone` (String) The Availability Zone in which the bucket is located.
 
+### Optional
+
+- `tags` (Map of String) Map of tags to assign to the bucket.
+
 ## Import
 
 Import is supported using the following syntax:
