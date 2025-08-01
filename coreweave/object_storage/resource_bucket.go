@@ -152,65 +152,39 @@ func handleS3Error(
 //
 // Returns nil on the desired state; any other error (including timeout)
 // is returned directly.
-func waitForBucket(
-	parentCtx context.Context,
-	client *s3.Client,
-	bucket string,
-	shouldExist bool,
-) error {
-	timeout := 5 * time.Minute
-	// derive a timeout from the parent context
-	ctx, cancel := context.WithTimeout(parentCtx, timeout)
-	defer cancel()
-
-	interval := 5 * time.Second
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return fmt.Errorf("timed out waiting for bucket %q exist=%v: %w", bucket, shouldExist, ctx.Err())
-		case <-ticker.C:
-			_, err := client.HeadBucket(ctx, &s3.HeadBucketInput{
-				Bucket: aws.String(bucket),
-			})
-
-			if shouldExist {
-				if err == nil {
-					return nil // bucket now exists
-				}
-
-				// If the bucket does not exist or we do not have permission to access it, the HEAD request returns one of:
-				// - 400 Bad Request
-				// - 403 Forbidden
-				// - 404 Not Found
-				// For our purposes, we will watch only for 400 & 404 since 403 likely means a fatal error that should be surfaced to the client
-				var httpErr *http.ResponseError
-				if errors.As(err, &httpErr) {
-					if httpErr.Response != nil && (httpErr.Response.StatusCode == 400 || httpErr.Response.StatusCode == 404) {
-						continue
-					}
-				}
-
-				// any other error is fatal
-				return err
-			}
-
-			// shouldExist == false: we want it gone
-			if err != nil {
-				var httpErr *http.ResponseError
-				if errors.As(err, &httpErr) {
-					if httpErr.Response != nil && (httpErr.Response.StatusCode == 400 || httpErr.Response.StatusCode == 404) {
-						// bucket now deleted
-						return nil
-					}
-				}
-				// any other error (network, permission, etc.) is fatal
-				return err
-			}
-		}
+func waitForBucket(parentCtx context.Context, client *s3.Client, bucket string, shouldExist bool) error {
+	operation := "bucket creation"
+	if !shouldExist {
+		operation = "bucket deletion"
 	}
+	return pollUntil(operation, parentCtx, 5*time.Second, 5*time.Minute, func(ctx context.Context) (bool, error) {
+		_, err := client.HeadBucket(ctx, &s3.HeadBucketInput{Bucket: aws.String(bucket)})
+
+		// desired state: exists
+		if shouldExist {
+			if err == nil {
+				return true, nil
+			}
+			// retry on “not found” or “bad request”
+			var httpErr *http.ResponseError
+			if errors.As(err, &httpErr) &&
+				(httpErr.Response.StatusCode == 400 || httpErr.Response.StatusCode == 404) {
+				return false, nil
+			}
+			return false, err
+		}
+
+		// desired state: deleted
+		if err != nil {
+			var httpErr *http.ResponseError
+			if errors.As(err, &httpErr) &&
+				(httpErr.Response.StatusCode == 400 || httpErr.Response.StatusCode == 404) {
+				return true, nil
+			}
+			return false, err
+		}
+		return false, nil
+	})
 }
 
 // cmpTag returns -1 if a<b, +1 if a>b, or 0 if equal (nil-safe).
@@ -258,44 +232,20 @@ func eqTag(x, y s3types.Tag) bool {
 	return eqPtr(x.Key, y.Key) && eqPtr(x.Value, y.Value)
 }
 
-// waitForBucketTags polls until the bucket’s tags exactly match expectedTags.
-func waitForBucketTags(parentCtx context.Context, client *s3.Client, bucket string, expectedTags []s3types.Tag) error {
-	// derive a deadline
-	ctx, cancel := context.WithTimeout(parentCtx, 5*time.Minute)
-	defer cancel()
-
-	// make a copy to avoid mutating caller’s slice
-	exp := append([]s3types.Tag(nil), expectedTags...)
-
-	// sort expected once
+func waitForBucketTags(parentCtx context.Context, client *s3.Client, bucket string, expected []s3types.Tag) error {
+	// make a sorted copy of expected
+	exp := append([]s3types.Tag(nil), expected...)
 	slices.SortFunc(exp, cmpTag)
 
-	ticker := time.NewTicker(5 * time.Second)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return fmt.Errorf("timed out waiting for bucket %q tags to propagate: %w", bucket, ctx.Err())
-		case <-ticker.C:
-			out, err := client.GetBucketTagging(ctx, &s3.GetBucketTaggingInput{
-				Bucket: aws.String(bucket),
-			})
-			if err != nil {
-				return err
-			}
-
-			// sort what we got
-			tags := out.TagSet
-			slices.SortFunc(tags, cmpTag)
-
-			// compare sorted slices
-			if slices.EqualFunc(exp, tags, eqTag) {
-				return nil
-			}
-			// else, loop again
+	return pollUntil("bucket tag propagation", parentCtx, 5*time.Second, 5*time.Minute, func(ctx context.Context) (bool, error) {
+		out, err := client.GetBucketTagging(ctx, &s3.GetBucketTaggingInput{Bucket: aws.String(bucket)})
+		if err != nil {
+			return false, err
 		}
-	}
+		tags := out.TagSet
+		slices.SortFunc(tags, cmpTag)
+		return slices.EqualFunc(exp, tags, eqTag), nil
+	})
 }
 
 func (b *BucketResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
