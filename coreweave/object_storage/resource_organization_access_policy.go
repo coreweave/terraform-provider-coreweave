@@ -19,9 +19,9 @@ type PolicyStatementResourceModel struct {
 	// Either "Allow" or "Deny"
 	Effect types.String `tfsdk:"effect"`
 	// Actions this statement covers, e.g. ["s3:GetObject", "s3:PutObject"]
-	Actions types.List `tfsdk:"actions"`
+	Actions types.Set `tfsdk:"actions"`
 	// Resources this statement covers, e.g. ["arn:cwobject:::bucket/*"]
-	Resources types.List `tfsdk:"resources"`
+	Resources types.Set `tfsdk:"resources"`
 	// Principals this statement applies to, e.g. ["coreweave/UserUID"]
-	Principals types.List `tfsdk:"principals"`
+	Principals types.Set `tfsdk:"principals"`
 }

@@ -9,6 +9,7 @@ import (
 	"github.com/coreweave/terraform-provider-coreweave/coreweave/cks"
 	objectstorage "github.com/coreweave/terraform-provider-coreweave/coreweave/object_storage"
 	"github.com/coreweave/terraform-provider-coreweave/internal/provider"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	fwresource "github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
@@ -85,11 +86,6 @@ func TestBucketResource(t *testing.T) {
 	bucketName := fmt.Sprintf("tf-acc-test-bucket-%d", randomInt)
 	zone := "US-EAST-04A"
 
-	initial := objectstorage.BucketResourceModel{
-		Name: types.StringValue(bucketName),
-		Zone: types.StringValue(zone),
-	}
-
 	ctx := context.Background()
 	resource.ParallelTest(t, resource.TestCase{
 		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
@@ -97,13 +93,82 @@ func TestBucketResource(t *testing.T) {
 			createBucketTestStep(ctx, t, bucketTestStep{
 				TestName:     "initial bucket no tags",
 				ResourceName: "test_acc_bucket",
-				Bucket:       initial,
+				Bucket: objectstorage.BucketResourceModel{
+					Name: types.StringValue(bucketName),
+					Zone: types.StringValue(zone),
+				},
 				ConfigPlanChecks: resource.ConfigPlanChecks{
 					PreApply: []plancheck.PlanCheck{
 						plancheck.ExpectResourceAction(fmt.Sprintf("coreweave_object_storage_bucket.%s", "test_acc_bucket"), plancheck.ResourceActionCreate),
 					},
 				},
 			}),
+			createBucketTestStep(ctx, t, bucketTestStep{
+				TestName:     "update with tags",
+				ResourceName: "test_acc_bucket",
+				Bucket: objectstorage.BucketResourceModel{
+					Name: types.StringValue(bucketName),
+					Zone: types.StringValue(zone),
+					Tags: types.MapValueMust(types.StringType, map[string]attr.Value{
+						"test-tag":         types.StringValue("foo"),
+						"another-test-tag": types.StringValue("bar"),
+					}),
+				},
+				ConfigPlanChecks: resource.ConfigPlanChecks{
+					PreApply: []plancheck.PlanCheck{
+						plancheck.ExpectResourceAction(fmt.Sprintf("coreweave_object_storage_bucket.%s", "test_acc_bucket"), plancheck.ResourceActionUpdate),
+					},
+				},
+			}),
+			createBucketTestStep(ctx, t, bucketTestStep{
+				TestName:     "remove tags",
+				ResourceName: "test_acc_bucket",
+				Bucket: objectstorage.BucketResourceModel{
+					Name: types.StringValue(bucketName),
+					Zone: types.StringValue(zone),
+					Tags: types.MapNull(types.StringType),
+				},
+				ConfigPlanChecks: resource.ConfigPlanChecks{
+					PreApply: []plancheck.PlanCheck{
+						plancheck.ExpectResourceAction(fmt.Sprintf("coreweave_object_storage_bucket.%s", "test_acc_bucket"), plancheck.ResourceActionUpdate),
+					},
+				},
+			}),
+			createBucketTestStep(ctx, t, bucketTestStep{
+				TestName:     "requires replace zone",
+				ResourceName: "test_acc_bucket",
+				Bucket: objectstorage.BucketResourceModel{
+					Name: types.StringValue(bucketName),
+					Zone: types.StringValue("US-EAST-02A"),
+				},
+				ConfigPlanChecks: resource.ConfigPlanChecks{
+					PreApply: []plancheck.PlanCheck{
+						plancheck.ExpectResourceAction(fmt.Sprintf("coreweave_object_storage_bucket.%s", "test_acc_bucket"), plancheck.ResourceActionDestroyBeforeCreate),
+					},
+				},
+			}),
+			createBucketTestStep(ctx, t, bucketTestStep{
+				TestName:     "requires replace name",
+				ResourceName: "test_acc_bucket",
+				Bucket: objectstorage.BucketResourceModel{
+					Name: types.StringValue(fmt.Sprintf("tf-acc-test-requires-replace-%d", randomInt)),
+					Zone: types.StringValue("US-EAST-02A"),
+				},
+				ConfigPlanChecks: resource.ConfigPlanChecks{
+					PreApply: []plancheck.PlanCheck{
+						plancheck.ExpectResourceAction(fmt.Sprintf("coreweave_object_storage_bucket.%s", "test_acc_bucket"), plancheck.ResourceActionDestroyBeforeCreate),
+					},
+				},
+			}),
+			{
+				PreConfig: func() {
+					t.Log("Beginning coreweave_object_storage_bucket import test")
+				},
+				ResourceName:                         fmt.Sprintf("coreweave_object_storage_bucket.%s", "test_acc_bucket"),
+				ImportState:                          true,
+				ImportStateVerifyIdentifierAttribute: "name",
+				ImportStateId:                        fmt.Sprintf("tf-acc-test-requires-replace-%d", randomInt),
+			},
 		},
 	})
 }

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"slices"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -212,6 +213,91 @@ func waitForBucket(
 	}
 }
 
+// cmpTag returns -1 if a<b, +1 if a>b, or 0 if equal (nil-safe).
+func cmpTag(a, b s3types.Tag) int {
+	// Key
+	switch {
+	case a.Key == nil && b.Key != nil:
+		return -1
+	case a.Key != nil && b.Key == nil:
+		return 1
+	case a.Key != nil && b.Key != nil:
+		if *a.Key < *b.Key {
+			return -1
+		} else if *a.Key > *b.Key {
+			return 1
+		}
+	}
+	// Value
+	switch {
+	case a.Value == nil && b.Value != nil:
+		return -1
+	case a.Value != nil && b.Value == nil:
+		return 1
+	case a.Value != nil && b.Value != nil:
+		if *a.Value < *b.Value {
+			return -1
+		} else if *a.Value > *b.Value {
+			return 1
+		}
+	}
+	return 0
+}
+
+// eqTag returns true if tags are identical (nil-safe).
+func eqTag(x, y s3types.Tag) bool {
+	var eqPtr = func(a, b *string) bool {
+		if a == b {
+			return true
+		}
+		if a == nil || b == nil {
+			return false
+		}
+		return *a == *b
+	}
+	return eqPtr(x.Key, y.Key) && eqPtr(x.Value, y.Value)
+}
+
+// waitForBucketTags polls until the bucket’s tags exactly match expectedTags.
+func waitForBucketTags(parentCtx context.Context, client *s3.Client, bucket string, expectedTags []s3types.Tag) error {
+	// derive a deadline
+	ctx, cancel := context.WithTimeout(parentCtx, 5*time.Minute)
+	defer cancel()
+
+	// make a copy to avoid mutating caller’s slice
+	exp := append([]s3types.Tag(nil), expectedTags...)
+
+	// sort expected once
+	slices.SortFunc(exp, cmpTag)
+
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("timed out waiting for bucket %q tags to propagate: %w", bucket, ctx.Err())
+		case <-ticker.C:
+			out, err := client.GetBucketTagging(ctx, &s3.GetBucketTaggingInput{
+				Bucket: aws.String(bucket),
+			})
+			if err != nil {
+				return err
+			}
+
+			// sort what we got
+			tags := out.TagSet
+			slices.SortFunc(tags, cmpTag)
+
+			// compare sorted slices
+			if slices.EqualFunc(exp, tags, eqTag) {
+				return nil
+			}
+			// else, loop again
+		}
+	}
+}
+
 func (b *BucketResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var data BucketResourceModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
@@ -380,8 +466,7 @@ func (b *BucketResource) Update(ctx context.Context, req resource.UpdateRequest,
 		tagMap := map[string]string{}
 
 		if diag := data.Tags.ElementsAs(ctx, &tagMap, false); diag.HasError() {
-			detail := diag.Errors()[0].Detail()
-			resp.Diagnostics.AddError("Invalid S3 Bucket Tags", detail)
+			resp.Diagnostics.Append(diag...)
 			return
 		}
 
@@ -401,6 +486,11 @@ func (b *BucketResource) Update(ctx context.Context, req resource.UpdateRequest,
 			handleS3Error(err, &resp.Diagnostics, data.Name.ValueString())
 			return
 		}
+
+		if err := waitForBucketTags(ctx, s3Client, data.Name.ValueString(), tags); err != nil {
+			handleS3Error(err, &resp.Diagnostics, data.Name.ValueString())
+			return
+		}
 	} else {
 		_, err = s3Client.DeleteBucketTagging(ctx, &s3.DeleteBucketTaggingInput{
 			Bucket: aws.String(data.Name.ValueString()),
@@ -409,6 +499,12 @@ func (b *BucketResource) Update(ctx context.Context, req resource.UpdateRequest,
 			handleS3Error(err, &resp.Diagnostics, data.Name.ValueString())
 			return
 		}
+
+		if err := waitForBucketTags(ctx, s3Client, data.Name.ValueString(), []s3types.Tag{}); err != nil {
+			handleS3Error(err, &resp.Diagnostics, data.Name.ValueString())
+			return
+		}
+
 		data.Tags = types.MapNull(types.StringType)
 	}
 
