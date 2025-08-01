@@ -1,12 +1,14 @@
 package objectstorage
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 
 	cwobjectv1 "buf.build/gen/go/coreweave/cwobject/protocolbuffers/go/cwobject/v1"
 	"connectrpc.com/connect"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
+	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -16,6 +18,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/zclconf/go-cty/cty"
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
@@ -365,4 +368,56 @@ func (e effectValidator) ValidateString(_ context.Context, req validator.StringR
 			),
 		)
 	}
+}
+
+// MustRenderOrganizationAccessPolicy is a helper to render HCL for use in acceptance testing.
+// It should not be used by clients of this library.
+func MustRenderOrganizationAccessPolicy(ctx context.Context, resourceName string, policy *OrganizationAccessPolicyResourceModel) string {
+	file := hclwrite.NewEmptyFile()
+	body := file.Body()
+
+	resource := body.AppendNewBlock("resource", []string{"coreweave_object_storage_organization_access_policy", resourceName})
+	resourceBody := resource.Body()
+
+	resourceBody.SetAttributeValue("name", cty.StringVal(policy.Name.ValueString()))
+
+	statements := []cty.Value{}
+	for _, s := range policy.Statements {
+		actionsSlice := []string{}
+		s.Actions.ElementsAs(ctx, &actionsSlice, false)
+		actions := []cty.Value{}
+		for _, a := range actionsSlice {
+			actions = append(actions, cty.StringVal(a))
+		}
+
+		resourcesSlice := []string{}
+		s.Resources.ElementsAs(ctx, &resourcesSlice, false)
+		resources := []cty.Value{}
+		for _, a := range resourcesSlice {
+			resources = append(resources, cty.StringVal(a))
+		}
+
+		principalsSlice := []string{}
+		s.Principals.ElementsAs(ctx, &principalsSlice, false)
+		principals := []cty.Value{}
+		for _, a := range principalsSlice {
+			principals = append(principals, cty.StringVal(a))
+		}
+
+		statements = append(statements, cty.ObjectVal(map[string]cty.Value{
+			"name":       cty.StringVal(s.Name.ValueString()),
+			"effect":     cty.StringVal(s.Effect.ValueString()),
+			"actions":    cty.SetVal(actions),
+			"resources":  cty.SetVal(resources),
+			"principals": cty.SetVal(principals),
+		}))
+	}
+
+	resourceBody.SetAttributeValue("statements", cty.ListVal(statements))
+
+	var buf bytes.Buffer
+	if _, err := file.WriteTo(&buf); err != nil {
+		panic(err)
+	}
+	return buf.String()
 }

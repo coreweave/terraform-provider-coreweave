@@ -6,7 +6,6 @@ import (
 	"math/rand/v2"
 	"testing"
 
-	"github.com/coreweave/terraform-provider-coreweave/coreweave/cks"
 	objectstorage "github.com/coreweave/terraform-provider-coreweave/coreweave/object_storage"
 	"github.com/coreweave/terraform-provider-coreweave/internal/provider"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
@@ -25,7 +24,7 @@ func TestBucketSchema(t *testing.T) {
 	schemaRequest := fwresource.SchemaRequest{}
 	schemaResponse := &fwresource.SchemaResponse{}
 
-	cks.NewClusterResource().Schema(ctx, schemaRequest, schemaResponse)
+	objectstorage.NewBucketResource().Schema(ctx, schemaRequest, schemaResponse)
 
 	if schemaResponse.Diagnostics.HasError() {
 		t.Fatalf("Schema method diagnostics: %+v", schemaResponse.Diagnostics)
