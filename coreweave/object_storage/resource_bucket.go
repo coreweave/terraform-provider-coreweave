@@ -313,7 +313,7 @@ func (b *BucketResource) Create(ctx context.Context, req resource.CreateRequest,
 	}
 
 	// check if bucket already exists - we need to HeadBucket here because the cwobject API only errors
-	// if you try to create a bucket with the same name in the same zone.
+	// if you try to create a bucket with the same name in a different zone.
 	// If a CreateBucket request is sent for a name/zone combo that already exists, it will succeed.
 	// So we HeadBucket here and check if the request succeeds; if it does, error and tell the user the bucket already exists
 	// so they can import the existing state
@@ -428,6 +428,23 @@ func (b *BucketResource) Read(ctx context.Context, req resource.ReadRequest, res
 		return
 	}
 
+	location, err := s3Client.GetBucketLocation(ctx, &s3.GetBucketLocationInput{
+		Bucket: aws.String(data.Name.ValueString()),
+	})
+	if err != nil {
+		var httpErr *http.ResponseError
+		if errors.As(err, &httpErr) && httpErr.Response != nil {
+			// if we get a 404 back from the client, the bucket does not exist & can be removed from state
+			if httpErr.Response.StatusCode == 404 {
+				resp.State.RemoveResource(ctx)
+				return
+			}
+		}
+
+		handleS3Error(err, &resp.Diagnostics, data.Name.ValueString())
+		return
+	}
+
 	tags := types.MapNull(types.StringType)
 	if len(tagSet.TagSet) > 0 {
 		tagMap := map[string]attr.Value{}
@@ -443,6 +460,7 @@ func (b *BucketResource) Read(ctx context.Context, req resource.ReadRequest, res
 		tags = tagMapValue
 	}
 
+	data.Zone = types.StringValue(string(location.LocationConstraint))
 	data.Tags = tags
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
