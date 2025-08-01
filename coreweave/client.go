@@ -2,122 +2,20 @@ package coreweave
 
 import (
 	"context"
-	"crypto/tls"
 	"errors"
 	"fmt"
-	"net/http"
-	"net/url"
-	"regexp"
-	"sync"
 	"time"
 
 	"buf.build/gen/go/coreweave/cks/connectrpc/go/coreweave/cks/v1beta1/cksv1beta1connect"
 	"buf.build/gen/go/coreweave/cwobject/connectrpc/go/cwobject/v1/cwobjectv1connect"
-	cwobjectv1 "buf.build/gen/go/coreweave/cwobject/protocolbuffers/go/cwobject/v1"
 	"buf.build/gen/go/coreweave/networking/connectrpc/go/coreweave/networking/v1beta1/networkingv1beta1connect"
 	"connectrpc.com/connect"
 
-	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/config"
-	"github.com/aws/aws-sdk-go-v2/credentials"
-	"github.com/aws/aws-sdk-go-v2/service/s3"
-	"github.com/hashicorp/go-cleanhttp"
 	retryablehttp "github.com/hashicorp/go-retryablehttp"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
-	"google.golang.org/protobuf/types/known/wrapperspb"
 )
-
-var (
-	// A regular expression to match the error returned by net/http when the
-	// configured number of redirects is exhausted. This error isn't typed
-	// specifically so we resort to matching on the error string.
-	redirectsErrorRe = regexp.MustCompile(`stopped after \d+ redirects\z`)
-
-	// A regular expression to match the error returned by net/http when the
-	// scheme specified in the URL is invalid. This error isn't typed
-	// specifically so we resort to matching on the error string.
-	schemeErrorRe = regexp.MustCompile(`unsupported protocol scheme`)
-
-	// A regular expression to match the error returned by net/http when a
-	// request header or value is invalid. This error isn't typed
-	// specifically so we resort to matching on the error string.
-	invalidHeaderErrorRe = regexp.MustCompile(`invalid header`)
-
-	// A regular expression to match the error returned by net/http when the
-	// TLS certificate is not trusted. This error isn't typed
-	// specifically so we resort to matching on the error string.
-	notTrustedErrorRe = regexp.MustCompile(`certificate is not trusted`)
-)
-
-func baseRetryPolicy(resp *http.Response, err error) (bool, error) {
-	if err != nil {
-		var v *url.Error
-		if errors.Is(err, v) {
-			// Don't retry if the error was due to too many redirects.
-			if redirectsErrorRe.MatchString(v.Error()) {
-				return false, v
-			}
-
-			// Don't retry if the error was due to an invalid protocol scheme.
-			if schemeErrorRe.MatchString(v.Error()) {
-				return false, v
-			}
-
-			// Don't retry if the error was due to an invalid header.
-			if invalidHeaderErrorRe.MatchString(v.Error()) {
-				return false, v
-			}
-
-			// Don't retry if the error was due to TLS cert verification failure.
-			if notTrustedErrorRe.MatchString(v.Error()) {
-				return false, v
-			}
-			if errors.Is(v, &tls.CertificateVerificationError{}) {
-				return false, v
-			}
-		}
-
-		// The error is likely recoverable so retry.
-		return true, nil
-	}
-
-	// 429 Too Many Requests is recoverable. Sometimes the server puts
-	// a Retry-After response header to indicate when the server is
-	// available to start processing request from client.
-	if resp.StatusCode == http.StatusTooManyRequests {
-		return true, nil
-	}
-
-	// Check the response code. We retry on 500-range responses to allow
-	// the server time to recover, as 500's are typically not permanent
-	// errors and may relate to outages on the server side. This will catch
-	// invalid response codes as well, like 0 and 999.
-	if resp.StatusCode == 0 || (resp.StatusCode >= 500 && resp.StatusCode != http.StatusNotImplemented) {
-		return true, fmt.Errorf("unexpected HTTP status %s", resp.Status)
-	}
-
-	return false, nil
-}
-
-func RetryPolicy(ctx context.Context, resp *http.Response, err error) (bool, error) {
-	if ctx.Err() != nil {
-		// do not retry on context.Canceled errors
-		if errors.Is(ctx.Err(), context.Canceled) {
-			return false, ctx.Err()
-		}
-
-		// context.DeadlineExceeded is retried to handle intermittent timeouts
-		return true, ctx.Err()
-	}
-
-	if errors.Is(err, context.DeadlineExceeded) {
-		return true, err
-	}
-
-	return baseRetryPolicy(resp, err)
-}
 
 func NewClient(endpoint string, s3Endpoint string, timeout time.Duration, interceptors ...connect.Interceptor) *Client {
 	rc := retryablehttp.NewClient()
@@ -137,7 +35,6 @@ func NewClient(endpoint string, s3Endpoint string, timeout time.Duration, interc
 		VPCServiceClient:     networkingv1beta1connect.NewVPCServiceClient(c, endpoint, connect.WithInterceptors(interceptors...)),
 		CWObjectClient:       cwobjectv1connect.NewCWObjectClient(c, endpoint, connect.WithInterceptors(interceptors...)),
 
-		mu:         new(sync.Mutex),
 		s3Endpoint: s3Endpoint,
 	}
 }
@@ -147,83 +44,7 @@ type Client struct {
 	networkingv1beta1connect.VPCServiceClient
 	cwobjectv1connect.CWObjectClient
 
-	mu              *sync.Mutex
-	s3Endpoint      string
-	s3AccessKeyInfo *cwobjectv1.CreateAccessKeyFromJWTResponse
-	s3Client        *s3.Client
-}
-
-func (c *Client) s3HttpClient() *http.Client {
-	rc := retryablehttp.NewClient()
-	rc.HTTPClient.Timeout = 30 * time.Second
-	// cleanhttp.DefaultTransport disables keep-alives & idle connections
-	// this helps us avoid S3 DNS caching, which can make creating/deleting buckets inconsistent
-	rc.HTTPClient.Transport = cleanhttp.DefaultTransport()
-	rc.RetryMax = 10
-	rc.RetryWaitMin = 200 * time.Millisecond
-	rc.RetryWaitMax = 5 * time.Second
-	// Jittered exponential back-off (min*2^n) with capping.
-	rc.Backoff = retryablehttp.DefaultBackoff
-	// Treat only idempotent verbs + 502/503/504 + transport errors as retryable.
-	rc.CheckRetry = RetryPolicy
-
-	return rc.StandardClient()
-}
-
-func (c *Client) createS3Client(ctx context.Context, zone string) (*s3.Client, *cwobjectv1.CreateAccessKeyFromJWTResponse, error) {
-	resp, err := c.CreateAccessKeyFromJWT(ctx, connect.NewRequest(&cwobjectv1.CreateAccessKeyFromJWTRequest{
-		DurationSeconds: wrapperspb.UInt32(60 * 15), // 15 minutes
-	}))
-	if err != nil {
-		return nil, nil, err
-	}
-
-	httpClient := c.s3HttpClient()
-	awsConfig, err := config.LoadDefaultConfig(ctx,
-		config.WithHTTPClient(httpClient),
-		config.WithRegion(zone),
-		config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(resp.Msg.AccessKeyId, resp.Msg.SecretKey, "")),
-	)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	s3Client := s3.NewFromConfig(awsConfig, func(o *s3.Options) {
-		o.UsePathStyle = false
-		o.BaseEndpoint = aws.String(c.s3Endpoint)
-	})
-	return s3Client, resp.Msg, nil
-}
-
-func (c *Client) S3Client(ctx context.Context, zone string) (*s3.Client, error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	if c.s3AccessKeyInfo == nil || c.s3Client == nil {
-		client, keyInfo, err := c.createS3Client(ctx, zone)
-		if err != nil {
-			return nil, err
-		}
-
-		c.s3Client = client
-		c.s3AccessKeyInfo = keyInfo
-		return client, nil
-	}
-
-	// expiry is within 3 minutes from now (or already expired), refresh the client
-	if time.Until(c.s3AccessKeyInfo.Expiry.AsTime()) <= 3*time.Minute {
-		client, keyInfo, err := c.createS3Client(ctx, zone)
-		if err != nil {
-			return nil, err
-		}
-
-		c.s3Client = client
-		c.s3AccessKeyInfo = keyInfo
-		return client, nil
-	}
-
-	// otherwise use the already cached client
-	return c.s3Client, nil
+	s3Endpoint string
 }
 
 func IsNotFoundError(err error) bool {

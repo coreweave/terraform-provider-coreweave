@@ -121,6 +121,7 @@ func (p *CoreweaveProvider) Configure(ctx context.Context, req provider.Configur
 		resp.Diagnostics.AddError("failed to create coreweave client", err.Error())
 		return
 	}
+
 	resp.DataSourceData = client
 	resp.ResourceData = client
 }
@@ -139,10 +140,11 @@ func parseDuration(raw string) (*time.Duration, error) {
 	return &parsed, nil
 }
 
-//nolint:staticcheck
 // Builds a CW client using the provided model, including any defaults or environment variables.
 // Returns an error if the token is not provided.
 // Variable precedence: 1) env, 2) config, 3) default/error.
+//
+//nolint:staticcheck
 func BuildClient(ctx context.Context, model CoreweaveProviderModel, tfVersion, providerVersion string) (*coreweave.Client, error) {
 	endpoint := model.Endpoint.ValueString()
 	s3Endpoint := model.S3Endpoint.ValueString()
