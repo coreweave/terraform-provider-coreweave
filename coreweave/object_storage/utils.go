@@ -3,6 +3,7 @@ package objectstorage
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
@@ -55,14 +56,15 @@ func (e atLeastOneElementSetValidator) ValidateSet(ctx context.Context, req vali
 	}
 
 	if len(req.ConfigValue.Elements()) < 1 {
-		// Short summary, then a detailed message including the attribute name
+		// grab just the final segment of the path
+		full := req.Path.String()
+		parts := strings.Split(full, ".")
+		last := parts[len(parts)-1]
+
 		resp.Diagnostics.AddAttributeError(
 			req.Path,
 			"Empty set value",
-			fmt.Sprintf(
-				"The configuration attribute %q must contain at least one element, but it was empty.",
-				req.Path,
-			),
+			fmt.Sprintf("The %q set must contain at least one element.", last),
 		)
 	}
 }
