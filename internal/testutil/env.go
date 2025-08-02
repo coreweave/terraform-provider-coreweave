@@ -15,7 +15,7 @@ func SetEnvDefaults() {
 
 	for name, value := range defaultPairs {
 		if _, found := os.LookupEnv(name); !found {
-			os.Setenv(name, value)
+			_ = os.Setenv(name, value)
 		}
 	}
 }

@@ -354,7 +354,7 @@ func (r *VpcResource) Schema(ctx context.Context, req resource.SchemaRequest, re
 	}
 }
 
-func (r *VpcResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+func (r *VpcResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
 	// Prevent panic if the provider has not been configured.
 	if req.ProviderData == nil {
 		return
