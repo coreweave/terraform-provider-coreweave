@@ -172,6 +172,9 @@ func (o *OrganizationAccessPolicyResource) Schema(ctx context.Context, req resou
 			"statements": schema.SetNestedAttribute{
 				Required:            true,
 				MarkdownDescription: "The list of access policy statements associated with this policy. At least one statement is required.",
+				Validators: []validator.Set{
+					atLeastOneElementSetValidator{},
+				},
 				NestedObject: schema.NestedAttributeObject{
 					Attributes: map[string]schema.Attribute{
 						"name": schema.StringAttribute{
@@ -189,16 +192,25 @@ func (o *OrganizationAccessPolicyResource) Schema(ctx context.Context, req resou
 							Required:            true,
 							ElementType:         types.StringType,
 							MarkdownDescription: "Defines which operations the policy allows or denies. Organization access policies can include actions from two APIs - S3 (s3:*) and AI Object Storage API (cwobject:*). You can use wildcards (like s3:* or cwobject:*) to cover multiple actions at once.",
+							Validators: []validator.Set{
+								atLeastOneElementSetValidator{},
+							},
 						},
 						"resources": schema.SetAttribute{
 							Required:            true,
 							ElementType:         types.StringType,
 							MarkdownDescription: "Defines which resources the policy applies to. See the [AI Object Storage documentation](https://docs.coreweave.com/docs/products/storage/object-storage/concepts/policies/organization-policies#resources) for guidelines on defining resources.",
+							Validators: []validator.Set{
+								atLeastOneElementSetValidator{},
+							},
 						},
 						"principals": schema.SetAttribute{
 							Required:            true,
 							ElementType:         types.StringType,
 							MarkdownDescription: "Defines which users, roles, or groups the policy applies to. Only short-form identifiers are supported. If you use a full ARN, the policy will fail with an error. See the [AI Object Storage documentation](https://docs.coreweave.com/docs/products/storage/object-storage/concepts/policies/organization-policies#resources) for guidelines on defining principals.",
+							Validators: []validator.Set{
+								atLeastOneElementSetValidator{},
+							},
 						},
 					},
 				},
