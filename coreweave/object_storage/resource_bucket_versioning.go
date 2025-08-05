@@ -244,7 +244,7 @@ func (b *BucketVersioningResource) Delete(ctx context.Context, req resource.Dele
 	_, err = s3Client.PutBucketVersioning(ctx, &deleteReq)
 	if err != nil {
 		var apiErr smithy.APIError
-		if errors.As(err, &apiErr) && apiErr.ErrorCode() == "NoSuchBucket" {
+		if errors.As(err, &apiErr) && apiErr.ErrorCode() == ErrNoSuchBucket {
 			// bucket doesn’t exist, return as it will be removed from state
 			return
 		}
