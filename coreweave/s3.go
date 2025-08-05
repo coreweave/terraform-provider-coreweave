@@ -74,9 +74,16 @@ func (c *Client) S3Client(ctx context.Context, zone string) (*s3.Client, error) 
 	s3Mu.Lock()
 	defer s3Mu.Unlock()
 
+	// We use 'notempty' as the zone here because it doesn't actually matter what region is configured for cwobject.com
+	// it only matters that it's not empty & a valid DNS subdomain
+	s3Zone := zone
+	if zone == "" {
+		s3Zone = "notempty"
+	}
+
 	if s3AccessKeyInfo == nil || singletonS3Client == nil {
 		tflog.Info(ctx, "creating new s3 client because one does not exist")
-		client, keyInfo, err := c.createS3Client(ctx, zone)
+		client, keyInfo, err := c.createS3Client(ctx, s3Zone)
 		if err != nil {
 			return nil, err
 		}

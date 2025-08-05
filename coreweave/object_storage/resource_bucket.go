@@ -515,9 +515,7 @@ func (b *BucketResource) Delete(ctx context.Context, req resource.DeleteRequest,
 }
 
 func (b *BucketResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	// We use 'notempty' as the zone here because it doesn't actually matter what region is configured for cwobject.com
-	// it only matters that it's not empty & a valid DNS subdomain
-	s3Client, err := b.client.S3Client(ctx, "notempty")
+	s3Client, err := b.client.S3Client(ctx, "")
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to create S3 client", err.Error())
 		return
