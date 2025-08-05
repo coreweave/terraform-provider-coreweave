@@ -94,9 +94,9 @@ func (c *Client) S3Client(ctx context.Context, zone string) (*s3.Client, error) 
 		return client, nil
 	}
 
-	// expiry is within 3 minutes from now (or already expired), refresh the client
-	if time.Until(s3AccessKeyInfo.Expiry.AsTime()) <= 3*time.Minute {
-		tflog.Info(ctx, "refreshing s3 client because keys expire within the next 3 minutes or have already expired")
+	// expiry is within 5 minutes from now (or already expired), refresh the client
+	if time.Until(s3AccessKeyInfo.Expiry.AsTime()) <= 5*time.Minute {
+		tflog.Info(ctx, "refreshing s3 client because keys expire within the next 5 minutes or have already expired")
 		client, keyInfo, err := c.createS3Client(ctx, zone)
 		if err != nil {
 			return nil, err

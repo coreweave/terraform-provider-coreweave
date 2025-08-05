@@ -11,7 +11,7 @@ import (
 
 // pollUntil runs check(ctx) every interval until it returns (true, nil),
 // or else returns the first non‐nil error, or a timeout error.
-func pollUntil(operation string, parentCtx context.Context, interval, timeout time.Duration, check func(ctx context.Context) (bool, error)) error {
+func pollUntil(operation string, parentCtx context.Context, interval, timeout time.Duration, check func(ctx context.Context) (bool, error)) error { //nolint:unparam
 	ctx, cancel := context.WithTimeout(parentCtx, timeout)
 	defer cancel()
 
