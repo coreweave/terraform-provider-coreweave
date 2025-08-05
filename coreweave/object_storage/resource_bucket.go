@@ -33,6 +33,10 @@ var (
 	_ resource.ResourceWithImportState = &BucketResource{}
 )
 
+const (
+	ErrNoSuchBucket string = "NoSuchBucket"
+)
+
 func NewBucketResource() resource.Resource {
 	return &BucketResource{}
 }
@@ -282,28 +286,7 @@ func (b *BucketResource) Create(ctx context.Context, req resource.CreateRequest,
 		Bucket: aws.String(data.Name.ValueString()),
 		CreateBucketConfiguration: &s3types.CreateBucketConfiguration{
 			LocationConstraint: s3types.BucketLocationConstraint(data.Zone.ValueString()),
-			Tags:               []s3types.Tag{},
 		},
-	}
-
-	if !data.Tags.IsNull() {
-		tags := []s3types.Tag{}
-		tagMap := map[string]string{}
-
-		if diag := data.Tags.ElementsAs(ctx, &tagMap, false); diag.HasError() {
-			detail := diag.Errors()[0].Detail()
-			resp.Diagnostics.AddError("Invalid S3 Bucket Tags", detail)
-			return
-		}
-
-		for key, value := range tagMap {
-			tags = append(tags, s3types.Tag{
-				Key:   aws.String(key),
-				Value: aws.String(value),
-			})
-		}
-
-		createReq.CreateBucketConfiguration.Tags = tags
 	}
 
 	_, err = s3Client.CreateBucket(ctx, createReq)
@@ -330,7 +313,7 @@ func (b *BucketResource) Create(ctx context.Context, req resource.CreateRequest,
 
 		handleS3Error(err, &resp.Diagnostics, data.Name.ValueString())
 		return
-	}
+ 	}
 
 	// set state while we wait for the bucket to finish
 	if diag := resp.State.Set(ctx, &data); diag.HasError() {
@@ -342,6 +325,47 @@ func (b *BucketResource) Create(ctx context.Context, req resource.CreateRequest,
 	if err := waitForBucket(ctx, s3Client, data.Name.ValueString(), true); err != nil {
 		handleS3Error(err, &resp.Diagnostics, data.Name.ValueString())
 		return
+	}
+
+	if !data.Tags.IsNull() {
+		tags := []s3types.Tag{}
+		tagMap := map[string]string{}
+
+		if diag := data.Tags.ElementsAs(ctx, &tagMap, false); diag.HasError() {
+			detail := diag.Errors()[0].Detail()
+			resp.Diagnostics.AddError("Invalid S3 Bucket Tags", detail)
+			return
+		}
+
+		for key, value := range tagMap {
+			tags = append(tags, s3types.Tag{
+				Key:   aws.String(key),
+				Value: aws.String(value),
+			})
+		}
+
+		_, err = s3Client.PutBucketTagging(ctx, &s3.PutBucketTaggingInput{
+			Bucket: data.Name.ValueStringPointer(),
+			Tagging: &s3types.Tagging{
+				TagSet: tags,
+			},
+		})
+		if err != nil {
+			handleS3Error(err, &resp.Diagnostics, data.Name.ValueString())
+			return
+		}
+
+		// set state while we wait for the tags to propagate
+		if diag := resp.State.Set(ctx, &data); diag.HasError() {
+			// if we fail to set state, return early as the resource will be orphaned
+			resp.Diagnostics.Append(diag...)
+			return
+		}
+
+		if err := waitForBucketTags(ctx, s3Client, data.Name.ValueString(), tags); err != nil {
+			handleS3Error(err, &resp.Diagnostics, data.Name.ValueString())
+			return
+		}
 	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
@@ -498,7 +522,7 @@ func (b *BucketResource) Delete(ctx context.Context, req resource.DeleteRequest,
 	})
 	if err != nil {
 		var apiErr smithy.APIError
-		if errors.As(err, &apiErr) && apiErr.ErrorCode() == "NoSuchBucket" {
+		if errors.As(err, &apiErr) && apiErr.ErrorCode() == ErrNoSuchBucket {
 			// bucket doesn’t exist, return as it will be removed from state
 			return
 		}
