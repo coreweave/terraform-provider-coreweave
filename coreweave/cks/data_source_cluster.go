@@ -133,7 +133,7 @@ func (d *ClusterDataSource) Schema(ctx context.Context, req datasource.SchemaReq
 	}
 }
 
-func (d *ClusterDataSource) Configure(ctx context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
+func (d *ClusterDataSource) Configure(_ context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
 	// Prevent panic if the provider has not been configured.
 	if req.ProviderData == nil {
 		return
@@ -171,7 +171,7 @@ func (d *ClusterDataSource) Read(ctx context.Context, req datasource.ReadRequest
 	resp.Diagnostics.Append(resp.State.Set(ctx, data)...)
 }
 
-func MustRenderClusterDataSource(ctx context.Context, resourceName string, cluster *ClusterDataSourceModel) string {
+func MustRenderClusterDataSource(_ context.Context, resourceName string, cluster *ClusterDataSourceModel) string {
 	file := hclwrite.NewEmptyFile()
 	body := file.Body()
 

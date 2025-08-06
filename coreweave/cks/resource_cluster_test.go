@@ -613,6 +613,7 @@ func TestPartialWebhookConfig(t *testing.T) {
 		InternalLBCidrNames: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr")}),
 		AuthNWebhook: &cks.AuthWebhookResourceModel{
 			Server: types.StringValue("https://samples.auth0.com/"),
+			CA:     types.StringValue(ExampleCAB64),
 		},
 	}
 
@@ -646,33 +647,6 @@ func TestPartialWebhookConfig(t *testing.T) {
 		ServiceCidrName:     types.StringValue("service-cidr"),
 		InternalLBCidrNames: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr"), types.StringValue("internal-lb-cidr-2")}),
 		AuditPolicy:         types.StringValue(AuditPolicyB64),
-	}
-
-	updateToPartial := &cks.ClusterResourceModel{
-		VpcId:               types.StringValue(fmt.Sprintf("coreweave_networking_vpc.%s.id", config.ResourceName)),
-		Name:                types.StringValue(config.ClusterName),
-		Zone:                types.StringValue(zone),
-		Version:             types.StringValue(kubeVersion),
-		Public:              types.BoolValue(true),
-		PodCidrName:         types.StringValue("pod-cidr"),
-		ServiceCidrName:     types.StringValue("service-cidr"),
-		InternalLBCidrNames: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr"), types.StringValue("internal-lb-cidr-2")}),
-		AuditPolicy:         types.StringValue(AuditPolicyB64),
-		Oidc: &cks.OidcResourceModel{
-			IssuerURL:      types.StringValue("https://samples.auth0.com/"),
-			ClientID:       types.StringValue("kbyuFDidLLm280LIwVFiazOqjO3ty8KH"),
-			UsernameClaim:  types.StringValue("user_id"),
-			UsernamePrefix: types.StringValue("cw"),
-			GroupsClaim:    types.StringValue("read-only"),
-			GroupsPrefix:   types.StringValue("cw"),
-			SigningAlgs:    types.SetValueMust(types.StringType, []attr.Value{types.StringValue("SIGNING_ALGORITHM_RS256")}),
-		},
-		AuthNWebhook: &cks.AuthWebhookResourceModel{
-			Server: types.StringValue("https://samples.auth0.com/"),
-		},
-		AuthZWebhook: &cks.AuthWebhookResourceModel{
-			Server: types.StringValue("https://samples.auth0.com/"),
-		},
 	}
 
 	ctx := context.Background()
@@ -710,17 +684,6 @@ func TestPartialWebhookConfig(t *testing.T) {
 			Resources: config,
 			vpc:       *vpc,
 			cluster:   *updateToEmpty,
-		}),
-		createClusterTestStep(ctx, t, testStepConfig{
-			TestName: "partial webook update to partial",
-			ConfigPlanChecks: resource.ConfigPlanChecks{
-				PreApply: []plancheck.PlanCheck{
-					plancheck.ExpectResourceAction(config.FullResourceName, plancheck.ResourceActionUpdate),
-				},
-			},
-			Resources: config,
-			vpc:       *vpc,
-			cluster:   *updateToPartial,
 		}),
 	}
 

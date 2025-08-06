@@ -28,9 +28,9 @@ import (
 
 // Ensure provider defined types fully satisfy framework interfaces.
 var (
-	_                     resource.Resource                = &ClusterResource{}
-	_                     resource.ResourceWithImportState = &ClusterResource{}
-	clusterCreationFailed error                            = errors.New("cluster creation failed")
+	_                        resource.Resource                = &ClusterResource{}
+	_                        resource.ResourceWithImportState = &ClusterResource{}
+	errClusterCreationFailed error                            = errors.New("cluster creation failed")
 )
 
 func NewClusterResource() resource.Resource {
@@ -119,8 +119,8 @@ func (o *OidcResourceModel) Set(plan *ClusterResourceModel, oidc *cksv1beta1.OID
 
 // ClusterResourceModel describes the resource data model.
 type ClusterResourceModel struct {
-	Id                  types.String              `tfsdk:"id"`
-	VpcId               types.String              `tfsdk:"vpc_id"`
+	Id                  types.String              `tfsdk:"id"`     //nolint:staticcheck
+	VpcId               types.String              `tfsdk:"vpc_id"` //nolint:staticcheck
 	Zone                types.String              `tfsdk:"zone"`
 	Name                types.String              `tfsdk:"name"`
 	Version             types.String              `tfsdk:"version"`
@@ -132,7 +132,7 @@ type ClusterResourceModel struct {
 	Oidc                *OidcResourceModel        `tfsdk:"oidc"`
 	AuthNWebhook        *AuthWebhookResourceModel `tfsdk:"authn_webhook"`
 	AuthZWebhook        *AuthWebhookResourceModel `tfsdk:"authz_webhook"`
-	ApiServerEndpoint   types.String              `tfsdk:"api_server_endpoint"`
+	ApiServerEndpoint   types.String              `tfsdk:"api_server_endpoint"` //nolint:staticcheck
 	Status              types.String              `tfsdk:"status"`
 }
 
@@ -238,7 +238,7 @@ func (c *ClusterResourceModel) oidcSigningAlgs(ctx context.Context) []cksv1beta1
 
 	result := []cksv1beta1.SigningAlgorithm{}
 	for _, a := range algs {
-		switch a.ValueString() {
+		switch a.ValueString() { //nolint:gocritic
 		case cksv1beta1.SigningAlgorithm_SIGNING_ALGORITHM_RS256.String():
 			result = append(result, cksv1beta1.SigningAlgorithm_SIGNING_ALGORITHM_RS256)
 		}
@@ -558,7 +558,7 @@ func (r *ClusterResource) Schema(ctx context.Context, req resource.SchemaRequest
 	}
 }
 
-func (r *ClusterResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+func (r *ClusterResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
 	// Prevent panic if the provider has not been configured.
 	if req.ProviderData == nil {
 		return
@@ -618,7 +618,7 @@ func (r *ClusterResource) Create(ctx context.Context, req resource.CreateRequest
 			}
 
 			if resp.Msg.Cluster.Status == cksv1beta1.Cluster_STATUS_FAILED {
-				return resp.Msg.Cluster, resp.Msg.Cluster.Status.String(), clusterCreationFailed
+				return resp.Msg.Cluster, resp.Msg.Cluster.Status.String(), errClusterCreationFailed
 			}
 
 			return resp.Msg.Cluster, resp.Msg.Cluster.Status.String(), nil
@@ -627,7 +627,7 @@ func (r *ClusterResource) Create(ctx context.Context, req resource.CreateRequest
 	}
 
 	rawCluster, err := conf.WaitForStateContext(ctx)
-	if err != nil && !errors.Is(err, clusterCreationFailed) {
+	if err != nil && !errors.Is(err, errClusterCreationFailed) {
 		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
 		return
 	}

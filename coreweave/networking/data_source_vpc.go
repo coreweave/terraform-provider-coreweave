@@ -108,7 +108,7 @@ func (d *VpcDataSource) Schema(ctx context.Context, req datasource.SchemaRequest
 	}
 }
 
-func (d *VpcDataSource) Configure(ctx context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
+func (d *VpcDataSource) Configure(_ context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
 	// Prevent panic if the provider has not been configured.
 	if req.ProviderData == nil {
 		return
@@ -146,7 +146,7 @@ func (d *VpcDataSource) Read(ctx context.Context, req datasource.ReadRequest, re
 	resp.Diagnostics.Append(resp.State.Set(ctx, data)...)
 }
 
-func MustRenderVpcDataSource(ctx context.Context, resourceName string, cluster *VpcDataSourceModel) string {
+func MustRenderVpcDataSource(_ context.Context, resourceName string, cluster *VpcDataSourceModel) string {
 	file := hclwrite.NewEmptyFile()
 	body := file.Body()
 
