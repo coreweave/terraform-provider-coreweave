@@ -49,16 +49,19 @@ func (b *BucketVersioningResource) Metadata(ctx context.Context, req resource.Me
 }
 func (b *BucketVersioningResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
+		MarkdownDescription: "CoreWeave Object Storage Bucket Versioning",
 		Attributes: map[string]schema.Attribute{
 			"bucket": schema.StringAttribute{
-				Required: true,
+				Required:            true,
+				MarkdownDescription: "The bucket on which to enable or suspend versioning.",
 			},
 		},
 		Blocks: map[string]schema.Block{
 			"versioning_configuration": schema.SingleNestedBlock{
 				Attributes: map[string]schema.Attribute{
 					"status": schema.StringAttribute{
-						Required: true,
+						Required:            true,
+						MarkdownDescription: "Versioning state of the bucket. Valid values: Enabled, Suspended, or Disabled. Disabled should only be used when creating or importing resources that correspond to unversioned S3 buckets since the S3 API does not allow setting an Enabled/Suspended bucket to Disabled.",
 					},
 				},
 			},

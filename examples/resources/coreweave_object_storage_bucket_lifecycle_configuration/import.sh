@@ -1,0 +1,1 @@
+terraform import coreweave_object_storage_bucket_lifecycle_configuration.default {{bucket_name}}

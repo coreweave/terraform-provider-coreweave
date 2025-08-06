@@ -161,6 +161,7 @@ func (o *OrganizationAccessPolicyResource) Metadata(ctx context.Context, req res
 
 func (o *OrganizationAccessPolicyResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
+		MarkdownDescription: "CoreWeave Object Storage Organization Access Policy",
 		Attributes: map[string]schema.Attribute{
 			"name": schema.StringAttribute{
 				Required:            true,

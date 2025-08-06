@@ -180,17 +180,25 @@ func (r *BucketLifecycleResource) Schema(ctx context.Context, req resource.Schem
 									},
 								},
 								"and": schema.SingleNestedBlock{
+									MarkdownDescription: "Configuration block used to apply a logical AND to two or more predicates. The Lifecycle Rule will apply to any object matching all the predicates configured inside the and block.",
 									Attributes: map[string]schema.Attribute{
 										"prefix": schema.StringAttribute{
 											Optional:            true,
-											MarkdownDescription: "Prefix within AND filter",
+											MarkdownDescription: "Prefix identifying one or more objects to which the rule applies.",
 										},
 										"tags": schema.MapAttribute{
-											Optional:    true,
-											ElementType: types.StringType,
+											Optional:            true,
+											MarkdownDescription: "Map for specifying tag keys and values.",
+											ElementType:         types.StringType,
 										},
-										"object_size_greater_than": schema.Int64Attribute{Optional: true},
-										"object_size_less_than":    schema.Int64Attribute{Optional: true},
+										"object_size_greater_than": schema.Int64Attribute{
+											Optional:            true,
+											MarkdownDescription: "Minimum object size (in bytes) to which the rule applies.",
+										},
+										"object_size_less_than": schema.Int64Attribute{
+											Optional:            true,
+											MarkdownDescription: "Maximum object size (in bytes) to which the rule applies.",
+										},
 									},
 								},
 							},
@@ -201,11 +209,11 @@ func (r *BucketLifecycleResource) Schema(ctx context.Context, req resource.Schem
 								},
 								"object_size_greater_than": schema.Int64Attribute{
 									Optional:            true,
-									MarkdownDescription: "Filter objects greater than this size",
+									MarkdownDescription: "Minimum object size (in bytes) to which the rule applies.",
 								},
 								"object_size_less_than": schema.Int64Attribute{
 									Optional:            true,
-									MarkdownDescription: "Filter objects less than this size",
+									MarkdownDescription: "Maximum object size (in bytes) to which the rule applies.",
 								},
 							},
 						},

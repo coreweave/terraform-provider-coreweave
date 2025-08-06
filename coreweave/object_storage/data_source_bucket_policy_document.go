@@ -207,6 +207,7 @@ func (d *BucketPolicyDocumentDataSource) Metadata(ctx context.Context, req datas
 
 func (d *BucketPolicyDocumentDataSource) Schema(ctx context.Context, req datasource.SchemaRequest, resp *datasource.SchemaResponse) {
 	resp.Schema = schema.Schema{
+		MarkdownDescription: "CoreWeave Bucket Policy Document. This data source provides a type-safe data structure for creating an S3 JSON Bucket Policy.",
 		Attributes: map[string]schema.Attribute{
 			"version": schema.StringAttribute{
 				Optional:            true,
@@ -223,6 +224,7 @@ func (d *BucketPolicyDocumentDataSource) Schema(ctx context.Context, req datasou
 		},
 		Blocks: map[string]schema.Block{
 			"statement": schema.ListNestedBlock{
+				MarkdownDescription: "The main policy element that defines the access rules for buckets and objects. Multiple statement blocks can be specified.",
 				NestedObject: schema.NestedBlockObject{
 					Attributes: map[string]schema.Attribute{
 						"sid": schema.StringAttribute{

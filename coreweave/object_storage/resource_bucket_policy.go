@@ -65,12 +65,15 @@ func (b *BucketPolicyResource) Metadata(ctx context.Context, req resource.Metada
 
 func (b *BucketPolicyResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
+		MarkdownDescription: "CoreWeave Object Storage Bucket Policy",
 		Attributes: map[string]schema.Attribute{
 			"bucket": schema.StringAttribute{
-				Required: true,
+				Required:            true,
+				MarkdownDescription: "The name of the bucket for which to apply this policy.",
 			},
 			"policy": schema.StringAttribute{
-				Required: true,
+				Required:            true,
+				MarkdownDescription: "Text of the policy. Must be valid JSON. The coreweave_object_storage_bucket_policy_document may be used, simply reference the `.json` attribute of the data source.",
 			},
 		},
 	}
