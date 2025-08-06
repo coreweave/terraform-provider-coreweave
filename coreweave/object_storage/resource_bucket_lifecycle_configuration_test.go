@@ -314,9 +314,18 @@ func TestBucketLifecycleConfiguration(t *testing.T) {
 				},
 			},
 		}),
+		{
+			PreConfig: func() {
+				t.Log("Beginning coreweave_object_storage_bucket_lifecycle_configuration import test")
+			},
+			ResourceName:                         fmt.Sprintf("coreweave_object_storage_bucket_lifecycle_configuration.%s", resourceName),
+			ImportState:                          true,
+			ImportStateVerifyIdentifierAttribute: "name",
+			ImportStateId:                        bucket.Name.ValueString(),
+		},
 	}
 
-	resource.Test(t, resource.TestCase{
+	resource.ParallelTest(t, resource.TestCase{
 		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
 		Steps:                    steps,
 	})
@@ -394,7 +403,7 @@ func TestBucketLifecycleConfiguration_MultiRule(t *testing.T) {
 		}),
 	}
 
-	resource.Test(t, resource.TestCase{
+	resource.ParallelTest(t, resource.TestCase{
 		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
 		Steps:                    steps,
 	})

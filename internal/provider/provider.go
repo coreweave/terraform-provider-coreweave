@@ -209,6 +209,7 @@ func (p *CoreweaveProvider) Resources(ctx context.Context) []func() resource.Res
 		objectstorage.NewOrganizationAccessPolicyResource,
 		objectstorage.NewBucketLifecycleResource,
 		objectstorage.NewBucketVersioningResource,
+		objectstorage.NewBucketPolicyResource,
 	}
 }
 
@@ -216,6 +217,7 @@ func (p *CoreweaveProvider) DataSources(ctx context.Context) []func() datasource
 	return []func() datasource.DataSource{
 		networking.NewVpcDataSource,
 		cks.NewClusterDataSource,
+		objectstorage.NewBucketPolicyDocumentDataSource,
 	}
 }
 

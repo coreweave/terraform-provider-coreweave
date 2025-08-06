@@ -89,9 +89,18 @@ func TestBucketVersioningResource(t *testing.T) {
 				},
 			},
 		}),
+		{
+			PreConfig: func() {
+				t.Log("Beginning coreweave_object_storage_bucket_versioning import test")
+			},
+			ResourceName:                         fmt.Sprintf("coreweave_object_storage_bucket_versioning.%s", resourceName),
+			ImportState:                          true,
+			ImportStateVerifyIdentifierAttribute: "name",
+			ImportStateId:                        bucket.Name.ValueString(),
+		},
 	}
 
-	resource.Test(t, resource.TestCase{
+	resource.ParallelTest(t, resource.TestCase{
 		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
 		Steps:                    steps,
 	})
