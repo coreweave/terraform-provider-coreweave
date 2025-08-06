@@ -89,7 +89,7 @@ resource "coreweave_object_storage_bucket_policy" "doc" {
 ### Required
 
 - `bucket` (String) The name of the bucket for which to apply this policy.
-- `policy` (String) Text of the policy. Must be valid JSON. The coreweave_object_storage_bucket_policy_document may be used, simply reference the `.json` attribute of the data source.
+- `policy` (String) Text of the policy. Must be valid JSON. The coreweave_object_storage_bucket_policy_document data source may be used, simply reference the `.json` attribute of the data source.
 
 ## Import
 

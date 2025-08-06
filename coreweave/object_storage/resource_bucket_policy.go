@@ -73,7 +73,7 @@ func (b *BucketPolicyResource) Schema(ctx context.Context, req resource.SchemaRe
 			},
 			"policy": schema.StringAttribute{
 				Required:            true,
-				MarkdownDescription: "Text of the policy. Must be valid JSON. The coreweave_object_storage_bucket_policy_document may be used, simply reference the `.json` attribute of the data source.",
+				MarkdownDescription: "Text of the policy. Must be valid JSON. The coreweave_object_storage_bucket_policy_document data source may be used, simply reference the `.json` attribute of the data source.",
 			},
 		},
 	}
