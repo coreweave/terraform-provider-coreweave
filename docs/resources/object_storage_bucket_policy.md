@@ -38,7 +38,7 @@ resource "coreweave_object_storage_bucket" "raw" {
 }
 
 resource "coreweave_object_storage_bucket_policy" "raw" {
-  bucket = coreweave_object_storage_bucket.name
+  bucket = coreweave_object_storage_bucket.raw.name
   policy = jsonencode(local.bucket_policy)
 }
 
