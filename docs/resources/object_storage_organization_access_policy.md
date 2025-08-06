@@ -21,7 +21,10 @@ resource "coreweave_object_storage_organization_access_policy" "test" {
       effect     = "Allow"
       resources  = ["*"]
       principals = ["*"]
-      actions    = ["s3:*"]
+      actions = [
+        "s3:*",
+        "cwobject:*",
+      ]
     }
   ]
 }
