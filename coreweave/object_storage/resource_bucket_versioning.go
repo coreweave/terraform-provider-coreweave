@@ -89,7 +89,7 @@ func (b *BucketVersioningResource) Configure(_ context.Context, req resource.Con
 }
 
 func waitForBucketVersioning(parentCtx context.Context, client *s3.Client, bucket string, expected s3types.BucketVersioningStatus) error {
-	return pollUntil("bucket versioning configuration", parentCtx, 5*time.Second, 5*time.Minute, func(ctx context.Context) (bool, error) {
+	return coreweave.PollUntil("bucket versioning configuration", parentCtx, 5*time.Second, 5*time.Minute, func(ctx context.Context) (bool, error) {
 		out, err := client.GetBucketVersioning(ctx, &s3.GetBucketVersioningInput{Bucket: aws.String(bucket)})
 		if err != nil {
 			return false, err

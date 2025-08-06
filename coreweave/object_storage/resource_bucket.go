@@ -161,7 +161,7 @@ func waitForBucket(parentCtx context.Context, client *s3.Client, bucket string, 
 	if !shouldExist {
 		operation = "bucket deletion"
 	}
-	return pollUntil(operation, parentCtx, 5*time.Second, 5*time.Minute, func(ctx context.Context) (bool, error) {
+	return coreweave.PollUntil(operation, parentCtx, 5*time.Second, 5*time.Minute, func(ctx context.Context) (bool, error) {
 		_, err := client.HeadBucket(ctx, &s3.HeadBucketInput{Bucket: aws.String(bucket)})
 
 		// desired state: exists
@@ -241,7 +241,7 @@ func waitForBucketTags(parentCtx context.Context, client *s3.Client, bucket stri
 	exp := append([]s3types.Tag(nil), expected...)
 	slices.SortFunc(exp, cmpTag)
 
-	return pollUntil("bucket tag propagation", parentCtx, 5*time.Second, 5*time.Minute, func(ctx context.Context) (bool, error) {
+	return coreweave.PollUntil("bucket tag propagation", parentCtx, 5*time.Second, 5*time.Minute, func(ctx context.Context) (bool, error) {
 		out, err := client.GetBucketTagging(ctx, &s3.GetBucketTaggingInput{Bucket: aws.String(bucket)})
 		if err != nil {
 			return false, err
@@ -313,7 +313,7 @@ func (b *BucketResource) Create(ctx context.Context, req resource.CreateRequest,
 
 		handleS3Error(err, &resp.Diagnostics, data.Name.ValueString())
 		return
- 	}
+	}
 
 	// set state while we wait for the bucket to finish
 	if diag := resp.State.Set(ctx, &data); diag.HasError() {

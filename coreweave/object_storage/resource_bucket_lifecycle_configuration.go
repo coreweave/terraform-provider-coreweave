@@ -483,7 +483,7 @@ func waitForLifecycleConfig(parentCtx context.Context, client *s3.Client, bucket
 	exp := append([]s3types.LifecycleRule(nil), expected.Rules...)
 	slices.SortFunc(exp, cmpLifecycleRule)
 
-	return pollUntil("bucket lifecycle configuration", parentCtx, 5*time.Second, 5*time.Minute, func(ctx context.Context) (bool, error) {
+	return coreweave.PollUntil("bucket lifecycle configuration", parentCtx, 5*time.Second, 5*time.Minute, func(ctx context.Context) (bool, error) {
 		out, err := client.GetBucketLifecycleConfiguration(ctx, &s3.GetBucketLifecycleConfigurationInput{Bucket: aws.String(bucket)})
 		if err != nil {
 			return false, err

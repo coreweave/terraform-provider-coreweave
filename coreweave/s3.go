@@ -2,6 +2,8 @@ package coreweave
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"net/http"
 	"sync"
 	"time"
@@ -12,6 +14,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/smithy-go"
 	"github.com/hashicorp/go-cleanhttp"
 	retryablehttp "github.com/hashicorp/go-retryablehttp"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
@@ -26,6 +29,10 @@ var (
 	s3Mu              sync.Mutex
 	singletonS3Client *s3.Client
 	s3AccessKeyInfo   *cwobjectv1.CreateAccessKeyFromJWTResponse
+)
+
+const (
+	errAccessDenied string = "AccessDenied"
 )
 
 func (c *Client) s3HttpClient() *http.Client {
@@ -88,6 +95,23 @@ func (c *Client) S3Client(ctx context.Context, zone string) (*s3.Client, error) 
 			return nil, err
 		}
 
+		// we need to ensure the access keys are valid before we overwrite the client - we've observed that
+		// it can take several seconds for access keys to propagate
+		if err := PollUntil("s3 access key validation", ctx, 1*time.Second, 1*time.Minute, func(ctx context.Context) (bool, error) {
+			_, err := client.ListBuckets(ctx, &s3.ListBucketsInput{})
+			// retry only on AccessDenied errors
+			if err != nil {
+				var apiErr smithy.APIError
+				if errors.As(err, &apiErr) && apiErr.ErrorCode() == errAccessDenied {
+					return false, nil
+				}
+			}
+
+			return err == nil, err
+		}); err != nil {
+			return nil, err
+		}
+
 		singletonS3Client = client
 		s3AccessKeyInfo = keyInfo
 		tflog.Info(ctx, "created new s3 client")
@@ -102,6 +126,22 @@ func (c *Client) S3Client(ctx context.Context, zone string) (*s3.Client, error) 
 			return nil, err
 		}
 
+		// we need to ensure the access keys are valid before we overwrite the client - we've observed that
+		// it can take several seconds for access keys to propagate
+		if err := PollUntil("s3 access key validation", ctx, 1*time.Second, 1*time.Minute, func(ctx context.Context) (bool, error) {
+			_, err := client.ListBuckets(ctx, &s3.ListBucketsInput{})
+			// retry only on AccessDenied errors
+			if err != nil {
+				var apiErr smithy.APIError
+				if errors.As(err, &apiErr) && apiErr.ErrorCode() == errAccessDenied {
+					return false, nil
+				}
+			}
+			return err == nil, err
+		}); err != nil {
+			return nil, err
+		}
+
 		singletonS3Client = client
 		s3AccessKeyInfo = keyInfo
 		tflog.Info(ctx, "refreshed s3 client")
@@ -111,4 +151,29 @@ func (c *Client) S3Client(ctx context.Context, zone string) (*s3.Client, error) 
 	tflog.Info(ctx, "fetched cached s3 client")
 	// otherwise use the already cached client
 	return singletonS3Client, nil
+}
+
+// PollUntil runs check(ctx) every interval until it returns (true, nil),
+// or else returns the first non‐nil error, or a timeout error.
+func PollUntil(operation string, parentCtx context.Context, interval, timeout time.Duration, check func(ctx context.Context) (bool, error)) error {
+	ctx, cancel := context.WithTimeout(parentCtx, timeout)
+	defer cancel()
+
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("timed out polling for %s after %v: %w", operation, timeout, ctx.Err())
+		case <-ticker.C:
+			ok, err := check(ctx)
+			if err != nil {
+				return err
+			}
+			if ok {
+				return nil
+			}
+		}
+	}
 }
