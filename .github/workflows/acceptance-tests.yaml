@@ -118,10 +118,5 @@ jobs:
       - name: Install dependencies
         run: go mod download
 
-      - name: Run diagnostics
-        run: |
-          set -x
-          curl -v "${COREWEAVE_API_ENDPOINT}/healthz"
-
       - name: Run Object Storage acceptance tests
         run: make object-storage-testacc
