@@ -43,4 +43,7 @@ testacc-sweep:
 testacc:
 	TF_ACC=1 go test -v -cover -timeout=60m $(TEST_ACC_PACKAGES)
 
+object-storage-testacc:
+	TF_ACC=1 go test -v -cover -timeout 20m ./coreweave/object_storage/...
+
 .PHONY: fmt lint test testacc build install generate clean

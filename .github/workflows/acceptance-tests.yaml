@@ -82,3 +82,46 @@ jobs:
 
       - name: Run acceptance tests
         run: make testacc
+
+  objstore-test:
+    name: Run Object Storage acceptance tests
+    runs-on: cw
+    container: ghcr.io/coreweave/github-actions-images/github-base-runner:v1.15.0
+    environment: QA
+    env:
+      COREWEAVE_API_TOKEN: ${{ secrets.COREWEAVE_OBJS_API_TOKEN }}
+      TF_IN_AUTOMATION: '1'
+    strategy:
+      fail-fast: false
+      matrix:
+        # https://endoflife.date/terraform
+        # curl https://endoflife.date/api/terraform.json | yq -P 'map(select(.eol|not) | .cycle + ".*")'
+        terraform:
+          - '1.11.*'
+          - '1.12.*'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4.2.2
+        with:
+          fetch-depth: 0
+
+      - name: Setup Go
+        uses: actions/setup-go@v5.5.0
+        with:
+          go-version-file: 'go.mod'
+
+      - uses: hashicorp/setup-terraform@v3.1.2
+        with:
+          terraform_version: ${{ matrix.terraform }}
+          terraform_wrapper: false
+
+      - name: Install dependencies
+        run: go mod download
+
+      - name: Run diagnostics
+        run: |
+          set -x
+          curl -v "${COREWEAVE_API_ENDPOINT}/healthz"
+
+      - name: Run Object Storage acceptance tests
+        run: make object-storage-testacc
