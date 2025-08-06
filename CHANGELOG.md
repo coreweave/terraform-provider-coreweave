@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.2.10...v0.3.0) (2025-08-06)
+
+
+### Features
+
+* add object storage resources ([#118](https://github.com/coreweave/terraform-provider-coreweave/issues/118)) ([0cbed51](https://github.com/coreweave/terraform-provider-coreweave/commit/0cbed51b417555783568c922181e830aaf28fc2a))
+
 ## [0.2.10](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.2.9...v0.2.10) (2025-07-30)
 
 
