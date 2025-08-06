@@ -2,11 +2,26 @@ package objectstorage
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
+	"github.com/aws/smithy-go/transport/http"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 )
+
+func isTransientS3Error(err error) bool {
+	var httpErr *http.ResponseError
+	if errors.As(err, &httpErr) {
+		switch httpErr.Response.StatusCode {
+		case 404, 408, 429, 500, 502, 503, 504:
+			return true
+		}
+		return false
+	}
+
+	return false
+}
 
 type atLeastOneElementSetValidator struct{}
 

@@ -88,6 +88,9 @@ func waitForBucketPolicy(parentCtx context.Context, client *s3.Client, bucket st
 	return coreweave.PollUntil("bucket versioning configuration", parentCtx, 5*time.Second, 5*time.Minute, func(ctx context.Context) (bool, error) {
 		out, err := client.GetBucketPolicy(ctx, &s3.GetBucketPolicyInput{Bucket: aws.String(bucket)})
 		if err != nil {
+			if isTransientS3Error(err) {
+				return false, nil
+			}
 			return false, err
 		}
 

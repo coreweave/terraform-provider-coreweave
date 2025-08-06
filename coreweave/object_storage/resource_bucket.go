@@ -244,6 +244,9 @@ func waitForBucketTags(parentCtx context.Context, client *s3.Client, bucket stri
 	return coreweave.PollUntil("bucket tag propagation", parentCtx, 5*time.Second, 5*time.Minute, func(ctx context.Context) (bool, error) {
 		out, err := client.GetBucketTagging(ctx, &s3.GetBucketTaggingInput{Bucket: aws.String(bucket)})
 		if err != nil {
+			if isTransientS3Error(err) {
+				return false, nil
+			}
 			return false, err
 		}
 		tags := out.TagSet

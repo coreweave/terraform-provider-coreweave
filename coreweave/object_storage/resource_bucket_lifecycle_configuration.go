@@ -486,6 +486,9 @@ func waitForLifecycleConfig(parentCtx context.Context, client *s3.Client, bucket
 	return coreweave.PollUntil("bucket lifecycle configuration", parentCtx, 5*time.Second, 5*time.Minute, func(ctx context.Context) (bool, error) {
 		out, err := client.GetBucketLifecycleConfiguration(ctx, &s3.GetBucketLifecycleConfigurationInput{Bucket: aws.String(bucket)})
 		if err != nil {
+			if isTransientS3Error(err) {
+				return false, nil
+			}
 			return false, err
 		}
 
@@ -630,7 +633,7 @@ func (r *BucketLifecycleResource) Read(ctx context.Context, req resource.ReadReq
 	})
 	if err != nil {
 		var apiErr smithy.APIError
-		if errors.As(err, &apiErr) && apiErr.ErrorCode() == ErrNoSuchLifecycleConfiguration {
+		if errors.As(err, &apiErr) && (apiErr.ErrorCode() == ErrNoSuchLifecycleConfiguration) {
 			resp.State.RemoveResource(ctx)
 			return
 		}
@@ -702,7 +705,7 @@ func (r *BucketLifecycleResource) Delete(ctx context.Context, req resource.Delet
 	})
 	if err != nil {
 		var apiErr smithy.APIError
-		if errors.As(err, &apiErr) && apiErr.ErrorCode() == ErrNoSuchLifecycleConfiguration {
+		if errors.As(err, &apiErr) && (apiErr.ErrorCode() == ErrNoSuchLifecycleConfiguration) || (apiErr.ErrorCode() == ErrNoSuchBucket) {
 			// bucket lifecycle config doesn’t exist, return as it will be removed from state
 			return
 		}
