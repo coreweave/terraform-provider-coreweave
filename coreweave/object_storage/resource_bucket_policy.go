@@ -278,11 +278,6 @@ func (b *BucketPolicyResource) ImportState(ctx context.Context, req resource.Imp
 		Bucket: aws.String(data.Bucket.ValueString()),
 	})
 	if err != nil {
-		var apiErr smithy.APIError
-		if errors.As(err, &apiErr) && apiErr.ErrorCode() == ErrNoSuchBucketPolicy {
-			resp.State.RemoveResource(ctx)
-			return
-		}
 		handleS3Error(err, &resp.Diagnostics, data.Bucket.ValueString())
 		return
 	}
