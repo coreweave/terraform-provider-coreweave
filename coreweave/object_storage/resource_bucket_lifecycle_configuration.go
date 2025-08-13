@@ -728,11 +728,6 @@ func (r *BucketLifecycleResource) ImportState(ctx context.Context, req resource.
 		Bucket: aws.String(data.Bucket.ValueString()),
 	})
 	if err != nil {
-		var apiErr smithy.APIError
-		if errors.As(err, &apiErr) && apiErr.ErrorCode() == ErrNoSuchLifecycleConfiguration {
-			resp.State.RemoveResource(ctx)
-			return
-		}
 		handleS3Error(err, &resp.Diagnostics, data.Bucket.ValueString())
 		return
 	}
