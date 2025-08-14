@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.3.0...v0.3.1) (2025-08-14)
+
+
+### Bug Fixes
+
+* improve error message when importing non-existent policy ([#120](https://github.com/coreweave/terraform-provider-coreweave/issues/120)) ([229d6e7](https://github.com/coreweave/terraform-provider-coreweave/commit/229d6e75541a0d2ca30456183c27fbf6536f7ed4))
+
 ## [0.3.0](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.2.10...v0.3.0) (2025-08-06)
 
 
