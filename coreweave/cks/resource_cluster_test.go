@@ -242,10 +242,12 @@ func (c saOIDCIssuerURLComparer) CompareValues(values ...any) error {
 		}
 
 		matches := saOIDCIssuerURLRegex.FindStringSubmatch(vs)
-		idGroup := matches[saOIDCIssuerURLRegex.SubexpIndex("ID")]
-		if _, err := uuid.ParseUUID(idGroup); err == nil {
-			comparableValues[i] = idGroup
-			continue
+		if matches != nil {
+			idGroup := matches[saOIDCIssuerURLRegex.SubexpIndex("ID")]
+			if _, err := uuid.ParseUUID(idGroup); err == nil {
+				comparableValues[i] = idGroup
+				continue
+			}
 		}
 
 		return fmt.Errorf("value %d is not a valid UUID or OIDC issuer URL: %q", i, vs)
