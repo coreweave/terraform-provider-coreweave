@@ -26,6 +26,10 @@ import (
 	"github.com/zclconf/go-cty/cty"
 )
 
+const (
+	ServiceAccountOIDCBaseURL = "https://oidc.cks.coreweave.com"
+)
+
 // Ensure provider defined types fully satisfy framework interfaces.
 var (
 	_                        resource.Resource                = &ClusterResource{}
@@ -173,7 +177,7 @@ func (c *ClusterResourceModel) Set(cluster *cksv1beta1.Cluster) {
 	c.Version = types.StringValue(cluster.Version)
 	c.Public = types.BoolValue(cluster.Public)
 	c.Status = types.StringValue(cluster.Status.String())
-	c.ServiceAccountOIDCIssuerURL = types.StringValue(fmt.Sprintf("https://oidc.cks.coreweave.com/id/%s", cluster.Id))
+	c.ServiceAccountOIDCIssuerURL = types.StringValue(fmt.Sprintf("%s/id/%s", ServiceAccountOIDCBaseURL, cluster.Id))
 
 	// if the plan value is null & the API returns an empty string, do not write to state
 	if cluster.AuditPolicy == "" && c.AuditPolicy.IsNull() {

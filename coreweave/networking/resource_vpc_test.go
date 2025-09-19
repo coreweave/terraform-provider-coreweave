@@ -92,8 +92,6 @@ func init() {
 }
 
 func TestVpcSchema(t *testing.T) {
-	t.Parallel()
-
 	ctx := context.Background()
 	schemaRequest := fwresource.SchemaRequest{}
 	schemaResponse := &fwresource.SchemaResponse{}

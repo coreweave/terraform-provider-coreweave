@@ -221,14 +221,14 @@ func stringOrNull(s types.String) knownvalue.Check {
 	return knownvalue.StringExact(s.ValueString())
 }
 
-type saOIDCIssuerUrlComparer struct{}
+type saOIDCIssuerURLComparer struct{}
 
 var saOIDCIssuerURLRegex = regexp.MustCompile(`^https?://(?P<Host>[\w\d\.\-]+)(:(?P<Port>[0-9]+))?/id/(?P<ID>[0-9a-f\-]+)/?$`)
 
-var _ compare.ValueComparer = saOIDCIssuerUrlComparer{}
+var _ compare.ValueComparer = saOIDCIssuerURLComparer{}
 
 // CompareValues implements compare.ValueComparer.
-func (c saOIDCIssuerUrlComparer) CompareValues(values ...any) error {
+func (c saOIDCIssuerURLComparer) CompareValues(values ...any) error {
 	comparableValues := make([]string, len(values))
 	for i, v := range values {
 		vs, ok := v.(string)
@@ -251,7 +251,12 @@ func (c saOIDCIssuerUrlComparer) CompareValues(values ...any) error {
 		return fmt.Errorf("value %d is not a valid UUID or OIDC issuer URL: %q", i, vs)
 	}
 
-	return fmt.Errorf("values are not equal: %v != %v", comparableValues[0], comparableValues[1])
+	for _, comparableValue := range comparableValues[1:] {
+		if comparableValue != comparableValues[0] {
+			return fmt.Errorf("values are not equal: %v != %v", comparableValues[0], comparableValue)
+		}
+	}
+	return nil
 }
 
 func createClusterTestStep(ctx context.Context, t *testing.T, config testStepConfig) resource.TestStep {
@@ -268,7 +273,7 @@ func createClusterTestStep(ctx context.Context, t *testing.T, config testStepCon
 		statecheck.ExpectKnownValue(config.Resources.FullResourceName, tfjsonpath.New("public"), knownvalue.Bool(config.cluster.Public.ValueBool())),
 		statecheck.ExpectKnownValue(config.Resources.FullResourceName, tfjsonpath.New("pod_cidr_name"), knownvalue.StringExact(config.cluster.PodCidrName.ValueString())),
 		statecheck.ExpectKnownValue(config.Resources.FullResourceName, tfjsonpath.New("service_cidr_name"), knownvalue.StringExact(config.cluster.ServiceCidrName.ValueString())),
-		statecheck.CompareValuePairs(config.Resources.FullResourceName, tfjsonpath.New("service_account_oidc_issuer_url"), config.Resources.FullResourceName, tfjsonpath.New("id"), saOIDCIssuerUrlComparer{}),
+		statecheck.CompareValuePairs(config.Resources.FullResourceName, tfjsonpath.New("service_account_oidc_issuer_url"), config.Resources.FullResourceName, tfjsonpath.New("id"), saOIDCIssuerURLComparer{}),
 	}
 
 	// internal lb cidrs
