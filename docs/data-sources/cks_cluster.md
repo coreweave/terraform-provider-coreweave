@@ -36,6 +36,7 @@ data "coreweave_cks_cluster" "default" {
 - `oidc` (Attributes) The OIDC configuration of the cluster. (see [below for nested schema](#nestedatt--oidc))
 - `pod_cidr_name` (String) The pod CIDR name of the cluster.
 - `public` (Boolean) Whether the cluster is public.
+- `service_account_oidc_issuer_url` (String) The OIDC issuer URL for service accounts in the cluster.
 - `service_cidr_name` (String) The service CIDR name of the cluster.
 - `status` (String) The status of the cluster.
 - `version` (String) The version of the cluster.
