@@ -561,7 +561,7 @@ func (r *ClusterResource) Schema(ctx context.Context, req resource.SchemaRequest
 					"", "Field `status` is read-only. If the status is `FAILED`, the cluster must be destroyed and re-created again.")},
 			},
 			"service_account_oidc_issuer_url": schema.StringAttribute{
-				MarkdownDescription: "The OIDC issuer URL for service accounts in the cluster.",
+				MarkdownDescription: "The URL of the OIDC issuer for the cluster's service account tokens. This value corresponds to the `--service-account-issuer` flag on the kube-apiserver.",
 				Computed:            true,
 			},
 		},

@@ -91,7 +91,7 @@ The prefixes must exist in the cluster's VPC. This field is append-only.
 
 - `api_server_endpoint` (String) The endpoint for the cluster's api-server.
 - `id` (String) The unique identifier of the cluster.
-- `service_account_oidc_issuer_url` (String) The OIDC issuer URL for service accounts in the cluster.
+- `service_account_oidc_issuer_url` (String) The URL of the OIDC issuer for the cluster's service account tokens. This value corresponds to the `--service-account-issuer` flag on the kube-apiserver.
 - `status` (String) The current status of the cluster.
 
 <a id="nestedatt--authn_webhook"></a>
