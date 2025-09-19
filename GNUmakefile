@@ -10,8 +10,8 @@ PLUGIN_DIR := $(HOME)/.terraform.d/plugins/terraform.local/coreweave/$(PROVIDER_
 BINARY_NAME := terraform-provider-$(PROVIDER_NAME)_v$(VERSION)
 
 # This is valuable for limiting the sweeps to known-good resources, and for forcing an ordering.
-TEST_ACC_PACKAGES=./coreweave/cks ./coreweave/networking
-TEST_ACC_SWEEP_ZONE=US-LAB-01A
+TEST_ACC_PACKAGES?=./coreweave/cks ./coreweave/networking
+TEST_ACC_SWEEP_ZONE?=US-LAB-01A
 
 # Build and install the provider binary
 install: clean
