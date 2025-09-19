@@ -129,6 +129,10 @@ func (d *ClusterDataSource) Schema(ctx context.Context, req datasource.SchemaReq
 				MarkdownDescription: "The status of the cluster.",
 				Computed:            true,
 			},
+			"service_account_oidc_issuer_url": schema.StringAttribute{
+				MarkdownDescription: "The OIDC issuer URL for service accounts in the cluster.",
+				Computed:            true,
+			},
 		},
 	}
 }

@@ -18,6 +18,7 @@ import (
 	"github.com/coreweave/terraform-provider-coreweave/coreweave/networking"
 	"github.com/coreweave/terraform-provider-coreweave/internal/provider"
 	"github.com/coreweave/terraform-provider-coreweave/internal/testutil"
+	"github.com/hashicorp/go-uuid"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	fwresource "github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -220,11 +221,46 @@ func stringOrNull(s types.String) knownvalue.Check {
 	return knownvalue.StringExact(s.ValueString())
 }
 
+type saOIDCIssuerUrlComparer struct{}
+
+var saOIDCIssuerURLRegex = regexp.MustCompile(`^https?://(?P<Host>[\w\d\.\-]+)(:(?P<Port>[0-9]+))?/id/(?P<ID>[0-9a-f\-]+)/?$`)
+
+var _ compare.ValueComparer = saOIDCIssuerUrlComparer{}
+
+// CompareValues implements compare.ValueComparer.
+func (c saOIDCIssuerUrlComparer) CompareValues(values ...any) error {
+	comparableValues := make([]string, len(values))
+	for i, v := range values {
+		vs, ok := v.(string)
+		if !ok {
+			return fmt.Errorf("value %d is not a string, got type %T: %v", i, v, v)
+		}
+
+		if _, err := uuid.ParseUUID(vs); err == nil {
+			comparableValues[i] = vs
+			continue
+		}
+
+		matches := saOIDCIssuerURLRegex.FindStringSubmatch(vs)
+		idGroup := matches[saOIDCIssuerURLRegex.SubexpIndex("ID")]
+		if _, err := uuid.ParseUUID(idGroup); err == nil {
+			comparableValues[i] = idGroup
+			continue
+		}
+
+		return fmt.Errorf("value %d is not a valid UUID or OIDC issuer URL: %q", i, vs)
+	}
+
+	return fmt.Errorf("values are not equal: %v != %v", comparableValues[0], comparableValues[1])
+}
+
 func createClusterTestStep(ctx context.Context, t *testing.T, config testStepConfig) resource.TestStep {
 	t.Helper()
 	statechecks := []statecheck.StateCheck{
 		// immutable fields
 		statecheck.ExpectKnownValue(config.Resources.FullResourceName, tfjsonpath.New("id"), knownvalue.NotNull()),
+		statecheck.ExpectKnownValue(config.Resources.FullResourceName, tfjsonpath.New("name"), knownvalue.StringExact(config.cluster.Name.ValueString())),
+		statecheck.ExpectKnownValue(config.Resources.FullResourceName, tfjsonpath.New("zone"), knownvalue.StringExact(config.cluster.Zone.ValueString())),
 		statecheck.ExpectKnownValue(config.Resources.FullResourceName, tfjsonpath.New("api_server_endpoint"), knownvalue.NotNull()),
 		statecheck.ExpectKnownValue(config.Resources.FullResourceName, tfjsonpath.New("status"), knownvalue.NotNull()),
 		statecheck.ExpectKnownValue(config.Resources.FullResourceName, tfjsonpath.New("vpc_id"), knownvalue.NotNull()),
@@ -232,6 +268,7 @@ func createClusterTestStep(ctx context.Context, t *testing.T, config testStepCon
 		statecheck.ExpectKnownValue(config.Resources.FullResourceName, tfjsonpath.New("public"), knownvalue.Bool(config.cluster.Public.ValueBool())),
 		statecheck.ExpectKnownValue(config.Resources.FullResourceName, tfjsonpath.New("pod_cidr_name"), knownvalue.StringExact(config.cluster.PodCidrName.ValueString())),
 		statecheck.ExpectKnownValue(config.Resources.FullResourceName, tfjsonpath.New("service_cidr_name"), knownvalue.StringExact(config.cluster.ServiceCidrName.ValueString())),
+		statecheck.CompareValuePairs(config.Resources.FullResourceName, tfjsonpath.New("service_account_oidc_issuer_url"), config.Resources.FullResourceName, tfjsonpath.New("id"), saOIDCIssuerUrlComparer{}),
 	}
 
 	// internal lb cidrs
