@@ -22,7 +22,7 @@ func NewClient(endpoint string, s3Endpoint string, timeout time.Duration, interc
 	rc.HTTPClient.Timeout = timeout
 	rc.RetryMax = 10
 	rc.RetryWaitMin = 200 * time.Millisecond
-	rc.RetryWaitMax = 5 * time.Second
+	rc.RetryWaitMax = 60 * time.Second
 	// Jittered exponential back-off (min*2^n) with capping.
 	rc.Backoff = retryablehttp.DefaultBackoff
 	// Treat only idempotent verbs + 502/503/504 + transport errors as retryable.
