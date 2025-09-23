@@ -26,6 +26,10 @@ import (
 	"github.com/zclconf/go-cty/cty"
 )
 
+const (
+	ServiceAccountOIDCBaseURL = "https://oidc.cks.coreweave.com"
+)
+
 // Ensure provider defined types fully satisfy framework interfaces.
 var (
 	_                        resource.Resource                = &ClusterResource{}
@@ -119,21 +123,22 @@ func (o *OidcResourceModel) Set(plan *ClusterResourceModel, oidc *cksv1beta1.OID
 
 // ClusterResourceModel describes the resource data model.
 type ClusterResourceModel struct {
-	Id                  types.String              `tfsdk:"id"`     //nolint:staticcheck
-	VpcId               types.String              `tfsdk:"vpc_id"` //nolint:staticcheck
-	Zone                types.String              `tfsdk:"zone"`
-	Name                types.String              `tfsdk:"name"`
-	Version             types.String              `tfsdk:"version"`
-	Public              types.Bool                `tfsdk:"public"`
-	PodCidrName         types.String              `tfsdk:"pod_cidr_name"`
-	ServiceCidrName     types.String              `tfsdk:"service_cidr_name"`
-	InternalLBCidrNames types.Set                 `tfsdk:"internal_lb_cidr_names"`
-	AuditPolicy         types.String              `tfsdk:"audit_policy"`
-	Oidc                *OidcResourceModel        `tfsdk:"oidc"`
-	AuthNWebhook        *AuthWebhookResourceModel `tfsdk:"authn_webhook"`
-	AuthZWebhook        *AuthWebhookResourceModel `tfsdk:"authz_webhook"`
-	ApiServerEndpoint   types.String              `tfsdk:"api_server_endpoint"` //nolint:staticcheck
-	Status              types.String              `tfsdk:"status"`
+	Id                          types.String              `tfsdk:"id"`     //nolint:staticcheck
+	VpcId                       types.String              `tfsdk:"vpc_id"` //nolint:staticcheck
+	Zone                        types.String              `tfsdk:"zone"`
+	Name                        types.String              `tfsdk:"name"`
+	Version                     types.String              `tfsdk:"version"`
+	Public                      types.Bool                `tfsdk:"public"`
+	PodCidrName                 types.String              `tfsdk:"pod_cidr_name"`
+	ServiceCidrName             types.String              `tfsdk:"service_cidr_name"`
+	InternalLBCidrNames         types.Set                 `tfsdk:"internal_lb_cidr_names"`
+	AuditPolicy                 types.String              `tfsdk:"audit_policy"`
+	Oidc                        *OidcResourceModel        `tfsdk:"oidc"`
+	AuthNWebhook                *AuthWebhookResourceModel `tfsdk:"authn_webhook"`
+	AuthZWebhook                *AuthWebhookResourceModel `tfsdk:"authz_webhook"`
+	ApiServerEndpoint           types.String              `tfsdk:"api_server_endpoint"` //nolint:staticcheck
+	Status                      types.String              `tfsdk:"status"`
+	ServiceAccountOIDCIssuerURL types.String              `tfsdk:"service_account_oidc_issuer_url"`
 }
 
 func oidcIsEmpty(oidc *cksv1beta1.OIDCConfig) bool {
@@ -172,6 +177,7 @@ func (c *ClusterResourceModel) Set(cluster *cksv1beta1.Cluster) {
 	c.Version = types.StringValue(cluster.Version)
 	c.Public = types.BoolValue(cluster.Public)
 	c.Status = types.StringValue(cluster.Status.String())
+	c.ServiceAccountOIDCIssuerURL = types.StringValue(fmt.Sprintf("%s/id/%s", ServiceAccountOIDCBaseURL, cluster.Id))
 
 	// if the plan value is null & the API returns an empty string, do not write to state
 	if cluster.AuditPolicy == "" && c.AuditPolicy.IsNull() {
@@ -553,6 +559,10 @@ func (r *ClusterResource) Schema(ctx context.Context, req resource.SchemaRequest
 						}
 					},
 					"", "Field `status` is read-only. If the status is `FAILED`, the cluster must be destroyed and re-created again.")},
+			},
+			"service_account_oidc_issuer_url": schema.StringAttribute{
+				MarkdownDescription: "The URL of the OIDC issuer for the cluster's service account tokens. This value corresponds to the `--service-account-issuer` flag on the kube-apiserver.",
+				Computed:            true,
 			},
 		},
 	}

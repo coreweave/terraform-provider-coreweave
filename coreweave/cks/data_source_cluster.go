@@ -129,6 +129,10 @@ func (d *ClusterDataSource) Schema(ctx context.Context, req datasource.SchemaReq
 				MarkdownDescription: "The status of the cluster.",
 				Computed:            true,
 			},
+			"service_account_oidc_issuer_url": schema.StringAttribute{
+				MarkdownDescription: "The URL of the OIDC issuer for the cluster's service account tokens. This value corresponds to the `--service-account-issuer` flag on the kube-apiserver.",
+				Computed:            true,
+			},
 		},
 	}
 }
