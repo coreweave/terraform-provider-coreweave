@@ -54,8 +54,8 @@ jobs:
         # https://endoflife.date/terraform
         # curl https://endoflife.date/api/terraform.json | yq -P 'map(select(.eol|not) | .cycle + ".*")'
         terraform:
-          - '1.11.*'
           - '1.12.*'
+          - '1.13.*'
     steps:
       - name: Checkout code
         uses: actions/checkout@v4.2.2
@@ -98,8 +98,8 @@ jobs:
         # https://endoflife.date/terraform
         # curl https://endoflife.date/api/terraform.json | yq -P 'map(select(.eol|not) | .cycle + ".*")'
         terraform:
-          - '1.11.*'
           - '1.12.*'
+          - '1.13.*'
     steps:
       - name: Checkout code
         uses: actions/checkout@v4.2.2
