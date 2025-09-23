@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.4.0](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.3.0...v0.4.0) (2025-09-23)
+
+
+### Features
+
+* add service_account_oidc_issuer_url attribute to cks_cluster ([#122](https://github.com/coreweave/terraform-provider-coreweave/issues/122)) ([449b011](https://github.com/coreweave/terraform-provider-coreweave/commit/449b0111bb6a06648aaebf1aa7bc7be220eb1cf1))
+
+
+### Bug Fixes
+
+* improve error message when importing non-existent policy ([#120](https://github.com/coreweave/terraform-provider-coreweave/issues/120)) ([229d6e7](https://github.com/coreweave/terraform-provider-coreweave/commit/229d6e75541a0d2ca30456183c27fbf6536f7ed4))
+
+
+### Tests
+
+* update acceptance test tf versions to 1.12/1.13 ([#124](https://github.com/coreweave/terraform-provider-coreweave/issues/124)) ([da6a158](https://github.com/coreweave/terraform-provider-coreweave/commit/da6a1588026a9b879be4a57883e41763acf114a4))
+
 ## [0.3.0](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.2.10...v0.3.0) (2025-08-06)
 
 
