@@ -52,15 +52,16 @@ type AuthWebhookResourceModel struct {
 }
 
 type OidcResourceModel struct {
-	IssuerURL      types.String `tfsdk:"issuer_url"`
-	ClientID       types.String `tfsdk:"client_id"`
-	UsernameClaim  types.String `tfsdk:"username_claim"`
-	UsernamePrefix types.String `tfsdk:"username_prefix"`
-	GroupsClaim    types.String `tfsdk:"groups_claim"`
-	GroupsPrefix   types.String `tfsdk:"groups_prefix"`
-	CA             types.String `tfsdk:"ca"`
-	RequiredClaim  types.String `tfsdk:"required_claim"`
-	SigningAlgs    types.Set    `tfsdk:"signing_algs"`
+	IssuerURL         types.String `tfsdk:"issuer_url"`
+	ClientID          types.String `tfsdk:"client_id"`
+	UsernameClaim     types.String `tfsdk:"username_claim"`
+	UsernamePrefix    types.String `tfsdk:"username_prefix"`
+	GroupsClaim       types.String `tfsdk:"groups_claim"`
+	GroupsPrefix      types.String `tfsdk:"groups_prefix"`
+	CA                types.String `tfsdk:"ca"`
+	RequiredClaim     types.String `tfsdk:"required_claim"`
+	SigningAlgs       types.Set    `tfsdk:"signing_algs"`
+	AdminGroupBinding types.String `tfsdk:"admin_group_binding"`
 }
 
 func (o *OidcResourceModel) Set(plan *ClusterResourceModel, oidc *cksv1beta1.OIDCConfig) {
@@ -82,6 +83,7 @@ func (o *OidcResourceModel) Set(plan *ClusterResourceModel, oidc *cksv1beta1.OID
 	o.GroupsPrefix = types.StringValue(oidc.GroupsPrefix)
 	o.CA = types.StringValue(oidc.Ca)
 	o.RequiredClaim = types.StringValue(oidc.RequiredClaim)
+	o.AdminGroupBinding = types.StringValue(oidc.AdminGroupBinding)
 
 	// if we don't have any saved state for these fields, and the API returns empty
 	// set these fields to null so as to match unset HCL
@@ -119,6 +121,10 @@ func (o *OidcResourceModel) Set(plan *ClusterResourceModel, oidc *cksv1beta1.OID
 		signingAlgs := types.SetValueMust(types.StringType, algs)
 		o.SigningAlgs = signingAlgs
 	}
+
+	if oidcPlan.AdminGroupBinding.IsNull() && oidc.AdminGroupBinding == "" {
+		o.AdminGroupBinding = types.StringNull()
+	}
 }
 
 // ClusterResourceModel describes the resource data model.
@@ -154,7 +160,8 @@ func oidcIsEmpty(oidc *cksv1beta1.OIDCConfig) bool {
 		oidc.RequiredClaim == "" &&
 		len(oidc.SigningAlgorithms) == 0 &&
 		oidc.UsernameClaim == "" &&
-		oidc.UsernamePrefix == ""
+		oidc.UsernamePrefix == "" &&
+		oidc.AdminGroupBinding == ""
 }
 
 func authWebhookEmpty(webhook *cksv1beta1.AuthWebhookConfig) bool {
@@ -303,6 +310,7 @@ func (c *ClusterResourceModel) ToCreateRequest(ctx context.Context) *cksv1beta1.
 			Ca:                c.Oidc.CA.ValueString(),
 			RequiredClaim:     c.Oidc.RequiredClaim.ValueString(),
 			SigningAlgorithms: c.oidcSigningAlgs(ctx),
+			AdminGroupBinding: c.Oidc.AdminGroupBinding.ValueString(),
 		}
 	}
 
@@ -345,6 +353,7 @@ func (c *ClusterResourceModel) ToUpdateRequest(ctx context.Context) *cksv1beta1.
 			Ca:                c.Oidc.CA.ValueString(),
 			RequiredClaim:     c.Oidc.RequiredClaim.ValueString(),
 			SigningAlgorithms: c.oidcSigningAlgs(ctx),
+			AdminGroupBinding: c.Oidc.AdminGroupBinding.ValueString(),
 		}
 	}
 
@@ -530,6 +539,11 @@ func (r *ClusterResource) Schema(ctx context.Context, req resource.SchemaRequest
 						ElementType:         types.StringType,
 						Optional:            true,
 						MarkdownDescription: "A list of signing algorithms that the OpenID Connect discovery endpoint uses.",
+					},
+					"admin_group_binding": schema.SetAttribute{
+						ElementType:         types.StringType,
+						Optional:            true,
+						MarkdownDescription: "The oidc group that is bound to the cluster-admin role for bootstrap access to the cluster.",
 					},
 				},
 			},
@@ -853,15 +867,16 @@ func MustRenderClusterResource(ctx context.Context, resourceName string, cluster
 		}
 
 		resourceBody.SetAttributeValue("oidc", cty.ObjectVal(map[string]cty.Value{
-			"issuer_url":      stringOrNull(cluster.Oidc.IssuerURL),
-			"client_id":       stringOrNull(cluster.Oidc.ClientID),
-			"username_claim":  stringOrNull(cluster.Oidc.UsernameClaim),
-			"username_prefix": stringOrNull(cluster.Oidc.UsernamePrefix),
-			"groups_claim":    stringOrNull(cluster.Oidc.GroupsClaim),
-			"groups_prefix":   stringOrNull(cluster.Oidc.GroupsPrefix),
-			"ca":              stringOrNull(cluster.Oidc.CA),
-			"required_claim":  stringOrNull(cluster.Oidc.RequiredClaim),
-			"signing_algs":    signingAlgs,
+			"issuer_url":          stringOrNull(cluster.Oidc.IssuerURL),
+			"client_id":           stringOrNull(cluster.Oidc.ClientID),
+			"username_claim":      stringOrNull(cluster.Oidc.UsernameClaim),
+			"username_prefix":     stringOrNull(cluster.Oidc.UsernamePrefix),
+			"groups_claim":        stringOrNull(cluster.Oidc.GroupsClaim),
+			"groups_prefix":       stringOrNull(cluster.Oidc.GroupsPrefix),
+			"ca":                  stringOrNull(cluster.Oidc.CA),
+			"required_claim":      stringOrNull(cluster.Oidc.RequiredClaim),
+			"signing_algs":        signingAlgs,
+			"admin_group_binding": stringOrNull(cluster.Oidc.AdminGroupBinding),
 		}))
 	}
 
