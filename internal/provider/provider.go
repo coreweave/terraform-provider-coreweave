@@ -12,6 +12,7 @@ import (
 	"github.com/coreweave/terraform-provider-coreweave/coreweave/cks"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave/networking"
 	objectstorage "github.com/coreweave/terraform-provider-coreweave/coreweave/object_storage"
+	"github.com/coreweave/terraform-provider-coreweave/coreweave/telecaster"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/function"
 	"github.com/hashicorp/terraform-plugin-framework/provider"
@@ -210,6 +211,7 @@ func (p *CoreweaveProvider) Resources(ctx context.Context) []func() resource.Res
 		objectstorage.NewBucketLifecycleResource,
 		objectstorage.NewBucketVersioningResource,
 		objectstorage.NewBucketPolicyResource,
+		telecaster.NewStreamResource,
 	}
 }
 

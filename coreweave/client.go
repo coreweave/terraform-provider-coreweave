@@ -11,6 +11,7 @@ import (
 	"buf.build/gen/go/coreweave/networking/connectrpc/go/coreweave/networking/v1beta1/networkingv1beta1connect"
 	"connectrpc.com/connect"
 
+	telecasterclusterv1beta1connect "github.com/coreweave/o11y-mgmt/gen/cw/telecaster/svc/cluster/v1beta1/clusterv1beta1connect"
 	retryablehttp "github.com/hashicorp/go-retryablehttp"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
@@ -31,9 +32,10 @@ func NewClient(endpoint string, s3Endpoint string, timeout time.Duration, interc
 	c := rc.StandardClient()
 
 	return &Client{
-		ClusterServiceClient: cksv1beta1connect.NewClusterServiceClient(c, endpoint, connect.WithInterceptors(interceptors...)),
-		VPCServiceClient:     networkingv1beta1connect.NewVPCServiceClient(c, endpoint, connect.WithInterceptors(interceptors...)),
-		CWObjectClient:       cwobjectv1connect.NewCWObjectClient(c, endpoint, connect.WithInterceptors(interceptors...)),
+		ClusterServiceClient:    cksv1beta1connect.NewClusterServiceClient(c, endpoint, connect.WithInterceptors(interceptors...)),
+		VPCServiceClient:        networkingv1beta1connect.NewVPCServiceClient(c, endpoint, connect.WithInterceptors(interceptors...)),
+		CWObjectClient:          cwobjectv1connect.NewCWObjectClient(c, endpoint, connect.WithInterceptors(interceptors...)),
+		TelecasterServiceClient: telecasterclusterv1beta1connect.NewTelecasterServiceClient(c, endpoint, connect.WithInterceptors(interceptors...)),
 
 		s3Endpoint: s3Endpoint,
 	}
@@ -43,6 +45,7 @@ type Client struct {
 	cksv1beta1connect.ClusterServiceClient
 	networkingv1beta1connect.VPCServiceClient
 	cwobjectv1connect.CWObjectClient
+	telecasterclusterv1beta1connect.TelecasterServiceClient
 
 	s3Endpoint string
 }
