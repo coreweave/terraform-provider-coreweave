@@ -540,8 +540,7 @@ func (r *ClusterResource) Schema(ctx context.Context, req resource.SchemaRequest
 						Optional:            true,
 						MarkdownDescription: "A list of signing algorithms that the OpenID Connect discovery endpoint uses.",
 					},
-					"admin_group_binding": schema.SetAttribute{
-						ElementType:         types.StringType,
+					"admin_group_binding": schema.StringAttribute{
 						Optional:            true,
 						MarkdownDescription: "The oidc group that is bound to the cluster-admin role for bootstrap access to the cluster.",
 					},
