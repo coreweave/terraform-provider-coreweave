@@ -128,7 +128,7 @@ Required:
 
 Optional:
 
-- `admin_group_binding` (String) The oidc group that is bound to the cluster-admin role for bootstrap access to the cluster.
+- `admin_group_binding` (String) The OIDC group that is bound to the cluster-admin role for bootstrap access to the cluster.
 - `ca` (String) The CA certificate for the OIDC issuer. Must be a base64-encoded PEM-encoded certificate.
 - `groups_claim` (String) The claim to use as the groups.
 - `groups_prefix` (String) The prefix to use for the groups.

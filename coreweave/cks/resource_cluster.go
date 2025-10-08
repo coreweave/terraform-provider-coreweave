@@ -542,7 +542,7 @@ func (r *ClusterResource) Schema(ctx context.Context, req resource.SchemaRequest
 					},
 					"admin_group_binding": schema.StringAttribute{
 						Optional:            true,
-						MarkdownDescription: "The oidc group that is bound to the cluster-admin role for bootstrap access to the cluster.",
+						MarkdownDescription: "The OIDC group that is bound to the cluster-admin role for bootstrap access to the cluster.",
 					},
 				},
 			},
