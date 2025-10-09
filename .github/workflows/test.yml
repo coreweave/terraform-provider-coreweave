@@ -77,6 +77,8 @@ jobs:
           go-version-file: 'go.mod'
           cache: true
       - run: go mod download
+      - name: Check go mod tidy
+        run: go mod tidy -diff
       - run: go test -v -cover ./...
         timeout-minutes: 10
 
