@@ -288,14 +288,15 @@ func createClusterTestStep(ctx context.Context, t *testing.T, config testStepCon
 	// oidc
 	if config.cluster.Oidc != nil {
 		oidc := map[string]knownvalue.Check{
-			"issuer_url":      stringOrNull(config.cluster.Oidc.IssuerURL),
-			"client_id":       stringOrNull(config.cluster.Oidc.ClientID),
-			"username_claim":  stringOrNull(config.cluster.Oidc.UsernameClaim),
-			"username_prefix": stringOrNull(config.cluster.Oidc.UsernamePrefix),
-			"groups_claim":    stringOrNull(config.cluster.Oidc.GroupsClaim),
-			"groups_prefix":   stringOrNull(config.cluster.Oidc.GroupsPrefix),
-			"ca":              stringOrNull(config.cluster.Oidc.CA),
-			"required_claim":  stringOrNull(config.cluster.Oidc.RequiredClaim),
+			"issuer_url":          stringOrNull(config.cluster.Oidc.IssuerURL),
+			"client_id":           stringOrNull(config.cluster.Oidc.ClientID),
+			"username_claim":      stringOrNull(config.cluster.Oidc.UsernameClaim),
+			"username_prefix":     stringOrNull(config.cluster.Oidc.UsernamePrefix),
+			"groups_claim":        stringOrNull(config.cluster.Oidc.GroupsClaim),
+			"groups_prefix":       stringOrNull(config.cluster.Oidc.GroupsPrefix),
+			"ca":                  stringOrNull(config.cluster.Oidc.CA),
+			"required_claim":      stringOrNull(config.cluster.Oidc.RequiredClaim),
+			"admin_group_binding": stringOrNull(config.cluster.Oidc.AdminGroupBinding),
 		}
 		if len(config.cluster.Oidc.SigningAlgs.Elements()) == 0 {
 			oidc["signing_algs"] = knownvalue.SetSizeExact(0)
@@ -380,15 +381,16 @@ func TestClusterResource(t *testing.T) {
 		InternalLBCidrNames: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr"), types.StringValue("internal-lb-cidr-2")}),
 		AuditPolicy:         types.StringValue(AuditPolicyB64),
 		Oidc: &cks.OidcResourceModel{
-			IssuerURL:      types.StringValue("https://samples.auth0.com/"),
-			ClientID:       types.StringValue("kbyuFDidLLm280LIwVFiazOqjO3ty8KH"),
-			UsernameClaim:  types.StringValue("user_id"),
-			UsernamePrefix: types.StringValue("cw"),
-			GroupsClaim:    types.StringValue("read-only"),
-			GroupsPrefix:   types.StringValue("cw"),
-			CA:             types.StringValue(ExampleCAB64),
-			SigningAlgs:    types.SetValueMust(types.StringType, []attr.Value{types.StringValue("SIGNING_ALGORITHM_RS256")}),
-			RequiredClaim:  types.StringValue("group=admin"),
+			IssuerURL:         types.StringValue("https://samples.auth0.com/"),
+			ClientID:          types.StringValue("kbyuFDidLLm280LIwVFiazOqjO3ty8KH"),
+			UsernameClaim:     types.StringValue("user_id"),
+			UsernamePrefix:    types.StringValue("cw"),
+			GroupsClaim:       types.StringValue("read-only"),
+			GroupsPrefix:      types.StringValue("cw"),
+			CA:                types.StringValue(ExampleCAB64),
+			SigningAlgs:       types.SetValueMust(types.StringType, []attr.Value{types.StringValue("SIGNING_ALGORITHM_RS256")}),
+			RequiredClaim:     types.StringValue("group=admin"),
+			AdminGroupBinding: types.StringValue("cw-admins"),
 		},
 		AuthNWebhook: &cks.AuthWebhookResourceModel{
 			Server: types.StringValue("https://samples.auth0.com/"),
