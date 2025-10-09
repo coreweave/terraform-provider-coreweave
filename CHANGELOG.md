@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.1](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.5.0...v0.5.1) (2025-10-09)
+
+
+### Bug Fixes
+
+* bump connectrpc to 1.19.1 ([#136](https://github.com/coreweave/terraform-provider-coreweave/issues/136)) ([889f63c](https://github.com/coreweave/terraform-provider-coreweave/commit/889f63c2a24ea191c39cdea5959098d48f5684ca))
+
 ## [0.5.0](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.4.0...v0.5.0) (2025-10-09)
 
 
