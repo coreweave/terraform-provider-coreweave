@@ -62,7 +62,7 @@ jobs:
         uses: goreleaser/goreleaser-action@v6.1.0
         with:
           version: latest
-          args: release --snapshot --clean
+          args: release --snapshot --clean --skip sign
 
   # Run acceptance tests in a matrix with Terraform CLI versions
   test:

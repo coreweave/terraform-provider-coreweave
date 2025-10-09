@@ -1,11 +1,7 @@
 buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.36.10-20250912141014-52f32327d4b0.1 h1:31on4W/yPcV4nZHL4+UCiCvLPsMqe/vJcNg8Rci0scc=
 buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.36.10-20250912141014-52f32327d4b0.1/go.mod h1:fUl8CEN/6ZAMk6bP8ahBJPUJw7rbp+j4x+wCcYi2IG4=
-buf.build/gen/go/coreweave/cks/connectrpc/go v1.19.0-20250926171942-02eaad5e67c5.1 h1:nRT5CUu+zTCv/Nf9pBzJzt5znM6IwuSYPm0XxzWGliw=
-buf.build/gen/go/coreweave/cks/connectrpc/go v1.19.0-20250926171942-02eaad5e67c5.1/go.mod h1:u04OG7Xry7VMzap24hnMbhwIkq7biwhX+gHmXYNCcu8=
 buf.build/gen/go/coreweave/cks/connectrpc/go v1.19.0-20251007230423-8a2391dbf182.1 h1:8A63lP3sxzU7ldMMun3bHuDXZSqTFvJgcSp0ygYys5U=
 buf.build/gen/go/coreweave/cks/connectrpc/go v1.19.0-20251007230423-8a2391dbf182.1/go.mod h1:2d8NdTIQCYvVzPEU7PdYLFMFpXtDX7Z+eiO8iplhThE=
-buf.build/gen/go/coreweave/cks/protocolbuffers/go v1.36.10-20250926171942-02eaad5e67c5.1 h1:quMuRSSdTYTDvB83JTw7ZNkDDs0UJZotFwtDZEjZaKk=
-buf.build/gen/go/coreweave/cks/protocolbuffers/go v1.36.10-20250926171942-02eaad5e67c5.1/go.mod h1:OYHgRRLtho9u25TQsl/97SoEcV68aK79D/fn0dUaF8c=
 buf.build/gen/go/coreweave/cks/protocolbuffers/go v1.36.10-20251007230423-8a2391dbf182.1 h1:hOPbbWYhmjQpSqsJ4sNQX/lKD3MHw0mHwtfh3iXdk5E=
 buf.build/gen/go/coreweave/cks/protocolbuffers/go v1.36.10-20251007230423-8a2391dbf182.1/go.mod h1:OYHgRRLtho9u25TQsl/97SoEcV68aK79D/fn0dUaF8c=
 buf.build/gen/go/coreweave/cwobject/connectrpc/go v1.18.1-20250604181649-b97f17b05d5b.1 h1:ggkMCPJBBQa43vliLGVzi2phOMA1BZiQFh/yDumQcQI=
@@ -18,8 +14,8 @@ buf.build/gen/go/coreweave/networking/protocolbuffers/go v1.36.2-20250310211902-
 buf.build/gen/go/coreweave/networking/protocolbuffers/go v1.36.2-20250310211902-b930cb89bad3.1/go.mod h1:18J+C9ULMrXj4CZQ2uXkJjtWkWa/aFPh5PxYrxNNbyY=
 buf.build/gen/go/grpc-ecosystem/grpc-gateway/protocolbuffers/go v1.36.2-20241220201140-4c5ba75caaf8.1 h1:AjyYh6i8bsmef6OIvSK+7K5ZwkzBQxgVPb4F+zhRSOA=
 buf.build/gen/go/grpc-ecosystem/grpc-gateway/protocolbuffers/go v1.36.2-20241220201140-4c5ba75caaf8.1/go.mod h1:hTOBKINwGHfMDBYzf2rUhU43p7h+ySnNrgEDmT+iOQY=
-connectrpc.com/connect v1.19.0 h1:LuqUbq01PqbtL0o7vn0WMRXzR2nNsiINe5zfcJ24pJM=
-connectrpc.com/connect v1.19.0/go.mod h1:tN20fjdGlewnSFeZxLKb0xwIZ6ozc3OQs2hTXy4du9w=
+connectrpc.com/connect v1.19.1 h1:R5M57z05+90EfEvCY1b7hBxDVOUl45PrtXtAV2fOC14=
+connectrpc.com/connect v1.19.1/go.mod h1:tN20fjdGlewnSFeZxLKb0xwIZ6ozc3OQs2hTXy4du9w=
 dario.cat/mergo v1.0.0 h1:AGCNq9Evsj31mOgNPcLyXc+4PNABt905YmuqPYYpBWk=
 dario.cat/mergo v1.0.0/go.mod h1:uNxQE+84aUszobStD9th8a29P2fMDhsBdgRYvZOxGmk=
 github.com/Microsoft/go-winio v0.6.1 h1:9/kr64B9VUZrLm5YYwbGtUJnMgqWVOdUAXu6Migciow=
