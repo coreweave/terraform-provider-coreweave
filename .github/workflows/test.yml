@@ -25,12 +25,11 @@ jobs:
           go-version-file: 'go.mod'
           cache: true
       - run: go mod download
-      - run: go build -v .
+      - run: go build -v ./...
       - name: Run linters
         uses: golangci/golangci-lint-action@v8 # v8
         with:
           version: v2.4.0
-
 
   generate:
     runs-on: ubuntu-latest
@@ -49,6 +48,21 @@ jobs:
         run: |
           git diff --compact-summary --exit-code || \
             (echo; echo "Unexpected difference in directories after code generation. Run 'make generate' command and commit."; exit 1)
+
+  snapshot-build:
+    name: Snapshot Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+      - name: Test snapshot build
+        uses: goreleaser/goreleaser-action@v6.1.0
+        with:
+          version: latest
+          args: release --snapshot --clean
 
   # Run acceptance tests in a matrix with Terraform CLI versions
   test:
