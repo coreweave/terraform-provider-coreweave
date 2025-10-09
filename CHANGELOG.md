@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.4.0...v0.5.0) (2025-10-09)
+
+
+### Features
+
+* **cks:** add support for new admin_group_binding oidc field on cks api ([#133](https://github.com/coreweave/terraform-provider-coreweave/issues/133)) ([1171e8c](https://github.com/coreweave/terraform-provider-coreweave/commit/1171e8c4b682f205aaec2325c2400c411423dbf7))
+
 ## [0.4.0](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.3.0...v0.4.0) (2025-09-23)
 
 
