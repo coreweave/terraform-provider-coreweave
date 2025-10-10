@@ -92,7 +92,7 @@ jobs:
         env:
           PR_TITLE: ${{ github.event.pull_request.title }}
         run: |
-          re_types="build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test"
+          re_types="build|chore|ci|deps|docs|feat|fix|perf|refactor|revert|style|test"
           re_scope="\([[:alnum:]._-]+\)"
           re_message="([[:alnum:]])+([[:space:][:print:]]*)"
           re_full="^($re_types)($re_scope)?: ($re_message)$"
