@@ -24,7 +24,7 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: 'go.mod'
-          cache: true
+          cache: false
       - name: Update GitHub CLI
         run: sudo apt-get install gh -y
       - name: Import GPG key
