@@ -18,7 +18,7 @@ import (
 )
 
 var (
-	_ resource.Resource = &StreamResource{}
+	_ resource.ResourceWithConfigure = &StreamResource{}
 )
 
 func NewStreamResource() resource.Resource {
@@ -156,7 +156,7 @@ func (s *StreamResource) Configure(_ context.Context, req resource.ConfigureRequ
 
 func (s *StreamResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		MarkdownDescription: "CoreWeave Telecaster Stream",
+		MarkdownDescription: "CoreWeave Telecaster stream",
 		Attributes: map[string]schema.Attribute{
 			"slug": schema.StringAttribute{
 				MarkdownDescription: "The slug of the stream. Used as a unique identifier.",
