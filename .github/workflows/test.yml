@@ -59,7 +59,7 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: 'go.mod'
-          cache: false  # this job uses a separate cache, because of the multiarch build. This makes it slightly slower the first time, but significantly faster on subsequent runs.
+          cache: false  # This job uses a separate cache, because of the multiarch build. This makes it slightly slower the first time, but significantly faster on subsequent runs.
       - name: Cache Go modules and build cache
         uses: actions/cache@v4
         with:
