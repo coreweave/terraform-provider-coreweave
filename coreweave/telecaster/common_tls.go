@@ -1,0 +1,34 @@
+package telecaster
+
+import (
+	telecastertypesv1beta1 "github.com/coreweave/o11y-mgmt/gen/cw/telecaster/types/v1beta1"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/types"
+)
+
+type TLSConfigModel struct {
+	CertificateAuthorityData types.String `tfsdk:"certificate_authority_data"`
+}
+
+func (t *TLSConfigModel) toProtoObject() *telecastertypesv1beta1.TLSConfig {
+	if t == nil {
+		return nil
+	}
+
+	return &telecastertypesv1beta1.TLSConfig{
+		CertificateAuthorityData: t.CertificateAuthorityData.ValueString(),
+	}
+}
+
+func tlsConfigModelAttribute() schema.SingleNestedAttribute {
+	return schema.SingleNestedAttribute{
+		MarkdownDescription: "Configuration for TLS connections.",
+		Attributes: map[string]schema.Attribute{
+			"certificate_authority_data": schema.StringAttribute{
+				MarkdownDescription: "Base64 encoded CA certificate data.",
+				Required:            true,
+			},
+		},
+		Optional: true,
+	}
+}
