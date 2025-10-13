@@ -112,12 +112,17 @@ func createLifecycleTestStep(
 		nonCurrentVersionExpirationCheck := statecheck.ExpectKnownValue(rs, ruleBase.AtMapKey("noncurrent_version_expiration"), knownvalue.Null())
 		if r.NoncurrentVersionExpiration != nil {
 			nonCurrentVersionExpirationCheck = statecheck.ExpectKnownValue(rs, ruleBase.AtMapKey("noncurrent_version_expiration"), knownvalue.NotNull())
+			daysCheck := statecheck.ExpectKnownValue(rs, ruleBase.AtMapKey("noncurrent_version_expiration").AtMapKey("noncurrent_days"), knownvalue.Null())
 			if !r.NoncurrentVersionExpiration.NoncurrentDays.IsNull() {
-				checks = append(checks, statecheck.ExpectKnownValue(rs, ruleBase.AtMapKey("noncurrent_version_expiration").AtMapKey("noncurrent_days"), knownvalue.Int32Exact(r.NoncurrentVersionExpiration.NoncurrentDays.ValueInt32())))
+				daysCheck = statecheck.ExpectKnownValue(rs, ruleBase.AtMapKey("noncurrent_version_expiration").AtMapKey("noncurrent_days"), knownvalue.Int32Exact(r.NoncurrentVersionExpiration.NoncurrentDays.ValueInt32()))
 			}
+			checks = append(checks, daysCheck)
+
+			newerCheck := statecheck.ExpectKnownValue(rs, ruleBase.AtMapKey("noncurrent_version_expiration").AtMapKey("newer_noncurrent_versions"), knownvalue.Null())
 			if !r.NoncurrentVersionExpiration.NewerNoncurrentVersions.IsNull() {
-				checks = append(checks, statecheck.ExpectKnownValue(rs, ruleBase.AtMapKey("noncurrent_version_expiration").AtMapKey("newer_noncurrent_versions"), knownvalue.Int32Exact(r.NoncurrentVersionExpiration.NewerNoncurrentVersions.ValueInt32())))
+				newerCheck = statecheck.ExpectKnownValue(rs, ruleBase.AtMapKey("noncurrent_version_expiration").AtMapKey("newer_noncurrent_versions"), knownvalue.Int32Exact(r.NoncurrentVersionExpiration.NewerNoncurrentVersions.ValueInt32()))
 			}
+			checks = append(checks, newerCheck)
 		}
 		checks = append(checks, nonCurrentVersionExpirationCheck)
 
@@ -252,6 +257,9 @@ func TestBucketLifecycleConfiguration(t *testing.T) {
 	noncurrNewerOnly := objectstorage.LifecycleRuleModel{
 		ID:     types.StringValue("noncurrent-newer-only"),
 		Status: types.StringValue("Enabled"),
+		Filter: &objectstorage.FilterModel{
+			Prefix: types.StringValue("metrics/"),
+		},
 		NoncurrentVersionExpiration: &objectstorage.NoncurrentVersionExpirationModel{
 			NewerNoncurrentVersions: types.Int32Value(2),
 		},
@@ -422,7 +430,7 @@ func TestBucketLifecycleConfiguration_MultiRule(t *testing.T) {
 			},
 		}),
 		createLifecycleTestStep(ctx, t, lifecycleTestConfig{
-			name:         "add third rule, change one",
+			name:         "add third rule",
 			resourceName: resourceName,
 			bucket:       bucket,
 			rules:        []objectstorage.LifecycleRuleModel{r1, r2, r3},

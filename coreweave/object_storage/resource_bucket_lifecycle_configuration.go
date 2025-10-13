@@ -280,9 +280,12 @@ func expandRules(ctx context.Context, in []LifecycleRuleModel) []s3types.Lifecyc
 			rule.Expiration = &exp
 		}
 		if r.NoncurrentVersionExpiration != nil {
-			nc := s3types.NoncurrentVersionExpiration{
-				NoncurrentDays:          aws.Int32(r.NoncurrentVersionExpiration.NoncurrentDays.ValueInt32()),
-				NewerNoncurrentVersions: aws.Int32(r.NoncurrentVersionExpiration.NewerNoncurrentVersions.ValueInt32()),
+			nc := s3types.NoncurrentVersionExpiration{}
+			if !r.NoncurrentVersionExpiration.NoncurrentDays.IsNull() {
+				nc.NoncurrentDays = aws.Int32(r.NoncurrentVersionExpiration.NoncurrentDays.ValueInt32())
+			}
+			if !r.NoncurrentVersionExpiration.NewerNoncurrentVersions.IsNull() {
+				nc.NewerNoncurrentVersions = aws.Int32(r.NoncurrentVersionExpiration.NewerNoncurrentVersions.ValueInt32())
 			}
 			rule.NoncurrentVersionExpiration = &nc
 		}
