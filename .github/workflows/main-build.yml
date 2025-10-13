@@ -1,0 +1,11 @@
+on:
+  push:
+    branches:
+      - main # running from the default branch makes the cache available to PRs.
+
+jobs:
+  build:
+    uses: ./.github/workflows/build.yml
+    with:
+      native: true
+      snapshot-build: true

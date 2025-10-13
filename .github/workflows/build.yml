@@ -1,0 +1,56 @@
+on:
+  workflow_call:
+    inputs:
+      native:
+        type: boolean
+        description: 'Whether to run the native OS/ARCH build (true/false)'
+        required: false
+        default: true
+      snapshot:
+        type: boolean
+        description: 'Whether to run the snapshot (all release OS/Arch combos) build (true/false)'
+        required: false
+        default: false
+
+jobs:
+  native:
+    name: Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: ${{ inputs.native }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+      - run: go mod download
+      - run: go build -v ./...
+      - name: Run linters
+        uses: golangci/golangci-lint-action@v8 # v8
+        with:
+          version: v2.4.0
+
+  snapshot:
+    name: Snapshot Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    if: ${{ inputs.snapshot }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+          cache: false  # This job uses a separate cache, because of the multiarch build. This makes it slightly slower the first time, but significantly faster on subsequent runs.
+      - name: Cache Go modules and build cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-goreleaser-snapshot-go-${{ hashFiles('**/go.sum') }}
+      - name: Test snapshot build
+        uses: goreleaser/goreleaser-action@v6.1.0
+        with:
+          version: latest
+          args: release --snapshot --clean --skip sign
