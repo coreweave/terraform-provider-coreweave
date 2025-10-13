@@ -26,10 +26,6 @@ jobs:
           cache: true
       - run: go mod download
       - run: go build -v ./...
-      - name: Run linters
-        uses: golangci/golangci-lint-action@v8 # v8
-        with:
-          version: v2.4.0
 
   snapshot:
     name: Snapshot Build

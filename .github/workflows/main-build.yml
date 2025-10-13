@@ -8,4 +8,4 @@ jobs:
     uses: ./.github/workflows/build.yml
     with:
       native: true
-      snapshot-build: true
+      snapshot: true
