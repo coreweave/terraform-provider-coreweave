@@ -334,8 +334,9 @@ func TestBucketLifecycleConfiguration(t *testing.T) {
 func TestBucketLifecycleConfiguration_MultiRule(t *testing.T) {
 	ctx := context.Background()
 
+	randInt := rand.IntN(100)
 	bucket := objectstorage.BucketResourceModel{
-		Name: types.StringValue("tf-acc-lc-bucket-multi"),
+		Name: types.StringValue(fmt.Sprintf("tf-acc-lc-bucket-multi-%d", randInt)),
 		Zone: types.StringValue("US-EAST-04A"),
 	}
 
