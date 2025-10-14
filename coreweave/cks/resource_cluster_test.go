@@ -358,7 +358,15 @@ func TestClusterResource(t *testing.T) {
 	kubeVersion := testutil.AcceptanceTestKubeVersion
 
 	vpc := defaultVpc(config.ClusterName, zone)
-
+	npTypes := map[string]attr.Type{
+		"start": types.Int32Type,
+		"end":   types.Int32Type,
+	}
+	npVals := map[string]attr.Value{
+		"start": types.Int32Value(30000),
+		"end":   types.Int32Value(50000),
+	}
+	np, _ := types.ObjectValue(npTypes, npVals)
 	initial := &cks.ClusterResourceModel{
 		VpcId:               types.StringValue(fmt.Sprintf("coreweave_networking_vpc.%s.id", config.ResourceName)),
 		Name:                types.StringValue(config.ClusterName),
@@ -368,6 +376,7 @@ func TestClusterResource(t *testing.T) {
 		PodCidrName:         types.StringValue("pod-cidr"),
 		ServiceCidrName:     types.StringValue("service-cidr"),
 		InternalLBCidrNames: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr")}),
+		NodePortRange:       np,
 	}
 
 	dataSource := &cks.ClusterDataSourceModel{
@@ -467,6 +476,9 @@ func TestClusterResource(t *testing.T) {
 				statecheck.ExpectKnownValue(config.FullDataSourceName, tfjsonpath.New("public"), knownvalue.Bool(initial.Public.ValueBool())),
 				statecheck.ExpectKnownValue(config.FullDataSourceName, tfjsonpath.New("pod_cidr_name"), knownvalue.StringExact(initial.PodCidrName.ValueString())),
 				statecheck.ExpectKnownValue(config.FullDataSourceName, tfjsonpath.New("service_cidr_name"), knownvalue.StringExact(initial.ServiceCidrName.ValueString())),
+				// Check the value of start and end of the ObjectType
+				statecheck.ExpectKnownValue(config.FullDataSourceName, tfjsonpath.New("node_port_range").AtMapKey("start"), knownvalue.NotNull()),
+				statecheck.ExpectKnownValue(config.FullDataSourceName, tfjsonpath.New("node_port_range").AtMapKey("end"), knownvalue.NotNull()),
 			},
 		},
 		createClusterTestStep(ctx, t, testStepConfig{

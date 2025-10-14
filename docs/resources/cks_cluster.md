@@ -92,6 +92,7 @@ The prefixes must exist in the cluster's VPC. This field is append-only.
 
 - `api_server_endpoint` (String) The endpoint for the cluster's api-server.
 - `id` (String) The unique identifier of the cluster.
+- `node_port_range` (Attributes) Kubernetes Service NodePort range. (see [below for nested schema](#nestedatt--node_port_range))
 - `service_account_oidc_issuer_url` (String) The URL of the OIDC issuer for the cluster's service account tokens. This value corresponds to the `--service-account-issuer` flag on the kube-apiserver.
 - `status` (String) The current status of the cluster.
 
@@ -137,6 +138,15 @@ Optional:
 - `signing_algs` (Set of String) A list of signing algorithms that the OpenID Connect discovery endpoint uses.
 - `username_claim` (String) The claim to use as the username.
 - `username_prefix` (String) The prefix to use for the username.
+
+
+<a id="nestedatt--node_port_range"></a>
+### Nested Schema for `node_port_range`
+
+Read-Only:
+
+- `end` (Number)
+- `start` (Number)
 
 ## Import
 

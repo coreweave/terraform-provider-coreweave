@@ -138,6 +138,7 @@ type ClusterResourceModel struct {
 	PodCidrName                 types.String              `tfsdk:"pod_cidr_name"`
 	ServiceCidrName             types.String              `tfsdk:"service_cidr_name"`
 	InternalLBCidrNames         types.Set                 `tfsdk:"internal_lb_cidr_names"`
+	NodePortRange               types.Object              `tfsdk:"node_port_range"`
 	AuditPolicy                 types.String              `tfsdk:"audit_policy"`
 	Oidc                        *OidcResourceModel        `tfsdk:"oidc"`
 	AuthNWebhook                *AuthWebhookResourceModel `tfsdk:"authn_webhook"`
@@ -146,6 +147,13 @@ type ClusterResourceModel struct {
 	Status                      types.String              `tfsdk:"status"`
 	ServiceAccountOIDCIssuerURL types.String              `tfsdk:"service_account_oidc_issuer_url"`
 	SharedStorageClusterId      types.String              `tfsdk:"shared_storage_cluster_id"` //nolint:staticcheck
+}
+
+func nodePortEmpty(np *cksv1beta1.PortRange) bool {
+	if np == nil {
+		return true
+	}
+	return np.Start == 0 && np.End == 0
 }
 
 func oidcIsEmpty(oidc *cksv1beta1.OIDCConfig) bool {
@@ -202,6 +210,31 @@ func (c *ClusterResourceModel) Set(cluster *cksv1beta1.Cluster) {
 			internalLbCidrs = append(internalLbCidrs, types.StringValue(c))
 		}
 		c.InternalLBCidrNames = types.SetValueMust(types.StringType, internalLbCidrs)
+		if !nodePortEmpty(cluster.Network.ServiceNodePortRange) {
+			c.NodePortRange = types.ObjectValueMust(
+				map[string]attr.Type{
+					"start": types.Int32Type,
+					"end":   types.Int32Type,
+				},
+				map[string]attr.Value{
+					"start": types.Int32Value(cluster.Network.ServiceNodePortRange.Start),
+					"end":   types.Int32Value(cluster.Network.ServiceNodePortRange.End),
+				},
+			)
+		} else {
+			// if the plan value is null/unknown & the API returns empty, preserve null
+			// otherwise set to null based on API response
+			c.NodePortRange = types.ObjectNull(map[string]attr.Type{
+				"start": types.Int32Type,
+				"end":   types.Int32Type,
+			})
+		}
+	} else {
+		// if network is nil, ensure node_port_range is properly null
+		c.NodePortRange = types.ObjectNull(map[string]attr.Type{
+			"start": types.Int32Type,
+			"end":   types.Int32Type,
+		})
 	}
 
 	if !oidcIsEmpty(cluster.Oidc) {
@@ -274,6 +307,26 @@ func (c *ClusterResourceModel) InternalLbCidrNames(ctx context.Context) []string
 	return lbs
 }
 
+func (c *ClusterResourceModel) NodePorts() *cksv1beta1.PortRange {
+	if c.NodePortRange.IsNull() || c.NodePortRange.IsUnknown() {
+		return nil
+	}
+	attrs := c.NodePortRange.Attributes()
+	startAttr, okStart := attrs["start"].(types.Int32)
+	endAttr, okEnd := attrs["end"].(types.Int32)
+	if !okStart || !okEnd {
+		return nil
+	}
+	// Treat zero/zero as empty
+	if startAttr.ValueInt32() == 0 && endAttr.ValueInt32() == 0 {
+		return nil
+	}
+	return &cksv1beta1.PortRange{
+		Start: startAttr.ValueInt32(),
+		End:   endAttr.ValueInt32(),
+	}
+}
+
 func (c *ClusterResourceModel) ToCreateRequest(ctx context.Context) *cksv1beta1.CreateClusterRequest {
 	req := &cksv1beta1.CreateClusterRequest{
 		Name:    c.Name.ValueString(),
@@ -288,6 +341,10 @@ func (c *ClusterResourceModel) ToCreateRequest(ctx context.Context) *cksv1beta1.
 		},
 		AuditPolicy:            c.AuditPolicy.ValueString(),
 		SharedStorageClusterId: c.SharedStorageClusterId.ValueString(),
+	}
+
+	if np := c.NodePorts(); np != nil {
+		req.Network.ServiceNodePortRange = np
 	}
 
 	if c.AuthNWebhook != nil {
@@ -470,6 +527,18 @@ func (r *ClusterResource) Schema(ctx context.Context, req resource.SchemaRequest
 							resp.RequiresReplace = true
 						}
 					}, "", "Field `internal_lb_cidr_names` is append-only. Removing an existing value will force replacement."),
+				},
+			},
+			"node_port_range": schema.SingleNestedAttribute{
+				Description: "Kubernetes Service NodePort range.",
+				Computed:    true,
+				Attributes: map[string]schema.Attribute{
+					"start": schema.Int32Attribute{
+						Computed: true,
+					},
+					"end": schema.Int32Attribute{
+						Computed: true,
+					},
 				},
 			},
 			"audit_policy": schema.StringAttribute{
