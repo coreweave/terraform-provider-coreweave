@@ -369,6 +369,10 @@ func TestClusterResource(t *testing.T) {
 		PodCidrName:         types.StringValue("pod-cidr"),
 		ServiceCidrName:     types.StringValue("service-cidr"),
 		InternalLBCidrNames: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr")}),
+		NodePortRange: &cks.NodePortModel{
+			Start: types.Int32Value(10000),
+			End:   types.Int32Value(64000),
+		},
 	}
 
 	dataSource := &cks.ClusterDataSourceModel{
@@ -468,6 +472,8 @@ func TestClusterResource(t *testing.T) {
 				statecheck.ExpectKnownValue(config.FullDataSourceName, tfjsonpath.New("public"), knownvalue.Bool(initial.Public.ValueBool())),
 				statecheck.ExpectKnownValue(config.FullDataSourceName, tfjsonpath.New("pod_cidr_name"), knownvalue.StringExact(initial.PodCidrName.ValueString())),
 				statecheck.ExpectKnownValue(config.FullDataSourceName, tfjsonpath.New("service_cidr_name"), knownvalue.StringExact(initial.ServiceCidrName.ValueString())),
+				statecheck.ExpectKnownValue(config.FullResourceName, tfjsonpath.New("node_port_range.start"), knownvalue.Int32Exact(initial.NodePortRange.Start.ValueInt32())),
+				statecheck.ExpectKnownValue(config.FullResourceName, tfjsonpath.New("node_port_range.end"), knownvalue.Int32Exact(initial.NodePortRange.End.ValueInt32())),
 			},
 		},
 		createClusterTestStep(ctx, t, testStepConfig{

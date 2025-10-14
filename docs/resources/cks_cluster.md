@@ -84,6 +84,7 @@ The prefixes must exist in the cluster's VPC. This field is append-only.
 - `audit_policy` (String) Audit policy for the cluster. Must be provided as a base64-encoded JSON/YAML string.
 - `authn_webhook` (Attributes) Authentication webhook configuration for the cluster. (see [below for nested schema](#nestedatt--authn_webhook))
 - `authz_webhook` (Attributes) Authorization webhook configuration for the cluster. (see [below for nested schema](#nestedatt--authz_webhook))
+- `node_port_range` (Attributes) If not specified, a default range will be used. See CKS documentation for more details. (see [below for nested schema](#nestedatt--node_port_range))
 - `oidc` (Attributes) OpenID Connect (OIDC) configuration for authentication to the api-server. (see [below for nested schema](#nestedatt--oidc))
 - `public` (Boolean) Whether the cluster's api-server is publicly accessible from the internet.
 
@@ -116,6 +117,15 @@ Required:
 Optional:
 
 - `ca` (String) The CA certificate for the webhook server. Must be a base64-encoded PEM-encoded certificate.
+
+
+<a id="nestedatt--node_port_range"></a>
+### Nested Schema for `node_port_range`
+
+Required:
+
+- `end` (Number) The end of the node port range (inclusive).
+- `start` (Number) The start of the node port range (inclusive).
 
 
 <a id="nestedatt--oidc"></a>
