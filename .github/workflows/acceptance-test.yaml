@@ -30,6 +30,7 @@ jobs:
       - uses: actions/setup-go@v5.5.0
         with:
           go-version-file: 'go.mod'
+          cache: false
       - uses: hashicorp/setup-terraform@v3.1.2
         with:
           terraform_wrapper: false
@@ -52,6 +53,7 @@ jobs:
       - uses: actions/setup-go@v5.5.0
         with:
           go-version-file: 'go.mod'
+          cache: false
       - uses: hashicorp/setup-terraform@v3.1.2
         with:
           terraform_version: ${{ inputs.terraform_version }}
