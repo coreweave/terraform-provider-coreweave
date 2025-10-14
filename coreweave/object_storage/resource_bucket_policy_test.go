@@ -93,7 +93,7 @@ func TestBucketPolicyResourceRaw(t *testing.T) {
 
 	randomInt := rand.IntN(100)
 	bucket := objectstorage.BucketResourceModel{
-		Name: types.StringValue(fmt.Sprintf("tf-acc-bucket-policy-%d", randomInt)),
+		Name: types.StringValue(fmt.Sprintf("%sbucket-policy-%d", AcceptanceTestPrefix, randomInt)),
 		Zone: types.StringValue("US-EAST-04A"),
 	}
 	resourceName := "test_policy"
@@ -143,7 +143,7 @@ func TestBucketPolicyResourceDocument(t *testing.T) {
 
 	randomInt := rand.IntN(100)
 	bucket := objectstorage.BucketResourceModel{
-		Name: types.StringValue(fmt.Sprintf("tf-acc-bucket-policy-doc-%d", randomInt)),
+		Name: types.StringValue(fmt.Sprintf("%sbucket-policy-doc-%d", AcceptanceTestPrefix, randomInt)),
 		Zone: types.StringValue("US-EAST-04A"),
 	}
 	resourceName := "test_policy"

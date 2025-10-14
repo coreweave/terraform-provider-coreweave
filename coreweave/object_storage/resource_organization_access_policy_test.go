@@ -99,7 +99,7 @@ func createOrgAccessPolicyTestStep(ctx context.Context, t *testing.T, opts orgAc
 
 func TestOrganizationAccessPolicyResource(t *testing.T) {
 	randomInt := rand.IntN(100)
-	policyName := fmt.Sprintf("tf-acc-test-org-access-policy-%d", randomInt)
+	policyName := fmt.Sprintf("%stest-org-access-policy-%d", AcceptanceTestPrefix, randomInt)
 
 	ctx := context.Background()
 	resource.ParallelTest(t, resource.TestCase{

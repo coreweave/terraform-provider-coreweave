@@ -192,7 +192,7 @@ func TestBucketLifecycleConfiguration(t *testing.T) {
 
 	randomInt := rand.IntN(100)
 	bucket := objectstorage.BucketResourceModel{
-		Name: types.StringValue(fmt.Sprintf("tf-acc-lc-bucket-%d", randomInt)),
+		Name: types.StringValue(fmt.Sprintf("%slc-bucket-%d", AcceptanceTestPrefix, randomInt)),
 		Zone: types.StringValue("US-EAST-04A"),
 	}
 	versioning := &objectstorage.VersioningConfigurationModel{
@@ -336,7 +336,7 @@ func TestBucketLifecycleConfiguration_MultiRule(t *testing.T) {
 
 	randInt := rand.IntN(100)
 	bucket := objectstorage.BucketResourceModel{
-		Name: types.StringValue(fmt.Sprintf("tf-acc-lc-bucket-multi-%d", randInt)),
+		Name: types.StringValue(fmt.Sprintf("%slc-bucket-multi%d", AcceptanceTestPrefix, randInt)),
 		Zone: types.StringValue("US-EAST-04A"),
 	}
 
