@@ -1,123 +1,99 @@
 ---
 name: Acceptance Tests
 
-on:
+'on':
   pull_request:
+    types: [opened, synchronize, reopened, labeled]
     paths-ignore:
       - '**/*.md'
       - 'docs/**'
       - 'examples/**'
       - LICENSE
-      - README.md
-
-concurrency:
-  group: acceptance-tests
-  cancel-in-progress: false
 
 jobs:
-  sweep:
-    name: Sweep acceptance test resources
-    runs-on: cw
-    container: ghcr.io/coreweave/github-actions-images/github-base-runner:v1.15.0
-    environment: QA
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      suites: ${{ steps.changes.outputs.suites }}
     env:
-      COREWEAVE_API_ENDPOINT: ${{ vars.COREWEAVE_API_ENDPOINT }}
-      COREWEAVE_API_TOKEN: ${{ secrets.COREWEAVE_API_TOKEN }}
+      LABELS: ${{ toJson(github.event.pull_request.labels.*.name) }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: actions/setup-go@v5.5.0
-        with:
-          go-version-file: 'go.mod'
 
-      - uses: hashicorp/setup-terraform@v3.1.2
-        with:
-          terraform_wrapper: false
-
-      - name: Sweep unused resources
-        run: make testacc-sweep
-
-  test:
-    needs: [sweep]
-    name: Run acceptance tests
-    runs-on: cw
-    container: ghcr.io/coreweave/github-actions-images/github-base-runner:v1.15.0
-    environment: QA
-    env:
-      COREWEAVE_API_ENDPOINT: ${{ vars.COREWEAVE_API_ENDPOINT }}
-      COREWEAVE_API_TOKEN: ${{ secrets.COREWEAVE_API_TOKEN }}
-      TF_IN_AUTOMATION: '1'
-    strategy:
-      fail-fast: false
-      matrix:
-        # https://endoflife.date/terraform
-        # curl https://endoflife.date/api/terraform.json | yq -P 'map(select(.eol|not) | .cycle + ".*")'
-        terraform:
-          - '1.12.*'
-          - '1.13.*'
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4.2.2
-        with:
-          fetch-depth: 0
-
-      - name: Setup Go
-        uses: actions/setup-go@v5.5.0
-        with:
-          go-version-file: 'go.mod'
-
-      - uses: hashicorp/setup-terraform@v3.1.2
-        with:
-          terraform_version: ${{ matrix.terraform }}
-          terraform_wrapper: false
-
-      - name: Install dependencies
-        run: go mod download
-
-      - name: Run diagnostics
+      - name: Detect test suites to run
+        id: changes
         run: |
-          set -x
-          curl -v "${COREWEAVE_API_ENDPOINT}/healthz"
+          # Available test suites - add new suites here
+          ALL_SUITES="cks networking object_storage"
 
-      - name: Run acceptance tests
-        run: make testacc
+          get_suite_dir() {
+            echo "coreweave/$1"
+          }
 
-  objstore-test:
-    name: Run Object Storage acceptance tests
-    runs-on: cw
-    container: ghcr.io/coreweave/github-actions-images/github-base-runner:v1.15.0
-    environment: QA
-    env:
-      COREWEAVE_API_TOKEN: ${{ secrets.COREWEAVE_OBJS_API_TOKEN }}
-      TF_IN_AUTOMATION: '1'
+          has_label() {
+            jq -e --arg label "$1" 'any(. == $label)' >/dev/null <<< "$LABELS"
+          }
+
+          # Get PR labels and changed files
+          git fetch origin ${{ github.event.pull_request.base.ref }}
+          CHANGED_FILES=$(git diff --name-only origin/${{ github.event.pull_request.base.ref }}...HEAD)
+
+          ACTIVE_SUITES=()
+
+          # Check for run-all label
+          if has_label "acceptance-test:all"; then
+            ACTIVE_SUITES=($ALL_SUITES)
+            echo "Running all suites due to label"
+          else
+            # Check individual suite labels and file changes
+            for suite in $ALL_SUITES; do
+              dir=$(get_suite_dir "$suite")
+
+              # Check individual suite label
+              if has_label "acceptance-test:$suite"; then
+                ACTIVE_SUITES+=("$suite")
+                echo "✓ $suite: enabled by label"
+              # Check internal/provider (affects all suites)
+              elif echo "$CHANGED_FILES" | grep -q "^internal/provider/"; then
+                ACTIVE_SUITES+=("$suite")
+                echo "✓ $suite: enabled by internal/provider changes"
+              # Check suite's own directory
+              elif echo "$CHANGED_FILES" | grep -q "^$dir/"; then
+                ACTIVE_SUITES+=("$suite")
+                echo "✓ $suite: enabled by $dir changes"
+              else
+                echo "✗ $suite: no relevant changes"
+              fi
+            done
+          fi
+
+          # Build JSON array for matrix using jq
+          if [ ${#ACTIVE_SUITES[@]} -eq 0 ]; then
+            echo "suites=[]" >> $GITHUB_OUTPUT
+            echo "No test suites to run"
+          else
+            # Remove duplicates and build JSON with jq
+            UNIQUE_SUITES=($(printf "%s\n" "${ACTIVE_SUITES[@]}" | sort -u))
+            JSON_ARRAY='[]'
+            for suite in "${UNIQUE_SUITES[@]}"; do
+              JSON_ARRAY=$(jq -c --arg suite "$suite" '(. + [$suite])' <<< "$JSON_ARRAY")
+            done
+            echo "suites=$JSON_ARRAY" >> $GITHUB_OUTPUT
+            echo "Test suites to run: ${UNIQUE_SUITES[*]}"
+          fi
+
+  run-tests:
+    needs: [detect-changes]
+    if: needs.detect-changes.outputs.suites != '[]'
     strategy:
-      fail-fast: false
-      max-parallel: 1
+      fail-fast: true
       matrix:
-        # https://endoflife.date/terraform
-        # curl https://endoflife.date/api/terraform.json | yq -P 'map(select(.eol|not) | .cycle + ".*")'
-        terraform:
-          - '1.12.*'
-          - '1.13.*'
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4.2.2
-        with:
-          fetch-depth: 0
-
-      - name: Setup Go
-        uses: actions/setup-go@v5.5.0
-        with:
-          go-version-file: 'go.mod'
-
-      - uses: hashicorp/setup-terraform@v3.1.2
-        with:
-          terraform_version: ${{ matrix.terraform }}
-          terraform_wrapper: false
-
-      - name: Install dependencies
-        run: go mod download
-
-      - name: Run Object Storage acceptance tests
-        run: make object-storage-testacc
+        suite: ${{ fromJson(needs.detect-changes.outputs.suites) }}
+        terraform: ['1.12.*', '1.13.*']
+    uses: ./.github/workflows/acceptance-test.yaml
+    with:
+      suite: ${{ matrix.suite }}
+      terraform_version: ${{ matrix.terraform }}
+    secrets: inherit

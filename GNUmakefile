@@ -37,13 +37,16 @@ fmt:
 test:
 	go test -v -cover -timeout=120s -parallel=10 ./...
 
+SUITES?=cks networking
+
 testacc-sweep:
-	go test -v -timeout 60m $(TEST_ACC_PACKAGES) -sweep='$(TEST_ACC_SWEEP_ZONE)'
+	@for suite in $(SUITES); do \
+		echo go test -v -timeout 10m ./coreweave/$$suite -sweep='$(TEST_ACC_SWEEP_ZONE)'; \
+	done
 
 testacc:
-	TF_ACC=1 go test -v -cover -timeout=60m $(TEST_ACC_PACKAGES)
+	@for suite in $(SUITES); do \
+		TF_ACC=1 go test -v -cover -timeout=45m ./coreweave/$$suite; \
+	done
 
-object-storage-testacc:
-	TF_ACC=1 go test -v -cover -timeout 20m ./coreweave/object_storage/...
-
-.PHONY: fmt lint test testacc build install generate clean
+.PHONY: fmt lint test testacc testacc-sweep build install generate clean
