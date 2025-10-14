@@ -3,6 +3,7 @@ package objectstorage
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
@@ -16,12 +17,15 @@ import (
 
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/hashicorp/hcl/v2/hclwrite"
+	"github.com/hashicorp/terraform-plugin-framework-validators/int32validator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/zclconf/go-cty/cty"
 )
 
@@ -57,6 +61,7 @@ type LifecycleRuleModel struct {
 	Prefix                      types.String                      `tfsdk:"prefix"`
 	Status                      types.String                      `tfsdk:"status"`
 	Expiration                  *ExpirationModel                  `tfsdk:"expiration"`
+	Transitions                 []*TransitionModel                `tfsdk:"transition"`
 	NoncurrentVersionExpiration *NoncurrentVersionExpirationModel `tfsdk:"noncurrent_version_expiration"`
 	AbortIncompleteMultipart    *AbortIncompleteMultipartModel    `tfsdk:"abort_incomplete_multipart_upload"`
 	Filter                      *FilterModel                      `tfsdk:"filter"`
@@ -67,6 +72,13 @@ type ExpirationModel struct {
 	Date                      types.String `tfsdk:"date"`
 	Days                      types.Int32  `tfsdk:"days"`
 	ExpiredObjectDeleteMarker types.Bool   `tfsdk:"expired_object_delete_marker"`
+}
+
+// TransitionModel maps the transition sub-block.
+type TransitionModel struct {
+	Date         types.String `tfsdk:"date"`
+	Days         types.Int32  `tfsdk:"days"`
+	StorageClass types.String `tfsdk:"storage_class"`
 }
 
 // NoncurrentVersionExpirationModel maps the noncurrent_version_expiration sub-block.
@@ -157,11 +169,31 @@ func (r *BucketLifecycleResource) Schema(ctx context.Context, req resource.Schem
 								},
 								"days": schema.Int32Attribute{
 									Optional:            true,
+									Validators:          []validator.Int32{int32validator.AtLeast(0)},
 									MarkdownDescription: "Number of days after object creation for expiration",
 								},
 								"expired_object_delete_marker": schema.BoolAttribute{
 									Optional:            true,
 									MarkdownDescription: "Whether to remove expired delete markers",
+								},
+							},
+						},
+						"transition": schema.SetNestedBlock{
+							NestedObject: schema.NestedBlockObject{
+								Attributes: map[string]schema.Attribute{
+									"date": schema.StringAttribute{
+										Optional:            true,
+										MarkdownDescription: "ISO8601 date when objects transition",
+									},
+									"days": schema.Int32Attribute{
+										Optional:            true,
+										Validators:          []validator.Int32{int32validator.AtLeast(0)},
+										MarkdownDescription: "Number of days after object creation for transition",
+									},
+									"storage_class": schema.StringAttribute{
+										Required:            true,
+										MarkdownDescription: "Storage class to transition objects to",
+									},
 								},
 							},
 						},
@@ -278,6 +310,18 @@ func expandRules(ctx context.Context, in []LifecycleRuleModel) []s3types.Lifecyc
 				exp.ExpiredObjectDeleteMarker = aws.Bool(r.Expiration.ExpiredObjectDeleteMarker.ValueBool())
 			}
 			rule.Expiration = &exp
+		}
+		for _, transition := range r.Transitions {
+			t := s3types.Transition{
+				StorageClass: s3types.TransitionStorageClass(transition.StorageClass.ValueString()),
+			}
+			if !transition.Date.IsNull() {
+				t.Date = aws.Time(parseISO8601(transition.Date.ValueString()))
+			}
+			if !transition.Days.IsNull() {
+				t.Days = aws.Int32(transition.Days.ValueInt32())
+			}
+			rule.Transitions = append(rule.Transitions, t)
 		}
 		if r.NoncurrentVersionExpiration != nil {
 			nc := s3types.NoncurrentVersionExpiration{}
@@ -515,6 +559,12 @@ func (r *BucketLifecycleResource) Create(ctx context.Context, req resource.Creat
 	}
 
 	rules := expandRules(ctx, data.Rule)
+	rulesJSON, err := json.Marshal(rules)
+	if err != nil {
+		resp.Diagnostics.AddError("Failed to marshal lifecycle rules to JSON", err.Error())
+		return
+	}
+	tflog.Debug(ctx, "creating lifecycle rules for bucket", map[string]any{"rules": string(rulesJSON), "bucket": data.Bucket.ValueString()})
 	lifecycleConfig := &s3types.BucketLifecycleConfiguration{
 		Rules: rules,
 	}
@@ -565,6 +615,19 @@ func flattenLifecycleRules(in []s3types.LifecycleRule) []LifecycleRuleModel {
 			}
 
 			mdl.Expiration = expiration
+		}
+
+		for _, t := range r.Transitions {
+			transition := &TransitionModel{
+				StorageClass: types.StringValue(string(t.StorageClass)),
+			}
+			if t.Date != nil {
+				transition.Date = types.StringValue(t.Date.Format(time.RFC3339))
+			} else {
+				transition.Date = types.StringNull()
+			}
+			transition.Days = types.Int32PointerValue(t.Days)
+			mdl.Transitions = append(mdl.Transitions, transition)
 		}
 
 		if r.NoncurrentVersionExpiration != nil {
