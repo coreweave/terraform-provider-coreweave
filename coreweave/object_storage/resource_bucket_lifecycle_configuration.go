@@ -18,7 +18,9 @@ import (
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/hashicorp/terraform-plugin-framework-validators/int32validator"
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
@@ -57,14 +59,15 @@ type BucketLifecycleResourceModel struct {
 
 // LifecycleRuleModel maps a single lifecycle rule block.
 type LifecycleRuleModel struct {
-	ID                          types.String                      `tfsdk:"id"`
-	Prefix                      types.String                      `tfsdk:"prefix"`
-	Status                      types.String                      `tfsdk:"status"`
-	Expiration                  *ExpirationModel                  `tfsdk:"expiration"`
-	Transitions                 []*TransitionModel                `tfsdk:"transition"`
-	NoncurrentVersionExpiration *NoncurrentVersionExpirationModel `tfsdk:"noncurrent_version_expiration"`
-	AbortIncompleteMultipart    *AbortIncompleteMultipartModel    `tfsdk:"abort_incomplete_multipart_upload"`
-	Filter                      *FilterModel                      `tfsdk:"filter"`
+	ID                           types.String                        `tfsdk:"id"`
+	Prefix                       types.String                        `tfsdk:"prefix"`
+	Status                       types.String                        `tfsdk:"status"`
+	Expiration                   *ExpirationModel                    `tfsdk:"expiration"`
+	Transitions                  []*TransitionModel                  `tfsdk:"transition"`
+	NoncurrentVersionExpiration  *NoncurrentVersionExpirationModel   `tfsdk:"noncurrent_version_expiration"`
+	NoncurrentVersionTransitions []*NoncurrentVersionTransitionModel `tfsdk:"noncurrent_version_transition"`
+	AbortIncompleteMultipart     *AbortIncompleteMultipartModel      `tfsdk:"abort_incomplete_multipart_upload"`
+	Filter                       *FilterModel                        `tfsdk:"filter"`
 }
 
 // ExpirationModel maps the expiration sub-block.
@@ -85,6 +88,13 @@ type TransitionModel struct {
 type NoncurrentVersionExpirationModel struct {
 	NoncurrentDays          types.Int32 `tfsdk:"noncurrent_days"`
 	NewerNoncurrentVersions types.Int32 `tfsdk:"newer_noncurrent_versions"`
+}
+
+// NoncurrentVersionTransitionModel maps the noncurrent_version_transition sub-block.
+type NoncurrentVersionTransitionModel struct {
+	NoncurrentDays          types.Int32  `tfsdk:"noncurrent_days"`
+	NewerNoncurrentVersions types.Int32  `tfsdk:"newer_noncurrent_versions"`
+	StorageClass            types.String `tfsdk:"storage_class"`
 }
 
 // AbortIncompleteMultipartModel maps the abort_incomplete_multipart_upload sub-block.
@@ -178,25 +188,6 @@ func (r *BucketLifecycleResource) Schema(ctx context.Context, req resource.Schem
 								},
 							},
 						},
-						"transition": schema.SetNestedBlock{
-							NestedObject: schema.NestedBlockObject{
-								Attributes: map[string]schema.Attribute{
-									"date": schema.StringAttribute{
-										Optional:            true,
-										MarkdownDescription: "ISO8601 date when objects transition",
-									},
-									"days": schema.Int32Attribute{
-										Optional:            true,
-										Validators:          []validator.Int32{int32validator.AtLeast(0)},
-										MarkdownDescription: "Number of days after object creation for transition",
-									},
-									"storage_class": schema.StringAttribute{
-										Required:            true,
-										MarkdownDescription: "Storage class to transition objects to",
-									},
-								},
-							},
-						},
 						"filter": schema.SingleNestedBlock{
 							Blocks: map[string]schema.Block{
 								"tag": schema.SingleNestedBlock{
@@ -261,6 +252,51 @@ func (r *BucketLifecycleResource) Schema(ctx context.Context, req resource.Schem
 								},
 							},
 						},
+						"noncurrent_version_transition": schema.SetNestedBlock{
+							NestedObject: schema.NestedBlockObject{
+								Attributes: map[string]schema.Attribute{
+									"newer_noncurrent_versions": schema.Int32Attribute{
+										Optional:            true,
+										Validators:          []validator.Int32{int32validator.AtLeast(1)},
+										MarkdownDescription: "Number of noncurrent versions to retain",
+									},
+									"noncurrent_days": schema.Int32Attribute{
+										Required:            true,
+										Validators:          []validator.Int32{int32validator.AtLeast(0)},
+										MarkdownDescription: "Number of days after object becomes noncurrent before the transition may occur",
+									},
+									"storage_class": schema.StringAttribute{
+										Required:            true,
+										MarkdownDescription: "Storage class to transition noncurrent objects to",
+									},
+								},
+							},
+						},
+						"transition": schema.SetNestedBlock{
+							NestedObject: schema.NestedBlockObject{
+								Attributes: map[string]schema.Attribute{
+									"date": schema.StringAttribute{
+										Optional: true,
+										Validators: []validator.String{
+											stringvalidator.ConflictsWith(path.MatchRelative().AtParent().AtName("days")),
+										},
+										MarkdownDescription: "ISO8601 date when objects transition",
+									},
+									"days": schema.Int32Attribute{
+										Optional: true,
+										Validators: []validator.Int32{
+											int32validator.ConflictsWith(path.MatchRelative().AtParent().AtName("date")),
+											int32validator.AtLeast(0),
+										},
+										MarkdownDescription: "Number of days after object creation for transition",
+									},
+									"storage_class": schema.StringAttribute{
+										Required:            true,
+										MarkdownDescription: "Storage class to transition objects to",
+									},
+								},
+							},
+						},
 					},
 				},
 			},
@@ -314,12 +350,10 @@ func expandRules(ctx context.Context, in []LifecycleRuleModel) []s3types.Lifecyc
 		for _, transition := range r.Transitions {
 			t := s3types.Transition{
 				StorageClass: s3types.TransitionStorageClass(transition.StorageClass.ValueString()),
+				Days:         transition.Days.ValueInt32Pointer(),
 			}
 			if !transition.Date.IsNull() {
 				t.Date = aws.Time(parseISO8601(transition.Date.ValueString()))
-			}
-			if !transition.Days.IsNull() {
-				t.Days = aws.Int32(transition.Days.ValueInt32())
 			}
 			rule.Transitions = append(rule.Transitions, t)
 		}
@@ -619,14 +653,13 @@ func flattenLifecycleRules(in []s3types.LifecycleRule) []LifecycleRuleModel {
 
 		for _, t := range r.Transitions {
 			transition := &TransitionModel{
+				Date:         types.StringNull(),
+				Days:         types.Int32PointerValue(t.Days),
 				StorageClass: types.StringValue(string(t.StorageClass)),
 			}
 			if t.Date != nil {
 				transition.Date = types.StringValue(t.Date.Format(time.RFC3339))
-			} else {
-				transition.Date = types.StringNull()
 			}
-			transition.Days = types.Int32PointerValue(t.Days)
 			mdl.Transitions = append(mdl.Transitions, transition)
 		}
 
@@ -635,6 +668,15 @@ func flattenLifecycleRules(in []s3types.LifecycleRule) []LifecycleRuleModel {
 				NoncurrentDays:          types.Int32PointerValue(r.NoncurrentVersionExpiration.NoncurrentDays),
 				NewerNoncurrentVersions: types.Int32PointerValue(r.NoncurrentVersionExpiration.NewerNoncurrentVersions),
 			}
+		}
+
+		for _, nct := range r.NoncurrentVersionTransitions {
+			ncTransition := &NoncurrentVersionTransitionModel{
+				NoncurrentDays:          types.Int32PointerValue(nct.NoncurrentDays),
+				StorageClass:            types.StringValue(string(nct.StorageClass)),
+				NewerNoncurrentVersions: types.Int32PointerValue(nct.NewerNoncurrentVersions),
+			}
+			mdl.NoncurrentVersionTransitions = append(mdl.NoncurrentVersionTransitions, ncTransition)
 		}
 
 		if r.AbortIncompleteMultipartUpload != nil {
