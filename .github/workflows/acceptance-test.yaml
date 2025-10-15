@@ -1,0 +1,65 @@
+---
+name: Run Acceptance Test
+
+'on':
+  workflow_call:
+    inputs:
+      suite:
+        description: 'Test suite to run (e.g., cks, networking, object-storage)'
+        required: true
+        type: string
+      terraform_version:
+        description: 'Terraform version to test with'
+        required: true
+        type: string
+
+concurrency:
+  group: acceptance-test-${{ inputs.suite }}
+  cancel-in-progress: false
+
+jobs:
+  sweep:
+    runs-on: cw
+    container: ghcr.io/coreweave/github-actions-images/github-base-runner:v1.15.0
+    environment: QA
+    env:
+      COREWEAVE_API_ENDPOINT: ${{ inputs.suite == 'object_storage' && secrets.COREWEAVE_OBJS_API_ENDPOINT || vars.COREWEAVE_API_ENDPOINT }}
+      COREWEAVE_API_TOKEN: ${{ inputs.suite == 'object_storage' && secrets.COREWEAVE_OBJS_API_TOKEN || secrets.COREWEAVE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5.5.0
+        with:
+          go-version-file: 'go.mod'
+          cache: false
+      - uses: hashicorp/setup-terraform@v3.1.2
+        with:
+          terraform_wrapper: false
+
+      - name: Sweep ${{ inputs.suite }} resources
+        run: make testacc-sweep SUITES='${{ inputs.suite }}'
+
+  test:
+    runs-on: cw
+    container: ghcr.io/coreweave/github-actions-images/github-base-runner:v1.15.0
+    environment: QA
+    needs: [sweep]
+    env:
+      COREWEAVE_API_ENDPOINT: ${{ inputs.suite == 'object_storage' && secrets.COREWEAVE_OBJS_API_ENDPOINT || vars.COREWEAVE_API_ENDPOINT }}
+      COREWEAVE_API_TOKEN: ${{ inputs.suite == 'object_storage' && secrets.COREWEAVE_OBJS_API_TOKEN || secrets.COREWEAVE_API_TOKEN }}
+      TEST_ACC_SWEEP_ZONE: ${{ inputs.suite == 'object_storage' && 'US-EAST-04A' || 'US-LAB-01A' }}
+      TF_IN_AUTOMATION: '1'
+    steps:
+      - uses: actions/checkout@v4.2.2
+      - uses: actions/setup-go@v5.5.0
+        with:
+          go-version-file: 'go.mod'
+          cache: false
+      - uses: hashicorp/setup-terraform@v3.1.2
+        with:
+          terraform_version: ${{ inputs.terraform_version }}
+          terraform_wrapper: false
+      - run: go mod download
+
+      - name: Validate ${{ inputs.suite }} acceptance tests
+        run: |
+          make testacc SUITES='${{ inputs.suite }}'

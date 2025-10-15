@@ -82,7 +82,7 @@ func createBucketTestStep(ctx context.Context, t *testing.T, opts bucketTestStep
 
 func TestBucketResource(t *testing.T) {
 	randomInt := rand.IntN(100)
-	bucketName := fmt.Sprintf("tf-acc-test-bucket-%d", randomInt)
+	bucketName := fmt.Sprintf("%stest-bucket-%d", AcceptanceTestPrefix, randomInt)
 	zone := "US-EAST-04A"
 
 	ctx := context.Background()
@@ -150,7 +150,7 @@ func TestBucketResource(t *testing.T) {
 				TestName:     "requires replace name",
 				ResourceName: "test_acc_bucket",
 				Bucket: objectstorage.BucketResourceModel{
-					Name: types.StringValue(fmt.Sprintf("tf-acc-test-requires-replace-%d", randomInt)),
+					Name: types.StringValue(fmt.Sprintf("%srequires-replace-%d", AcceptanceTestPrefix, randomInt)),
 					Zone: types.StringValue("US-EAST-02A"),
 				},
 				ConfigPlanChecks: resource.ConfigPlanChecks{
@@ -166,7 +166,7 @@ func TestBucketResource(t *testing.T) {
 				ResourceName:                         fmt.Sprintf("coreweave_object_storage_bucket.%s", "test_acc_bucket"),
 				ImportState:                          true,
 				ImportStateVerifyIdentifierAttribute: "name",
-				ImportStateId:                        fmt.Sprintf("tf-acc-test-requires-replace-%d", randomInt),
+				ImportStateId:                        fmt.Sprintf("%srequires-replace-%d", AcceptanceTestPrefix, randomInt),
 			},
 		},
 	})

@@ -28,7 +28,7 @@ import (
 )
 
 const (
-	AcceptanceTestPrefix = "test-acc-"
+	AcceptanceTestPrefix = "test-acc-vpc-"
 )
 
 func init() {

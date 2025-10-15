@@ -58,7 +58,7 @@ func TestBucketVersioningResource(t *testing.T) {
 
 	randomInt := rand.IntN(100)
 	bucket := objectstorage.BucketResourceModel{
-		Name: types.StringValue(fmt.Sprintf("tf-acc-bucket-versioning-%d", randomInt)),
+		Name: types.StringValue(fmt.Sprintf("%sbucket-versioning-%d", AcceptanceTestPrefix, randomInt)),
 		Zone: types.StringValue("US-EAST-04A"),
 	}
 	resourceName := "test_versioning"
