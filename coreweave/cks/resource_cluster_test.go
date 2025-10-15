@@ -157,6 +157,11 @@ func TestClusterSchema(t *testing.T) {
 
 //nolint:unparam
 func defaultVpc(name, zone string) *networking.VpcResourceModel {
+	if len(name) > 30 {
+		// Bail on the tests as early as possible; this is a test definition failure.
+		panic("Vpc name must be 30 characters or less")
+	}
+
 	return &networking.VpcResourceModel{
 		Name:       types.StringValue(name),
 		Zone:       types.StringValue(zone),
@@ -349,7 +354,7 @@ func createClusterTestStep(ctx context.Context, t *testing.T, config testStepCon
 }
 
 func TestClusterResource(t *testing.T) {
-	config := generateResourceNames("cks-cluster")
+	config := generateResourceNames("cluster")
 	zone := testutil.AcceptanceTestZone
 	kubeVersion := testutil.AcceptanceTestKubeVersion
 
@@ -642,7 +647,7 @@ func TestPartialOidcConfig(t *testing.T) {
 }
 
 func TestPartialWebhookConfig(t *testing.T) {
-	config := generateResourceNames("partial-webhook")
+	config := generateResourceNames("partialwebhook")
 	zone := testutil.AcceptanceTestZone
 	kubeVersion := testutil.AcceptanceTestKubeVersion
 
