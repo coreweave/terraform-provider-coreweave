@@ -112,8 +112,17 @@ func createLifecycleTestStep(
 		nonCurrentVersionExpirationCheck := statecheck.ExpectKnownValue(rs, ruleBase.AtMapKey("noncurrent_version_expiration"), knownvalue.Null())
 		if r.NoncurrentVersionExpiration != nil {
 			nonCurrentVersionExpirationCheck = statecheck.ExpectKnownValue(rs, ruleBase.AtMapKey("noncurrent_version_expiration"), knownvalue.NotNull())
-			checks = append(checks, statecheck.ExpectKnownValue(rs, ruleBase.AtMapKey("noncurrent_version_expiration").AtMapKey("newer_noncurrent_versions"), knownvalue.Int32Exact(r.NoncurrentVersionExpiration.NewerNoncurrentVersions.ValueInt32())))
-			checks = append(checks, statecheck.ExpectKnownValue(rs, ruleBase.AtMapKey("noncurrent_version_expiration").AtMapKey("noncurrent_days"), knownvalue.Int32Exact(r.NoncurrentVersionExpiration.NoncurrentDays.ValueInt32())))
+			daysCheck := statecheck.ExpectKnownValue(rs, ruleBase.AtMapKey("noncurrent_version_expiration").AtMapKey("noncurrent_days"), knownvalue.Null())
+			if !r.NoncurrentVersionExpiration.NoncurrentDays.IsNull() {
+				daysCheck = statecheck.ExpectKnownValue(rs, ruleBase.AtMapKey("noncurrent_version_expiration").AtMapKey("noncurrent_days"), knownvalue.Int32Exact(r.NoncurrentVersionExpiration.NoncurrentDays.ValueInt32()))
+			}
+			checks = append(checks, daysCheck)
+
+			newerCheck := statecheck.ExpectKnownValue(rs, ruleBase.AtMapKey("noncurrent_version_expiration").AtMapKey("newer_noncurrent_versions"), knownvalue.Null())
+			if !r.NoncurrentVersionExpiration.NewerNoncurrentVersions.IsNull() {
+				newerCheck = statecheck.ExpectKnownValue(rs, ruleBase.AtMapKey("noncurrent_version_expiration").AtMapKey("newer_noncurrent_versions"), knownvalue.Int32Exact(r.NoncurrentVersionExpiration.NewerNoncurrentVersions.ValueInt32()))
+			}
+			checks = append(checks, newerCheck)
 		}
 		checks = append(checks, nonCurrentVersionExpirationCheck)
 
@@ -238,6 +247,23 @@ func TestBucketLifecycleConfiguration(t *testing.T) {
 			NewerNoncurrentVersions: types.Int32Value(1),
 		},
 	}
+	noncurrDaysOnly := objectstorage.LifecycleRuleModel{
+		ID:     types.StringValue("noncurrent-days-only"),
+		Status: types.StringValue("Enabled"),
+		NoncurrentVersionExpiration: &objectstorage.NoncurrentVersionExpirationModel{
+			NoncurrentDays: types.Int32Value(7),
+		},
+	}
+	noncurrNewerOnly := objectstorage.LifecycleRuleModel{
+		ID:     types.StringValue("noncurrent-newer-only"),
+		Status: types.StringValue("Enabled"),
+		Filter: &objectstorage.FilterModel{
+			Prefix: types.StringValue("metrics/"),
+		},
+		NoncurrentVersionExpiration: &objectstorage.NoncurrentVersionExpirationModel{
+			NewerNoncurrentVersions: types.Int32Value(2),
+		},
+	}
 	abortOnly := objectstorage.LifecycleRuleModel{
 		ID:     types.StringValue("abort-only"),
 		Status: types.StringValue("Enabled"),
@@ -284,6 +310,30 @@ func TestBucketLifecycleConfiguration(t *testing.T) {
 			bucket:           bucket,
 			bucketVersioning: versioning,
 			rules:            []objectstorage.LifecycleRuleModel{noncurrOnly},
+			configPlanChecks: resource.ConfigPlanChecks{
+				PreApply: []plancheck.PlanCheck{
+					plancheck.ExpectResourceAction(fmt.Sprintf("coreweave_object_storage_bucket_lifecycle_configuration.%s", resourceName), plancheck.ResourceActionUpdate),
+				},
+			},
+		}),
+		createLifecycleTestStep(ctx, t, lifecycleTestConfig{
+			name:             "noncurrent only, days only",
+			resourceName:     resourceName,
+			bucket:           bucket,
+			bucketVersioning: versioning,
+			rules:            []objectstorage.LifecycleRuleModel{noncurrDaysOnly},
+			configPlanChecks: resource.ConfigPlanChecks{
+				PreApply: []plancheck.PlanCheck{
+					plancheck.ExpectResourceAction(fmt.Sprintf("coreweave_object_storage_bucket_lifecycle_configuration.%s", resourceName), plancheck.ResourceActionUpdate),
+				},
+			},
+		}),
+		createLifecycleTestStep(ctx, t, lifecycleTestConfig{
+			name:             "noncurrent only, newer only",
+			resourceName:     resourceName,
+			bucket:           bucket,
+			bucketVersioning: versioning,
+			rules:            []objectstorage.LifecycleRuleModel{noncurrNewerOnly},
 			configPlanChecks: resource.ConfigPlanChecks{
 				PreApply: []plancheck.PlanCheck{
 					plancheck.ExpectResourceAction(fmt.Sprintf("coreweave_object_storage_bucket_lifecycle_configuration.%s", resourceName), plancheck.ResourceActionUpdate),
