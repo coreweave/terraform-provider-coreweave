@@ -1,7 +1,7 @@
 on:
   push:
     branches:
-      - main # running from the default branch makes the cache available to PRs.
+      - main # running from the default branch makes the go build cache available to PRs.
 
 jobs:
   build:
