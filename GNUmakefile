@@ -41,7 +41,7 @@ SUITES?=cks networking
 
 testacc-sweep:
 	@for suite in $(SUITES); do \
-		echo go test -v -timeout 10m ./coreweave/$$suite -sweep='$(TEST_ACC_SWEEP_ZONE)'; \
+		go test -v -timeout 10m ./coreweave/$$suite -sweep='$(TEST_ACC_SWEEP_ZONE)'; \
 	done
 
 testacc:
