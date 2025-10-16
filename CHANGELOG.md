@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.2](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.5.1...v0.5.2) (2025-10-16)
+
+
+### Bug Fixes
+
+* **storage:** ignore unset noncurrent lifecycle rules ([#145](https://github.com/coreweave/terraform-provider-coreweave/issues/145)) ([1f44aff](https://github.com/coreweave/terraform-provider-coreweave/commit/1f44aff438a1fed06493b36f718da5a28efbe634))
+
 ## [0.5.1](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.5.0...v0.5.1) (2025-10-09)
 
 
