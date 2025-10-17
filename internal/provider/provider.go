@@ -211,7 +211,7 @@ func (p *CoreweaveProvider) Resources(ctx context.Context) []func() resource.Res
 		objectstorage.NewBucketLifecycleResource,
 		objectstorage.NewBucketVersioningResource,
 		objectstorage.NewBucketPolicyResource,
-		telecaster.NewStreamResource,
+		telecaster.NewForwardingEndpointResource,
 		telecaster.NewForwardingPipelineResource,
 	}
 }
@@ -221,6 +221,7 @@ func (p *CoreweaveProvider) DataSources(ctx context.Context) []func() datasource
 		networking.NewVpcDataSource,
 		cks.NewClusterDataSource,
 		objectstorage.NewBucketPolicyDocumentDataSource,
+		telecaster.NewTelemetryStreamDataSource,
 	}
 }
 

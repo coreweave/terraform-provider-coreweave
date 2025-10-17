@@ -4,40 +4,45 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
+	clusterv1beta1 "bsr.core-services.ingress.coreweave.com/gen/go/coreweave/o11y-mgmt/protocolbuffers/go/cw/telecaster/svc/cluster/v1beta1"
+	telecastertypesv1beta1 "bsr.core-services.ingress.coreweave.com/gen/go/coreweave/o11y-mgmt/protocolbuffers/go/cw/telecaster/types/v1beta1"
 	"connectrpc.com/connect"
-	clusterv1beta1 "github.com/coreweave/o11y-mgmt/gen/cw/telecaster/svc/cluster/v1beta1"
-	telecastertypesv1beta1 "github.com/coreweave/o11y-mgmt/gen/cw/telecaster/types/v1beta1"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
+	"github.com/coreweave/terraform-provider-coreweave/internal/coretf"
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/retry"
 )
 
 var (
-	_ resource.Resource = &ForwardingEndpointResource{}
+	_ resource.ResourceWithConfigure   = &ForwardingEndpointResource{}
+	_ resource.ResourceWithImportState = &ForwardingEndpointResource{}
 )
 
-func NewForwardingPipelineResource() *ForwardingEndpointResource {
+func NewForwardingEndpointResource() resource.Resource {
 	return &ForwardingEndpointResource{}
 }
 
 type ForwardingEndpointResource struct {
-	client *coreweave.Client
+	coretf.CoreResource
 }
 
 type ForwardingEndpointResourceModel struct {
-	ForwardingEndpointRefModel
-
-	Spec *ForwardingEndpointSpecModel `tfsdk:"spec"`
+	Ref    ForwardingEndpointRefModel    `tfsdk:"ref"`
+	Spec   ForwardingEndpointSpecModel   `tfsdk:"spec"`
+	Status ForwardingPipelineStatusModel `tfsdk:"status"`
 }
 
 func (e *ForwardingEndpointResourceModel) Set(data *telecastertypesv1beta1.ForwardingEndpoint) {
-	e.ForwardingEndpointRefModel = ForwardingEndpointRefModel{
+	e.Ref = ForwardingEndpointRefModel{
 		Slug: types.StringValue(data.Ref.Slug),
 	}
 
-	e.Spec = &ForwardingEndpointSpecModel{
+	e.Spec = ForwardingEndpointSpecModel{
 		DisplayName: types.StringValue(data.Spec.DisplayName),
 	}
 
@@ -52,15 +57,16 @@ func (e *ForwardingEndpointResourceModel) Set(data *telecastertypesv1beta1.Forwa
 				CertificateAuthorityData: types.StringValue(cfg.Kafka.Tls.CertificateAuthorityData),
 			}
 		}
-		switch auth := cfg.Kafka.Auth.(type) {
-		case *telecastertypesv1beta1.KafkaConfig_Scram:
-			e.Spec.Kafka.ScramAuth = &KafkaScramAuthModel{
-				Secret: &SecretRefModel{
-					Slug: types.StringValue(auth.Scram.Secret.Slug),
-				},
-				UsernameKey: types.StringValue(auth.Scram.UsernameKey),
-				PasswordKey: types.StringValue(auth.Scram.PasswordKey),
-			}
+		scramAuth, ok := cfg.Kafka.Auth.(*telecastertypesv1beta1.KafkaConfig_Scram)
+		if !ok {
+			panic(fmt.Sprintf("unknown kafka auth type: %T", cfg.Kafka.Auth))
+		}
+		e.Spec.Kafka.ScramAuth = &KafkaScramAuthModel{
+			Secret: &SecretRefModel{
+				Slug: types.StringValue(scramAuth.Scram.Secret.Slug),
+			},
+			UsernameKey: types.StringValue(scramAuth.Scram.UsernameKey),
+			PasswordKey: types.StringValue(scramAuth.Scram.PasswordKey),
 		}
 	case *telecastertypesv1beta1.ForwardingEndpointSpec_Prometheus:
 		e.Spec.Prometheus = &ForwardingEndpointPrometheusModel{
@@ -90,7 +96,7 @@ func (e *ForwardingEndpointResourceModel) Set(data *telecastertypesv1beta1.Forwa
 				Secret: &SecretRefModel{
 					Slug: types.StringValue(cfg.S3.Credentials.Secret.Slug),
 				},
-				AccessKeyIdKey:     types.StringValue(cfg.S3.Credentials.AccessKeyIdKey),
+				AccessKeyIDKey:     types.StringValue(cfg.S3.Credentials.AccessKeyIdKey),
 				SecretAccessKeyKey: types.StringValue(cfg.S3.Credentials.SecretAccessKeyKey),
 			}
 		}
@@ -121,7 +127,7 @@ type ForwardingEndpointRefModel struct {
 	Slug types.String `tfsdk:"slug"`
 }
 
-func (r *ForwardingEndpointRefModel) toProtoObject() *telecastertypesv1beta1.ForwardingEndpointRef {
+func (r *ForwardingEndpointRefModel) ToProto() *telecastertypesv1beta1.ForwardingEndpointRef {
 	return &telecastertypesv1beta1.ForwardingEndpointRef{
 		Slug: r.Slug.ValueString(),
 	}
@@ -166,14 +172,14 @@ type KafkaScramAuthModel struct {
 	PasswordKey types.String    `tfsdk:"password_key"`
 }
 
-func (k *KafkaScramAuthModel) toProtoObject() *telecastertypesv1beta1.KafkaConfig_Scram {
+func (k *KafkaScramAuthModel) ToProto() *telecastertypesv1beta1.KafkaConfig_Scram {
 	if k == nil {
 		return nil
 	}
 
 	return &telecastertypesv1beta1.KafkaConfig_Scram{
 		Scram: &telecastertypesv1beta1.KafkaScramAuth{
-			Secret:      k.Secret.toProtoObject(),
+			Secret:      k.Secret.ToProto(),
 			UsernameKey: k.UsernameKey.ValueString(),
 			PasswordKey: k.PasswordKey.ValueString(),
 		},
@@ -186,13 +192,13 @@ type PrometheusBasicAuthModel struct {
 	PasswordKey types.String    `tfsdk:"password_key"`
 }
 
-func (p *PrometheusBasicAuthModel) toProtoObject() *telecastertypesv1beta1.PrometheusBasicAuth {
+func (p *PrometheusBasicAuthModel) ToProto() *telecastertypesv1beta1.PrometheusBasicAuth {
 	if p == nil {
 		return nil
 	}
 
 	return &telecastertypesv1beta1.PrometheusBasicAuth{
-		Secret:      p.Secret.toProtoObject(),
+		Secret:      p.Secret.ToProto(),
 		UsernameKey: p.UsernameKey.ValueString(),
 		PasswordKey: p.PasswordKey.ValueString(),
 	}
@@ -204,13 +210,13 @@ type HTTPSBasicAuthModel struct {
 	PasswordKey types.String    `tfsdk:"password_key"`
 }
 
-func (h *HTTPSBasicAuthModel) toProtoObject() *telecastertypesv1beta1.HTTPSBasicAuth {
+func (h *HTTPSBasicAuthModel) ToProto() *telecastertypesv1beta1.HTTPSBasicAuth {
 	if h == nil {
 		return nil
 	}
 
 	return &telecastertypesv1beta1.HTTPSBasicAuth{
-		Secret:      h.Secret.toProtoObject(),
+		Secret:      h.Secret.ToProto(),
 		UsernameKey: h.UsernameKey.ValueString(),
 		PasswordKey: h.PasswordKey.ValueString(),
 	}
@@ -218,33 +224,33 @@ func (h *HTTPSBasicAuthModel) toProtoObject() *telecastertypesv1beta1.HTTPSBasic
 
 type S3CredentialsModel struct {
 	Secret             *SecretRefModel `tfsdk:"secret"`
-	AccessKeyIdKey     types.String    `tfsdk:"access_key_id_key"`
+	AccessKeyIDKey     types.String    `tfsdk:"access_key_id_key"`
 	SecretAccessKeyKey types.String    `tfsdk:"secret_access_key_key"`
 }
 
-func (s *S3CredentialsModel) toProtoObject() *telecastertypesv1beta1.S3Credentials {
+func (s *S3CredentialsModel) ToProto() *telecastertypesv1beta1.S3Credentials {
 	if s == nil {
 		return nil
 	}
 
 	return &telecastertypesv1beta1.S3Credentials{
-		Secret:             s.Secret.toProtoObject(),
-		AccessKeyIdKey:     s.AccessKeyIdKey.ValueString(),
+		Secret:             s.Secret.ToProto(),
+		AccessKeyIdKey:     s.AccessKeyIDKey.ValueString(),
 		SecretAccessKeyKey: s.SecretAccessKeyKey.ValueString(),
 	}
 }
 
-func (e *ForwardingEndpointResourceModel) toProtoObject() (*telecastertypesv1beta1.ForwardingEndpoint, error) {
+func (e *ForwardingEndpointResourceModel) ToProto() (*telecastertypesv1beta1.ForwardingEndpoint, error) {
 	endpoint := &telecastertypesv1beta1.ForwardingEndpoint{
 		Ref: &telecastertypesv1beta1.ForwardingEndpointRef{
-			Slug: e.Slug.String(),
+			Slug: e.Ref.Slug.String(),
 		},
 	}
 
 	endpoint.Ref = &telecastertypesv1beta1.ForwardingEndpointRef{
-		Slug: e.Slug.ValueString(),
+		Slug: e.Ref.Slug.ValueString(),
 	}
-	spec, err := e.Spec.toProtoObject()
+	spec, err := e.Spec.ToProto()
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert spec to proto object: %w", err)
 	}
@@ -253,7 +259,7 @@ func (e *ForwardingEndpointResourceModel) toProtoObject() (*telecastertypesv1bet
 	return endpoint, nil
 }
 
-func (s *ForwardingEndpointSpecModel) toProtoObject() (*telecastertypesv1beta1.ForwardingEndpointSpec, error) {
+func (s *ForwardingEndpointSpecModel) ToProto() (*telecastertypesv1beta1.ForwardingEndpointSpec, error) {
 	spec := &telecastertypesv1beta1.ForwardingEndpointSpec{
 		DisplayName: s.DisplayName.ValueString(),
 	}
@@ -266,7 +272,7 @@ func (s *ForwardingEndpointSpecModel) toProtoObject() (*telecastertypesv1beta1.F
 				BootstrapEndpoints: s.Kafka.BootstrapEndpoints.ValueString(),
 				Topic:              s.Kafka.Topic.ValueString(),
 				Tls:                s.Kafka.TLS.toProtoObject(),
-				Auth:               s.Kafka.ScramAuth.toProtoObject(),
+				Auth:               s.Kafka.ScramAuth.ToProto(),
 			},
 		}
 	}
@@ -277,7 +283,7 @@ func (s *ForwardingEndpointSpecModel) toProtoObject() (*telecastertypesv1beta1.F
 			Prometheus: &telecastertypesv1beta1.PrometheusRemoteWriteConfig{
 				Endpoint:  s.Prometheus.Endpoint.ValueString(),
 				Tls:       s.Prometheus.TLS.toProtoObject(),
-				BasicAuth: s.Prometheus.BasicAuth.toProtoObject(),
+				BasicAuth: s.Prometheus.BasicAuth.ToProto(),
 			},
 		}
 	}
@@ -288,7 +294,7 @@ func (s *ForwardingEndpointSpecModel) toProtoObject() (*telecastertypesv1beta1.F
 			S3: &telecastertypesv1beta1.S3Config{
 				Uri:         s.S3.URI.ValueString(),
 				Region:      s.S3.Region.ValueString(),
-				Credentials: s.S3.Credentials.toProtoObject(),
+				Credentials: s.S3.Credentials.ToProto(),
 			},
 		}
 	}
@@ -299,7 +305,7 @@ func (s *ForwardingEndpointSpecModel) toProtoObject() (*telecastertypesv1beta1.F
 			Https: &telecastertypesv1beta1.HTTPSConfig{
 				Endpoint:  s.HTTPS.Endpoint.ValueString(),
 				Tls:       s.HTTPS.TLS.toProtoObject(),
-				BasicAuth: s.HTTPS.BasicAuth.toProtoObject(),
+				BasicAuth: s.HTTPS.BasicAuth.ToProto(),
 			},
 		}
 	}
@@ -309,6 +315,10 @@ func (s *ForwardingEndpointSpecModel) toProtoObject() (*telecastertypesv1beta1.F
 	}
 
 	return spec, nil
+}
+
+func (f *ForwardingEndpointResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+	resource.ImportStatePassthroughID(ctx, path.Root("slug"), req, resp)
 }
 
 func (f *ForwardingEndpointResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -426,12 +436,110 @@ func (f *ForwardingEndpointResource) Schema(ctx context.Context, req resource.Sc
 	}
 }
 
-func (f *ForwardingEndpointResource) Create(context.Context, resource.CreateRequest, *resource.CreateResponse) {
-	panic("unimplemented")
+func (f *ForwardingEndpointResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
+	var data ForwardingEndpointResourceModel
+
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	endpointProto, err := data.ToProto()
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Error Creating Telecaster Forwarding Endpoint",
+			fmt.Sprintf("Could not convert forwarding endpoint to proto object: %v", err),
+		)
+		return
+	}
+
+	if _, err := f.Client.CreateEndpoint(ctx, connect.NewRequest(&clusterv1beta1.CreateEndpointRequest{
+		Ref:  endpointProto.Ref,
+		Spec: endpointProto.Spec,
+	})); err != nil {
+		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
+		return
+	}
+
+	pollConf := retry.StateChangeConf{
+		Pending: []string{
+			telecastertypesv1beta1.ForwardingEndpointState_FORWARDING_ENDPOINT_STATE_PENDING.String(),
+		},
+		Target: []string{
+			telecastertypesv1beta1.ForwardingEndpointState_FORWARDING_ENDPOINT_STATE_CONNECTED.String(),
+		},
+		Refresh: func() (result any, state string, err error) {
+			getResp, err := f.Client.GetEndpoint(ctx, connect.NewRequest(&clusterv1beta1.GetEndpointRequest{
+				Ref: data.Ref.ToProto(),
+			}))
+			if err != nil {
+				return nil, telecastertypesv1beta1.ForwardingEndpointState_FORWARDING_ENDPOINT_STATE_UNSPECIFIED.String(), err
+			}
+			return getResp.Msg.Endpoint, getResp.Msg.Endpoint.Status.State.String(), nil
+		},
+		Timeout: 10 * time.Minute,
+	}
+
+	rawEndpoint, err := pollConf.WaitForStateContext(ctx)
+	if err != nil {
+		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
+		return
+	}
+
+	endpoint, ok := rawEndpoint.(*telecastertypesv1beta1.ForwardingEndpoint)
+	if !ok {
+		resp.Diagnostics.AddError(
+			"Error Creating Telecaster Forwarding Endpoint",
+			fmt.Sprintf("Unexpected type %T when waiting for forwarding endpoint to become active", rawEndpoint),
+		)
+		return
+	}
+
+	data.Set(endpoint)
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-func (f *ForwardingEndpointResource) Delete(context.Context, resource.DeleteRequest, *resource.DeleteResponse) {
-	panic("unimplemented")
+func (f *ForwardingEndpointResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+	var data ForwardingEndpointResourceModel
+
+	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	if _, err := f.Client.DeleteEndpoint(ctx, connect.NewRequest(&clusterv1beta1.DeleteEndpointRequest{
+		Ref: data.Ref.ToProto(),
+	})); err != nil {
+		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
+		return
+	}
+
+	const stateDeleted = "deleted"
+
+	pollConf := retry.StateChangeConf{
+		Pending: []string{
+			telecastertypesv1beta1.ForwardingEndpointState_FORWARDING_ENDPOINT_STATE_PENDING.String(),
+		},
+		Target: []string{
+			stateDeleted,
+		},
+		Refresh: func() (any, string, error) {
+			result, err := f.Client.GetEndpoint(ctx, connect.NewRequest(&clusterv1beta1.GetEndpointRequest{
+				Ref: data.Ref.ToProto(),
+			}))
+			if err != nil {
+				return nil, telecastertypesv1beta1.ForwardingEndpointState_FORWARDING_ENDPOINT_STATE_UNSPECIFIED.String(), err
+			}
+			return result.Msg.Endpoint, result.Msg.Endpoint.Status.State.String(), nil
+		},
+		Timeout: 10 * time.Minute,
+	}
+
+	_, err := pollConf.WaitForStateContext(ctx)
+	if err != nil {
+		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
+		return
+	}
 }
 
 func (f *ForwardingEndpointResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
@@ -442,8 +550,8 @@ func (f *ForwardingEndpointResource) Read(ctx context.Context, req resource.Read
 		return
 	}
 
-	getResp, err := f.client.TelecasterServiceClient.GetEndpoint(ctx, connect.NewRequest(&clusterv1beta1.GetEndpointRequest{
-		Ref: data.ForwardingEndpointRefModel.toProtoObject(),
+	getResp, err := f.Client.GetEndpoint(ctx, connect.NewRequest(&clusterv1beta1.GetEndpointRequest{
+		Ref: data.Ref.ToProto(),
 	}))
 	if err != nil {
 		if coreweave.IsNotFoundError(err) {
@@ -451,10 +559,7 @@ func (f *ForwardingEndpointResource) Read(ctx context.Context, req resource.Read
 			return
 		}
 
-		resp.Diagnostics.AddError(
-			"Error Reading Telecaster Forwarding Endpoint",
-			fmt.Sprintf("Could not read Telecaster Forwarding Endpoint %s: %v", data.Slug.ValueString(), err),
-		)
+		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
 		return
 	}
 
@@ -462,6 +567,65 @@ func (f *ForwardingEndpointResource) Read(ctx context.Context, req resource.Read
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-func (f *ForwardingEndpointResource) Update(context.Context, resource.UpdateRequest, *resource.UpdateResponse) {
-	panic("unimplemented")
+func (f *ForwardingEndpointResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
+	var data ForwardingEndpointResourceModel
+
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	endpointProto, err := data.ToProto()
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Error Updating Telecaster Forwarding Endpoint",
+			fmt.Sprintf("Could not convert forwarding endpoint to proto object: %v", err),
+		)
+		return
+	}
+
+	if _, err = f.Client.UpdateEndpoint(ctx, connect.NewRequest(&clusterv1beta1.UpdateEndpointRequest{
+		Ref:  endpointProto.Ref,
+		Spec: endpointProto.Spec,
+	})); err != nil {
+		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
+		return
+	}
+
+	pollConf := retry.StateChangeConf{
+		Pending: []string{
+			telecastertypesv1beta1.ForwardingEndpointState_FORWARDING_ENDPOINT_STATE_PENDING.String(),
+		},
+		Target: []string{
+			telecastertypesv1beta1.ForwardingEndpointState_FORWARDING_ENDPOINT_STATE_CONNECTED.String(),
+		},
+		Refresh: func() (result any, state string, err error) {
+			getResp, err := f.Client.GetEndpoint(ctx, connect.NewRequest(&clusterv1beta1.GetEndpointRequest{
+				Ref: data.Ref.ToProto(),
+			}))
+			if err != nil {
+				return nil, telecastertypesv1beta1.ForwardingEndpointState_FORWARDING_ENDPOINT_STATE_UNSPECIFIED.String(), err
+			}
+			return getResp.Msg.Endpoint, getResp.Msg.Endpoint.Status.State.String(), nil
+		},
+		Timeout: 10 * time.Minute,
+	}
+
+	rawEndpoint, err := pollConf.WaitForStateContext(ctx)
+	if err != nil {
+		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
+		return
+	}
+
+	endpoint, ok := rawEndpoint.(*connect.Response[clusterv1beta1.GetEndpointResponse])
+	if !ok {
+		resp.Diagnostics.AddError(
+			"Error Updating Telecaster Forwarding Endpoint",
+			fmt.Sprintf("Unexpected type %T when waiting for forwarding endpoint to become active", rawEndpoint),
+		)
+		return
+	}
+
+	data.Set(endpoint.Msg.Endpoint)
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
