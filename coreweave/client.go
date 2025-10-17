@@ -11,7 +11,7 @@ import (
 	"buf.build/gen/go/coreweave/networking/connectrpc/go/coreweave/networking/v1beta1/networkingv1beta1connect"
 	"connectrpc.com/connect"
 
-	telecasterclusterv1beta1connect "github.com/coreweave/o11y-mgmt/gen/cw/telecaster/svc/cluster/v1beta1/clusterv1beta1connect"
+	telecasterclusterv1beta1connect "bsr.core-services.ingress.coreweave.com/gen/go/coreweave/o11y-mgmt/connectrpc/go/cw/telecaster/svc/cluster/v1beta1/clusterv1beta1connect"
 	retryablehttp "github.com/hashicorp/go-retryablehttp"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
