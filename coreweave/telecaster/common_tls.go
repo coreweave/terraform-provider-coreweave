@@ -1,7 +1,7 @@
 package telecaster
 
 import (
-	telecastertypesv1beta1 "github.com/coreweave/o11y-mgmt/gen/cw/telecaster/types/v1beta1"
+	typesv1beta1 "bsr.core-services.ingress.coreweave.com/gen/go/coreweave/o11y-mgmt/protocolbuffers/go/cw/telecaster/types/v1beta1"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
@@ -10,12 +10,12 @@ type TLSConfigModel struct {
 	CertificateAuthorityData types.String `tfsdk:"certificate_authority_data"`
 }
 
-func (t *TLSConfigModel) toProtoObject() *telecastertypesv1beta1.TLSConfig {
+func (t *TLSConfigModel) toProtoObject() *typesv1beta1.TLSConfig {
 	if t == nil {
 		return nil
 	}
 
-	return &telecastertypesv1beta1.TLSConfig{
+	return &typesv1beta1.TLSConfig{
 		CertificateAuthorityData: t.CertificateAuthorityData.ValueString(),
 	}
 }
