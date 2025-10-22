@@ -122,7 +122,7 @@ Optional:
 <a id="nestedatt--node_port_range"></a>
 ### Nested Schema for `node_port_range`
 
-Required:
+Optional:
 
 - `end` (Number) The end of the node port range (inclusive).
 - `start` (Number) The start of the node port range (inclusive).
