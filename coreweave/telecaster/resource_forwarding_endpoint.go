@@ -11,6 +11,7 @@ import (
 	"connectrpc.com/connect"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
 	"github.com/coreweave/terraform-provider-coreweave/internal/coretf"
+	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -44,6 +45,14 @@ func (e *ForwardingEndpointResourceModel) Set(data *telecastertypesv1beta1.Forwa
 
 	e.Spec = ForwardingEndpointSpecModel{
 		DisplayName: types.StringValue(data.Spec.DisplayName),
+	}
+
+	e.Status = ForwardingPipelineStatusModel{
+		CreatedAt:    timetypes.NewRFC3339TimeValue(data.Status.CreatedAt.AsTime()),
+		UpdatedAt:    timetypes.NewRFC3339TimeValue(data.Status.UpdatedAt.AsTime()),
+		State:        types.StringValue(data.Status.State.String()),
+		StateCode:    types.Int32Value(int32(data.Status.State.Number())),
+		StateMessage: types.StringPointerValue(data.Status.StateMessage),
 	}
 
 	switch cfg := data.Spec.Config.(type) {
