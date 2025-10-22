@@ -41,7 +41,10 @@ type ForwardingPipelineRefModel struct {
 	Slug types.String `tfsdk:"slug"`
 }
 
-func (m ForwardingPipelineRefModel) ToProto() *telecastertypesv1beta1.ForwardingPipelineRef {
+func (m *ForwardingPipelineRefModel) ToProto() *telecastertypesv1beta1.ForwardingPipelineRef {
+	if m == nil {
+		return nil
+	}
 	return &telecastertypesv1beta1.ForwardingPipelineRef{
 		Slug: m.Slug.ValueString(),
 	}
@@ -53,7 +56,10 @@ type ForwardingPipelineSpecModel struct {
 	Enabled     types.Bool                 `tfsdk:"enabled"`
 }
 
-func (m ForwardingPipelineSpecModel) ToProto() *telecastertypesv1beta1.ForwardingPipelineSpec {
+func (m *ForwardingPipelineSpecModel) ToProto() *telecastertypesv1beta1.ForwardingPipelineSpec {
+	if m == nil {
+		return nil
+	}
 	return &telecastertypesv1beta1.ForwardingPipelineSpec{
 		Source: &telecastertypesv1beta1.TelemetryStreamRef{
 			Slug: m.Source.Slug.ValueString(),
