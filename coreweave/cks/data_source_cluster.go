@@ -10,6 +10,7 @@ import (
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/hashicorp/hcl/v2/hclwrite"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -74,6 +75,20 @@ func (d *ClusterDataSource) Schema(ctx context.Context, req datasource.SchemaReq
 				MarkdownDescription: "The internal load balancer CIDR names of the cluster.",
 				Computed:            true,
 				ElementType:         types.StringType,
+			},
+			"node_port_range": schema.SingleNestedAttribute{
+				MarkdownDescription: "The Kubernetes Service NodePort range.",
+				Computed:            true,
+				Attributes: map[string]schema.Attribute{
+					"start": schema.Int32Attribute{
+						MarkdownDescription: "Start of the NodePort range.",
+						Computed:            true,
+					},
+					"end": schema.Int32Attribute{
+						MarkdownDescription: "End of the NodePort range.",
+						Computed:            true,
+					},
+				},
 			},
 			"audit_policy": schema.StringAttribute{
 				MarkdownDescription: "The audit policy of the cluster.",
@@ -170,8 +185,26 @@ func (d *ClusterDataSource) Read(ctx context.Context, req datasource.ReadRequest
 		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
 		return
 	}
-
 	data.Set(cluster.Msg.Cluster)
+	// Populate node_port_range explicitly
+	npRange := cluster.Msg.Cluster.Network.GetServiceNodePortRange()
+	if npRange != nil {
+		data.NodePortRange = types.ObjectValueMust(
+			map[string]attr.Type{
+				"start": types.Int32Type,
+				"end":   types.Int32Type,
+			},
+			map[string]attr.Value{
+				"start": types.Int32Value(npRange.Start),
+				"end":   types.Int32Value(npRange.End),
+			},
+		)
+	} else {
+		data.NodePortRange = types.ObjectNull(map[string]attr.Type{
+			"start": types.Int32Type,
+			"end":   types.Int32Type,
+		})
+	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, data)...)
 }
 
