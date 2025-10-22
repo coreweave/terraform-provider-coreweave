@@ -521,14 +521,17 @@ func (r *ClusterResource) Schema(ctx context.Context, req resource.SchemaRequest
 			},
 			"node_port_range": schema.SingleNestedAttribute{
 				Optional:            true,
+				Computed:            true,
 				MarkdownDescription: "If not specified, a default range will be used. See CKS documentation for more details.",
 				Attributes: map[string]schema.Attribute{
 					"start": schema.Int32Attribute{
 						Optional:            true,
+						Computed:            true,
 						MarkdownDescription: "The start of the node port range (inclusive).",
 					},
 					"end": schema.Int32Attribute{
 						Optional:            true,
+						Computed:            true,
 						MarkdownDescription: "The end of the node port range (inclusive).",
 					},
 				},
