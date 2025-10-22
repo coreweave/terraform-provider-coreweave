@@ -516,13 +516,16 @@ func (r *ClusterResource) Schema(ctx context.Context, req resource.SchemaRequest
 					}, "", "Field `internal_lb_cidr_names` is append-only. Removing an existing value will force replacement."),
 				},
 			},
-			"node_port_range": schema.ObjectAttribute{
-				Optional:            true,
-				Computed:            true,
-				MarkdownDescription: "If not specified, a default range will be used. See CKS documentation for more details.",
-				AttributeTypes: map[string]attr.Type{
-					"start": types.Int32Type,
-					"end":   types.Int32Type,
+			"node_port_range": schema.SingleNestedAttribute{
+				Description: "Kubernetes Service NodePort range.",
+				Computed:    true,
+				Attributes: map[string]schema.Attribute{
+					"start": schema.Int32Attribute{
+						Computed: true,
+					},
+					"end": schema.Int32Attribute{
+						Computed: true,
+					},
 				},
 			},
 			"audit_policy": schema.StringAttribute{
