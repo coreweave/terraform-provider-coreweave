@@ -128,6 +128,10 @@ type ForwardingEndpointRefModel struct {
 }
 
 func (r *ForwardingEndpointRefModel) ToProto() *telecastertypesv1beta1.ForwardingEndpointRef {
+	if r == nil {
+		return nil
+	}
+
 	return &telecastertypesv1beta1.ForwardingEndpointRef{
 		Slug: r.Slug.ValueString(),
 	}
@@ -241,6 +245,10 @@ func (s *S3CredentialsModel) ToProto() *telecastertypesv1beta1.S3Credentials {
 }
 
 func (e *ForwardingEndpointResourceModel) ToProto() (*telecastertypesv1beta1.ForwardingEndpoint, error) {
+	if e == nil {
+		return nil, nil
+	}
+
 	endpoint := &telecastertypesv1beta1.ForwardingEndpoint{
 		Ref: &telecastertypesv1beta1.ForwardingEndpointRef{
 			Slug: e.Ref.Slug.String(),
@@ -260,6 +268,10 @@ func (e *ForwardingEndpointResourceModel) ToProto() (*telecastertypesv1beta1.For
 }
 
 func (s *ForwardingEndpointSpecModel) ToProto() (*telecastertypesv1beta1.ForwardingEndpointSpec, error) {
+	if s == nil {
+		return nil, nil
+	}
+
 	spec := &telecastertypesv1beta1.ForwardingEndpointSpec{
 		DisplayName: s.DisplayName.ValueString(),
 	}
@@ -271,7 +283,7 @@ func (s *ForwardingEndpointSpecModel) ToProto() (*telecastertypesv1beta1.Forward
 			Kafka: &telecastertypesv1beta1.KafkaConfig{
 				BootstrapEndpoints: s.Kafka.BootstrapEndpoints.ValueString(),
 				Topic:              s.Kafka.Topic.ValueString(),
-				Tls:                s.Kafka.TLS.toProtoObject(),
+				Tls:                s.Kafka.TLS.ToProto(),
 				Auth:               s.Kafka.ScramAuth.ToProto(),
 			},
 		}
@@ -282,7 +294,7 @@ func (s *ForwardingEndpointSpecModel) ToProto() (*telecastertypesv1beta1.Forward
 		spec.Config = &telecastertypesv1beta1.ForwardingEndpointSpec_Prometheus{
 			Prometheus: &telecastertypesv1beta1.PrometheusRemoteWriteConfig{
 				Endpoint:  s.Prometheus.Endpoint.ValueString(),
-				Tls:       s.Prometheus.TLS.toProtoObject(),
+				Tls:       s.Prometheus.TLS.ToProto(),
 				BasicAuth: s.Prometheus.BasicAuth.ToProto(),
 			},
 		}
@@ -304,7 +316,7 @@ func (s *ForwardingEndpointSpecModel) ToProto() (*telecastertypesv1beta1.Forward
 		spec.Config = &telecastertypesv1beta1.ForwardingEndpointSpec_Https{
 			Https: &telecastertypesv1beta1.HTTPSConfig{
 				Endpoint:  s.HTTPS.Endpoint.ValueString(),
-				Tls:       s.HTTPS.TLS.toProtoObject(),
+				Tls:       s.HTTPS.TLS.ToProto(),
 				BasicAuth: s.HTTPS.BasicAuth.ToProto(),
 			},
 		}
