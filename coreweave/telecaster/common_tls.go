@@ -10,7 +10,7 @@ type TLSConfigModel struct {
 	CertificateAuthorityData types.String `tfsdk:"certificate_authority_data"`
 }
 
-func (t *TLSConfigModel) toProtoObject() *typesv1beta1.TLSConfig {
+func (t *TLSConfigModel) ToProto() *typesv1beta1.TLSConfig {
 	if t == nil {
 		return nil
 	}
