@@ -155,7 +155,6 @@ func TestClusterSchema(t *testing.T) {
 	}
 }
 
-//nolint:unparam
 func defaultVpc(name, zone string) *networking.VpcResourceModel {
 	if len(name) > 30 {
 		// Bail on the tests as early as possible; this is a test definition failure.
@@ -779,5 +778,200 @@ func TestEmptyAuditPolicy(t *testing.T) {
 				cluster:   *cluster,
 			}),
 		},
+	})
+}
+
+func TestSharedStorage(t *testing.T) {
+	zone := testutil.AcceptanceTestZone
+	kubeVersion := testutil.AcceptanceTestKubeVersion
+	ctx := context.Background()
+
+	// Test 1: Create cluster without shared storage (base cluster)
+	t.Run("with FF enabled", func(t *testing.T) {
+		baseConfig := generateResourceNames("base")
+		baseVpc := defaultVpc(baseConfig.ClusterName, zone)
+
+		baseCluster := &cks.ClusterResourceModel{
+			VpcId:               types.StringValue(fmt.Sprintf("coreweave_networking_vpc.%s.id", baseConfig.ResourceName)),
+			Name:                types.StringValue(baseConfig.ClusterName),
+			Zone:                types.StringValue(zone),
+			Version:             types.StringValue(kubeVersion),
+			Public:              types.BoolValue(false),
+			PodCidrName:         types.StringValue("pod-cidr"),
+			ServiceCidrName:     types.StringValue("service-cidr"),
+			InternalLBCidrNames: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr")}),
+		}
+
+		resource.Test(t, resource.TestCase{
+			ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+			PreCheck: func() {
+				testutil.SetEnvDefaults()
+			},
+			Steps: []resource.TestStep{
+				createClusterTestStep(ctx, t, testStepConfig{
+					TestName: "create base cluster without shared storage",
+					ConfigPlanChecks: resource.ConfigPlanChecks{
+						PreApply: []plancheck.PlanCheck{
+							plancheck.ExpectResourceAction(baseConfig.FullResourceName, plancheck.ResourceActionCreate),
+						},
+					},
+					Resources: baseConfig,
+					vpc:       *baseVpc,
+					cluster:   *baseCluster,
+				}),
+			},
+		})
+	})
+
+	// Test 2: create a shared-storage cluster
+	t.Run("create cluster with shared storage", func(t *testing.T) {
+		// Create two base clusters
+		baseConfig1 := generateResourceNames("shared3")
+		baseVpc1 := defaultVpc(baseConfig1.ClusterName, zone)
+		baseCluster1 := &cks.ClusterResourceModel{
+			VpcId:               types.StringValue(fmt.Sprintf("coreweave_networking_vpc.%s.id", baseConfig1.ResourceName)),
+			Name:                types.StringValue(baseConfig1.ClusterName),
+			Zone:                types.StringValue(zone),
+			Version:             types.StringValue(kubeVersion),
+			Public:              types.BoolValue(false),
+			PodCidrName:         types.StringValue("pod-cidr"),
+			ServiceCidrName:     types.StringValue("service-cidr"),
+			InternalLBCidrNames: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr")}),
+		}
+
+		// Create dependent cluster
+		dependentConfig := generateResourceNames("shared4")
+		dependentVpc := defaultVpc(dependentConfig.ClusterName, zone)
+
+		dependentClusterInitial := &cks.ClusterResourceModel{
+			VpcId:                  types.StringValue(fmt.Sprintf("coreweave_networking_vpc.%s.id", dependentConfig.ResourceName)),
+			Name:                   types.StringValue(dependentConfig.ClusterName),
+			Zone:                   types.StringValue(zone),
+			Version:                types.StringValue(kubeVersion),
+			Public:                 types.BoolValue(false),
+			PodCidrName:            types.StringValue("pod-cidr"),
+			ServiceCidrName:        types.StringValue("service-cidr"),
+			InternalLBCidrNames:    types.SetValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr")}),
+			SharedStorageClusterId: types.StringValue(fmt.Sprintf("coreweave_cks_cluster.%s.id", baseConfig1.ResourceName)),
+		}
+
+		resource.Test(t, resource.TestCase{
+			ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+			PreCheck: func() {
+				testutil.SetEnvDefaults()
+			},
+			Steps: []resource.TestStep{
+				// Create base clusters
+				{
+					PreConfig: func() {
+						t.Log("Creating base clusters for shared storage test")
+					},
+					Config: strings.Join([]string{
+						networking.MustRenderVpcResource(ctx, baseConfig1.ResourceName, baseVpc1),
+						cks.MustRenderClusterResource(ctx, baseConfig1.ResourceName, baseCluster1),
+					}, "\n"),
+					ConfigPlanChecks: resource.ConfigPlanChecks{
+						PreApply: []plancheck.PlanCheck{
+							plancheck.ExpectResourceAction(baseConfig1.FullResourceName, plancheck.ResourceActionCreate),
+						},
+					},
+				},
+				// Create dependent cluster with shared_storage_cluster_id pointing to base1
+				{
+					PreConfig: func() {
+						t.Log("Creating dependent cluster with shared_storage_cluster_id pointing to base1")
+					},
+					Config: strings.Join([]string{
+						networking.MustRenderVpcResource(ctx, baseConfig1.ResourceName, baseVpc1),
+						cks.MustRenderClusterResource(ctx, baseConfig1.ResourceName, baseCluster1),
+						networking.MustRenderVpcResource(ctx, dependentConfig.ResourceName, dependentVpc),
+						cks.MustRenderClusterResource(ctx, dependentConfig.ResourceName, dependentClusterInitial),
+					}, "\n"),
+					ConfigPlanChecks: resource.ConfigPlanChecks{
+						PreApply: []plancheck.PlanCheck{
+							plancheck.ExpectResourceAction(dependentConfig.FullResourceName, plancheck.ResourceActionCreate),
+						},
+					},
+					Check: resource.ComposeAggregateTestCheckFunc(
+						resource.TestCheckResourceAttrPair(dependentConfig.FullResourceName, "shared_storage_cluster_id", baseConfig1.FullResourceName, "id"),
+					),
+				},
+			},
+		})
+	})
+
+	// Test 3: Test with data source
+	t.Run("data source with shared storage", func(t *testing.T) {
+		baseConfig := generateResourceNames("datasrc-base") // datasrc-base
+		baseVpc := defaultVpc(baseConfig.ClusterName, zone)
+		baseCluster := &cks.ClusterResourceModel{
+			VpcId:               types.StringValue(fmt.Sprintf("coreweave_networking_vpc.%s.id", baseConfig.ResourceName)),
+			Name:                types.StringValue(baseConfig.ClusterName),
+			Zone:                types.StringValue(zone),
+			Version:             types.StringValue(kubeVersion),
+			Public:              types.BoolValue(false),
+			PodCidrName:         types.StringValue("pod-cidr"),
+			ServiceCidrName:     types.StringValue("service-cidr"),
+			InternalLBCidrNames: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr")}),
+		}
+
+		dependentConfig := generateResourceNames("datasrc-dep") // datasrc-dependent
+		dependentVpc := defaultVpc(dependentConfig.ClusterName, zone)
+		dependentCluster := &cks.ClusterResourceModel{
+			VpcId:                  types.StringValue(fmt.Sprintf("coreweave_networking_vpc.%s.id", dependentConfig.ResourceName)),
+			Name:                   types.StringValue(dependentConfig.ClusterName),
+			Zone:                   types.StringValue(zone),
+			Version:                types.StringValue(kubeVersion),
+			Public:                 types.BoolValue(false),
+			PodCidrName:            types.StringValue("pod-cidr"),
+			ServiceCidrName:        types.StringValue("service-cidr"),
+			InternalLBCidrNames:    types.SetValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr")}),
+			SharedStorageClusterId: types.StringValue(fmt.Sprintf("coreweave_cks_cluster.%s.id", baseConfig.ResourceName)),
+		}
+
+		dataSource := &cks.ClusterDataSourceModel{
+			Id: types.StringValue(fmt.Sprintf("coreweave_cks_cluster.%s.id", dependentConfig.ResourceName)),
+		}
+
+		resource.Test(t, resource.TestCase{
+			ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+			PreCheck: func() {
+				testutil.SetEnvDefaults()
+			},
+			Steps: []resource.TestStep{
+				// Create both clusters
+				{
+					PreConfig: func() {
+						t.Log("Creating clusters for data source test")
+					},
+					Config: strings.Join([]string{
+						networking.MustRenderVpcResource(ctx, baseConfig.ResourceName, baseVpc),
+						cks.MustRenderClusterResource(ctx, baseConfig.ResourceName, baseCluster),
+						networking.MustRenderVpcResource(ctx, dependentConfig.ResourceName, dependentVpc),
+						cks.MustRenderClusterResource(ctx, dependentConfig.ResourceName, dependentCluster),
+					}, "\n"),
+				},
+				// Add data source
+				{
+					PreConfig: func() {
+						t.Log("Testing data source with shared_storage_cluster_id")
+					},
+					Config: strings.Join([]string{
+						networking.MustRenderVpcResource(ctx, baseConfig.ResourceName, baseVpc),
+						cks.MustRenderClusterResource(ctx, baseConfig.ResourceName, baseCluster),
+						networking.MustRenderVpcResource(ctx, dependentConfig.ResourceName, dependentVpc),
+						cks.MustRenderClusterResource(ctx, dependentConfig.ResourceName, dependentCluster),
+						cks.MustRenderClusterDataSource(ctx, dependentConfig.ResourceName, dataSource),
+					}, "\n"),
+					Check: resource.ComposeAggregateTestCheckFunc(
+						// Note: We cannot check shared_storage_cluster_id on the data source because
+						// the API does not return this field. For resources, the value is preserved
+						// from the plan/state, but data sources have no plan/state to preserve from.
+						resource.TestCheckResourceAttrPair(dependentConfig.FullDataSourceName, "id", dependentConfig.FullResourceName, "id"),
+						resource.TestCheckResourceAttrPair(dependentConfig.FullDataSourceName, "name", dependentConfig.FullResourceName, "name"),
+					),
+				},
+			},
+		})
 	})
 }

@@ -145,6 +145,7 @@ type ClusterResourceModel struct {
 	ApiServerEndpoint           types.String              `tfsdk:"api_server_endpoint"` //nolint:staticcheck
 	Status                      types.String              `tfsdk:"status"`
 	ServiceAccountOIDCIssuerURL types.String              `tfsdk:"service_account_oidc_issuer_url"`
+	SharedStorageClusterId      types.String              `tfsdk:"shared_storage_cluster_id"` //nolint:staticcheck
 }
 
 func oidcIsEmpty(oidc *cksv1beta1.OIDCConfig) bool {
@@ -243,6 +244,9 @@ func (c *ClusterResourceModel) Set(cluster *cksv1beta1.Cluster) {
 	}
 
 	c.ApiServerEndpoint = types.StringValue(cluster.ApiServerEndpoint)
+
+	// Note: SharedStorageClusterId is not returned by the API, so we preserve it from the plan.
+	// This is intentional since it's marked as RequiresReplace - Terraform will manage this value.
 }
 
 func (c *ClusterResourceModel) oidcSigningAlgs(ctx context.Context) []cksv1beta1.SigningAlgorithm {
@@ -282,7 +286,8 @@ func (c *ClusterResourceModel) ToCreateRequest(ctx context.Context) *cksv1beta1.
 			ServiceCidrName:     c.ServiceCidrName.ValueString(),
 			InternalLbCidrNames: c.InternalLbCidrNames(ctx),
 		},
-		AuditPolicy: c.AuditPolicy.ValueString(),
+		AuditPolicy:            c.AuditPolicy.ValueString(),
+		SharedStorageClusterId: c.SharedStorageClusterId.ValueString(),
 	}
 
 	if c.AuthNWebhook != nil {
@@ -577,6 +582,15 @@ func (r *ClusterResource) Schema(ctx context.Context, req resource.SchemaRequest
 				MarkdownDescription: "The URL of the OIDC issuer for the cluster's service account tokens. This value corresponds to the `--service-account-issuer` flag on the kube-apiserver.",
 				Computed:            true,
 			},
+			"shared_storage_cluster_id": schema.StringAttribute{
+				Optional:            true,
+				Required:            false,
+				MarkdownDescription: "The `cluster_id` of the cluster to share storage with. Must be enabled by CoreWeave suppport. Contact CoreWeave support if you are interested in this feature.",
+				Computed:            false,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
+			},
 		},
 	}
 }
@@ -838,6 +852,10 @@ func MustRenderClusterResource(ctx context.Context, resourceName string, cluster
 	resourceBody.SetAttributeValue("internal_lb_cidr_names", cty.SetVal(internalLbCidrSetVals))
 	if !cluster.AuditPolicy.IsNull() {
 		resourceBody.SetAttributeValue("audit_policy", cty.StringVal(cluster.AuditPolicy.ValueString()))
+	}
+
+	if !cluster.SharedStorageClusterId.IsNull() && !cluster.SharedStorageClusterId.IsUnknown() {
+		resourceBody.SetAttributeRaw("shared_storage_cluster_id", hclwrite.Tokens{{Type: hclsyntax.TokenIdent, Bytes: []byte(cluster.SharedStorageClusterId.ValueString())}})
 	}
 
 	stringOrNull := func(s types.String) cty.Value {
