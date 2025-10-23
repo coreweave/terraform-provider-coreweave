@@ -274,7 +274,7 @@ func TestBucketLifecycleConfiguration(t *testing.T) {
 			},
 		},
 	}
-	noncurrentTransitioOnly := objectstorage.LifecycleRuleModel{
+	noncurrentTransitionOnly := objectstorage.LifecycleRuleModel{
 		ID:     types.StringValue("noncurrent-transition-only"),
 		Status: types.StringValue("Enabled"),
 		NoncurrentVersionTransitions: []*objectstorage.NoncurrentVersionTransitionModel{
@@ -377,7 +377,7 @@ func TestBucketLifecycleConfiguration(t *testing.T) {
 			resourceName:     resourceName,
 			bucket:           bucket,
 			bucketVersioning: versioning,
-			rules:            []objectstorage.LifecycleRuleModel{noncurrentTransitioOnly},
+			rules:            []objectstorage.LifecycleRuleModel{noncurrentTransitionOnly},
 			configPlanChecks: resource.ConfigPlanChecks{
 				PreApply: []plancheck.PlanCheck{
 					plancheck.ExpectResourceAction(fmt.Sprintf("coreweave_object_storage_bucket_lifecycle_configuration.%s", resourceName), plancheck.ResourceActionUpdate),
