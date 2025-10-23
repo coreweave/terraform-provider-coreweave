@@ -6,7 +6,9 @@ build:
 # Variables
 PROVIDER_NAME := coreweave
 VERSION := 1.0.0
-PLUGIN_DIR := $(HOME)/.terraform.d/plugins/terraform.local/coreweave/$(PROVIDER_NAME)/$(VERSION)/linux_amd64
+OS := $(shell go env GOOS)
+ARCH := $(shell go env GOARCH)
+PLUGIN_DIR := $(HOME)/.terraform.d/plugins/terraform.local/coreweave/$(PROVIDER_NAME)/$(VERSION)/$(OS)_$(ARCH)
 BINARY_NAME := terraform-provider-$(PROVIDER_NAME)_v$(VERSION)
 
 # This is valuable for limiting the sweeps to known-good resources, and for forcing an ordering.
