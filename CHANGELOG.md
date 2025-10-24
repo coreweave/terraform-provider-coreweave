@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.0](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.5.2...v0.6.0) (2025-10-24)
+
+
+### Features
+
+* **ckscluster:** new field shared_storage_cluster_id ([#151](https://github.com/coreweave/terraform-provider-coreweave/issues/151)) ([ae3c9a9](https://github.com/coreweave/terraform-provider-coreweave/commit/ae3c9a91574581f45f69f6181decedceb9a57d2d))
+
 ## [0.5.2](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.5.1...v0.5.2) (2025-10-16)
 
 
