@@ -155,7 +155,6 @@ func TestClusterSchema(t *testing.T) {
 	}
 }
 
-//nolint:unparam
 func defaultVpc(name, zone string) *networking.VpcResourceModel {
 	if len(name) > 30 {
 		// Bail on the tests as early as possible; this is a test definition failure.
@@ -779,5 +778,88 @@ func TestEmptyAuditPolicy(t *testing.T) {
 				cluster:   *cluster,
 			}),
 		},
+	})
+}
+
+func TestSharedStorage(t *testing.T) {
+	zone := testutil.AcceptanceTestZone
+	kubeVersion := testutil.AcceptanceTestKubeVersion
+	ctx := context.Background()
+
+	// Test 1: create a shared-storage cluster
+	t.Run("create cluster with shared storage", func(t *testing.T) {
+		// Create base (original/source) cluster that is sharing it's storage
+		baseConfig1 := generateResourceNames("shared")
+		baseVpc1 := defaultVpc(baseConfig1.ClusterName, zone)
+		baseCluster1 := &cks.ClusterResourceModel{
+			VpcId:               types.StringValue(fmt.Sprintf("coreweave_networking_vpc.%s.id", baseConfig1.ResourceName)),
+			Name:                types.StringValue(baseConfig1.ClusterName),
+			Zone:                types.StringValue(zone),
+			Version:             types.StringValue(kubeVersion),
+			Public:              types.BoolValue(false),
+			PodCidrName:         types.StringValue("pod-cidr"),
+			ServiceCidrName:     types.StringValue("service-cidr"),
+			InternalLBCidrNames: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr")}),
+		}
+
+		// Create migrated cluster which is taking over it's storage
+		dependentConfig := generateResourceNames("migrated")
+		dependentVpc := defaultVpc(dependentConfig.ClusterName, zone)
+
+		dependentClusterInitial := &cks.ClusterResourceModel{
+			VpcId:                  types.StringValue(fmt.Sprintf("coreweave_networking_vpc.%s.id", dependentConfig.ResourceName)),
+			Name:                   types.StringValue(dependentConfig.ClusterName),
+			Zone:                   types.StringValue(zone),
+			Version:                types.StringValue(kubeVersion),
+			Public:                 types.BoolValue(false),
+			PodCidrName:            types.StringValue("pod-cidr"),
+			ServiceCidrName:        types.StringValue("service-cidr"),
+			InternalLBCidrNames:    types.SetValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr")}),
+			SharedStorageClusterId: types.StringValue(fmt.Sprintf("coreweave_cks_cluster.%s.id", baseConfig1.ResourceName)),
+		}
+
+		resource.Test(t, resource.TestCase{
+			ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+			PreCheck: func() {
+				testutil.SetEnvDefaults()
+			},
+			Steps: []resource.TestStep{
+				// Create base clusters
+				{
+					PreConfig: func() {
+						t.Log("Creating base clusters for shared storage test")
+					},
+					Config: strings.Join([]string{
+						networking.MustRenderVpcResource(ctx, baseConfig1.ResourceName, baseVpc1),
+						cks.MustRenderClusterResource(ctx, baseConfig1.ResourceName, baseCluster1),
+					}, "\n"),
+					ConfigPlanChecks: resource.ConfigPlanChecks{
+						PreApply: []plancheck.PlanCheck{
+							plancheck.ExpectResourceAction(baseConfig1.FullResourceName, plancheck.ResourceActionCreate),
+						},
+					},
+				},
+				// Create dependent cluster with shared_storage_cluster_id pointing to base1
+				{
+					PreConfig: func() {
+						t.Log("Creating dependent cluster with shared_storage_cluster_id pointing to base1")
+					},
+					Config: strings.Join([]string{
+						networking.MustRenderVpcResource(ctx, baseConfig1.ResourceName, baseVpc1),
+						cks.MustRenderClusterResource(ctx, baseConfig1.ResourceName, baseCluster1),
+						networking.MustRenderVpcResource(ctx, dependentConfig.ResourceName, dependentVpc),
+						cks.MustRenderClusterResource(ctx, dependentConfig.ResourceName, dependentClusterInitial),
+					}, "\n"),
+					ConfigPlanChecks: resource.ConfigPlanChecks{
+						PreApply: []plancheck.PlanCheck{
+							plancheck.ExpectResourceAction(dependentConfig.FullResourceName, plancheck.ResourceActionCreate),
+						},
+					},
+					Check: resource.ComposeAggregateTestCheckFunc(
+						resource.TestCheckResourceAttrPair(dependentConfig.FullResourceName, "shared_storage_cluster_id", baseConfig1.FullResourceName, "id"),
+					),
+				},
+			},
+		})
 	})
 }
