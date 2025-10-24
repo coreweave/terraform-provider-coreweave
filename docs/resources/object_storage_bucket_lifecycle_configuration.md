@@ -100,7 +100,9 @@ Optional:
 - `filter` (Block, Optional) (see [below for nested schema](#nestedblock--rule--filter))
 - `id` (String) Unique identifier for the rule
 - `noncurrent_version_expiration` (Block, Optional) (see [below for nested schema](#nestedblock--rule--noncurrent_version_expiration))
+- `noncurrent_version_transition` (Block Set) (see [below for nested schema](#nestedblock--rule--noncurrent_version_transition))
 - `prefix` (String) Object key prefix to which the rule applies
+- `transition` (Block Set) (see [below for nested schema](#nestedblock--rule--transition))
 
 <a id="nestedblock--rule--abort_incomplete_multipart_upload"></a>
 ### Nested Schema for `rule.abort_incomplete_multipart_upload`
@@ -159,6 +161,32 @@ Optional:
 
 - `newer_noncurrent_versions` (Number) Number of noncurrent versions to retain
 - `noncurrent_days` (Number) Days after becoming noncurrent before deletion
+
+
+<a id="nestedblock--rule--noncurrent_version_transition"></a>
+### Nested Schema for `rule.noncurrent_version_transition`
+
+Required:
+
+- `noncurrent_days` (Number) Number of days after object becomes noncurrent before the transition may occur
+- `storage_class` (String) Storage class to transition noncurrent objects to
+
+Optional:
+
+- `newer_noncurrent_versions` (Number) Number of noncurrent versions to retain
+
+
+<a id="nestedblock--rule--transition"></a>
+### Nested Schema for `rule.transition`
+
+Required:
+
+- `storage_class` (String) Storage class to transition objects to
+
+Optional:
+
+- `date` (String) ISO8601 date when objects transition
+- `days` (Number) Number of days after object creation for transition
 
 ## Import
 

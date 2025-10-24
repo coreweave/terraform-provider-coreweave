@@ -24,7 +24,6 @@ resource "coreweave_object_storage_bucket_versioning" "default" {
   versioning_configuration {
     status = "Enabled"
   }
-
 }
 ```
 
