@@ -786,47 +786,10 @@ func TestSharedStorage(t *testing.T) {
 	kubeVersion := testutil.AcceptanceTestKubeVersion
 	ctx := context.Background()
 
-	// Test 1: Create cluster without shared storage (base cluster)
-	t.Run("with FF enabled", func(t *testing.T) {
-		baseConfig := generateResourceNames("base")
-		baseVpc := defaultVpc(baseConfig.ClusterName, zone)
-
-		baseCluster := &cks.ClusterResourceModel{
-			VpcId:               types.StringValue(fmt.Sprintf("coreweave_networking_vpc.%s.id", baseConfig.ResourceName)),
-			Name:                types.StringValue(baseConfig.ClusterName),
-			Zone:                types.StringValue(zone),
-			Version:             types.StringValue(kubeVersion),
-			Public:              types.BoolValue(false),
-			PodCidrName:         types.StringValue("pod-cidr"),
-			ServiceCidrName:     types.StringValue("service-cidr"),
-			InternalLBCidrNames: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr")}),
-		}
-
-		resource.Test(t, resource.TestCase{
-			ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
-			PreCheck: func() {
-				testutil.SetEnvDefaults()
-			},
-			Steps: []resource.TestStep{
-				createClusterTestStep(ctx, t, testStepConfig{
-					TestName: "create base cluster without shared storage",
-					ConfigPlanChecks: resource.ConfigPlanChecks{
-						PreApply: []plancheck.PlanCheck{
-							plancheck.ExpectResourceAction(baseConfig.FullResourceName, plancheck.ResourceActionCreate),
-						},
-					},
-					Resources: baseConfig,
-					vpc:       *baseVpc,
-					cluster:   *baseCluster,
-				}),
-			},
-		})
-	})
-
-	// Test 2: create a shared-storage cluster
+	// Test 1: create a shared-storage cluster
 	t.Run("create cluster with shared storage", func(t *testing.T) {
-		// Create two base clusters
-		baseConfig1 := generateResourceNames("shared3")
+		// Create base (original/source) cluster that is sharing it's storage
+		baseConfig1 := generateResourceNames("shared")
 		baseVpc1 := defaultVpc(baseConfig1.ClusterName, zone)
 		baseCluster1 := &cks.ClusterResourceModel{
 			VpcId:               types.StringValue(fmt.Sprintf("coreweave_networking_vpc.%s.id", baseConfig1.ResourceName)),
@@ -839,8 +802,8 @@ func TestSharedStorage(t *testing.T) {
 			InternalLBCidrNames: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr")}),
 		}
 
-		// Create dependent cluster
-		dependentConfig := generateResourceNames("shared4")
+		// Create migrated cluster which is taking over it's storage
+		dependentConfig := generateResourceNames("migrated")
 		dependentVpc := defaultVpc(dependentConfig.ClusterName, zone)
 
 		dependentClusterInitial := &cks.ClusterResourceModel{
