@@ -185,7 +185,7 @@ func HandleAPIError(ctx context.Context, err error, diagnostics *diag.Diagnostic
 		})
 		diagnostics.AddError(
 			"Internal Error",
-			"An unexpected error occurred. Please check the provider logs for more details.",
+			fmt.Sprintf("An unexpected server error occurred: %q. Please check the provider logs for more details.", err.Error()),
 		)
 	}
 
