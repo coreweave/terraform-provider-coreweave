@@ -3,8 +3,8 @@ module github.com/coreweave/terraform-provider-coreweave
 go 1.25.2
 
 require (
-	bsr.core-services.ingress.coreweave.com/gen/go/coreweave/o11y-mgmt/connectrpc/go v1.18.1-20251009233652-5bc6310cb3b6.1
-	bsr.core-services.ingress.coreweave.com/gen/go/coreweave/o11y-mgmt/protocolbuffers/go v1.36.4-20251009233652-5bc6310cb3b6.1
+	bsr.core-services.ingress.coreweave.com/gen/go/coreweave/o11y-mgmt/connectrpc/go v1.18.1-20251027151051-e89f2c980df1.1
+	bsr.core-services.ingress.coreweave.com/gen/go/coreweave/o11y-mgmt/protocolbuffers/go v1.36.4-20251028231450-f9e175ae7bc5.1
 	buf.build/gen/go/coreweave/cks/connectrpc/go v1.19.0-20251007230423-8a2391dbf182.1
 	buf.build/gen/go/coreweave/cks/protocolbuffers/go v1.36.10-20251007230423-8a2391dbf182.1
 	buf.build/gen/go/coreweave/cwobject/connectrpc/go v1.18.1-20250604181649-b97f17b05d5b.1
@@ -32,6 +32,7 @@ require (
 	github.com/zclconf/go-cty v1.15.0
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250908214217-97024824d090
 	google.golang.org/protobuf v1.36.10
+	k8s.io/utils v0.0.0-20251002143259-bc988d571ff4
 )
 
 require (
