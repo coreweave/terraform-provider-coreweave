@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	clusterv1beta1 "bsr.core-services.ingress.coreweave.com/gen/go/coreweave/o11y-mgmt/protocolbuffers/go/cw/telecaster/svc/cluster/v1beta1"
-	telecastertypesv1beta1 "bsr.core-services.ingress.coreweave.com/gen/go/coreweave/o11y-mgmt/protocolbuffers/go/cw/telecaster/types/v1beta1"
+	clusterv1beta1 "bsr.core-services.ingress.coreweave.com/gen/go/coreweave/o11y-mgmt/protocolbuffers/go/coreweave/telecaster/svc/cluster/v1beta1"
+	telecastertypesv1beta1 "bsr.core-services.ingress.coreweave.com/gen/go/coreweave/o11y-mgmt/protocolbuffers/go/coreweave/telecaster/types/v1beta1"
 	"connectrpc.com/connect"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
 	"github.com/coreweave/terraform-provider-coreweave/internal/coretf"
@@ -15,7 +15,10 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
+	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/retry"
+	"google.golang.org/protobuf/encoding/protojson"
 )
 
 var (
@@ -32,9 +35,9 @@ type ResourceForwardingPipeline struct {
 }
 
 type ResourceForwardingPipelineModel struct {
-	Ref    ForwardingPipelineRefModel    `tfsdk:",inline"`
-	Spec   ForwardingPipelineSpecModel   `tfsdk:"spec"`
-	Status ForwardingPipelineStatusModel `tfsdk:"status"`
+	Ref    types.Object                `tfsdk:"ref"`
+	Spec   ForwardingPipelineSpecModel `tfsdk:"spec"`
+	Status types.Object                `tfsdk:"status"`
 }
 
 type ForwardingPipelineRefModel struct {
@@ -76,13 +79,19 @@ type ForwardingPipelineStatusModel struct {
 	UpdatedAt    timetypes.RFC3339 `tfsdk:"updated_at"`
 	StateCode    types.Int32       `tfsdk:"state_code"`
 	State        types.String      `tfsdk:"state"`
-	StateMessage types.String      `tfsdk:"message"`
+	StateMessage types.String      `tfsdk:"state_message"`
 }
 
 func (m *ResourceForwardingPipelineModel) Set(pipeline *telecastertypesv1beta1.ForwardingPipeline) {
-	if pipeline.Ref != nil {
-		m.Ref.Slug = types.StringValue(pipeline.Ref.Slug)
+	ctx := context.Background()
+	ref := ForwardingPipelineRefModel{
+		Slug: types.StringValue(pipeline.Ref.Slug),
 	}
+	refObject, diag := types.ObjectValueFrom(ctx, m.Ref.AttributeTypes(ctx), ref)
+	if diag.HasError() {
+		panic(diag)
+	}
+	m.Ref = refObject
 
 	if pipeline.Spec != nil {
 		m.Spec.Source.Slug = types.StringValue(pipeline.Spec.Source.Slug)
@@ -90,13 +99,19 @@ func (m *ResourceForwardingPipelineModel) Set(pipeline *telecastertypesv1beta1.F
 		m.Spec.Enabled = types.BoolValue(pipeline.Spec.Enabled)
 	}
 
+	status := ForwardingPipelineStatusModel{}
 	if pipeline.Status != nil {
-		m.Status.CreatedAt = timetypes.NewRFC3339TimeValue(pipeline.Status.CreatedAt.AsTime())
-		m.Status.UpdatedAt = timetypes.NewRFC3339TimeValue(pipeline.Status.UpdatedAt.AsTime())
-		m.Status.StateCode = types.Int32Value(int32(pipeline.Status.State.Number()))
-		m.Status.State = types.StringValue(pipeline.Status.State.String())
-		m.Status.StateMessage = types.StringPointerValue(pipeline.Status.StateMessage)
+		status.CreatedAt = timetypes.NewRFC3339TimeValue(pipeline.Status.CreatedAt.AsTime())
+		status.UpdatedAt = timetypes.NewRFC3339TimeValue(pipeline.Status.UpdatedAt.AsTime())
+		status.StateCode = types.Int32Value(int32(pipeline.Status.State.Number()))
+		status.State = types.StringValue(pipeline.Status.State.String())
+		status.StateMessage = types.StringPointerValue(pipeline.Status.StateMessage)
 	}
+	statusObj, diag := types.ObjectValueFrom(ctx, m.Status.AttributeTypes(ctx), status)
+	if diag.HasError() {
+		panic(diag)
+	}
+	m.Status = statusObj
 }
 
 func (r *ResourceForwardingPipeline) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
@@ -104,30 +119,46 @@ func (r *ResourceForwardingPipeline) ImportState(ctx context.Context, req resour
 }
 
 func (r *ResourceForwardingPipeline) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
-	resp.TypeName = req.ProviderTypeName + "_forwarding_pipeline"
+	resp.TypeName = req.ProviderTypeName + "_telecaster_forwarding_pipeline"
 }
 
 func (r *ResourceForwardingPipeline) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		MarkdownDescription: "CoreWeave Telecaster forwarding pipeline",
 		Attributes: map[string]schema.Attribute{
-			"slug": schema.StringAttribute{
-				MarkdownDescription: "The slug of the forwarding pipeline. Used as a unique identifier.",
-				Computed:            true,
+			"ref": schema.SingleNestedAttribute{
+				MarkdownDescription: "Reference to the Telecaster forwarding pipeline.",
+				Required:            true,
+				Attributes: map[string]schema.Attribute{
+					"slug": schema.StringAttribute{
+						MarkdownDescription: "The slug of the forwarding pipeline. Used as a unique identifier.",
+						Required:            true,
+					},
+				},
 			},
 			"spec": schema.SingleNestedAttribute{
 				MarkdownDescription: "The specification for the forwarding pipeline.",
 				Required:            true,
 				Attributes: map[string]schema.Attribute{
-					"telemetry_stream": schema.SingleNestedAttribute{
+					"source": schema.SingleNestedAttribute{
 						MarkdownDescription: "The telemetry stream to forward.",
 						Required:            true,
-						Attributes:          map[string]schema.Attribute{},
+						Attributes: map[string]schema.Attribute{
+							"slug": schema.StringAttribute{
+								MarkdownDescription: "The slug of the telemetry stream.",
+								Required:            true,
+							},
+						},
 					},
-					"forwarding_endpoint": schema.SingleNestedAttribute{
+					"destination": schema.SingleNestedAttribute{
 						MarkdownDescription: "The forwarding endpoint to send data to.",
 						Required:            true,
-						Attributes:          map[string]schema.Attribute{},
+						Attributes: map[string]schema.Attribute{
+							"slug": schema.StringAttribute{
+								MarkdownDescription: "The slug of the forwarding endpoint.",
+								Required:            true,
+							},
+						},
 					},
 					"enabled": schema.BoolAttribute{
 						MarkdownDescription: "Whether the forwarding pipeline is enabled.",
@@ -157,7 +188,7 @@ func (r *ResourceForwardingPipeline) Schema(ctx context.Context, req resource.Sc
 						MarkdownDescription: "The current state of the forwarding pipeline.",
 						Computed:            true,
 					},
-					"message": schema.StringAttribute{
+					"state_message": schema.StringAttribute{
 						MarkdownDescription: "A message associated with the current state of the forwarding pipeline.",
 						Computed:            true,
 					},
@@ -174,13 +205,31 @@ func (r *ResourceForwardingPipeline) Create(ctx context.Context, req resource.Cr
 		return
 	}
 
-	pipeline, err := r.Client.CreatePipeline(ctx, connect.NewRequest(&clusterv1beta1.CreatePipelineRequest{
+	var ref ForwardingPipelineRefModel
+	resp.Diagnostics.Append(data.Ref.As(ctx, &ref, basetypes.ObjectAsOptions{})...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	createReq := connect.NewRequest(&clusterv1beta1.CreatePipelineRequest{
+		Ref: ref.ToProto(),
 		Spec: data.Spec.ToProto(),
-	}))
+	})
+
+	payloadString, _ := protojson.Marshal(createReq.Msg)
+	tflog.Debug(ctx, "Creating Telecaster Forwarding Pipeline", map[string]interface{}{
+		"procedure": createReq.Spec().Procedure,
+		"payload":   string(payloadString),
+	})
+
+	pipeline, err := r.Client.CreatePipeline(ctx, createReq)
 	if err != nil {
+		var ref ForwardingPipelineRefModel
+		resp.Diagnostics.Append(data.Ref.As(ctx, &ref, basetypes.ObjectAsOptions{})...)
+
 		resp.Diagnostics.AddError(
 			"Error Creating Telecaster Forwarding Pipeline",
-			fmt.Sprintf("Could not create Telecaster Forwarding Pipeline %q: %v", data.Ref.Slug.ValueString(), err),
+			fmt.Sprintf("Could not create Telecaster Forwarding Pipeline %q: %v", ref.Slug.ValueString(), err),
 		)
 		return
 	}
@@ -222,8 +271,11 @@ func (r *ResourceForwardingPipeline) Delete(ctx context.Context, req resource.De
 		return
 	}
 
+	var ref ForwardingPipelineRefModel
+	resp.Diagnostics.Append(data.Ref.As(ctx, &ref, basetypes.ObjectAsOptions{})...)
+
 	_, err := r.Client.DeletePipeline(ctx, connect.NewRequest(&clusterv1beta1.DeletePipelineRequest{
-		Ref: data.Ref.ToProto(),
+		Ref: ref.ToProto(),
 	}))
 	if err != nil {
 		if coreweave.IsNotFoundError(err) {
@@ -231,9 +283,12 @@ func (r *ResourceForwardingPipeline) Delete(ctx context.Context, req resource.De
 			return
 		}
 
+		var ref ForwardingPipelineRefModel
+		resp.Diagnostics.Append(data.Ref.As(ctx, &ref, basetypes.ObjectAsOptions{})...)
+
 		resp.Diagnostics.AddError(
 			"Error Deleting Telecaster Forwarding Pipeline",
-			fmt.Sprintf("Could not delete Telecaster Forwarding Pipeline %q: %v", data.Ref.Slug.ValueString(), err),
+			fmt.Sprintf("Could not delete Telecaster Forwarding Pipeline %q: %v", ref.Slug.ValueString(), err),
 		)
 		return
 	}
@@ -247,7 +302,7 @@ func (r *ResourceForwardingPipeline) Delete(ctx context.Context, req resource.De
 		},
 		Refresh: func() (result any, state string, err error) {
 			getResp, err := r.Client.GetPipeline(ctx, connect.NewRequest(&clusterv1beta1.GetPipelineRequest{
-				Ref: data.Ref.ToProto(),
+				Ref: ref.ToProto(),
 			}))
 			if err != nil {
 				if coreweave.IsNotFoundError(err) {
@@ -274,13 +329,16 @@ func (r *ResourceForwardingPipeline) Read(ctx context.Context, req resource.Read
 		return
 	}
 
+	var ref ForwardingPipelineRefModel
+	resp.Diagnostics.Append(data.Ref.As(ctx, &ref, basetypes.ObjectAsOptions{})...)
+
 	pipeline, err := r.Client.GetPipeline(ctx, connect.NewRequest(&clusterv1beta1.GetPipelineRequest{
-		Ref: data.Ref.ToProto(),
+		Ref: ref.ToProto(),
 	}))
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Reading Telecaster Forwarding Pipeline",
-			fmt.Sprintf("Could not read Telecaster Forwarding Pipeline %q: %v", data.Ref.Slug.ValueString(), err),
+			fmt.Sprintf("Could not read Telecaster Forwarding Pipeline %q: %v", ref.Slug.ValueString(), err),
 		)
 		return
 	}
@@ -296,23 +354,26 @@ func (r *ResourceForwardingPipeline) Update(ctx context.Context, req resource.Up
 		return
 	}
 
+	var ref ForwardingPipelineRefModel
+	resp.Diagnostics.Append(data.Ref.As(ctx, &ref, basetypes.ObjectAsOptions{})...)
+
 	if _, err := r.Client.UpdatePipeline(ctx, connect.NewRequest(&clusterv1beta1.UpdatePipelineRequest{
-		Ref: data.Ref.ToProto(),
+		Ref: ref.ToProto(),
 	})); err != nil {
 		resp.Diagnostics.AddError(
 			"Error Updating Telecaster Forwarding Pipeline",
-			fmt.Sprintf("Could not update Telecaster Forwarding Pipeline %q: %v", data.Ref.Slug.ValueString(), err),
+			fmt.Sprintf("Could not update Telecaster Forwarding Pipeline %q: %v", ref.Slug.ValueString(), err),
 		)
 		return
 	}
 
 	pipeline, err := r.Client.GetPipeline(ctx, connect.NewRequest(&clusterv1beta1.GetPipelineRequest{
-		Ref: data.Ref.ToProto(),
+		Ref: ref.ToProto(),
 	}))
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Reading Telecaster Forwarding Pipeline",
-			fmt.Sprintf("Could not read Telecaster Forwarding Pipeline %q: %v", data.Ref.Slug.ValueString(), err),
+			fmt.Sprintf("Could not read Telecaster Forwarding Pipeline %q: %v", ref.Slug.ValueString(), err),
 		)
 		return
 	}
@@ -326,7 +387,7 @@ func (r *ResourceForwardingPipeline) Update(ctx context.Context, req resource.Up
 		},
 		Refresh: func() (result any, state string, err error) {
 			getResp, err := r.Client.GetPipeline(ctx, connect.NewRequest(&clusterv1beta1.GetPipelineRequest{
-				Ref: data.Ref.ToProto(),
+				Ref: ref.ToProto(),
 			}))
 			if err != nil {
 				return nil, telecastertypesv1beta1.ForwardingPipelineState_FORWARDING_PIPELINE_STATE_UNSPECIFIED.String(), err

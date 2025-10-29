@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	clusterv1beta1 "bsr.core-services.ingress.coreweave.com/gen/go/coreweave/o11y-mgmt/protocolbuffers/go/cw/telecaster/svc/cluster/v1beta1"
-	typesv1beta1 "bsr.core-services.ingress.coreweave.com/gen/go/coreweave/o11y-mgmt/protocolbuffers/go/cw/telecaster/types/v1beta1"
+	clusterv1beta1 "bsr.core-services.ingress.coreweave.com/gen/go/coreweave/o11y-mgmt/protocolbuffers/go/coreweave/telecaster/svc/cluster/v1beta1"
+	typesv1beta1 "bsr.core-services.ingress.coreweave.com/gen/go/coreweave/o11y-mgmt/protocolbuffers/go/coreweave/telecaster/types/v1beta1"
 	"connectrpc.com/connect"
 
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
@@ -13,6 +13,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
@@ -29,32 +30,35 @@ type TelemetryStreamDataSource struct {
 }
 
 type TelemetryStreamDataSourceModel struct {
-	Ref    TelemetryStreamRefModel    `tfsdk:"ref"`
-	Spec   TelemetryStreamSpecModel   `tfsdk:"spec"`
-	Status TelemetryStreamStatusModel `tfsdk:"status"`
+	Ref    TelemetryStreamRefModel `tfsdk:"ref"`
+	Spec   types.Object            `tfsdk:"spec"`
+	Status types.Object            `tfsdk:"status"`
 }
 
-func (s *TelemetryStreamDataSourceModel) Set(stream *typesv1beta1.TelemetryStream) {
+func (s *TelemetryStreamDataSourceModel) Set(ctx context.Context, stream *typesv1beta1.TelemetryStream) (diagnostics diag.Diagnostics) {
 	s.Ref = TelemetryStreamRefModel{Slug: types.StringValue(stream.Ref.Slug)}
 
-	if stream.Spec != nil {
-		s.Spec.DisplayName = types.StringValue(stream.Spec.DisplayName)
-
-		switch stream.Spec.Kind.(type) {
-		case *typesv1beta1.TelemetryStreamSpec_Metrics:
-			s.Spec.Metrics = &MetricsStreamSpecModel{}
-			s.Spec.Logs = nil
-		case *typesv1beta1.TelemetryStreamSpec_Logs:
-			s.Spec.Logs = &LogsStreamSpecModel{}
-			s.Spec.Metrics = nil
-		default:
-			panic(fmt.Sprintf("cannot set StreamDataSourceModel; unknown stream kind: %T", stream.Spec.Kind))
-		}
+	var spec TelemetryStreamSpecModel
+	spec.DisplayName = types.StringValue(stream.Spec.DisplayName)
+	switch stream.Spec.Kind.(type) {
+	case *typesv1beta1.TelemetryStreamSpec_Metrics:
+		spec.Metrics = &MetricsStreamSpecModel{}
+	case *typesv1beta1.TelemetryStreamSpec_Logs:
+		spec.Logs = &LogsStreamSpecModel{}
+	default:
+		// no kind set
 	}
+	specModel, errs := types.ObjectValueFrom(ctx, s.Spec.AttributeTypes(ctx), &spec)
+	diagnostics.Append(errs...)
+	s.Spec = specModel
 
-	if stream.Status != nil {
-		s.Status.Set(stream.Status)
-	}
+	var status TelemetryStreamStatusModel
+	status.Set(stream.Status)
+	statusModel, errs := types.ObjectValueFrom(ctx, s.Status.AttributeTypes(ctx), &status)
+	diagnostics.Append(errs...)
+	s.Status = statusModel
+
+	return
 }
 
 type TelemetryStreamStatusModel struct {
@@ -74,8 +78,7 @@ func (s *TelemetryStreamStatusModel) Set(status *typesv1beta1.TelemetryStreamSta
 }
 
 func (s *TelemetryStreamDataSourceModel) toGetRequest() *clusterv1beta1.GetStreamRequest {
-	ref := s.Ref.toProtoObject()
-	return &clusterv1beta1.GetStreamRequest{Ref: ref}
+	return &clusterv1beta1.GetStreamRequest{Ref: s.Ref.toProtoObject()}
 }
 
 type TelemetryStreamRefModel struct {
@@ -106,9 +109,15 @@ func (s *TelemetryStreamDataSource) Schema(ctx context.Context, req datasource.S
 	resp.Schema = schema.Schema{
 		MarkdownDescription: "CoreWeave Telecaster stream data source",
 		Attributes: map[string]schema.Attribute{
-			"slug": schema.StringAttribute{
-				MarkdownDescription: "The slug of the stream. Used as a unique identifier.",
+			"ref": schema.SingleNestedAttribute{
+				MarkdownDescription: "Reference to the Telecaster stream.",
 				Required:            true,
+				Attributes: map[string]schema.Attribute{
+					"slug": schema.StringAttribute{
+						MarkdownDescription: "The slug of the stream. Used as a unique identifier.",
+						Required:            true,
+					},
+				},
 			},
 			"spec": schema.SingleNestedAttribute{
 				MarkdownDescription: "The specification for the stream.",
@@ -172,10 +181,20 @@ func (s *TelemetryStreamDataSource) Read(ctx context.Context, req datasource.Rea
 
 	getResp, err := s.Client.GetStream(ctx, connect.NewRequest(data.toGetRequest()))
 	if err != nil {
+		if coreweave.IsNotFoundError(err) {
+			resp.Diagnostics.AddWarning(
+				"Stream Not Found",
+				fmt.Sprintf("The specified stream with slug '%s' was not found.", data.Ref.Slug.ValueString()),
+			)
+			return
+		}
 		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
 		return
 	}
 
-	data.Set(getResp.Msg.Stream)
+	resp.Diagnostics.Append(data.Set(ctx, getResp.Msg.Stream)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
