@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"time"
 
 	"buf.build/gen/go/coreweave/cks/connectrpc/go/coreweave/cks/v1beta1/cksv1beta1connect"
@@ -11,12 +12,57 @@ import (
 	"buf.build/gen/go/coreweave/networking/connectrpc/go/coreweave/networking/v1beta1/networkingv1beta1connect"
 	"connectrpc.com/connect"
 
-	telecasterclusterv1beta1connect "bsr.core-services.ingress.coreweave.com/gen/go/coreweave/o11y-mgmt/connectrpc/go/cw/telecaster/svc/cluster/v1beta1/clusterv1beta1connect"
+	telecasterclusterv1beta1connect "bsr.core-services.ingress.coreweave.com/gen/go/coreweave/o11y-mgmt/connectrpc/go/coreweave/telecaster/svc/cluster/v1beta1/clusterv1beta1connect"
 	retryablehttp "github.com/hashicorp/go-retryablehttp"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
+	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
 )
+
+func TFLogInterceptor() connect.Interceptor {
+	return connect.UnaryInterceptorFunc(func(uf connect.UnaryFunc) connect.UnaryFunc {
+		return func(
+			ctx context.Context,
+			req connect.AnyRequest,
+		) (connect.AnyResponse, error) {
+			reqMsgRaw := reflect.ValueOf(req).Elem().FieldByName("Msg").Interface()
+			reqMsgProto, ok := reqMsgRaw.(proto.Message)
+			if !ok {
+				tflog.Error(ctx, fmt.Sprintf("request message is not a proto.Message, got %T", req))
+			} else {
+				asJSON, err := protojson.Marshal(reqMsgProto)
+				if err != nil {
+					tflog.Error(ctx, fmt.Sprintf("failed to marshal request message to JSON: %v", err))
+				} else {
+					tflog.Debug(ctx, "API Request", map[string]interface{}{
+						"procedure": req.Spec().Procedure,
+						"payload":   string(asJSON),
+					})
+				}
+			}
+
+			resp, err := uf(ctx, req)
+			if err != nil {
+				tflog.Error(ctx, "API Error", map[string]any{
+					"procedure": req.Spec().Procedure,
+					"error":     err,
+				})
+			} else {
+				respMsgAttr := reflect.ValueOf(resp).Elem().FieldByName("Msg").Interface().(proto.Message)
+				respAsJSON, _ := protojson.Marshal(respMsgAttr)
+
+				tflog.Debug(ctx, "API Response", map[string]any{
+					"procedure": req.Spec().Procedure,
+					"payload":   string(respAsJSON),
+				})
+			}
+
+			return resp, nil
+		}
+	})
+}
 
 func NewClient(endpoint string, s3Endpoint string, timeout time.Duration, interceptors ...connect.Interceptor) *Client {
 	rc := retryablehttp.NewClient()

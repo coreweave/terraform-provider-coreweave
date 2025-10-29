@@ -199,7 +199,7 @@ func BuildClient(ctx context.Context, model CoreweaveProviderModel, tfVersion, p
 		},
 	)
 
-	return coreweave.NewClient(endpoint, s3Endpoint, timeout, headerInterceptor), nil
+	return coreweave.NewClient(endpoint, s3Endpoint, timeout, headerInterceptor, coreweave.TFLogInterceptor()), nil
 }
 
 func (p *CoreweaveProvider) Resources(ctx context.Context) []func() resource.Resource {

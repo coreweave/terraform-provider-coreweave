@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	clusterv1beta1 "bsr.core-services.ingress.coreweave.com/gen/go/coreweave/o11y-mgmt/protocolbuffers/go/cw/telecaster/svc/cluster/v1beta1"
-	telecastertypesv1beta1 "bsr.core-services.ingress.coreweave.com/gen/go/coreweave/o11y-mgmt/protocolbuffers/go/cw/telecaster/types/v1beta1"
+	clusterv1beta1 "bsr.core-services.ingress.coreweave.com/gen/go/coreweave/o11y-mgmt/protocolbuffers/go/coreweave/telecaster/svc/cluster/v1beta1"
+	telecastertypesv1beta1 "bsr.core-services.ingress.coreweave.com/gen/go/coreweave/o11y-mgmt/protocolbuffers/go/coreweave/telecaster/types/v1beta1"
 	"connectrpc.com/connect"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
 	"github.com/coreweave/terraform-provider-coreweave/internal/coretf"
@@ -33,9 +33,9 @@ type ForwardingEndpointResource struct {
 }
 
 type ForwardingEndpointResourceModel struct {
-	Ref    ForwardingEndpointRefModel    `tfsdk:"ref"`
+	Ref    ForwardingEndpointRefModel     `tfsdk:"ref"`
 	Spec   ForwardingEndpointSpecModel   `tfsdk:"spec"`
-	Status ForwardingPipelineStatusModel `tfsdk:"status"`
+	Status types.Object `tfsdk:"status"`
 }
 
 func (e *ForwardingEndpointResourceModel) Set(data *telecastertypesv1beta1.ForwardingEndpoint) {
@@ -47,13 +47,20 @@ func (e *ForwardingEndpointResourceModel) Set(data *telecastertypesv1beta1.Forwa
 		DisplayName: types.StringValue(data.Spec.DisplayName),
 	}
 
-	e.Status = ForwardingPipelineStatusModel{
-		CreatedAt:    timetypes.NewRFC3339TimeValue(data.Status.CreatedAt.AsTime()),
-		UpdatedAt:    timetypes.NewRFC3339TimeValue(data.Status.UpdatedAt.AsTime()),
-		State:        types.StringValue(data.Status.State.String()),
-		StateCode:    types.Int32Value(int32(data.Status.State.Number())),
-		StateMessage: types.StringPointerValue(data.Status.StateMessage),
+	ctx := context.Background()
+	status, diag := types.ObjectValueFrom(ctx, e.Status.AttributeTypes(ctx), e.Status.Attributes())
+	if diag.HasError() {
+		panic(diag)
 	}
+	e.Status = status
+
+	// e.Status = ForwardingPipelineStatusModel{
+	// 	CreatedAt:    timetypes.NewRFC3339TimeValue(data.Status.CreatedAt.AsTime()),
+	// 	UpdatedAt:    timetypes.NewRFC3339TimeValue(data.Status.UpdatedAt.AsTime()),
+	// 	State:        types.StringValue(data.Status.State.String()),
+	// 	StateCode:    types.Int32Value(int32(data.Status.State.Number())),
+	// 	StateMessage: types.StringPointerValue(data.Status.StateMessage),
+	// }
 
 	switch cfg := data.Spec.Config.(type) {
 	case *telecastertypesv1beta1.ForwardingEndpointSpec_Kafka:
@@ -343,18 +350,22 @@ func (f *ForwardingEndpointResource) ImportState(ctx context.Context, req resour
 }
 
 func (f *ForwardingEndpointResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
-	resp.TypeName = req.ProviderTypeName + "_forwarding_endpoint"
+	resp.TypeName = req.ProviderTypeName + "_telecaster_forwarding_endpoint"
 }
 
 func (f *ForwardingEndpointResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		MarkdownDescription: "CoreWeave Telecaster forwarding endpoint",
 		Attributes: map[string]schema.Attribute{
-			"slug": schema.StringAttribute{
-				MarkdownDescription: "The slug of the forwarding endpoint. Used as a unique identifier.",
+			"ref": schema.SingleNestedAttribute{
+				MarkdownDescription: "Identifying information for the forwarding endpoint.",
 				Required:            true,
-				Computed:            false,
-				Optional:            false,
+				Attributes: map[string]schema.Attribute{
+					"slug": schema.StringAttribute{
+						MarkdownDescription: "The slug of the forwarding endpoint. Used as a unique identifier.",
+						Required:            true,
+					},
+				},
 			},
 			"spec": schema.SingleNestedAttribute{
 				MarkdownDescription: "The specification for the forwarding endpoint.",
@@ -450,6 +461,34 @@ func (f *ForwardingEndpointResource) Schema(ctx context.Context, req resource.Sc
 								},
 							},
 						},
+					},
+				},
+			},
+			"status": schema.SingleNestedAttribute{
+				MarkdownDescription: "The status of the forwarding endpoint.",
+				Computed:            true,
+				Attributes: map[string]schema.Attribute{
+					"created_at": schema.StringAttribute{
+						MarkdownDescription: "The creation time of the forwarding endpoint.",
+						Computed:            true,
+						CustomType:          timetypes.RFC3339Type{},
+					},
+					"updated_at": schema.StringAttribute{
+						MarkdownDescription: "The last update time of the forwarding endpoint.",
+						Computed:            true,
+						CustomType:          timetypes.RFC3339Type{},
+					},
+					"state_code": schema.Int32Attribute{
+						MarkdownDescription: "The state code of the forwarding endpoint.",
+						Computed:            true,
+					},
+					"state": schema.StringAttribute{
+						MarkdownDescription: "The state of the forwarding endpoint.",
+						Computed:            true,
+					},
+					"state_message": schema.StringAttribute{
+						MarkdownDescription: "The state message of the forwarding endpoint.",
+						Computed:            true,
 					},
 				},
 			},
