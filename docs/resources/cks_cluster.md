@@ -84,6 +84,7 @@ The prefixes must exist in the cluster's VPC. This field is append-only.
 - `audit_policy` (String) Audit policy for the cluster. Must be provided as a base64-encoded JSON/YAML string.
 - `authn_webhook` (Attributes) Authentication webhook configuration for the cluster. (see [below for nested schema](#nestedatt--authn_webhook))
 - `authz_webhook` (Attributes) Authorization webhook configuration for the cluster. (see [below for nested schema](#nestedatt--authz_webhook))
+- `node_port_range` (Attributes) Kubernetes Service NodePort range. (see [below for nested schema](#nestedatt--node_port_range))
 - `oidc` (Attributes) OpenID Connect (OIDC) configuration for authentication to the api-server. (see [below for nested schema](#nestedatt--oidc))
 - `public` (Boolean) Whether the cluster's api-server is publicly accessible from the internet.
 - `shared_storage_cluster_id` (String) The `cluster_id` of the cluster to share storage with. Must be enabled by CoreWeave suppport. Contact CoreWeave support if you are interested in this feature.
@@ -92,7 +93,6 @@ The prefixes must exist in the cluster's VPC. This field is append-only.
 
 - `api_server_endpoint` (String) The endpoint for the cluster's api-server.
 - `id` (String) The unique identifier of the cluster.
-- `node_port_range` (Attributes) Kubernetes Service NodePort range. (see [below for nested schema](#nestedatt--node_port_range))
 - `service_account_oidc_issuer_url` (String) The URL of the OIDC issuer for the cluster's service account tokens. This value corresponds to the `--service-account-issuer` flag on the kube-apiserver.
 - `status` (String) The current status of the cluster.
 
@@ -120,6 +120,15 @@ Optional:
 - `ca` (String) The CA certificate for the webhook server. Must be a base64-encoded PEM-encoded certificate.
 
 
+<a id="nestedatt--node_port_range"></a>
+### Nested Schema for `node_port_range`
+
+Read-Only:
+
+- `end` (Number)
+- `start` (Number)
+
+
 <a id="nestedatt--oidc"></a>
 ### Nested Schema for `oidc`
 
@@ -138,15 +147,6 @@ Optional:
 - `signing_algs` (Set of String) A list of signing algorithms that the OpenID Connect discovery endpoint uses.
 - `username_claim` (String) The claim to use as the username.
 - `username_prefix` (String) The prefix to use for the username.
-
-
-<a id="nestedatt--node_port_range"></a>
-### Nested Schema for `node_port_range`
-
-Read-Only:
-
-- `end` (Number)
-- `start` (Number)
 
 ## Import
 

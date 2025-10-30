@@ -532,6 +532,7 @@ func (r *ClusterResource) Schema(ctx context.Context, req resource.SchemaRequest
 			"node_port_range": schema.SingleNestedAttribute{
 				Description: "Kubernetes Service NodePort range.",
 				Computed:    true,
+				Optional:    true,
 				Attributes: map[string]schema.Attribute{
 					"start": schema.Int32Attribute{
 						Computed: true,
