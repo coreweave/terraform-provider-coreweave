@@ -123,7 +123,7 @@ Optional:
 <a id="nestedatt--node_port_range"></a>
 ### Nested Schema for `node_port_range`
 
-Read-Only:
+Optional:
 
 - `end` (Number)
 - `start` (Number)
