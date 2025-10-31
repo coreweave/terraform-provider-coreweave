@@ -535,6 +535,7 @@ func (r *ClusterResource) Schema(ctx context.Context, req resource.SchemaRequest
 				Computed:    true,
 				Optional:    true,
 				PlanModifiers: []planmodifier.Object{
+					objectplanmodifier.UseStateForUnknown(),
 					objectplanmodifier.RequiresReplace(),
 				},
 				Attributes: map[string]schema.Attribute{
