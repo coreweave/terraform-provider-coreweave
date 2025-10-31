@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.7.0](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.6.0...v0.7.0) (2025-10-31)
+
+
+### Features
+
+* **ckscluster:** add support for node port range on cks cluster crea… ([#146](https://github.com/coreweave/terraform-provider-coreweave/issues/146)) ([090ab6b](https://github.com/coreweave/terraform-provider-coreweave/commit/090ab6b8887228ceaf2260eab7010cfe50e02872))
+* **storage:** implement lifecycle transitions ([#148](https://github.com/coreweave/terraform-provider-coreweave/issues/148)) ([26b9508](https://github.com/coreweave/terraform-provider-coreweave/commit/26b9508258121eab6b4247e626dff4ca050b0b70))
+
+
+### Bug Fixes
+
+* propagate ConnectRPC error messages to user ([#154](https://github.com/coreweave/terraform-provider-coreweave/issues/154)) ([2557027](https://github.com/coreweave/terraform-provider-coreweave/commit/2557027e1f7c0f8736e71d0c9627a28287f05417))
+
 ## [0.6.0](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.5.2...v0.6.0) (2025-10-24)
 
 
