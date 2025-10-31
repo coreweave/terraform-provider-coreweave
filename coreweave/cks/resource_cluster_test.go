@@ -33,7 +33,7 @@ import (
 const (
 	AuditPolicyB64       = "ewogICJhcGlWZXJzaW9uIjogImF1ZGl0Lms4cy5pby92MSIsCiAgImtpbmQiOiAiUG9saWN5IiwKICAib21pdFN0YWdlcyI6IFsKICAgICJSZXF1ZXN0UmVjZWl2ZWQiCiAgXSwKICAicnVsZXMiOiBbCiAgICB7CiAgICAgICJsZXZlbCI6ICJSZXF1ZXN0UmVzcG9uc2UiLAogICAgICAicmVzb3VyY2VzIjogWwogICAgICAgIHsKICAgICAgICAgICJncm91cCI6ICIiLAogICAgICAgICAgInJlc291cmNlcyI6IFsKICAgICAgICAgICAgInBvZHMiCiAgICAgICAgICBdCiAgICAgICAgfQogICAgICBdCiAgICB9LAogICAgewogICAgICAibGV2ZWwiOiAiTWV0YWRhdGEiLAogICAgICAicmVzb3VyY2VzIjogWwogICAgICAgIHsKICAgICAgICAgICJncm91cCI6ICIiLAogICAgICAgICAgInJlc291cmNlcyI6IFsKICAgICAgICAgICAgInBvZHMvbG9nIiwKICAgICAgICAgICAgInBvZHMvc3RhdHVzIgogICAgICAgICAgXQogICAgICAgIH0KICAgICAgXQogICAgfSwKICAgIHsKICAgICAgImxldmVsIjogIk5vbmUiLAogICAgICAicmVzb3VyY2VzIjogWwogICAgICAgIHsKICAgICAgICAgICJncm91cCI6ICIiLAogICAgICAgICAgInJlc291cmNlcyI6IFsKICAgICAgICAgICAgImNvbmZpZ21hcHMiCiAgICAgICAgICBdLAogICAgICAgICAgInJlc291cmNlTmFtZXMiOiBbCiAgICAgICAgICAgICJjb250cm9sbGVyLWxlYWRlciIKICAgICAgICAgIF0KICAgICAgICB9CiAgICAgIF0KICAgIH0sCiAgICB7CiAgICAgICJsZXZlbCI6ICJOb25lIiwKICAgICAgInVzZXJzIjogWwogICAgICAgICJzeXN0ZW06a3ViZS1wcm94eSIKICAgICAgXSwKICAgICAgInZlcmJzIjogWwogICAgICAgICJ3YXRjaCIKICAgICAgXSwKICAgICAgInJlc291cmNlcyI6IFsKICAgICAgICB7CiAgICAgICAgICAiZ3JvdXAiOiAiIiwKICAgICAgICAgICJyZXNvdXJjZXMiOiBbCiAgICAgICAgICAgICJlbmRwb2ludHMiLAogICAgICAgICAgICAic2VydmljZXMiCiAgICAgICAgICBdCiAgICAgICAgfQogICAgICBdCiAgICB9LAogICAgewogICAgICAibGV2ZWwiOiAiTm9uZSIsCiAgICAgICJ1c2VyR3JvdXBzIjogWwogICAgICAgICJzeXN0ZW06YXV0aGVudGljYXRlZCIKICAgICAgXSwKICAgICAgIm5vblJlc291cmNlVVJMcyI6IFsKICAgICAgICAiL2FwaSoiLAogICAgICAgICIvdmVyc2lvbiIKICAgICAgXQogICAgfSwKICAgIHsKICAgICAgImxldmVsIjogIlJlcXVlc3QiLAogICAgICAicmVzb3VyY2VzIjogWwogICAgICAgIHsKICAgICAgICAgICJncm91cCI6ICIiLAogICAgICAgICAgInJlc291cmNlcyI6IFsKICAgICAgICAgICAgImNvbmZpZ21hcHMiCiAgICAgICAgICBdCiAgICAgICAgfQogICAgICBdLAogICAgICAibmFtZXNwYWNlcyI6IFsKICAgICAgICAia3ViZS1zeXN0ZW0iCiAgICAgIF0KICAgIH0sCiAgICB7CiAgICAgICJsZXZlbCI6ICJNZXRhZGF0YSIsCiAgICAgICJyZXNvdXJjZXMiOiBbCiAgICAgICAgewogICAgICAgICAgImdyb3VwIjogIiIsCiAgICAgICAgICAicmVzb3VyY2VzIjogWwogICAgICAgICAgICAic2VjcmV0cyIsCiAgICAgICAgICAgICJjb25maWdtYXBzIgogICAgICAgICAgXQogICAgICAgIH0KICAgICAgXQogICAgfSwKICAgIHsKICAgICAgImxldmVsIjogIlJlcXVlc3QiLAogICAgICAicmVzb3VyY2VzIjogWwogICAgICAgIHsKICAgICAgICAgICJncm91cCI6ICIiCiAgICAgICAgfSwKICAgICAgICB7CiAgICAgICAgICAiZ3JvdXAiOiAiZXh0ZW5zaW9ucyIKICAgICAgICB9CiAgICAgIF0KICAgIH0sCiAgICB7CiAgICAgICJsZXZlbCI6ICJNZXRhZGF0YSIsCiAgICAgICJvbWl0U3RhZ2VzIjogWwogICAgICAgICJSZXF1ZXN0UmVjZWl2ZWQiCiAgICAgIF0KICAgIH0KICBdCn0K"
 	ExampleCAB64         = "LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSURnekNDQW11Z0F3SUJBZ0lRVGhhQitUNmdtdVVYN3dXZi9XUitmekFOQmdrcWhraUc5dzBCQVFzRkFEQUEKTUI0WERUSTBNRFl5TlRJeE1UY3pNVm9YRFRJME1Ea3lNekl4TVRjek1Wb3dBRENDQVNJd0RRWUpLb1pJaHZjTgpBUUVCQlFBRGdnRVBBRENDQVFvQ2dnRUJBT240VkVpRWJoL29GRkoxcG1QZXZxb1pBbWtVUjRqeWd5Y0MvRFhCCmVEWjYxd1NzV1FPU21peFg1bDZDd1FXNzdkV3NRVGhsU0RqN003RytxYjZCWHBSUWcrMndJOFVsVHp6Y0NpM0UKN1pib2M2LzI1YXd3NVpLOW1GVWVGWlBWemI4ZHNuVUFkbmFNa2V2ckFGQXNoL0NmSEh0cThzSUZnOVF2SWJnUApNRFJJcnZnSmlGY1NLS1E5clgxOWkzcFY3ZE9UaGxaYW11UWRGUjhGSVgyQ3BVQithajdSWkdMTFFra3AzMzhUCjFTRk5hK3V1THk3Mlh6MldIdEdqOTE5OFVENFFTRzByd2JUYXEvQVdxNjcvblhRS2FOQ2xHYzlGajNRSjU2NEUKK3cvWXBvK1krc053OXY0M1NVSVdyQXRMNGRicHNadlBEK0FKS1RDRXArUExZWlVDQXdFQUFhT0IrRENCOVRBTwpCZ05WSFE4QkFmOEVCQU1DQmFBd0RBWURWUjBUQVFIL0JBSXdBRENCMUFZRFZSMFJBUUgvQklISk1JSEdnaVJsCmVHVmpkWFJ2Y2kxcllYUmhiRzluTFdWNFpXTjFkRzl5TFhKbFkyOXVZMmxzWlhLQ0xHVjRaV04xZEc5eUxXdGgKZEdGc2IyY3RaWGhsWTNWMGIzSXRjbVZqYjI1amFXeGxjaTVyWVhSaGJHOW5nakJsZUdWamRYUnZjaTFyWVhSaApiRzluTFdWNFpXTjFkRzl5TFhKbFkyOXVZMmxzWlhJdWEyRjBZV3h2Wnk1emRtT0NQbVY0WldOMWRHOXlMV3RoCmRHRnNiMmN0WlhobFkzVjBiM0l0Y21WamIyNWphV3hsY2k1cllYUmhiRzluTG5OMll5NWpiSFZ6ZEdWeUxteHYKWTJGc01BMEdDU3FHU0liM0RRRUJDd1VBQTRJQkFRQlEvQ2JBdEFCQkZORUE5d1hYaE9vYUNrRFY1dTc3VFlzMQpFV2FJcFJFNjV5QmVtTDc2eXpYeEtoc2RmR3RJSmJ0THBWS1lUYlpBVTQrem9IS1NVTWs4REY4bXN0dGhOMWQ5CnR6a1d4ZXZ3UGViL2NtMVZVWlBzWkxvNnFRblJRUFJCUXc0dFpWdkhTWmtsSjBVb2lvVk5zOWJJY3ZQZ2Z4UW0KNkhDU3NEWU9sWnlPRHlrY045U21nbFZtVWFNeVkxMGcrL3BWRzg4WkRyLy9zdUI1ZERPaktUcDNGbjRPSGR0VwpnRmpuY3RVOEV4Zk5YNTR1Yndja2ZTMGdiOXRtejcyaHN3OU5KaTV2QXlMS2ZIcmxNNTJTeWhwUVZKbkpPYzF6ClhqQVlLTHE1M1E1TGt3RXBZMXpkL21XdVhkRWswWldZcHlXemk3WWN4UXQreUJkWVNJQzEKLS0tLS1FTkQgQ0VSVElGSUNBVEUtLS0tLQo="
-	AcceptanceTestPrefix = "test-acc-cks-"
+	AcceptanceTestPrefix = "test-acc-"
 )
 
 func deleteCluster(ctx context.Context, client *coreweave.Client, cluster *cksv1beta1.Cluster) error {
@@ -353,12 +353,20 @@ func createClusterTestStep(ctx context.Context, t *testing.T, config testStepCon
 }
 
 func TestClusterResource(t *testing.T) {
-	config := generateResourceNames("cluster")
+	config := generateResourceNames("cks-cluster")
 	zone := testutil.AcceptanceTestZone
 	kubeVersion := testutil.AcceptanceTestKubeVersion
 
 	vpc := defaultVpc(config.ClusterName, zone)
-
+	npTypes := map[string]attr.Type{
+		"start": types.Int32Type,
+		"end":   types.Int32Type,
+	}
+	npVals := map[string]attr.Value{
+		"start": types.Int32Value(30000),
+		"end":   types.Int32Value(50000),
+	}
+	np, _ := types.ObjectValue(npTypes, npVals)
 	initial := &cks.ClusterResourceModel{
 		VpcId:               types.StringValue(fmt.Sprintf("coreweave_networking_vpc.%s.id", config.ResourceName)),
 		Name:                types.StringValue(config.ClusterName),
@@ -368,6 +376,7 @@ func TestClusterResource(t *testing.T) {
 		PodCidrName:         types.StringValue("pod-cidr"),
 		ServiceCidrName:     types.StringValue("service-cidr"),
 		InternalLBCidrNames: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr")}),
+		NodePortRange:       np,
 	}
 
 	dataSource := &cks.ClusterDataSourceModel{
@@ -384,6 +393,7 @@ func TestClusterResource(t *testing.T) {
 		ServiceCidrName:     types.StringValue("service-cidr"),
 		InternalLBCidrNames: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr"), types.StringValue("internal-lb-cidr-2")}),
 		AuditPolicy:         types.StringValue(AuditPolicyB64),
+		NodePortRange:       np,
 		Oidc: &cks.OidcResourceModel{
 			IssuerURL:         types.StringValue("https://samples.auth0.com/"),
 			ClientID:          types.StringValue("kbyuFDidLLm280LIwVFiazOqjO3ty8KH"),
@@ -467,6 +477,8 @@ func TestClusterResource(t *testing.T) {
 				statecheck.ExpectKnownValue(config.FullDataSourceName, tfjsonpath.New("public"), knownvalue.Bool(initial.Public.ValueBool())),
 				statecheck.ExpectKnownValue(config.FullDataSourceName, tfjsonpath.New("pod_cidr_name"), knownvalue.StringExact(initial.PodCidrName.ValueString())),
 				statecheck.ExpectKnownValue(config.FullDataSourceName, tfjsonpath.New("service_cidr_name"), knownvalue.StringExact(initial.ServiceCidrName.ValueString())),
+				statecheck.ExpectKnownValue(config.FullDataSourceName, tfjsonpath.New("node_port_range").AtMapKey("start"), knownvalue.NotNull()),
+				statecheck.ExpectKnownValue(config.FullDataSourceName, tfjsonpath.New("node_port_range").AtMapKey("end"), knownvalue.NotNull()),
 			},
 		},
 		createClusterTestStep(ctx, t, testStepConfig{
@@ -646,7 +658,7 @@ func TestPartialOidcConfig(t *testing.T) {
 }
 
 func TestPartialWebhookConfig(t *testing.T) {
-	config := generateResourceNames("partialwebhook")
+	config := generateResourceNames("partial-webhook")
 	zone := testutil.AcceptanceTestZone
 	kubeVersion := testutil.AcceptanceTestKubeVersion
 

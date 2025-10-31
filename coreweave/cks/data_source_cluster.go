@@ -75,6 +75,20 @@ func (d *ClusterDataSource) Schema(ctx context.Context, req datasource.SchemaReq
 				Computed:            true,
 				ElementType:         types.StringType,
 			},
+			"node_port_range": schema.SingleNestedAttribute{
+				MarkdownDescription: "The Kubernetes Service NodePort range.",
+				Computed:            true,
+				Attributes: map[string]schema.Attribute{
+					"start": schema.Int32Attribute{
+						MarkdownDescription: "Start of the NodePort range.",
+						Computed:            true,
+					},
+					"end": schema.Int32Attribute{
+						MarkdownDescription: "End of the NodePort range.",
+						Computed:            true,
+					},
+				},
+			},
 			"audit_policy": schema.StringAttribute{
 				MarkdownDescription: "The audit policy of the cluster.",
 				Computed:            true,
@@ -174,7 +188,6 @@ func (d *ClusterDataSource) Read(ctx context.Context, req datasource.ReadRequest
 		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
 		return
 	}
-
 	data.Set(cluster.Msg.Cluster)
 	resp.Diagnostics.Append(resp.State.Set(ctx, data)...)
 }
