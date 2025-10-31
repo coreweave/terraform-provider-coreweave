@@ -934,6 +934,18 @@ func MustRenderClusterResource(ctx context.Context, resourceName string, cluster
 		resourceBody.SetAttributeRaw("shared_storage_cluster_id", hclwrite.Tokens{{Type: hclsyntax.TokenIdent, Bytes: []byte(cluster.SharedStorageClusterId.ValueString())}})
 	}
 
+	if !cluster.NodePortRange.IsNull() && !cluster.NodePortRange.IsUnknown() {
+		attrs := cluster.NodePortRange.Attributes()
+		startAttr, okStart := attrs["start"].(types.Int32)
+		endAttr, okEnd := attrs["end"].(types.Int32)
+		if okStart && okEnd {
+			resourceBody.SetAttributeValue("node_port_range", cty.ObjectVal(map[string]cty.Value{
+				"start": cty.NumberIntVal(int64(startAttr.ValueInt32())),
+				"end":   cty.NumberIntVal(int64(endAttr.ValueInt32())),
+			}))
+		}
+	}
+
 	stringOrNull := func(s types.String) cty.Value {
 		if s.IsNull() || s.IsUnknown() {
 			return cty.NullVal(cty.String)
