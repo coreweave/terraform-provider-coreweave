@@ -59,7 +59,7 @@ func TFLogInterceptor() connect.Interceptor {
 				})
 			}
 
-			return resp, nil
+			return resp, err
 		}
 	})
 }
