@@ -12,6 +12,7 @@ import (
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
 	"github.com/coreweave/terraform-provider-coreweave/internal/coretf"
 	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -32,10 +33,18 @@ type ForwardingEndpointResource struct {
 	coretf.CoreResource
 }
 
+func diagnosticString(diags diag.Diagnostics) string {
+	errStrings := make([]string, 0, len(diags.Errors()))
+	for _, d := range diags.Errors() {
+		errStrings = append(errStrings, fmt.Sprintf("%s: %s", d.Summary(), d.Detail()))
+	}
+	return strings.Join(errStrings, "\n")
+}
+
 type ForwardingEndpointResourceModel struct {
-	Ref    ForwardingEndpointRefModel     `tfsdk:"ref"`
-	Spec   ForwardingEndpointSpecModel   `tfsdk:"spec"`
-	Status types.Object `tfsdk:"status"`
+	Ref    ForwardingEndpointRefModel   `tfsdk:"ref"`
+	Spec   *ForwardingEndpointSpecModel `tfsdk:"spec"`
+	Status types.Object                 `tfsdk:"status"`
 }
 
 func (e *ForwardingEndpointResourceModel) Set(data *telecastertypesv1beta1.ForwardingEndpoint) {
@@ -43,24 +52,23 @@ func (e *ForwardingEndpointResourceModel) Set(data *telecastertypesv1beta1.Forwa
 		Slug: types.StringValue(data.Ref.Slug),
 	}
 
-	e.Spec = ForwardingEndpointSpecModel{
+	e.Spec = &ForwardingEndpointSpecModel{
 		DisplayName: types.StringValue(data.Spec.DisplayName),
 	}
 
 	ctx := context.Background()
-	status, diag := types.ObjectValueFrom(ctx, e.Status.AttributeTypes(ctx), e.Status.Attributes())
+	statusModel := ForwardingPipelineStatusModel{
+		CreatedAt:    timetypes.NewRFC3339TimeValue(data.Status.CreatedAt.AsTime()),
+		UpdatedAt:    timetypes.NewRFC3339TimeValue(data.Status.UpdatedAt.AsTime()),
+		State:        types.StringValue(data.Status.State.String()),
+		StateCode:    types.Int32Value(int32(data.Status.State.Number())),
+		StateMessage: types.StringPointerValue(data.Status.StateMessage),
+	}
+	status, diag := types.ObjectValueFrom(ctx, e.Status.AttributeTypes(ctx), statusModel)
 	if diag.HasError() {
-		panic(diag)
+		panic(diagnosticString(diag))
 	}
 	e.Status = status
-
-	// e.Status = ForwardingPipelineStatusModel{
-	// 	CreatedAt:    timetypes.NewRFC3339TimeValue(data.Status.CreatedAt.AsTime()),
-	// 	UpdatedAt:    timetypes.NewRFC3339TimeValue(data.Status.UpdatedAt.AsTime()),
-	// 	State:        types.StringValue(data.Status.State.String()),
-	// 	StateCode:    types.Int32Value(int32(data.Status.State.Number())),
-	// 	StateMessage: types.StringPointerValue(data.Status.StateMessage),
-	// }
 
 	switch cfg := data.Spec.Config.(type) {
 	case *telecastertypesv1beta1.ForwardingEndpointSpec_Kafka:
@@ -346,7 +354,7 @@ func (s *ForwardingEndpointSpecModel) ToProto() (*telecastertypesv1beta1.Forward
 }
 
 func (f *ForwardingEndpointResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	resource.ImportStatePassthroughID(ctx, path.Root("slug"), req, resp)
+	resource.ImportStatePassthroughID(ctx, path.Root("ref").AtName("slug"), req, resp)
 }
 
 func (f *ForwardingEndpointResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {

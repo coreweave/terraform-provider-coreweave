@@ -3,14 +3,14 @@ module github.com/coreweave/terraform-provider-coreweave
 go 1.25.2
 
 require (
-	bsr.core-services.ingress.coreweave.com/gen/go/coreweave/o11y-mgmt/connectrpc/go v1.18.1-20251027151051-e89f2c980df1.1
-	bsr.core-services.ingress.coreweave.com/gen/go/coreweave/o11y-mgmt/protocolbuffers/go v1.36.4-20251028231450-f9e175ae7bc5.1
+	bsr.core-services.ingress.coreweave.com/gen/go/coreweave/o11y-mgmt/connectrpc/go v1.18.1-20251110050257-02cdc61e2538.1
+	bsr.core-services.ingress.coreweave.com/gen/go/coreweave/o11y-mgmt/protocolbuffers/go v1.36.4-20251104003945-69ba9a1af7d0.1
 	buf.build/gen/go/coreweave/cks/connectrpc/go v1.19.0-20251007230423-8a2391dbf182.1
 	buf.build/gen/go/coreweave/cks/protocolbuffers/go v1.36.10-20251007230423-8a2391dbf182.1
-	buf.build/gen/go/coreweave/cwobject/connectrpc/go v1.18.1-20250604181649-b97f17b05d5b.1
-	buf.build/gen/go/coreweave/cwobject/protocolbuffers/go v1.36.2-20250604181649-b97f17b05d5b.1
-	buf.build/gen/go/coreweave/networking/connectrpc/go v1.18.1-20250310211902-b930cb89bad3.1
-	buf.build/gen/go/coreweave/networking/protocolbuffers/go v1.36.2-20250310211902-b930cb89bad3.1
+	buf.build/gen/go/coreweave/cwobject/connectrpc/go v1.19.1-20250604181649-b97f17b05d5b.2
+	buf.build/gen/go/coreweave/cwobject/protocolbuffers/go v1.36.10-20250604181649-b97f17b05d5b.1
+	buf.build/gen/go/coreweave/networking/connectrpc/go v1.19.1-20251112175914-2bd1efefa63c.2
+	buf.build/gen/go/coreweave/networking/protocolbuffers/go v1.36.10-20251112175914-2bd1efefa63c.1
 	connectrpc.com/connect v1.19.1
 	github.com/aws/aws-sdk-go-v2 v1.37.0
 	github.com/aws/aws-sdk-go-v2/config v1.30.1
@@ -37,7 +37,7 @@ require (
 
 require (
 	buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.36.10-20250912141014-52f32327d4b0.1 // indirect
-	buf.build/gen/go/grpc-ecosystem/grpc-gateway/protocolbuffers/go v1.36.2-20241220201140-4c5ba75caaf8.1 // indirect
+	buf.build/gen/go/grpc-ecosystem/grpc-gateway/protocolbuffers/go v1.36.10-20241220201140-4c5ba75caaf8.1 // indirect
 	dario.cat/mergo v1.0.2 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/ProtonMail/go-crypto v1.1.0-alpha.2 // indirect
