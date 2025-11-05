@@ -7,7 +7,6 @@ import (
 	"os"
 	"reflect"
 	"strconv"
-	"strings"
 	"time"
 
 	"buf.build/gen/go/coreweave/cks/connectrpc/go/coreweave/cks/v1beta1/cksv1beta1connect"
@@ -82,12 +81,9 @@ func TFLogInterceptor() connect.Interceptor {
 			req connect.AnyRequest,
 		) (connect.AnyResponse, error) {
 			tfLogRequest(ctx, req)
-			tfLogRequest(ctx, req)
 			resp, err := uf(ctx, req)
 			tfLogResponse(ctx, req, resp, err)
-			tfLogResponse(ctx, req, resp, err)
 
-			return resp, err
 			return resp, err
 		}
 	})
@@ -97,6 +93,7 @@ func NewClient(endpoint string, s3Endpoint string, timeout time.Duration, interc
 	rc := retryablehttp.NewClient()
 	rc.HTTPClient.Timeout = timeout
 	rc.RetryMax = 10
+	// TODO: Remove this, or formalize it.
 	if max, found := os.LookupEnv("COREWEAVE_HTTP_RETRY_MAX"); found {
 		if maxInt, err := strconv.Atoi(max); err == nil {
 			rc.RetryMax = maxInt
@@ -135,66 +132,6 @@ func IsNotFoundError(err error) bool {
 	return errors.As(err, &connectErr) && connectErr.Code() == connect.CodeNotFound
 }
 
-func ConnectErrDiagnosticSummary(err *connect.Error) string {
-	code := err.Code()
-	codeInt := int32(code)
-	return fmt.Sprintf("API Error (%d %s): %s", codeInt, code.String(), err.Error())
-}
-
-// TODO
-func genericConnectErrDetail(err *connect.Error) string {
-	code := err.Code()
-	codeInt := int32(code)
-	message := err.Message()
-	details := err.Details()
-	connectDetails := make([]string, 0, len(details))
-	for _, d := range details {
-		msg, valueErr := d.Value()
-		if valueErr != nil {
-			continue
-		}
-		connectDetails = append(connectDetails, fmt.Sprintf("Detail: %v", msg))
-	}
-	connectDetail := strings.Join(connectDetails, ", ")
-
-	detailString := fmt.Sprintf("API returned code %d (%s): %s", codeInt, code.String(), message)
-	if connectDetail != "" {
-		detailString += ": " + connectDetail
-	}
-
-	return detailString
-}
-
-func ConnectErrDiagnosticDetail(err *connect.Error) string {
-	code := err.Code()
-	codeInt := int32(code)
-	message := err.Message()
-	details := err.Details()
-	connectDetails := make([]string, 0, len(details))
-	for _, d := range details {
-		msg, valueErr := d.Value()
-		if valueErr != nil {
-			continue
-		}
-		connectDetails = append(connectDetails, fmt.Sprintf("Detail: %v", msg))
-	}
-	connectDetail := strings.Join(connectDetails, ", ")
-
-	detailString := fmt.Sprintf("API returned code %d (%s): %s", codeInt, code.String(), message)
-	if connectDetail != "" {
-		detailString += ": " + connectDetail
-	}
-
-	return detailString
-}
-
-func ConnectErrorToDiagnostic(ctx context.Context, err *connect.Error) diag.Diagnostic {
-	return diag.NewErrorDiagnostic(
-		ConnectErrDiagnosticSummary(err),
-		ConnectErrDiagnosticDetail(err),
-	)
-}
-
 //nolint:gocyclo
 func HandleAPIError(ctx context.Context, err error, diagnostics *diag.Diagnostics) {
 	// Check if the error is a ConnectRPC error
@@ -210,7 +147,6 @@ func HandleAPIError(ctx context.Context, err error, diagnostics *diag.Diagnostic
 		return
 	}
 
-	baseDiagnostic := ConnectErrorToDiagnostic(ctx, connectErr)
 	details := connectErr.Details()
 
 	//nolint:exhaustive
@@ -291,7 +227,7 @@ func HandleAPIError(ctx context.Context, err error, diagnostics *diag.Diagnostic
 	case connect.CodeInternal:
 		diagnostics.AddError(
 			"Internal Error",
-			baseDiagnostic.Detail(),
+			connectErr.Error(),
 		)
 
 	case connect.CodeUnauthenticated:
@@ -333,7 +269,7 @@ func HandleAPIError(ctx context.Context, err error, diagnostics *diag.Diagnostic
 			"message": connectErr.Message(),
 		})
 		diagnostics.AddError(
-			"Internal Error",
+			"Unexpected Error",
 			fmt.Sprintf("An unexpected server error occurred: %q. Please check the provider logs for more details.", err.Error()),
 		)
 	}
