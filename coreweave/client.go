@@ -4,6 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"reflect"
+	"strconv"
+	"strings"
 	"time"
 
 	"buf.build/gen/go/coreweave/cks/connectrpc/go/coreweave/cks/v1beta1/cksv1beta1connect"
@@ -16,12 +20,88 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
+	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
 )
+
+func tfLogBaseFields(req connect.AnyRequest) map[string]any {
+	return map[string]any{
+		"procedure":  req.Spec().Procedure,
+		"streamType": req.Spec().StreamType.String(),
+		"peer":       req.Peer().Protocol + "://" + req.Peer().Addr,
+	}
+}
+
+func tfLogRequest(ctx context.Context, req connect.AnyRequest) {
+	reqFields := tfLogBaseFields(req)
+
+	// This is tricky, because AnyRequest does not expose the underlying proto message directly, but always has it (for unary requests).
+	if reqMsg, ok := reflect.ValueOf(req).Elem().FieldByName("Msg").Interface().(proto.Message); ok {
+		reqMsgJSON, err := protojson.Marshal(reqMsg)
+		if err != nil {
+			tflog.Error(ctx, fmt.Sprintf("failed to marshal request message to JSON: %v", err))
+		}
+		reqFields["payload"] = string(reqMsgJSON)
+	} else {
+		tflog.Error(ctx, fmt.Sprintf("failed to get request message for logging; %T.Msg is not a proto.Message", req))
+	}
+
+	tflog.Debug(ctx, "sending API request", reqFields)
+}
+
+func tfLogResponse(ctx context.Context, req connect.AnyRequest, resp connect.AnyResponse, err error) {
+	respFields := tfLogBaseFields(req)
+
+	if err != nil {
+		respFields["error"] = err.Error()
+	}
+
+	// Similarly to request, not knowing the type of AnyResponse means that we have to use reflection to get to the underlying proto message.
+	respValue := reflect.ValueOf(resp)
+	if !respValue.IsValid() || respValue.IsNil() {
+		tflog.Debug(ctx, "got nil or invalid API response", respFields)
+		// Special case, we can't get much more info out of it.
+		return
+	} else if respMsgAttr, ok := respValue.Elem().FieldByName("Msg").Interface().(proto.Message); ok {
+		respMsgJSON, marshalErr := protojson.Marshal(respMsgAttr)
+		if marshalErr != nil {
+			tflog.Error(ctx, fmt.Sprintf("failed to marshal response message to JSON: %+v", marshalErr))
+		}
+		respFields["payload"] = string(respMsgJSON)
+	} else {
+		tflog.Error(ctx, fmt.Sprintf("failed to get response message for logging; %T.Msg is not a proto.Message", resp))
+	}
+
+	tflog.Debug(ctx, "received API response", respFields)
+}
+
+func TFLogInterceptor() connect.Interceptor {
+	return connect.UnaryInterceptorFunc(func(uf connect.UnaryFunc) connect.UnaryFunc {
+		return func(
+			ctx context.Context,
+			req connect.AnyRequest,
+		) (connect.AnyResponse, error) {
+			tfLogRequest(ctx, req)
+			tfLogRequest(ctx, req)
+			resp, err := uf(ctx, req)
+			tfLogResponse(ctx, req, resp, err)
+			tfLogResponse(ctx, req, resp, err)
+
+			return resp, err
+			return resp, err
+		}
+	})
+}
 
 func NewClient(endpoint string, s3Endpoint string, timeout time.Duration, interceptors ...connect.Interceptor) *Client {
 	rc := retryablehttp.NewClient()
 	rc.HTTPClient.Timeout = timeout
 	rc.RetryMax = 10
+	if max, found := os.LookupEnv("COREWEAVE_HTTP_RETRY_MAX"); found {
+		if maxInt, err := strconv.Atoi(max); err == nil {
+			rc.RetryMax = maxInt
+		}
+	}
 	rc.RetryWaitMin = 200 * time.Millisecond
 	rc.RetryWaitMax = 5 * time.Second
 	// Jittered exponential back-off (min*2^n) with capping.
@@ -55,6 +135,66 @@ func IsNotFoundError(err error) bool {
 	return errors.As(err, &connectErr) && connectErr.Code() == connect.CodeNotFound
 }
 
+func ConnectErrDiagnosticSummary(err *connect.Error) string {
+	code := err.Code()
+	codeInt := int32(code)
+	return fmt.Sprintf("API Error (%d %s): %s", codeInt, code.String(), err.Error())
+}
+
+// TODO
+func genericConnectErrDetail(err *connect.Error) string {
+	code := err.Code()
+	codeInt := int32(code)
+	message := err.Message()
+	details := err.Details()
+	connectDetails := make([]string, 0, len(details))
+	for _, d := range details {
+		msg, valueErr := d.Value()
+		if valueErr != nil {
+			continue
+		}
+		connectDetails = append(connectDetails, fmt.Sprintf("Detail: %v", msg))
+	}
+	connectDetail := strings.Join(connectDetails, ", ")
+
+	detailString := fmt.Sprintf("API returned code %d (%s): %s", codeInt, code.String(), message)
+	if connectDetail != "" {
+		detailString += ": " + connectDetail
+	}
+
+	return detailString
+}
+
+func ConnectErrDiagnosticDetail(err *connect.Error) string {
+	code := err.Code()
+	codeInt := int32(code)
+	message := err.Message()
+	details := err.Details()
+	connectDetails := make([]string, 0, len(details))
+	for _, d := range details {
+		msg, valueErr := d.Value()
+		if valueErr != nil {
+			continue
+		}
+		connectDetails = append(connectDetails, fmt.Sprintf("Detail: %v", msg))
+	}
+	connectDetail := strings.Join(connectDetails, ", ")
+
+	detailString := fmt.Sprintf("API returned code %d (%s): %s", codeInt, code.String(), message)
+	if connectDetail != "" {
+		detailString += ": " + connectDetail
+	}
+
+	return detailString
+}
+
+func ConnectErrorToDiagnostic(ctx context.Context, err *connect.Error) diag.Diagnostic {
+	return diag.NewErrorDiagnostic(
+		ConnectErrDiagnosticSummary(err),
+		ConnectErrDiagnosticDetail(err),
+	)
+}
+
 //nolint:gocyclo
 func HandleAPIError(ctx context.Context, err error, diagnostics *diag.Diagnostics) {
 	// Check if the error is a ConnectRPC error
@@ -70,6 +210,7 @@ func HandleAPIError(ctx context.Context, err error, diagnostics *diag.Diagnostic
 		return
 	}
 
+	baseDiagnostic := ConnectErrorToDiagnostic(ctx, connectErr)
 	details := connectErr.Details()
 
 	//nolint:exhaustive
@@ -147,6 +288,11 @@ func HandleAPIError(ctx context.Context, err error, diagnostics *diag.Diagnostic
 
 			diagnostics.AddError(connectErr.Error(), connectErr.Message())
 		}
+	case connect.CodeInternal:
+		diagnostics.AddError(
+			"Internal Error",
+			baseDiagnostic.Detail(),
+		)
 
 	case connect.CodeUnauthenticated:
 		diagnostics.AddError(

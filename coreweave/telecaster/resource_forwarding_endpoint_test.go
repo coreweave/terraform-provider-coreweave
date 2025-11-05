@@ -7,6 +7,7 @@ import (
 	"time"
 
 	typesv1beta1 "bsr.core-services.ingress.coreweave.com/gen/go/coreweave/o11y-mgmt/protocolbuffers/go/coreweave/telecaster/types/v1beta1"
+	"github.com/coreweave/terraform-provider-coreweave/coreweave"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave/telecaster"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -36,7 +37,7 @@ func TestForwardingEndpointResourceModel_ToProto(t *testing.T) {
 				Ref: telecaster.ForwardingEndpointRefModel{
 					Slug: types.StringValue("example-endpoint"),
 				},
-				Spec: telecaster.ForwardingEndpointSpecModel{
+				Spec: &telecaster.ForwardingEndpointSpecModel{
 					DisplayName: types.StringValue("Test Endpoint"),
 					HTTPS: &telecaster.ForwardingEndpointHTTPSModel{
 						Endpoint: types.StringValue("https://example.coreweave.com"),
@@ -94,6 +95,13 @@ func TestForwardingEndpointResourceModel_ToProto(t *testing.T) {
 	}
 }
 
+func TestTFLogInterceptor(t *testing.T) {
+	t.Parallel()
+
+	interceptor := coreweave.TFLogInterceptor()
+	assert.NotNil(t, interceptor, "TFLogInterceptor should not return nil")
+}
+
 func TestForwardingEndpointResourceModel_Set(t *testing.T) {
 	t.Parallel()
 
@@ -125,7 +133,7 @@ func TestForwardingEndpointResourceModel_Set(t *testing.T) {
 			Ref: telecaster.ForwardingEndpointRefModel{
 				Slug: types.StringValue("example-endpoint"),
 			},
-			Spec: telecaster.ForwardingEndpointSpecModel{
+			Spec: &telecaster.ForwardingEndpointSpecModel{
 				DisplayName: types.StringValue("Test Endpoint"),
 				// Config should be set based on input.
 			},
