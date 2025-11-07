@@ -16,7 +16,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
-	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/encoding/prototext"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -28,16 +28,20 @@ func tfLogBaseFields(req connect.AnyRequest) map[string]any {
 	}
 }
 
+func formatPayload(payload proto.Message) string {
+	return prototext.MarshalOptions{
+		Multiline: false,
+		AllowPartial: true,
+		EmitUnknown: true,
+	}.Format(payload)
+}
+
 func tfLogRequest(ctx context.Context, req connect.AnyRequest) {
 	reqFields := tfLogBaseFields(req)
 
 	// This is tricky, because AnyRequest does not expose the underlying proto message directly, but always has it (for unary requests).
 	if reqMsg, ok := reflect.ValueOf(req).Elem().FieldByName("Msg").Interface().(proto.Message); ok {
-		reqMsgJSON, err := protojson.Marshal(reqMsg)
-		if err != nil {
-			tflog.Error(ctx, fmt.Sprintf("failed to marshal request message to JSON: %v", err))
-		}
-		reqFields["payload"] = string(reqMsgJSON)
+		reqFields["payload"] = formatPayload(reqMsg)
 	} else {
 		tflog.Error(ctx, fmt.Sprintf("failed to get request message for logging; %T.Msg is not a proto.Message", req))
 	}
@@ -59,11 +63,7 @@ func tfLogResponse(ctx context.Context, req connect.AnyRequest, resp connect.Any
 		// Special case, we can't get much more info out of it.
 		return
 	} else if respMsgAttr, ok := respValue.Elem().FieldByName("Msg").Interface().(proto.Message); ok {
-		respMsgJSON, marshalErr := protojson.Marshal(respMsgAttr)
-		if marshalErr != nil {
-			tflog.Error(ctx, fmt.Sprintf("failed to marshal response message to JSON: %+v", marshalErr))
-		}
-		respFields["payload"] = string(respMsgJSON)
+		respFields["payload"] = formatPayload(respMsgAttr)
 	} else {
 		tflog.Error(ctx, fmt.Sprintf("failed to get response message for logging; %T.Msg is not a proto.Message", resp))
 	}

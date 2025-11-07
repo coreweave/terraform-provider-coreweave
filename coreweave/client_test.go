@@ -16,6 +16,28 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func exampleClusterRequest() *cksv1beta1.CreateClusterRequest {
+	return &cksv1beta1.CreateClusterRequest{
+		Name:   "test-cluster",
+		Zone:   "US-EAST-04A",
+		VpcId:  "8e727c0d-5527-416b-9a80-c498f4802d15",
+		Public: true,
+	}
+}
+
+func exampleClusterResponse() *cksv1beta1.CreateClusterResponse {
+	return &cksv1beta1.CreateClusterResponse{
+		Cluster: &cksv1beta1.Cluster{
+			Id:     "02762697-916a-4920-940b-5909780f358e",
+			Name:   "test-cluster",
+			Zone:   "US-EAST-04A",
+			Status: cksv1beta1.Cluster_STATUS_CREATING,
+			VpcId:  "8e727c0d-5527-416b-9a80-c498f4802d15",
+			Public: true,
+		},
+	}
+}
+
 func TestTFLogInterceptor(t *testing.T) {
 	t.Parallel()
 
@@ -30,8 +52,8 @@ func TestTFLogInterceptor(t *testing.T) {
 		{
 			name:       "Basic successful response",
 			endpoint:   "https://api.coreweave.com",
-			req:        connect.NewRequest(&cksv1beta1.CreateClusterRequest{}),
-			returnResp: connect.NewResponse(&cksv1beta1.CreateClusterResponse{}),
+			req:        connect.NewRequest(exampleClusterRequest()),
+			returnResp: connect.NewResponse(exampleClusterResponse()),
 			assertion: func(t *testing.T, logEntries []map[string]any) {
 				t.Helper()
 				assert.Len(t, logEntries, 2)
@@ -44,6 +66,12 @@ func TestTFLogInterceptor(t *testing.T) {
 					assert.Equal(t, "unary", reqEntry["streamType"])
 					assert.Equal(t, "/coreweave.cks.v1beta1.ClusterService/CreateCluster", reqEntry["procedure"])
 					assert.NotEmpty(t, reqEntry["payload"])
+
+					referenceReq := exampleClusterRequest()
+					assert.Contains(t, reqEntry["payload"], referenceReq.Name)
+					assert.Contains(t, reqEntry["payload"], referenceReq.Zone)
+					assert.Contains(t, reqEntry["payload"], referenceReq.VpcId)
+
 					assert.NotContains(t, reqEntry, "error")
 				})
 				t.Run("response matches", func(t *testing.T) {
@@ -54,13 +82,19 @@ func TestTFLogInterceptor(t *testing.T) {
 					assert.Equal(t, "/coreweave.cks.v1beta1.ClusterService/CreateCluster", respEntry["procedure"])
 					assert.NotEmpty(t, respEntry["payload"])
 					assert.NotContains(t, respEntry, "error")
+
+					referenceResp := exampleClusterResponse()
+					assert.Contains(t, respEntry["payload"], referenceResp.Cluster.Id)
+					assert.Contains(t, respEntry["payload"], referenceResp.Cluster.Name)
+					assert.Contains(t, respEntry["payload"], referenceResp.Cluster.VpcId)
+					assert.Contains(t, respEntry["payload"], referenceResp.Cluster.Status.String())
 				})
 			},
 		},
 		{
 			name:       "Basic error response",
 			endpoint:   "https://api.coreweave.com",
-			req:        connect.NewRequest(&cksv1beta1.CreateClusterRequest{}),
+			req:        connect.NewRequest(exampleClusterRequest()),
 			returnResp: nil,
 			returnErr:  connect.NewError(connect.CodeInternal, errors.New("Internal server error")),
 			assertion: func(t *testing.T, logEntries []map[string]any) {
@@ -104,11 +138,19 @@ func TestTFLogInterceptor(t *testing.T) {
 				}
 			})))
 			resp, err := c.CreateCluster(ctx, tt.req)
+			logBytes := logbuf.Bytes() // Capture the log bytes so we can copy them as necessary.
+
 			assert.Equal(t, tt.returnErr, err)
 			assert.Equal(t, tt.returnResp, resp)
 
-			logEntries, err := tflogtest.MultilineJSONDecode(&logbuf)
+			logEntries, err := tflogtest.MultilineJSONDecode(bytes.NewBuffer(logBytes))
 			require.NoError(t, err)
+
+			for i, entry := range logEntries {
+				if payload, ok := entry["payload"]; ok {
+					assert.NotContains(t, payload, "\n", "payload of msg %d should be single-line in logs", i)
+				}
+			}
 
 			if tt.assertion != nil {
 				tt.assertion(t, logEntries)
