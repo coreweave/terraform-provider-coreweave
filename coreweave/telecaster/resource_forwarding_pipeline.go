@@ -11,6 +11,7 @@ import (
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
 	"github.com/coreweave/terraform-provider-coreweave/internal/coretf"
 	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -82,17 +83,28 @@ type ForwardingPipelineStatusModel struct {
 	StateMessage types.String      `tfsdk:"state_message"`
 }
 
-func (m *ResourceForwardingPipelineModel) Set(pipeline *telecastertypesv1beta1.ForwardingPipeline) {
+func (s *ForwardingPipelineStatusModel) Set(status *telecastertypesv1beta1.ForwardingPipelineStatus) (diagnostics diag.Diagnostics) {
+	if status == nil {
+		return
+	}
+	s.CreatedAt = timetypes.NewRFC3339TimeValue(status.CreatedAt.AsTime())
+	s.UpdatedAt = timetypes.NewRFC3339TimeValue(status.UpdatedAt.AsTime())
+	s.StateCode = types.Int32Value(int32(status.State.Number()))
+	s.State = types.StringValue(status.State.String())
+	s.StateMessage = types.StringPointerValue(status.StateMessage)
+	return
+}
+
+func (m *ResourceForwardingPipelineModel) Set(pipeline *telecastertypesv1beta1.ForwardingPipeline) (diagnostics diag.Diagnostics) {
 	ctx := context.Background()
 	ref := ForwardingPipelineRefModel{
 		Slug: types.StringValue(pipeline.Ref.Slug),
 	}
-	refObject, diag := types.ObjectValueFrom(ctx, m.Ref.AttributeTypes(ctx), ref)
-	if diag.HasError() {
-		panic(diag)
-	}
+	refObject, diags := types.ObjectValueFrom(ctx, m.Ref.AttributeTypes(ctx), ref)
+	diagnostics.Append(diags...)
 	m.Ref = refObject
 
+	// TODO
 	if pipeline.Spec != nil {
 		m.Spec.Source.Slug = types.StringValue(pipeline.Spec.Source.Slug)
 		m.Spec.Destination.Slug = types.StringValue(pipeline.Spec.Destination.Slug)
@@ -107,11 +119,11 @@ func (m *ResourceForwardingPipelineModel) Set(pipeline *telecastertypesv1beta1.F
 		status.State = types.StringValue(pipeline.Status.State.String())
 		status.StateMessage = types.StringPointerValue(pipeline.Status.StateMessage)
 	}
-	statusObj, diag := types.ObjectValueFrom(ctx, m.Status.AttributeTypes(ctx), status)
-	if diag.HasError() {
-		panic(diag)
-	}
+	statusObj, diags := types.ObjectValueFrom(ctx, m.Status.AttributeTypes(ctx), status)
+	diagnostics.Append(diags...)
 	m.Status = statusObj
+
+	return
 }
 
 func (r *ResourceForwardingPipeline) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
