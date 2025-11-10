@@ -15,6 +15,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 )
 
 var (
@@ -30,33 +31,45 @@ type TelemetryStreamDataSource struct {
 }
 
 type TelemetryStreamDataSourceModel struct {
-	Ref    TelemetryStreamRefModel `tfsdk:"ref"`
-	Spec   types.Object            `tfsdk:"spec"`
-	Status types.Object            `tfsdk:"status"`
+	Ref    types.Object `tfsdk:"ref"`
+	Spec   types.Object `tfsdk:"spec"`
+	Status types.Object `tfsdk:"status"`
+}
+
+func (s *TelemetryStreamSpecModel) Set(ctx context.Context, spec *typesv1beta1.TelemetryStreamSpec) (diagnostics diag.Diagnostics) {
+	s.DisplayName = types.StringValue(spec.DisplayName)
+
+	switch spec.Kind.(type) {
+	case *typesv1beta1.TelemetryStreamSpec_Metrics:
+		s.Metrics = &MetricsStreamSpecModel{}
+	case *typesv1beta1.TelemetryStreamSpec_Logs:
+		s.Logs = &LogsStreamSpecModel{}
+	default:
+		diagnostics.AddWarning("Unknown Stream Spec Kind", fmt.Sprintf("spec's kind %T is not recognized by the provider. This may not be implemented in the provider yet, or may require an update.", spec.Kind))
+		// continue, we just can't save it into state. It may still be used by e.g. pipelines, and that error may be propagated.
+	}
+
+	return
 }
 
 func (s *TelemetryStreamDataSourceModel) Set(ctx context.Context, stream *typesv1beta1.TelemetryStream) (diagnostics diag.Diagnostics) {
-	s.Ref = TelemetryStreamRefModel{Slug: types.StringValue(stream.Ref.Slug)}
+	var ref TelemetryStreamRefModel
+	diagnostics.Append(ref.Set(ctx, stream.Ref)...)
+	refObj, diags := types.ObjectValueFrom(ctx, s.Ref.AttributeTypes(ctx), &ref)
+	diagnostics.Append(diags...)
+	s.Ref = refObj
 
 	var spec TelemetryStreamSpecModel
-	spec.DisplayName = types.StringValue(stream.Spec.DisplayName)
-	switch stream.Spec.Kind.(type) {
-	case *typesv1beta1.TelemetryStreamSpec_Metrics:
-		spec.Metrics = &MetricsStreamSpecModel{}
-	case *typesv1beta1.TelemetryStreamSpec_Logs:
-		spec.Logs = &LogsStreamSpecModel{}
-	default:
-		// no kind set
-	}
-	specModel, errs := types.ObjectValueFrom(ctx, s.Spec.AttributeTypes(ctx), &spec)
-	diagnostics.Append(errs...)
-	s.Spec = specModel
+	diagnostics.Append(spec.Set(ctx, stream.Spec)...)
+	specObj, specDiags := types.ObjectValueFrom(ctx, s.Spec.AttributeTypes(ctx), &spec)
+	diagnostics.Append(specDiags...)
+	s.Spec = specObj
 
 	var status TelemetryStreamStatusModel
-	status.Set(stream.Status)
-	statusModel, errs := types.ObjectValueFrom(ctx, s.Status.AttributeTypes(ctx), &status)
-	diagnostics.Append(errs...)
-	s.Status = statusModel
+	diagnostics.Append(status.Set(stream.Status)...)
+	statusObj, statusDiags := types.ObjectValueFrom(ctx, s.Status.AttributeTypes(ctx), &status)
+	diagnostics.Append(statusDiags...)
+	s.Status = statusObj
 
 	return
 }
@@ -69,23 +82,35 @@ type TelemetryStreamStatusModel struct {
 	StateMessage types.String      `tfsdk:"state_message"`
 }
 
-func (s *TelemetryStreamStatusModel) Set(status *typesv1beta1.TelemetryStreamStatus) {
+func (s *TelemetryStreamStatusModel) Set(status *typesv1beta1.TelemetryStreamStatus) (diagnostics diag.Diagnostics) {
 	s.CreatedAt = timetypes.NewRFC3339TimeValue(status.CreatedAt.AsTime())
 	s.UpdatedAt = timetypes.NewRFC3339TimeValue(status.UpdatedAt.AsTime())
 	s.StateCode = types.Int32Value(int32(status.State.Number()))
 	s.StateString = types.StringValue(status.State.String())
 	s.StateMessage = types.StringPointerValue(status.StateMessage)
+	return
 }
 
-func (s *TelemetryStreamDataSourceModel) toGetRequest() *clusterv1beta1.GetStreamRequest {
-	return &clusterv1beta1.GetStreamRequest{Ref: s.Ref.toProtoObject()}
+func (s *TelemetryStreamDataSourceModel) toGetRequest(ctx context.Context) (*clusterv1beta1.GetStreamRequest, diag.Diagnostics) {
+	var ref TelemetryStreamRefModel
+	diags := s.Ref.As(ctx, &ref, basetypes.ObjectAsOptions{})
+	return &clusterv1beta1.GetStreamRequest{Ref: ref.toProtoMessage()}, diags
 }
 
 type TelemetryStreamRefModel struct {
 	Slug types.String `tfsdk:"slug"`
 }
 
-func (s *TelemetryStreamRefModel) toProtoObject() *typesv1beta1.TelemetryStreamRef {
+type TelemetryStreamRefModel2 struct {
+	basetypes.ObjectValuable
+}
+
+func (r *TelemetryStreamRefModel) Set(ctx context.Context, ref *typesv1beta1.TelemetryStreamRef) (diagnostics diag.Diagnostics) {
+	r.Slug = types.StringValue(ref.Slug)
+	return
+}
+
+func (s *TelemetryStreamRefModel) toProtoMessage() *typesv1beta1.TelemetryStreamRef {
 	return &typesv1beta1.TelemetryStreamRef{Slug: s.Slug.ValueString()}
 }
 
@@ -179,12 +204,18 @@ func (s *TelemetryStreamDataSource) Read(ctx context.Context, req datasource.Rea
 		return
 	}
 
-	getResp, err := s.Client.GetStream(ctx, connect.NewRequest(data.toGetRequest()))
+	getReq, diags := data.toGetRequest(ctx)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	getResp, err := s.Client.GetStream(ctx, connect.NewRequest(getReq))
 	if err != nil {
 		if coreweave.IsNotFoundError(err) {
 			resp.Diagnostics.AddWarning(
 				"Stream Not Found",
-				fmt.Sprintf("The specified stream with slug '%s' was not found.", data.Ref.Slug.ValueString()),
+				fmt.Sprintf("The specified stream with slug %q was not found.", getReq.Ref.Slug),
 			)
 			return
 		}

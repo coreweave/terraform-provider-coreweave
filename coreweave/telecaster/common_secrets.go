@@ -4,12 +4,18 @@ import (
 	"fmt"
 
 	telecastertypesv1beta1 "bsr.core-services.ingress.coreweave.com/gen/go/coreweave/o11y-mgmt/protocolbuffers/go/coreweave/telecaster/types/v1beta1"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
 type SecretRefModel struct {
 	Slug types.String `tfsdk:"slug"`
+}
+
+func (s *SecretRefModel) Set(ref *telecastertypesv1beta1.SecretRef) (diagnostics diag.Diagnostics) {
+	s.Slug = types.StringValue(ref.Slug)
+	return
 }
 
 func (s *SecretRefModel) ToProto() *telecastertypesv1beta1.SecretRef {
