@@ -28,7 +28,6 @@ require (
 	github.com/hashicorp/terraform-plugin-log v0.9.0
 	github.com/hashicorp/terraform-plugin-sdk/v2 v2.35.0
 	github.com/hashicorp/terraform-plugin-testing v1.11.0
-	github.com/kubernetes-csi/csi-lib-utils v0.23.0
 	github.com/stretchr/testify v1.11.1
 	github.com/zclconf/go-cty v1.15.0
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250908214217-97024824d090
@@ -57,7 +56,6 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.31.0 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sts v1.35.0 // indirect
 	github.com/cloudflare/circl v1.3.7 // indirect
-	github.com/container-storage-interface/spec v1.11.0 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/fatih/color v1.16.0 // indirect
 	github.com/golang/protobuf v1.5.4 // indirect
