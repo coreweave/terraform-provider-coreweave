@@ -18,6 +18,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
+	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/retry"
 )
 
@@ -42,18 +43,22 @@ type ForwardingEndpointResourceModel struct {
 
 func (e *ForwardingEndpointResourceModel) Set(ctx context.Context, data *telecastertypesv1beta1.ForwardingEndpoint) (diagnostics diag.Diagnostics) {
 	var ref ForwardingEndpointRefModel
+	// calling .As ensures that any nested `types.Object`s are properly initialized.
+	diagnostics.Append(e.Ref.As(ctx, &ref, basetypes.ObjectAsOptions{})...)
 	diagnostics.Append(ref.Set(data.Ref)...)
 	refObj, diags := types.ObjectValueFrom(ctx, e.Ref.AttributeTypes(ctx), &ref)
 	diagnostics.Append(diags...)
 	e.Ref = refObj
 
 	var spec ForwardingEndpointSpecModel
+	diagnostics.Append(e.Spec.As(ctx, &spec, basetypes.ObjectAsOptions{})...)
 	diagnostics.Append(spec.Set(ctx, data.Spec)...)
 	specObj, diags := types.ObjectValueFrom(ctx, e.Spec.AttributeTypes(ctx), &spec)
 	diagnostics.Append(diags...)
 	e.Spec = specObj
 
 	var status ForwardingEndpointStatusModel
+	diagnostics.Append(e.Status.As(ctx, &status, basetypes.ObjectAsOptions{})...)
 	diagnostics.Append(status.Set(data.Status)...)
 	statusObj, diags := types.ObjectValueFrom(ctx, e.Status.AttributeTypes(ctx), &status)
 	diagnostics.Append(diags...)
@@ -90,31 +95,44 @@ type ForwardingEndpointSpecModel struct {
 }
 
 func (e *ForwardingEndpointSpecModel) Set(ctx context.Context, msg *telecastertypesv1beta1.ForwardingEndpointSpec) (diagnostics diag.Diagnostics) {
+	e.DisplayName = types.StringValue(msg.DisplayName)
+
 	switch cfg := msg.Config.(type) {
 	case *telecastertypesv1beta1.ForwardingEndpointSpec_Kafka:
 		var kafka ForwardingEndpointKafkaModel
+		diagnostics.Append(e.Kafka.As(ctx, &kafka, basetypes.ObjectAsOptions{})...)
 		diagnostics.Append(kafka.Set(ctx, cfg.Kafka)...)
 		kafkaObj, diags := types.ObjectValueFrom(ctx, e.Kafka.AttributeTypes(ctx), &kafka)
 		diagnostics.Append(diags...)
 		e.Kafka = kafkaObj
 	case *telecastertypesv1beta1.ForwardingEndpointSpec_Prometheus:
 		var prom ForwardingEndpointPrometheusModel
+		diagnostics.Append(e.Prometheus.As(ctx, &prom, basetypes.ObjectAsOptions{})...)
 		diagnostics.Append(prom.Set(ctx, cfg.Prometheus)...)
 		promObj, diags := types.ObjectValueFrom(ctx, e.Prometheus.AttributeTypes(ctx), &prom)
 		diagnostics.Append(diags...)
 		e.Prometheus = promObj
 	case *telecastertypesv1beta1.ForwardingEndpointSpec_S3:
 		var s3 ForwardingEndpointS3Model
+		diagnostics.Append(e.S3.As(ctx, &s3, basetypes.ObjectAsOptions{})...)
 		diagnostics.Append(s3.Set(cfg.S3)...)
-		s3Obj, diags := types.ObjectValueFrom(ctx, e.S3.AttributeTypes(ctx), &s3)
+		s3Obj, diags := types.ObjectValueFrom(ctx, e.S3.AttributeTypes(ctx), s3)
 		diagnostics.Append(diags...)
 		e.S3 = s3Obj
+		tflog.Debug(ctx, "got s3", map[string]any{
+			"s3":    s3,
+			"s3Obj": s3Obj,
+			"s3msg": cfg.S3,
+		})
 	case *telecastertypesv1beta1.ForwardingEndpointSpec_Https:
 		var https ForwardingEndpointHTTPSModel
 		diagnostics.Append(https.Set(ctx, cfg.Https)...)
 		httpsObj, diags := types.ObjectValueFrom(ctx, e.HTTPS.AttributeTypes(ctx), &https)
 		diagnostics.Append(diags...)
 		e.HTTPS = httpsObj
+	case nil:
+		// TODO: error
+		diagnostics.AddWarning("unexpected nil spec from pipelines", "the forwarding endpoint spec config was nil")
 	default:
 		diagnostics.AddError("Unsupported forwarding endpoint type", fmt.Sprintf("unsupported forwarding endpoint config type: %T", cfg))
 	}
@@ -123,7 +141,6 @@ func (e *ForwardingEndpointSpecModel) Set(ctx context.Context, msg *telecasterty
 		return
 	}
 
-	e.DisplayName = types.StringValue(msg.DisplayName)
 	return
 }
 
@@ -247,12 +264,6 @@ type ForwardingEndpointS3Model struct {
 }
 
 func (s *ForwardingEndpointS3Model) Set(s3 *telecastertypesv1beta1.S3Config) (diagnostics diag.Diagnostics) {
-	if s3 == nil {
-		return nil
-	} else if s == nil {
-		diagnostics.AddError("nil receiver", "nil receiver: cannot call Set() on nil ForwardingEndpointS3Model")
-		return
-	}
 	s.URI = types.StringValue(s3.Uri)
 	s.Region = types.StringValue(s3.Region)
 	s.RequiresCredentials = types.BoolValue(s3.RequiresCredentials)
@@ -345,7 +356,7 @@ func (k *KafkaScramAuthModel) ToProto() *telecastertypesv1beta1.KafkaScramAuth {
 type PrometheusCredentialsModel struct {
 	BasicAuth              types.Object `tfsdk:"basic_auth"`
 	BearerToken            types.Object `tfsdk:"bearer_token"`
-	AuthHeadersCredentials types.Object `tfsdk:"auth_headers_credentials"`
+	AuthHeadersCredentials types.Object `tfsdk:"auth_headers"`
 }
 
 func (p *PrometheusCredentialsModel) Set(ctx context.Context, msg *telecastertypesv1beta1.PrometheusCredentials) (diagnostics diag.Diagnostics) {
@@ -731,30 +742,35 @@ func (f *ForwardingEndpointResource) Schema(ctx context.Context, req resource.Sc
 								MarkdownDescription: "The S3 region.",
 								Required:            true,
 							},
-							"credentials": schema.SingleNestedAttribute{
-								MarkdownDescription: "Credentials configuration for S3.",
+							"requires_credentials": schema.BoolAttribute{
+								MarkdownDescription: "Whether the S3 endpoint requires credentials.",
 								Optional:            true,
-								Attributes: map[string]schema.Attribute{
-									"access_key_id": schema.StringAttribute{
-										MarkdownDescription: "The S3 access key ID.",
-										Required:            true,
-										Sensitive:           true,
-										WriteOnly:           true,
-									},
-									"secret_access_key": schema.StringAttribute{
-										MarkdownDescription: "The S3 secret access key.",
-										Required:            true,
-										Sensitive:           true,
-										WriteOnly:           true,
-									},
-									"session_token": schema.StringAttribute{
-										MarkdownDescription: "The S3 session token.",
-										Optional:            true,
-										Sensitive:           true,
-										WriteOnly:           true,
-									},
-								},
+								Computed:            true,
 							},
+							// "credentials": schema.SingleNestedAttribute{
+							// 	MarkdownDescription: "Credentials configuration for S3.",
+							// 	Optional:            true,
+							// 	Attributes: map[string]schema.Attribute{
+							// 		"access_key_id": schema.StringAttribute{
+							// 			MarkdownDescription: "The S3 access key ID.",
+							// 			Required:            true,
+							// 			Sensitive:           true,
+							// 			WriteOnly:           true,
+							// 		},
+							// 		"secret_access_key": schema.StringAttribute{
+							// 			MarkdownDescription: "The S3 secret access key.",
+							// 			Required:            true,
+							// 			Sensitive:           true,
+							// 			WriteOnly:           true,
+							// 		},
+							// 		"session_token": schema.StringAttribute{
+							// 			MarkdownDescription: "The S3 session token.",
+							// 			Optional:            true,
+							// 			Sensitive:           true,
+							// 			WriteOnly:           true,
+							// 		},
+							// 	},
+							// },
 						},
 					},
 					"https": schema.SingleNestedAttribute{
@@ -795,7 +811,7 @@ func (f *ForwardingEndpointResource) Schema(ctx context.Context, req resource.Sc
 									},
 								},
 							},
-							"auth_headers_credentials": schema.SingleNestedAttribute{
+							"auth_headers": schema.SingleNestedAttribute{
 								MarkdownDescription: "Authentication headers configuration for HTTPS.",
 								Optional:            true,
 								Attributes: map[string]schema.Attribute{
@@ -868,9 +884,10 @@ func (f *ForwardingEndpointResource) Create(ctx context.Context, req resource.Cr
 
 	pollConf := retry.StateChangeConf{
 		Pending: []string{
-			telecastertypesv1beta1.ForwardingEndpointState_FORWARDING_ENDPOINT_STATE_PENDING.String(),
+			// telecastertypesv1beta1.ForwardingEndpointState_FORWARDING_ENDPOINT_STATE_PENDING.String(),
 		},
 		Target: []string{
+			telecastertypesv1beta1.ForwardingEndpointState_FORWARDING_ENDPOINT_STATE_PENDING.String(),
 			telecastertypesv1beta1.ForwardingEndpointState_FORWARDING_ENDPOINT_STATE_CONNECTED.String(),
 		},
 		Refresh: func() (result any, state string, err error) {
@@ -980,6 +997,12 @@ func (f *ForwardingEndpointResource) Read(ctx context.Context, req resource.Read
 	}
 
 	data.Set(ctx, getResp.Msg.Endpoint)
+
+	tflog.Debug(ctx, "Reading Telecaster Forwarding Endpoint", map[string]any{
+		"ref":    data.Ref.String(),
+		"spec":   data.Spec.String(),
+		"status": data.Status.String(),
+	})
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -1006,10 +1029,9 @@ func (f *ForwardingEndpointResource) Update(ctx context.Context, req resource.Up
 	}
 
 	pollConf := retry.StateChangeConf{
-		Pending: []string{
-			telecastertypesv1beta1.ForwardingEndpointState_FORWARDING_ENDPOINT_STATE_PENDING.String(),
-		},
+		Pending: []string{},
 		Target: []string{
+			telecastertypesv1beta1.ForwardingEndpointState_FORWARDING_ENDPOINT_STATE_PENDING.String(),
 			telecastertypesv1beta1.ForwardingEndpointState_FORWARDING_ENDPOINT_STATE_CONNECTED.String(),
 		},
 		Refresh: func() (result any, state string, err error) {
@@ -1030,7 +1052,7 @@ func (f *ForwardingEndpointResource) Update(ctx context.Context, req resource.Up
 		return
 	}
 
-	endpoint, ok := rawEndpoint.(*connect.Response[clusterv1beta1.GetEndpointResponse])
+	endpoint, ok := rawEndpoint.(*telecastertypesv1beta1.ForwardingEndpoint)
 	if !ok {
 		resp.Diagnostics.AddError(
 			"Error Updating Telecaster Forwarding Endpoint",
@@ -1039,7 +1061,7 @@ func (f *ForwardingEndpointResource) Update(ctx context.Context, req resource.Up
 		return
 	}
 
-	resp.Diagnostics.Append(data.Set(ctx, endpoint.Msg.Endpoint)...)
+	resp.Diagnostics.Append(data.Set(ctx, endpoint)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
