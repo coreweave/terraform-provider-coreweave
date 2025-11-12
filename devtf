@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+log() {
+    echo "[$(date +'%Y-%m-%dT%H:%M:%S%z')] $*" >&2
+}
+
+tf="$(command -v "${TF_BINARY:-terraform}")"
+srcdir="$(git -C "$(dirname "$0")" rev-parse --show-toplevel)"
+tmpdir="$(mktemp -d)"
+
+log "Using temporary directory: $tmpdir"
+trap 'rm -rf "$tmpdir"' EXIT
+cat > "$tmpdir/tf.rc" <<EOF
+disable_checkpoint = true
+provider_installation {
+  dev_overrides {
+    "coreweave/coreweave" = "$tmpdir/plugin"
+  }
+  direct {}
+}
+EOF
+
+log "Building and installing provider plugin to temporary directory"
+make -C "$srcdir" install PLUGIN_DIR="$tmpdir/plugin"
+
+export TF_CLI_CONFIG_FILE="$tmpdir/tf.rc"
+
+log "Executing terraform command: $tf $*"
+command "$tf" "$@"

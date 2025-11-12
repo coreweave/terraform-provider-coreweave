@@ -37,3 +37,5 @@ website/vendor
 test/
 
 .vscode/*
+
+__debug*

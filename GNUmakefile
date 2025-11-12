@@ -15,6 +15,8 @@ BINARY_NAME := terraform-provider-$(PROVIDER_NAME)_v$(VERSION)
 TEST_ACC_PACKAGES?=./coreweave/cks ./coreweave/networking
 TEST_ACC_SWEEP_ZONE?=US-LAB-01A
 
+export CGO_ENABLED?=0
+
 # Build and install the provider binary
 install: clean
 	mkdir -p $(PLUGIN_DIR)
@@ -22,9 +24,12 @@ install: clean
 	chmod +x $(PLUGIN_DIR)/$(BINARY_NAME)
 	@echo "Provider binary installed at $(PLUGIN_DIR)/$(BINARY_NAME)"
 
+debug:
+	go build -gcflags=all='-N -l' -o __debug_bin_manual . && dlv exec --accept-multiclient --continue --headless ./__debug_bin_manual -- -debug
+
 # Clean up the generated binary
 clean:
-	rm -f $(PLUGIN_DIR)/$(BINARY_NAME)
+	rm -f $(PLUGIN_DIR)/$(BINARY_NAME) ./__debug_*
 	@echo "Cleaned up $(PLUGIN_DIR)/$(BINARY_NAME)"
 
 lint:
@@ -51,4 +56,4 @@ testacc:
 		TF_ACC=1 go test -v -cover -timeout=45m ./coreweave/$$suite; \
 	done
 
-.PHONY: fmt lint test testacc testacc-sweep build install generate clean
+.PHONY: debug fmt lint test testacc testacc-sweep build install generate clean
