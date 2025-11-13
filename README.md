@@ -29,7 +29,7 @@ Debugging the provider can be a bit complicated. To do so, we must run the provi
 
 You will need to install delve (`dlv`) or use the built-in VSCode delve version.
 
-You must create a debug env file, `touch debug.env`. Because the provider server runs as a process separate from terraform itself, it is unable to inherit environment variables from the terraform process. This is useful for injecting environment variables to the provider, to configure credentials or provider settings.
+You must create a debug env file, `touch __debug.env`. Because the provider server runs as a process separate from terraform itself, it is unable to inherit environment variables from the terraform process. This is useful for injecting environment variables to the provider, to configure credentials or provider settings.
 
 #### Debugging via VS Code Debugger
 

@@ -17,8 +17,17 @@ TEST_ACC_SWEEP_ZONE?=US-LAB-01A
 
 export CGO_ENABLED?=0
 
+# this can be overridden to skip pre-install cleanup
+PREINSTALL := clean
+
+# Gather all Go source files, which is useful for deciding when to rebuild
+gofiles = go.mod go.sum $(shell find . -type f -name '*.go')
+
 # Build and install the provider binary
-install: clean
+install: $(PREINSTALL) $(PLUGIN_DIR)/$(BINARY_NAME)
+.NOTPARALLEL: install
+
+$(PLUGIN_DIR)/$(BINARY_NAME): $(gofiles)
 	mkdir -p $(PLUGIN_DIR)
 	go build -o $(PLUGIN_DIR)/$(BINARY_NAME)
 	chmod +x $(PLUGIN_DIR)/$(BINARY_NAME)

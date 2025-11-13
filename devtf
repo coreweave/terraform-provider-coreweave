@@ -10,20 +10,24 @@ tf="$(command -v "${TF_BINARY:-terraform}")"
 srcdir="$(git -C "$(dirname "$0")" rev-parse --show-toplevel)"
 tmpdir="$(mktemp -d)"
 
+plugin_dir="$srcdir/dist/dev/plugin"
+
+unset TF_REATTACH_PROVIDERS || true
+
 log "Using temporary directory: $tmpdir"
 trap 'rm -rf "$tmpdir"' EXIT
 cat > "$tmpdir/tf.rc" <<EOF
 disable_checkpoint = true
 provider_installation {
   dev_overrides {
-    "coreweave/coreweave" = "$tmpdir/plugin"
+    "coreweave/coreweave" = "$plugin_dir"
   }
   direct {}
 }
 EOF
 
 log "Building and installing provider plugin to temporary directory"
-make -C "$srcdir" install PLUGIN_DIR="$tmpdir/plugin"
+make -C "$srcdir" install PLUGIN_DIR="$plugin_dir" PREINSTALL=
 
 export TF_CLI_CONFIG_FILE="$tmpdir/tf.rc"
 
