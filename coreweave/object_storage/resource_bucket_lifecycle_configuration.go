@@ -367,6 +367,16 @@ func expandRules(ctx context.Context, in []LifecycleRuleModel) []s3types.Lifecyc
 			}
 			rule.NoncurrentVersionExpiration = &nc
 		}
+		// if r.NoncurrentVersionTransitions != nil {
+		// 	for _, noncurrenTransition := range r.NoncurrentVersionTransitions {
+		// 		nct := s3types.NoncurrentVersionTransition{
+		// 			StorageClass:            s3types.TransitionStorageClass(noncurrenTransition.StorageClass.ValueString()),
+		// 			NoncurrentDays:          noncurrenTransition.NoncurrentDays.ValueInt32Pointer(),
+		// 			NewerNoncurrentVersions: noncurrenTransition.NewerNoncurrentVersions.ValueInt32Pointer(),
+		// 		}
+		// 		rule.NoncurrentVersionTransitions = append(rule.NoncurrentVersionTransitions, nct)
+		// 	}
+		// }
 		if r.AbortIncompleteMultipart != nil {
 			ai := s3types.AbortIncompleteMultipartUpload{
 				DaysAfterInitiation: aws.Int32(r.AbortIncompleteMultipart.DaysAfterInitiation.ValueInt32()),
@@ -559,13 +569,15 @@ func eqLifecycleRule(a, b s3types.LifecycleRule) bool { //nolint:gocyclo
 	return true
 }
 
-func waitForLifecycleConfig(parentCtx context.Context, client *s3.Client, bucket string, expected s3types.BucketLifecycleConfiguration) error {
+func waitForLifecycleConfig(parentCtx context.Context, client *s3.Client, bucket string, expected s3types.BucketLifecycleConfiguration) (*s3.GetBucketLifecycleConfigurationOutput, error) {
 	// make a sorted copy of expected rules
 	exp := append([]s3types.LifecycleRule(nil), expected.Rules...)
 	slices.SortFunc(exp, cmpLifecycleRule)
 
-	return coreweave.PollUntil("bucket lifecycle configuration", parentCtx, 5*time.Second, 5*time.Minute, func(ctx context.Context) (bool, error) {
-		out, err := client.GetBucketLifecycleConfiguration(ctx, &s3.GetBucketLifecycleConfigurationInput{Bucket: aws.String(bucket)})
+	var out *s3.GetBucketLifecycleConfigurationOutput
+	err := coreweave.PollUntil("bucket lifecycle configuration", parentCtx, 5*time.Second, 5*time.Minute, func(ctx context.Context) (bool, error) {
+		result, err := client.GetBucketLifecycleConfiguration(ctx, &s3.GetBucketLifecycleConfigurationInput{Bucket: aws.String(bucket)})
+		out = result
 		if err != nil {
 			if isTransientS3Error(err) {
 				return false, nil
@@ -577,6 +589,7 @@ func waitForLifecycleConfig(parentCtx context.Context, client *s3.Client, bucket
 		slices.SortFunc(rules, cmpLifecycleRule)
 		return slices.EqualFunc(exp, rules, eqLifecycleRule), nil
 	})
+	return out, err
 }
 
 func (r *BucketLifecycleResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
@@ -618,9 +631,11 @@ func (r *BucketLifecycleResource) Create(ctx context.Context, req resource.Creat
 	}
 
 	// wait for lifecycle config  to be read back from s3 API since it is not guaranteed to propagate immediately
-	if err := waitForLifecycleConfig(ctx, s3c, data.Bucket.ValueString(), *lifecycleConfig); err != nil {
+	if result, err := waitForLifecycleConfig(ctx, s3c, data.Bucket.ValueString(), *lifecycleConfig); err != nil {
 		handleS3Error(err, &resp.Diagnostics, data.Bucket.ValueString())
 		return
+	} else {
+		data.Rule = flattenLifecycleRules(result.Rules)
 	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
@@ -787,9 +802,11 @@ func (r *BucketLifecycleResource) Update(ctx context.Context, req resource.Updat
 	}
 
 	// wait for lifecycle config  to be read back from s3 API since it is not guaranteed to propagate immediately
-	if err := waitForLifecycleConfig(ctx, s3c, data.Bucket.ValueString(), *lifecycleConfig); err != nil {
+	if result, err := waitForLifecycleConfig(ctx, s3c, data.Bucket.ValueString(), *lifecycleConfig); err != nil {
 		handleS3Error(err, &resp.Diagnostics, data.Bucket.ValueString())
 		return
+	} else {
+		data.Rule = flattenLifecycleRules(result.Rules)
 	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
