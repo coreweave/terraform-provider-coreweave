@@ -324,7 +324,7 @@ func parseISO8601(s string) time.Time {
 	return t
 }
 
-func expandRules(ctx context.Context, in []LifecycleRuleModel) []s3types.LifecycleRule {
+func expandRules(ctx context.Context, in []LifecycleRuleModel) []s3types.LifecycleRule { //nolint:gocyclo
 	out := make([]s3types.LifecycleRule, 0, len(in))
 	for _, r := range in {
 		rule := s3types.LifecycleRule{
@@ -367,16 +367,16 @@ func expandRules(ctx context.Context, in []LifecycleRuleModel) []s3types.Lifecyc
 			}
 			rule.NoncurrentVersionExpiration = &nc
 		}
-		// if r.NoncurrentVersionTransitions != nil {
-		// 	for _, noncurrenTransition := range r.NoncurrentVersionTransitions {
-		// 		nct := s3types.NoncurrentVersionTransition{
-		// 			StorageClass:            s3types.TransitionStorageClass(noncurrenTransition.StorageClass.ValueString()),
-		// 			NoncurrentDays:          noncurrenTransition.NoncurrentDays.ValueInt32Pointer(),
-		// 			NewerNoncurrentVersions: noncurrenTransition.NewerNoncurrentVersions.ValueInt32Pointer(),
-		// 		}
-		// 		rule.NoncurrentVersionTransitions = append(rule.NoncurrentVersionTransitions, nct)
-		// 	}
-		// }
+		if r.NoncurrentVersionTransitions != nil {
+			for _, noncurrentTransition := range r.NoncurrentVersionTransitions {
+				nct := s3types.NoncurrentVersionTransition{
+					StorageClass:            s3types.TransitionStorageClass(noncurrentTransition.StorageClass.ValueString()),
+					NoncurrentDays:          noncurrentTransition.NoncurrentDays.ValueInt32Pointer(),
+					NewerNoncurrentVersions: noncurrentTransition.NewerNoncurrentVersions.ValueInt32Pointer(),
+				}
+				rule.NoncurrentVersionTransitions = append(rule.NoncurrentVersionTransitions, nct)
+			}
+		}
 		if r.AbortIncompleteMultipart != nil {
 			ai := s3types.AbortIncompleteMultipartUpload{
 				DaysAfterInitiation: aws.Int32(r.AbortIncompleteMultipart.DaysAfterInitiation.ValueInt32()),
@@ -571,22 +571,22 @@ func eqLifecycleRule(a, b s3types.LifecycleRule) bool { //nolint:gocyclo
 
 func waitForLifecycleConfig(parentCtx context.Context, client *s3.Client, bucket string, expected s3types.BucketLifecycleConfiguration) (*s3.GetBucketLifecycleConfigurationOutput, error) {
 	// make a sorted copy of expected rules
-	exp := append([]s3types.LifecycleRule(nil), expected.Rules...)
-	slices.SortFunc(exp, cmpLifecycleRule)
+	exp := slices.SortedFunc(slices.Values(expected.Rules), cmpLifecycleRule)
 
 	var out *s3.GetBucketLifecycleConfigurationOutput
 	err := coreweave.PollUntil("bucket lifecycle configuration", parentCtx, 5*time.Second, 5*time.Minute, func(ctx context.Context) (bool, error) {
 		result, err := client.GetBucketLifecycleConfiguration(ctx, &s3.GetBucketLifecycleConfigurationInput{Bucket: aws.String(bucket)})
-		out = result
 		if err != nil {
+			out = nil
 			if isTransientS3Error(err) {
 				return false, nil
 			}
 			return false, err
 		}
+		out = result
 
-		rules := out.Rules
-		slices.SortFunc(rules, cmpLifecycleRule)
+		// Make sorted a copy of the slice to sort for comparison, to avoid mutating the returned slice by reference.
+		rules := slices.SortedFunc(slices.Values(result.Rules), cmpLifecycleRule)
 		return slices.EqualFunc(exp, rules, eqLifecycleRule), nil
 	})
 	return out, err
@@ -806,6 +806,7 @@ func (r *BucketLifecycleResource) Update(ctx context.Context, req resource.Updat
 		handleS3Error(err, &resp.Diagnostics, data.Bucket.ValueString())
 		return
 	} else {
+		// Read the result back into state. Terraform will detect and fail if the state does not match the plan.
 		data.Rule = flattenLifecycleRules(result.Rules)
 	}
 
