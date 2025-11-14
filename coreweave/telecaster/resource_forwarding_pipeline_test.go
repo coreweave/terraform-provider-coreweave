@@ -3,8 +3,9 @@ package telecaster_test
 import (
 	"testing"
 
-	telecastertypesv1beta1 "bsr.core-services.ingress.coreweave.com/gen/go/coreweave/o11y-mgmt/protocolbuffers/go/coreweave/telecaster/types/v1beta1"
+	typesv1beta1 "bsr.core-services.ingress.coreweave.com/gen/go/coreweave/o11y-mgmt/protocolbuffers/go/coreweave/telecaster/types/v1beta1"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave/telecaster"
+	"github.com/coreweave/terraform-provider-coreweave/coreweave/telecaster/internal/model"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/stretchr/testify/assert"
@@ -16,7 +17,7 @@ func TestForwardingPipelineResourceModelRef_ToProto(t *testing.T) {
 	tests := []struct {
 		name     string
 		input    *telecaster.ForwardingPipelineRefModel
-		expected *telecastertypesv1beta1.ForwardingPipelineRef
+		expected *typesv1beta1.ForwardingPipelineRef
 		wantErr  bool
 	}{
 		{
@@ -29,7 +30,7 @@ func TestForwardingPipelineResourceModelRef_ToProto(t *testing.T) {
 			input: &telecaster.ForwardingPipelineRefModel{
 				Slug: types.StringValue("example-pipeline"),
 			},
-			expected: &telecastertypesv1beta1.ForwardingPipelineRef{
+			expected: &typesv1beta1.ForwardingPipelineRef{
 				Slug: "example-pipeline",
 			},
 		},
@@ -52,18 +53,18 @@ func TestForwardingPipelineResourceSpecModel_ToProto(t *testing.T) {
 			Source: telecaster.TelemetryStreamRefModel{
 				Slug: types.StringValue("example-stream"),
 			},
-			Destination: telecaster.ForwardingEndpointRefModel{
+			Destination: model.ForwardingEndpointRefModel{
 				Slug: types.StringValue("example-destination"),
 			},
 		}
 	}
-	outputBase := func() *telecastertypesv1beta1.ForwardingPipelineSpec {
-		return &telecastertypesv1beta1.ForwardingPipelineSpec{
+	outputBase := func() *typesv1beta1.ForwardingPipelineSpec {
+		return &typesv1beta1.ForwardingPipelineSpec{
 			Enabled: true,
-			Source: &telecastertypesv1beta1.TelemetryStreamRef{
+			Source: &typesv1beta1.TelemetryStreamRef{
 				Slug: "example-stream",
 			},
-			Destination: &telecastertypesv1beta1.ForwardingEndpointRef{
+			Destination: &typesv1beta1.ForwardingEndpointRef{
 				Slug: "example-destination",
 			},
 		}
@@ -72,7 +73,7 @@ func TestForwardingPipelineResourceSpecModel_ToProto(t *testing.T) {
 	tests := []struct {
 		name     string
 		input    *telecaster.ForwardingPipelineSpecModel
-		expected *telecastertypesv1beta1.ForwardingPipelineSpec
+		expected *typesv1beta1.ForwardingPipelineSpec
 		wantErr  bool
 	}{
 		{
@@ -90,7 +91,7 @@ func TestForwardingPipelineResourceSpecModel_ToProto(t *testing.T) {
 			input: with(specBase(), func(s *telecaster.ForwardingPipelineSpecModel) {
 				s.Enabled = types.BoolNull()
 			}),
-			expected: with(outputBase(), func(s *telecastertypesv1beta1.ForwardingPipelineSpec) {
+			expected: with(outputBase(), func(s *typesv1beta1.ForwardingPipelineSpec) {
 				s.Enabled = false
 			}),
 		},

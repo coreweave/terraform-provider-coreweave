@@ -9,6 +9,7 @@ import (
 	telecastertypesv1beta1 "bsr.core-services.ingress.coreweave.com/gen/go/coreweave/o11y-mgmt/protocolbuffers/go/coreweave/telecaster/types/v1beta1"
 	"connectrpc.com/connect"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
+	"github.com/coreweave/terraform-provider-coreweave/coreweave/telecaster/internal/model"
 	"github.com/coreweave/terraform-provider-coreweave/internal/coretf"
 	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -56,7 +57,7 @@ func (m *ForwardingPipelineRefModel) ToProto() *telecastertypesv1beta1.Forwardin
 
 type ForwardingPipelineSpecModel struct {
 	Source      TelemetryStreamRefModel    `tfsdk:"source"`
-	Destination ForwardingEndpointRefModel `tfsdk:"destination"`
+	Destination model.ForwardingEndpointRefModel `tfsdk:"destination"`
 	Enabled     types.Bool                 `tfsdk:"enabled"`
 }
 
