@@ -16,7 +16,7 @@ func TestForwardingPipelineResourceModelRef_ToProto(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		input    *telecaster.ForwardingPipelineRefModel
+		input    *model.ForwardingPipelineRefModel
 		expected *typesv1beta1.ForwardingPipelineRef
 		wantErr  bool
 	}{
@@ -27,7 +27,7 @@ func TestForwardingPipelineResourceModelRef_ToProto(t *testing.T) {
 		},
 		{
 			name: "valid input converts correctly",
-			input: &telecaster.ForwardingPipelineRefModel{
+			input: &model.ForwardingPipelineRefModel{
 				Slug: types.StringValue("example-pipeline"),
 			},
 			expected: &typesv1beta1.ForwardingPipelineRef{
@@ -39,7 +39,9 @@ func TestForwardingPipelineResourceModelRef_ToProto(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			assert.Equal(t, tt.expected, tt.input.ToProto())
+			msg, diags := tt.input.ToMsg()
+			assert.Empty(t, diags)
+			assert.Equal(t, tt.expected, msg)
 		})
 	}
 }
@@ -47,8 +49,8 @@ func TestForwardingPipelineResourceModelRef_ToProto(t *testing.T) {
 func TestForwardingPipelineResourceSpecModel_ToProto(t *testing.T) {
 	t.Parallel()
 
-	specBase := func() *telecaster.ForwardingPipelineSpecModel {
-		return &telecaster.ForwardingPipelineSpecModel{
+	specBase := func() *model.ForwardingPipelineSpecModel {
+		return &model.ForwardingPipelineSpecModel{
 			Enabled: types.BoolValue(true),
 			Source: model.TelemetryStreamRefModel{
 				Slug: types.StringValue("example-stream"),
@@ -72,7 +74,7 @@ func TestForwardingPipelineResourceSpecModel_ToProto(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		input    *telecaster.ForwardingPipelineSpecModel
+		input    *model.ForwardingPipelineSpecModel
 		expected *typesv1beta1.ForwardingPipelineSpec
 		wantErr  bool
 	}{
@@ -88,7 +90,7 @@ func TestForwardingPipelineResourceSpecModel_ToProto(t *testing.T) {
 		},
 		{
 			name: "enabled nil converts correctly",
-			input: with(specBase(), func(s *telecaster.ForwardingPipelineSpecModel) {
+			input: with(specBase(), func(s *model.ForwardingPipelineSpecModel) {
 				s.Enabled = types.BoolNull()
 			}),
 			expected: with(outputBase(), func(s *typesv1beta1.ForwardingPipelineSpec) {
@@ -100,7 +102,9 @@ func TestForwardingPipelineResourceSpecModel_ToProto(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			assert.Equal(t, tt.expected, tt.input.ToMsg())
+			msg, diags := tt.input.ToMsg()
+			assert.Empty(t, diags)
+			assert.Equal(t, tt.expected, msg)
 		})
 	}
 }

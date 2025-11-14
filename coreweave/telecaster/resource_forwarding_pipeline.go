@@ -7,6 +7,7 @@ import (
 
 	clusterv1beta1 "bsr.core-services.ingress.coreweave.com/gen/go/coreweave/o11y-mgmt/protocolbuffers/go/coreweave/telecaster/svc/cluster/v1beta1"
 	telecastertypesv1beta1 "bsr.core-services.ingress.coreweave.com/gen/go/coreweave/o11y-mgmt/protocolbuffers/go/coreweave/telecaster/types/v1beta1"
+	typesv1beta1 "bsr.core-services.ingress.coreweave.com/gen/go/coreweave/o11y-mgmt/protocolbuffers/go/coreweave/telecaster/types/v1beta1"
 	"connectrpc.com/connect"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave/telecaster/internal/model"
@@ -18,9 +19,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
-	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/retry"
-	"google.golang.org/protobuf/encoding/protojson"
 )
 
 var (
@@ -37,92 +36,59 @@ type ResourceForwardingPipeline struct {
 }
 
 type ResourceForwardingPipelineModel struct {
-	Ref    types.Object                `tfsdk:"ref"`
-	Spec   ForwardingPipelineSpecModel `tfsdk:"spec"`
-	Status types.Object                `tfsdk:"status"`
+	Ref    types.Object `tfsdk:"ref"`
+	Spec   types.Object `tfsdk:"spec"`
+	Status types.Object `tfsdk:"status"`
 }
 
-type ForwardingPipelineRefModel struct {
-	Slug types.String `tfsdk:"slug"`
-}
+func (m *ResourceForwardingPipelineModel) Set(ctx context.Context, pipeline *telecastertypesv1beta1.ForwardingPipeline) (diagnostics diag.Diagnostics) {
+	var ref model.ForwardingPipelineRefModel
+	diagnostics.Append(m.Ref.As(ctx, &ref, basetypes.ObjectAsOptions{})...)
+	diagnostics.Append(ref.Set(pipeline.Ref)...)
+	refObj, diags := types.ObjectValueFrom(ctx, m.Ref.AttributeTypes(ctx), ref)
+	diagnostics.Append(diags...)
+	m.Ref = refObj
 
-func (m *ForwardingPipelineRefModel) ToProto() *telecastertypesv1beta1.ForwardingPipelineRef {
-	if m == nil {
-		return nil
-	}
-	return &telecastertypesv1beta1.ForwardingPipelineRef{
-		Slug: m.Slug.ValueString(),
-	}
-}
+	var spec model.ForwardingPipelineSpecModel
+	diagnostics.Append(m.Spec.As(ctx, &spec, basetypes.ObjectAsOptions{})...)
+	diagnostics.Append(spec.Set(pipeline.Spec)...)
+	specObject, diags := types.ObjectValueFrom(ctx, m.Spec.AttributeTypes(ctx), spec)
+	diagnostics.Append(diags...)
+	m.Spec = specObject
 
-type ForwardingPipelineSpecModel struct {
-	Source      model.TelemetryStreamRefModel    `tfsdk:"source"`
-	Destination model.ForwardingEndpointRefModel `tfsdk:"destination"`
-	Enabled     types.Bool                       `tfsdk:"enabled"`
-}
+	var status model.ForwardingPipelineStatusModel
+	diagnostics.Append(m.Status.As(ctx, &status, basetypes.ObjectAsOptions{})...)
+	diagnostics.Append(status.Set(pipeline.Status)...)
+	statusObject, diags := types.ObjectValueFrom(ctx, m.Status.AttributeTypes(ctx), status)
+	diagnostics.Append(diags...)
+	m.Status = statusObject
 
-func (m *ForwardingPipelineSpecModel) ToMsg() *telecastertypesv1beta1.ForwardingPipelineSpec {
-	if m == nil {
-		return nil
-	}
-	return &telecastertypesv1beta1.ForwardingPipelineSpec{
-		Source: &telecastertypesv1beta1.TelemetryStreamRef{
-			Slug: m.Source.Slug.ValueString(),
-		},
-		Destination: &telecastertypesv1beta1.ForwardingEndpointRef{
-			Slug: m.Destination.Slug.ValueString(),
-		},
-		Enabled: m.Enabled.ValueBool(),
-	}
-}
-
-type ForwardingPipelineStatusModel struct {
-	CreatedAt    timetypes.RFC3339 `tfsdk:"created_at"`
-	UpdatedAt    timetypes.RFC3339 `tfsdk:"updated_at"`
-	StateCode    types.Int32       `tfsdk:"state_code"`
-	State        types.String      `tfsdk:"state"`
-	StateMessage types.String      `tfsdk:"state_message"`
-}
-
-func (s *ForwardingPipelineStatusModel) Set(status *telecastertypesv1beta1.ForwardingPipelineStatus) (diagnostics diag.Diagnostics) {
-	if status == nil {
-		return
-	}
-	s.CreatedAt = timetypes.NewRFC3339TimeValue(status.CreatedAt.AsTime())
-	s.UpdatedAt = timetypes.NewRFC3339TimeValue(status.UpdatedAt.AsTime())
-	s.StateCode = types.Int32Value(int32(status.State.Number()))
-	s.State = types.StringValue(status.State.String())
-	s.StateMessage = types.StringPointerValue(status.StateMessage)
 	return
 }
 
-func (m *ResourceForwardingPipelineModel) Set(pipeline *telecastertypesv1beta1.ForwardingPipeline) (diagnostics diag.Diagnostics) {
-	ctx := context.Background()
-	ref := ForwardingPipelineRefModel{
-		Slug: types.StringValue(pipeline.Ref.Slug),
-	}
-	refObject, diags := types.ObjectValueFrom(ctx, m.Ref.AttributeTypes(ctx), ref)
-	diagnostics.Append(diags...)
-	m.Ref = refObject
-
-	// TODO
-	if pipeline.Spec != nil {
-		m.Spec.Source.Slug = types.StringValue(pipeline.Spec.Source.Slug)
-		m.Spec.Destination.Slug = types.StringValue(pipeline.Spec.Destination.Slug)
-		m.Spec.Enabled = types.BoolValue(pipeline.Spec.Enabled)
+func (m *ResourceForwardingPipelineModel) ToMsg(ctx context.Context) (msg *telecastertypesv1beta1.ForwardingPipeline, diagnostics diag.Diagnostics) {
+	if m == nil {
+		return
 	}
 
-	status := ForwardingPipelineStatusModel{}
-	if pipeline.Status != nil {
-		status.CreatedAt = timetypes.NewRFC3339TimeValue(pipeline.Status.CreatedAt.AsTime())
-		status.UpdatedAt = timetypes.NewRFC3339TimeValue(pipeline.Status.UpdatedAt.AsTime())
-		status.StateCode = types.Int32Value(int32(pipeline.Status.State.Number()))
-		status.State = types.StringValue(pipeline.Status.State.String())
-		status.StateMessage = types.StringPointerValue(pipeline.Status.StateMessage)
-	}
-	statusObj, diags := types.ObjectValueFrom(ctx, m.Status.AttributeTypes(ctx), status)
+	var diags diag.Diagnostics
+	msg = &telecastertypesv1beta1.ForwardingPipeline{}
+
+	var ref model.ForwardingPipelineRefModel
+	diagnostics.Append(m.Ref.As(ctx, &ref, basetypes.ObjectAsOptions{})...)
+	msg.Ref, diags = ref.ToMsg()
 	diagnostics.Append(diags...)
-	m.Status = statusObj
+
+	var spec model.ForwardingPipelineSpecModel
+	diagnostics.Append(m.Spec.As(ctx, &spec, basetypes.ObjectAsOptions{})...)
+	msg.Spec, diags = spec.ToMsg()
+	diagnostics.Append(diags...)
+
+	// status not implemented because it is not needed for any ops.
+
+	if diagnostics.HasError() {
+		return nil, diagnostics
+	}
 
 	return
 }
@@ -213,36 +179,27 @@ func (r *ResourceForwardingPipeline) Schema(ctx context.Context, req resource.Sc
 
 func (r *ResourceForwardingPipeline) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var data ResourceForwardingPipelineModel
+
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	var ref ForwardingPipelineRefModel
-	resp.Diagnostics.Append(data.Ref.As(ctx, &ref, basetypes.ObjectAsOptions{})...)
+	pipelineMsg, diags := data.ToMsg(ctx)
+	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	createReq := connect.NewRequest(&clusterv1beta1.CreatePipelineRequest{
-		Ref:  ref.ToProto(),
-		Spec: data.Spec.ToMsg(),
-	})
-
-	payloadString, _ := protojson.Marshal(createReq.Msg)
-	tflog.Debug(ctx, "Creating Telecaster Forwarding Pipeline", map[string]interface{}{
-		"procedure": createReq.Spec().Procedure,
-		"payload":   string(payloadString),
-	})
-
-	pipeline, err := r.Client.CreatePipeline(ctx, createReq)
+	pipeline, err := r.Client.CreatePipeline(ctx, connect.NewRequest(&clusterv1beta1.CreatePipelineRequest{
+		Ref:  pipelineMsg.Ref,
+		Spec: pipelineMsg.Spec,
+	}))
 	if err != nil {
-		var ref ForwardingPipelineRefModel
-		resp.Diagnostics.Append(data.Ref.As(ctx, &ref, basetypes.ObjectAsOptions{})...)
-
+		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
 		resp.Diagnostics.AddError(
 			"Error Creating Telecaster Forwarding Pipeline",
-			fmt.Sprintf("Could not create Telecaster Forwarding Pipeline %q: %v", ref.Slug.ValueString(), err),
+			fmt.Sprintf("Could not create Telecaster Forwarding Pipeline %q: %v", pipelineMsg.Ref.Slug, err),
 		)
 		return
 	}
@@ -266,13 +223,21 @@ func (r *ResourceForwardingPipeline) Create(ctx context.Context, req resource.Cr
 		Timeout: 10 * time.Minute,
 	}
 
-	_, err = pollConf.WaitForStateContext(ctx)
-	if err != nil {
+	if finalPipelineRaw, err := pollConf.WaitForStateContext(ctx); err != nil {
 		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
 		return
+	} else if finalPipeline, ok := finalPipelineRaw.(*telecastertypesv1beta1.ForwardingPipeline); !ok {
+		resp.Diagnostics.AddError(
+			"Telecaster Pipeline Type Assertion Error",
+			fmt.Sprintf("Expected ForwardingPipeline type but got %T instead. This is a bug in the provider.", finalPipelineRaw),
+		)
+	} else {
+		resp.Diagnostics.Append(data.Set(ctx, finalPipeline)...)
 	}
 
-	data.Set(pipeline.Msg.Pipeline)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -284,11 +249,14 @@ func (r *ResourceForwardingPipeline) Delete(ctx context.Context, req resource.De
 		return
 	}
 
-	var ref ForwardingPipelineRefModel
-	resp.Diagnostics.Append(data.Ref.As(ctx, &ref, basetypes.ObjectAsOptions{})...)
+	pipelineMsg, diags := data.ToMsg(ctx)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 
 	_, err := r.Client.DeletePipeline(ctx, connect.NewRequest(&clusterv1beta1.DeletePipelineRequest{
-		Ref: ref.ToProto(),
+		Ref: pipelineMsg.Ref,
 	}))
 	if err != nil {
 		if coreweave.IsNotFoundError(err) {
@@ -296,12 +264,9 @@ func (r *ResourceForwardingPipeline) Delete(ctx context.Context, req resource.De
 			return
 		}
 
-		var ref ForwardingPipelineRefModel
-		resp.Diagnostics.Append(data.Ref.As(ctx, &ref, basetypes.ObjectAsOptions{})...)
-
 		resp.Diagnostics.AddError(
 			"Error Deleting Telecaster Forwarding Pipeline",
-			fmt.Sprintf("Could not delete Telecaster Forwarding Pipeline %q: %v", ref.Slug.ValueString(), err),
+			fmt.Sprintf("Could not delete Telecaster Forwarding Pipeline %q: %v", pipelineMsg.Ref.Slug, err),
 		)
 		return
 	}
@@ -315,7 +280,7 @@ func (r *ResourceForwardingPipeline) Delete(ctx context.Context, req resource.De
 		},
 		Refresh: func() (result any, state string, err error) {
 			getResp, err := r.Client.GetPipeline(ctx, connect.NewRequest(&clusterv1beta1.GetPipelineRequest{
-				Ref: ref.ToProto(),
+				Ref: pipelineMsg.Ref,
 			}))
 			if err != nil {
 				if coreweave.IsNotFoundError(err) {
@@ -328,11 +293,11 @@ func (r *ResourceForwardingPipeline) Delete(ctx context.Context, req resource.De
 		Timeout: 10 * time.Minute,
 	}
 
-	_, err = pollConf.WaitForStateContext(ctx)
-	if err != nil {
+	if _, err = pollConf.WaitForStateContext(ctx); err != nil {
 		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
 		return
 	}
+	resp.State.RemoveResource(ctx)
 }
 
 func (r *ResourceForwardingPipeline) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
@@ -342,21 +307,27 @@ func (r *ResourceForwardingPipeline) Read(ctx context.Context, req resource.Read
 		return
 	}
 
-	var ref ForwardingPipelineRefModel
-	resp.Diagnostics.Append(data.Ref.As(ctx, &ref, basetypes.ObjectAsOptions{})...)
+	pipelineMsg, diags := data.ToMsg(ctx)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 
-	pipeline, err := r.Client.GetPipeline(ctx, connect.NewRequest(&clusterv1beta1.GetPipelineRequest{
-		Ref: ref.ToProto(),
+	getResp, err := r.Client.GetPipeline(ctx, connect.NewRequest(&clusterv1beta1.GetPipelineRequest{
+		Ref: pipelineMsg.Ref,
 	}))
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Error Reading Telecaster Forwarding Pipeline",
-			fmt.Sprintf("Could not read Telecaster Forwarding Pipeline %q: %v", ref.Slug.ValueString(), err),
+			fmt.Sprintf("Could not read Telecaster Forwarding Pipeline %q: %v", pipelineMsg.Ref.Slug, err),
 		)
 		return
 	}
 
-	data.Set(pipeline.Msg.Pipeline)
+	resp.Diagnostics.Append(data.Set(ctx, getResp.Msg.Pipeline)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -367,26 +338,19 @@ func (r *ResourceForwardingPipeline) Update(ctx context.Context, req resource.Up
 		return
 	}
 
-	var ref ForwardingPipelineRefModel
-	resp.Diagnostics.Append(data.Ref.As(ctx, &ref, basetypes.ObjectAsOptions{})...)
-
-	if _, err := r.Client.UpdatePipeline(ctx, connect.NewRequest(&clusterv1beta1.UpdatePipelineRequest{
-		Ref: ref.ToProto(),
-	})); err != nil {
-		resp.Diagnostics.AddError(
-			"Error Updating Telecaster Forwarding Pipeline",
-			fmt.Sprintf("Could not update Telecaster Forwarding Pipeline %q: %v", ref.Slug.ValueString(), err),
-		)
+	pipelineMsg, diags := data.ToMsg(ctx)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	pipeline, err := r.Client.GetPipeline(ctx, connect.NewRequest(&clusterv1beta1.GetPipelineRequest{
-		Ref: ref.ToProto(),
-	}))
-	if err != nil {
+	if _, err := r.Client.UpdatePipeline(ctx, connect.NewRequest(&clusterv1beta1.UpdatePipelineRequest{
+		Ref: pipelineMsg.Ref,
+		Spec: pipelineMsg.Spec,
+	})); err != nil {
 		resp.Diagnostics.AddError(
-			"Error Reading Telecaster Forwarding Pipeline",
-			fmt.Sprintf("Could not read Telecaster Forwarding Pipeline %q: %v", ref.Slug.ValueString(), err),
+			"Error Updating Telecaster Forwarding Pipeline",
+			fmt.Sprintf("Could not update Telecaster Forwarding Pipeline %q: %v", pipelineMsg.Ref.Slug, err),
 		)
 		return
 	}
@@ -400,7 +364,7 @@ func (r *ResourceForwardingPipeline) Update(ctx context.Context, req resource.Up
 		},
 		Refresh: func() (result any, state string, err error) {
 			getResp, err := r.Client.GetPipeline(ctx, connect.NewRequest(&clusterv1beta1.GetPipelineRequest{
-				Ref: ref.ToProto(),
+				Ref: pipelineMsg.Ref,
 			}))
 			if err != nil {
 				return nil, telecastertypesv1beta1.ForwardingPipelineState_FORWARDING_PIPELINE_STATE_UNSPECIFIED.String(), err
@@ -410,12 +374,21 @@ func (r *ResourceForwardingPipeline) Update(ctx context.Context, req resource.Up
 		Timeout: 10 * time.Minute,
 	}
 
-	_, err = pollConf.WaitForStateContext(ctx)
+	finalPipelineRaw, err := pollConf.WaitForStateContext(ctx)
 	if err != nil {
 		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
 		return
+	} else if finalPipeline, ok := finalPipelineRaw.(*typesv1beta1.ForwardingPipeline); !ok {
+		resp.Diagnostics.AddError(
+			"Telecaster Pipeline Type Assertion Error",
+			fmt.Sprintf("Expected Pipeline type but got %T instead. This is a bug in the provider.", finalPipelineRaw),
+		)
+	} else {
+		resp.Diagnostics.Append(data.Set(ctx, finalPipeline)...)
 	}
 
-	data.Set(pipeline.Msg.Pipeline)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
