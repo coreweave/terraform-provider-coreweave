@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.7.1](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.7.0...v0.7.1) (2025-11-14)
+
+
+### Bug Fixes
+
+* debug request/response data for every request ([#157](https://github.com/coreweave/terraform-provider-coreweave/issues/157)) ([bae7da5](https://github.com/coreweave/terraform-provider-coreweave/commit/bae7da5d9a8dabc4b67fcf82f9f392c4a2a38712))
+* s3 lifecycle noncurrent version transitions are not applied ([#161](https://github.com/coreweave/terraform-provider-coreweave/issues/161)) ([5ca2088](https://github.com/coreweave/terraform-provider-coreweave/commit/5ca20883a8271fb239c0fda2ab2f2627dab09c22))
+* use prototext to format debug payloads ([#159](https://github.com/coreweave/terraform-provider-coreweave/issues/159)) ([af811f6](https://github.com/coreweave/terraform-provider-coreweave/commit/af811f679002a82a7bbaf5458d6aa276d26e399e))
+
 ## [0.7.0](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.6.0...v0.7.0) (2025-10-31)
 
 
