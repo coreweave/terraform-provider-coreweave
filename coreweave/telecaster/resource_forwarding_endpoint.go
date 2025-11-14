@@ -26,7 +26,6 @@ import (
 
 var (
 	_ resource.ResourceWithConfigure        = &ForwardingEndpointResource{}
-	_ resource.ResourceWithConfigValidators = &ForwardingEndpointResource{}
 	_ resource.ResourceWithValidateConfig   = &ForwardingEndpointResource{}
 	_ resource.ResourceWithImportState      = &ForwardingEndpointResource{}
 )
@@ -121,20 +120,6 @@ func (f *ForwardingEndpointResource) ImportState(ctx context.Context, req resour
 
 func (f *ForwardingEndpointResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + "_telecaster_forwarding_endpoint"
-}
-
-// ConfigValidators implements resource.ResourceWithConfigValidators.
-func (f *ForwardingEndpointResource) ConfigValidators(context.Context) []resource.ConfigValidator {
-	// spec := path.MatchRoot("spec")
-	// return []resource.ConfigValidator{
-	// 	resourcevalidator.ExactlyOneOf(
-	// 		spec.AtName("kafka"),
-	// 		spec.AtName("prometheus"),
-	// 		spec.AtName("s3"),
-	// 		spec.AtName("https"),
-	// 	),
-	// }
-	return []resource.ConfigValidator{}
 }
 
 func (f *ForwardingEndpointResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
