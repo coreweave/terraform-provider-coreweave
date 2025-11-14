@@ -15,16 +15,30 @@ BINARY_NAME := terraform-provider-$(PROVIDER_NAME)_v$(VERSION)
 TEST_ACC_PACKAGES?=./coreweave/cks ./coreweave/networking
 TEST_ACC_SWEEP_ZONE?=US-LAB-01A
 
+export CGO_ENABLED?=0
+
+# this can be overridden to skip pre-install cleanup
+PREINSTALL := clean
+
+# Gather all Go source files, which is useful for deciding when to rebuild
+gofiles = go.mod go.sum $(shell find . -type f -name '*.go')
+
 # Build and install the provider binary
-install: clean
+install: $(PREINSTALL) $(PLUGIN_DIR)/$(BINARY_NAME)
+.NOTPARALLEL: install
+
+$(PLUGIN_DIR)/$(BINARY_NAME): $(gofiles)
 	mkdir -p $(PLUGIN_DIR)
 	go build -o $(PLUGIN_DIR)/$(BINARY_NAME)
 	chmod +x $(PLUGIN_DIR)/$(BINARY_NAME)
 	@echo "Provider binary installed at $(PLUGIN_DIR)/$(BINARY_NAME)"
 
+debug:
+	go build -gcflags=all='-N -l' -o __debug_bin_manual . && dlv exec --accept-multiclient --continue --headless ./__debug_bin_manual -- -debug
+
 # Clean up the generated binary
 clean:
-	rm -f $(PLUGIN_DIR)/$(BINARY_NAME)
+	rm -f $(PLUGIN_DIR)/$(BINARY_NAME) ./__debug_*
 	@echo "Cleaned up $(PLUGIN_DIR)/$(BINARY_NAME)"
 
 lint:
@@ -51,4 +65,4 @@ testacc:
 		TF_ACC=1 go test -v -cover -timeout=45m ./coreweave/$$suite; \
 	done
 
-.PHONY: fmt lint test testacc testacc-sweep build install generate clean
+.PHONY: debug fmt lint test testacc testacc-sweep build install generate clean
