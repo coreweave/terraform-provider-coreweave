@@ -6,8 +6,8 @@ import (
 	"time"
 
 	clusterv1beta1 "bsr.core-services.ingress.coreweave.com/gen/go/coreweave/o11y-mgmt/protocolbuffers/go/coreweave/telecaster/svc/cluster/v1beta1"
-	telecastertypesv1beta1 "bsr.core-services.ingress.coreweave.com/gen/go/coreweave/o11y-mgmt/protocolbuffers/go/coreweave/telecaster/types/v1beta1"
 	typesv1beta1 "bsr.core-services.ingress.coreweave.com/gen/go/coreweave/o11y-mgmt/protocolbuffers/go/coreweave/telecaster/types/v1beta1"
+	"buf.build/go/protovalidate"
 	"connectrpc.com/connect"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave/telecaster/internal/model"
@@ -17,6 +17,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
@@ -24,8 +25,10 @@ import (
 )
 
 var (
-	_ resource.ResourceWithConfigure   = &ForwardingEndpointResource{}
-	_ resource.ResourceWithImportState = &ForwardingEndpointResource{}
+	_ resource.ResourceWithConfigure        = &ForwardingEndpointResource{}
+	_ resource.ResourceWithConfigValidators = &ForwardingEndpointResource{}
+	_ resource.ResourceWithValidateConfig   = &ForwardingEndpointResource{}
+	_ resource.ResourceWithImportState      = &ForwardingEndpointResource{}
 )
 
 func NewForwardingEndpointResource() resource.Resource {
@@ -34,6 +37,20 @@ func NewForwardingEndpointResource() resource.Resource {
 
 type ForwardingEndpointResource struct {
 	coretf.CoreResource
+}
+
+func (f *ForwardingEndpointResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
+	var data ForwardingEndpointResourceModel
+	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	msg, diags := data.ToMsg(ctx)
+	resp.Diagnostics.Append(diags...)
+	if err := protovalidate.Validate(msg); err != nil {
+		resp.Diagnostics.AddError("Validation Error", err.Error())
+	}
 }
 
 type ForwardingEndpointResourceModel struct {
@@ -72,7 +89,7 @@ func (e *ForwardingEndpointResourceModel) ToMsg(ctx context.Context) (msg *types
 	return
 }
 
-func (e *ForwardingEndpointResourceModel) Set(ctx context.Context, data *telecastertypesv1beta1.ForwardingEndpoint) (diagnostics diag.Diagnostics) {
+func (e *ForwardingEndpointResourceModel) Set(ctx context.Context, data *typesv1beta1.ForwardingEndpoint) (diagnostics diag.Diagnostics) {
 	var ref model.ForwardingEndpointRefModel
 	// calling .As ensures that any nested `types.Object`s are properly initialized.
 	diagnostics.Append(e.Ref.As(ctx, &ref, basetypes.ObjectAsOptions{})...)
@@ -89,7 +106,7 @@ func (e *ForwardingEndpointResourceModel) Set(ctx context.Context, data *telecas
 	e.Spec = specObj
 
 	var status model.ForwardingEndpointStatusModel
-	diagnostics.Append(e.Status.As(ctx, &status, basetypes.ObjectAsOptions{})...)
+	diagnostics.Append(e.Status.As(ctx, &status, basetypes.ObjectAsOptions{UnhandledNullAsEmpty: true, UnhandledUnknownAsEmpty: true})...)
 	diagnostics.Append(status.Set(data.Status)...)
 	statusObj, diags := types.ObjectValueFrom(ctx, e.Status.AttributeTypes(ctx), &status)
 	diagnostics.Append(diags...)
@@ -106,6 +123,20 @@ func (f *ForwardingEndpointResource) Metadata(ctx context.Context, req resource.
 	resp.TypeName = req.ProviderTypeName + "_telecaster_forwarding_endpoint"
 }
 
+// ConfigValidators implements resource.ResourceWithConfigValidators.
+func (f *ForwardingEndpointResource) ConfigValidators(context.Context) []resource.ConfigValidator {
+	// spec := path.MatchRoot("spec")
+	// return []resource.ConfigValidator{
+	// 	resourcevalidator.ExactlyOneOf(
+	// 		spec.AtName("kafka"),
+	// 		spec.AtName("prometheus"),
+	// 		spec.AtName("s3"),
+	// 		spec.AtName("https"),
+	// 	),
+	// }
+	return []resource.ConfigValidator{}
+}
+
 func (f *ForwardingEndpointResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		MarkdownDescription: "CoreWeave Telecaster forwarding endpoint",
@@ -117,6 +148,7 @@ func (f *ForwardingEndpointResource) Schema(ctx context.Context, req resource.Sc
 					"slug": schema.StringAttribute{
 						MarkdownDescription: "The slug of the forwarding endpoint. Used as a unique identifier.",
 						Required:            true,
+						Validators:          []validator.String{},
 					},
 				},
 			},
@@ -335,18 +367,18 @@ func (f *ForwardingEndpointResource) Create(ctx context.Context, req resource.Cr
 
 	pollConf := retry.StateChangeConf{
 		Pending: []string{
-			// telecastertypesv1beta1.ForwardingEndpointState_FORWARDING_ENDPOINT_STATE_PENDING.String(),
+			// typesv1beta1.ForwardingEndpointState_FORWARDING_ENDPOINT_STATE_PENDING.String(),
 		},
 		Target: []string{
-			telecastertypesv1beta1.ForwardingEndpointState_FORWARDING_ENDPOINT_STATE_PENDING.String(),
-			telecastertypesv1beta1.ForwardingEndpointState_FORWARDING_ENDPOINT_STATE_CONNECTED.String(),
+			typesv1beta1.ForwardingEndpointState_FORWARDING_ENDPOINT_STATE_PENDING.String(),
+			typesv1beta1.ForwardingEndpointState_FORWARDING_ENDPOINT_STATE_CONNECTED.String(),
 		},
 		Refresh: func() (result any, state string, err error) {
 			getResp, err := f.Client.GetEndpoint(ctx, connect.NewRequest(&clusterv1beta1.GetEndpointRequest{
 				Ref: endpointMsg.Ref,
 			}))
 			if err != nil {
-				return nil, telecastertypesv1beta1.ForwardingEndpointState_FORWARDING_ENDPOINT_STATE_UNSPECIFIED.String(), err
+				return nil, typesv1beta1.ForwardingEndpointState_FORWARDING_ENDPOINT_STATE_UNSPECIFIED.String(), err
 			}
 			return getResp.Msg.Endpoint, getResp.Msg.Endpoint.Status.State.String(), nil
 		},
@@ -359,7 +391,7 @@ func (f *ForwardingEndpointResource) Create(ctx context.Context, req resource.Cr
 		return
 	}
 
-	endpoint, ok := rawEndpoint.(*telecastertypesv1beta1.ForwardingEndpoint)
+	endpoint, ok := rawEndpoint.(*typesv1beta1.ForwardingEndpoint)
 	if !ok {
 		resp.Diagnostics.AddError(
 			"Error Creating Telecaster Forwarding Endpoint",
@@ -406,7 +438,7 @@ func (f *ForwardingEndpointResource) Delete(ctx context.Context, req resource.De
 
 	pollConf := retry.StateChangeConf{
 		Pending: []string{
-			telecastertypesv1beta1.ForwardingEndpointState_FORWARDING_ENDPOINT_STATE_PENDING.String(),
+			typesv1beta1.ForwardingEndpointState_FORWARDING_ENDPOINT_STATE_PENDING.String(),
 		},
 		Target: []string{
 			stateDeleted,
@@ -416,7 +448,7 @@ func (f *ForwardingEndpointResource) Delete(ctx context.Context, req resource.De
 				Ref: refMsg,
 			}))
 			if err != nil {
-				return nil, telecastertypesv1beta1.ForwardingEndpointState_FORWARDING_ENDPOINT_STATE_UNSPECIFIED.String(), err
+				return nil, typesv1beta1.ForwardingEndpointState_FORWARDING_ENDPOINT_STATE_UNSPECIFIED.String(), err
 			}
 			return result.Msg.Endpoint, result.Msg.Endpoint.Status.State.String(), nil
 		},
@@ -498,15 +530,15 @@ func (f *ForwardingEndpointResource) Update(ctx context.Context, req resource.Up
 	pollConf := retry.StateChangeConf{
 		Pending: []string{},
 		Target: []string{
-			telecastertypesv1beta1.ForwardingEndpointState_FORWARDING_ENDPOINT_STATE_PENDING.String(),
-			telecastertypesv1beta1.ForwardingEndpointState_FORWARDING_ENDPOINT_STATE_CONNECTED.String(),
+			typesv1beta1.ForwardingEndpointState_FORWARDING_ENDPOINT_STATE_PENDING.String(),
+			typesv1beta1.ForwardingEndpointState_FORWARDING_ENDPOINT_STATE_CONNECTED.String(),
 		},
 		Refresh: func() (result any, state string, err error) {
 			getResp, err := f.Client.GetEndpoint(ctx, connect.NewRequest(&clusterv1beta1.GetEndpointRequest{
 				Ref: endpointProto.Ref,
 			}))
 			if err != nil {
-				return nil, telecastertypesv1beta1.ForwardingEndpointState_FORWARDING_ENDPOINT_STATE_UNSPECIFIED.String(), err
+				return nil, typesv1beta1.ForwardingEndpointState_FORWARDING_ENDPOINT_STATE_UNSPECIFIED.String(), err
 			}
 			return getResp.Msg.Endpoint, getResp.Msg.Endpoint.Status.State.String(), nil
 		},
@@ -519,7 +551,7 @@ func (f *ForwardingEndpointResource) Update(ctx context.Context, req resource.Up
 		return
 	}
 
-	endpoint, ok := rawEndpoint.(*telecastertypesv1beta1.ForwardingEndpoint)
+	endpoint, ok := rawEndpoint.(*typesv1beta1.ForwardingEndpoint)
 	if !ok {
 		resp.Diagnostics.AddError(
 			"Error Updating Telecaster Forwarding Endpoint",

@@ -48,28 +48,24 @@ func (e *ForwardingEndpointSpecModel) Set(msg *typesv1beta1.ForwardingEndpointSp
 	e.S3 = nil
 	e.HTTPS = nil
 
-	switch cfg := msg.Config.(type) {
-	case *typesv1beta1.ForwardingEndpointSpec_Kafka:
+	switch kind := msg.WhichConfig(); kind {
+	case typesv1beta1.ForwardingEndpointSpec_Config_not_set_case:
+		diagnostics.AddError("no config set for forwarding endpoint", "Config must be set when using forwarding endpoint")
+	case typesv1beta1.ForwardingEndpointSpec_Kafka_case:
 		var kafka ForwardingEndpointKafkaModel
-		diagnostics.Append(kafka.Set(cfg.Kafka)...)
+		diagnostics.Append(kafka.Set(msg.GetKafka())...)
 		e.Kafka = &kafka
-	case *typesv1beta1.ForwardingEndpointSpec_Prometheus:
+	case typesv1beta1.ForwardingEndpointSpec_Prometheus_case:
 		e.Prometheus = new(ForwardingEndpointPrometheusModel)
-		diagnostics.Append(e.Prometheus.Set(cfg.Prometheus)...)
-	case *typesv1beta1.ForwardingEndpointSpec_S3:
+		diagnostics.Append(e.Prometheus.Set(msg.GetPrometheus())...)
+	case typesv1beta1.ForwardingEndpointSpec_S3_case:
 		e.S3 = new(ForwardingEndpointS3Model)
-		diagnostics.Append(e.S3.Set(cfg.S3)...)
-	case *typesv1beta1.ForwardingEndpointSpec_Https:
+		diagnostics.Append(e.S3.Set(msg.GetS3())...)
+	case typesv1beta1.ForwardingEndpointSpec_Https_case:
 		e.HTTPS = new(ForwardingEndpointHTTPSModel)
-		diagnostics.Append(e.HTTPS.Set(cfg.Https)...)
-	case nil:
-		diagnostics.AddWarning("unexpected nil spec from pipelines", "the forwarding endpoint spec config was nil")
+		diagnostics.Append(e.HTTPS.Set(msg.GetHttps())...)
 	default:
-		diagnostics.AddError("Unsupported forwarding endpoint type", fmt.Sprintf("unsupported forwarding endpoint config type: %T", cfg))
-	}
-
-	if diagnostics.HasError() {
-		return
+		diagnostics.AddError("Unsupported forwarding endpoint type", fmt.Sprintf("unsupported forwarding endpoint config type: %s (%d)", kind.String(), kind))
 	}
 
 	return
@@ -87,20 +83,21 @@ func (k *ForwardingEndpointKafkaModel) Set(msg *typesv1beta1.KafkaConfig) (diagn
 	k.Topic = types.StringValue(msg.Topic)
 
 	var tls *TLSConfigModel
-	if msg.Tls != nil {
+	if msg.HasTls() {
 		tls = new(TLSConfigModel)
 		tls.Set(msg.Tls)
 	}
 	k.TLS = tls
 
-	switch auth := msg.Auth.(type) {
-	case *typesv1beta1.KafkaConfig_Scram:
-		k.ScramAuth = new(KafkaScramAuthModel)
-		k.ScramAuth.Set(auth.Scram)
-	case nil:
-		// no auth configured
+	switch kind := msg.WhichAuth(); kind {
+	case typesv1beta1.KafkaConfig_Auth_not_set_case:
+		diagnostics.AddError("no auth set for kafka", "Auth must be set when using kafka endpoint")
+	case typesv1beta1.KafkaConfig_Scram_case:
+		scram := new(KafkaScramAuthModel)
+		diagnostics.Append(scram.Set(msg.GetScram())...)
+		k.ScramAuth = scram
 	default:
-		diagnostics.AddError("Unsupported Kafka auth type", fmt.Sprintf("unsupported kafka auth type: %T", auth))
+		diagnostics.AddError("Unsupported Kafka auth type", fmt.Sprintf("unsupported kafka auth type: %s (%d)", kind.String(), kind))
 	}
 
 	return
@@ -254,16 +251,20 @@ func (p *PrometheusCredentialsModel) Set(ctx context.Context, msg *typesv1beta1.
 	p.BearerToken = nil
 	p.AuthHeaders = nil
 
-	switch auth := msg.Auth.(type) {
-	case *typesv1beta1.PrometheusCredentials_BasicAuth:
+	switch kind := msg.WhichAuth(); kind {
+	case typesv1beta1.PrometheusCredentials_Auth_not_set_case:
+		diagnostics.AddError("no auth set for prometheus", "Auth must be set when using prometheus endpoint")
+	case typesv1beta1.PrometheusCredentials_BasicAuth_case:
 		p.BasicAuth = new(BasicAuthCredentialsModel)
-		diagnostics.Append(p.BasicAuth.Set(ctx, auth.BasicAuth)...)
-	case *typesv1beta1.PrometheusCredentials_BearerToken:
+		diagnostics.Append(p.BasicAuth.Set(ctx, msg.GetBasicAuth())...)
+	case typesv1beta1.PrometheusCredentials_BearerToken_case:
 		p.BearerToken = new(BearerTokenCredentialsModel)
-		diagnostics.Append(p.BearerToken.Set(ctx, auth.BearerToken)...)
-	case *typesv1beta1.PrometheusCredentials_AuthHeaders:
+		diagnostics.Append(p.BearerToken.Set(ctx, msg.GetBearerToken())...)
+	case typesv1beta1.PrometheusCredentials_AuthHeaders_case:
 		p.AuthHeaders = new(AuthHeadersCredentialsModel)
-		diagnostics.Append(p.AuthHeaders.Set(ctx, auth.AuthHeaders)...)
+		diagnostics.Append(p.AuthHeaders.Set(ctx, msg.GetAuthHeaders())...)
+	default:
+		diagnostics.AddError("Unsupported Prometheus auth type", fmt.Sprintf("unsupported prometheus auth type: %s (%d)", kind.String(), kind))
 	}
 
 	return
@@ -448,7 +449,7 @@ func (s *ForwardingEndpointSpecModel) ToMsg() (spec *typesv1beta1.ForwardingEndp
 	if len(configuredImplementations) != 1 {
 		diagnostics.AddError(
 			"Invalid Forwarding Endpoint Spec",
-			fmt.Sprintf("exactly one auth method should be set, got %d: %s", len(configuredImplementations), strings.Join(configuredImplementations, ", ")),
+			fmt.Sprintf("exactly 1 auth method should be set, got %d: %s", len(configuredImplementations), strings.Join(configuredImplementations, ", ")),
 		)
 	}
 
