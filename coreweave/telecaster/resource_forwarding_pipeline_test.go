@@ -50,7 +50,7 @@ func TestForwardingPipelineResourceSpecModel_ToProto(t *testing.T) {
 	specBase := func() *telecaster.ForwardingPipelineSpecModel {
 		return &telecaster.ForwardingPipelineSpecModel{
 			Enabled: types.BoolValue(true),
-			Source: telecaster.TelemetryStreamRefModel{
+			Source: model.TelemetryStreamRefModel{
 				Slug: types.StringValue("example-stream"),
 			},
 			Destination: model.ForwardingEndpointRefModel{
@@ -100,7 +100,7 @@ func TestForwardingPipelineResourceSpecModel_ToProto(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			assert.Equal(t, tt.expected, tt.input.ToProto())
+			assert.Equal(t, tt.expected, tt.input.ToMsg())
 		})
 	}
 }

@@ -56,12 +56,12 @@ func (m *ForwardingPipelineRefModel) ToProto() *telecastertypesv1beta1.Forwardin
 }
 
 type ForwardingPipelineSpecModel struct {
-	Source      TelemetryStreamRefModel    `tfsdk:"source"`
+	Source      model.TelemetryStreamRefModel    `tfsdk:"source"`
 	Destination model.ForwardingEndpointRefModel `tfsdk:"destination"`
-	Enabled     types.Bool                 `tfsdk:"enabled"`
+	Enabled     types.Bool                       `tfsdk:"enabled"`
 }
 
-func (m *ForwardingPipelineSpecModel) ToProto() *telecastertypesv1beta1.ForwardingPipelineSpec {
+func (m *ForwardingPipelineSpecModel) ToMsg() *telecastertypesv1beta1.ForwardingPipelineSpec {
 	if m == nil {
 		return nil
 	}
@@ -225,8 +225,8 @@ func (r *ResourceForwardingPipeline) Create(ctx context.Context, req resource.Cr
 	}
 
 	createReq := connect.NewRequest(&clusterv1beta1.CreatePipelineRequest{
-		Ref: ref.ToProto(),
-		Spec: data.Spec.ToProto(),
+		Ref:  ref.ToProto(),
+		Spec: data.Spec.ToMsg(),
 	})
 
 	payloadString, _ := protojson.Marshal(createReq.Msg)
