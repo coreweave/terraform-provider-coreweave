@@ -13,6 +13,7 @@ import (
 	"github.com/coreweave/terraform-provider-coreweave/coreweave/telecaster/internal/model"
 	"github.com/coreweave/terraform-provider-coreweave/internal/coretf"
 	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
+	"github.com/hashicorp/terraform-plugin-framework-validators/resourcevalidator"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -27,6 +28,7 @@ import (
 var (
 	_ resource.ResourceWithConfigure        = &ForwardingEndpointResource{}
 	_ resource.ResourceWithValidateConfig   = &ForwardingEndpointResource{}
+	_ resource.ResourceWithConfigValidators = &ForwardingEndpointResource{}
 	_ resource.ResourceWithImportState      = &ForwardingEndpointResource{}
 )
 
@@ -36,20 +38,6 @@ func NewForwardingEndpointResource() resource.Resource {
 
 type ForwardingEndpointResource struct {
 	coretf.CoreResource
-}
-
-func (f *ForwardingEndpointResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
-	var data ForwardingEndpointResourceModel
-	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
-
-	msg, diags := data.ToMsg(ctx)
-	resp.Diagnostics.Append(diags...)
-	if err := protovalidate.Validate(msg); err != nil {
-		resp.Diagnostics.AddError("Validation Error", err.Error())
-	}
 }
 
 type ForwardingEndpointResourceModel struct {
@@ -112,6 +100,36 @@ func (e *ForwardingEndpointResourceModel) Set(ctx context.Context, data *typesv1
 	e.Status = statusObj
 
 	return
+}
+
+func (f *ForwardingEndpointResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
+	var data ForwardingEndpointResourceModel
+	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	msg, diags := data.ToMsg(ctx)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	if err := protovalidate.Validate(msg); err != nil {
+		resp.Diagnostics.AddError("Validation Error", err.Error())
+	}
+}
+
+func (f *ForwardingEndpointResource) ConfigValidators(context.Context) []resource.ConfigValidator {
+	spec := path.MatchRoot("spec")
+	return []resource.ConfigValidator{
+		resourcevalidator.ExactlyOneOf(
+			spec.AtName("https"),
+			spec.AtName("kafka"),
+			spec.AtName("prometheus"),
+			spec.AtName("s3"),
+		),
+	}
 }
 
 func (f *ForwardingEndpointResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
@@ -412,27 +430,24 @@ func (f *ForwardingEndpointResource) Delete(ctx context.Context, req resource.De
 	if _, err := f.Client.DeleteEndpoint(ctx, connect.NewRequest(&clusterv1beta1.DeleteEndpointRequest{
 		Ref: refMsg,
 	})); err != nil {
-		if coreweave.IsNotFoundError(err) {
-			return
-		}
 		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
 		return
 	}
-
-	const stateDeleted = "deleted"
 
 	pollConf := retry.StateChangeConf{
 		Pending: []string{
 			typesv1beta1.ForwardingEndpointState_FORWARDING_ENDPOINT_STATE_PENDING.String(),
 		},
 		Target: []string{
-			stateDeleted,
 		},
 		Refresh: func() (any, string, error) {
 			result, err := f.Client.GetEndpoint(ctx, connect.NewRequest(&clusterv1beta1.GetEndpointRequest{
 				Ref: refMsg,
 			}))
 			if err != nil {
+				if coreweave.IsNotFoundError(err) {
+					return nil, "", nil
+				}
 				return nil, typesv1beta1.ForwardingEndpointState_FORWARDING_ENDPOINT_STATE_UNSPECIFIED.String(), err
 			}
 			return result.Msg.Endpoint, result.Msg.Endpoint.Status.State.String(), nil
