@@ -8,6 +8,7 @@ import (
 	clusterv1beta1 "bsr.core-services.ingress.coreweave.com/gen/go/coreweave/o11y-mgmt/protocolbuffers/go/coreweave/telecaster/svc/cluster/v1beta1"
 	telecastertypesv1beta1 "bsr.core-services.ingress.coreweave.com/gen/go/coreweave/o11y-mgmt/protocolbuffers/go/coreweave/telecaster/types/v1beta1"
 	typesv1beta1 "bsr.core-services.ingress.coreweave.com/gen/go/coreweave/o11y-mgmt/protocolbuffers/go/coreweave/telecaster/types/v1beta1"
+	"buf.build/go/protovalidate"
 	"connectrpc.com/connect"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave/telecaster/internal/model"
@@ -23,8 +24,9 @@ import (
 )
 
 var (
-	_ resource.ResourceWithConfigure   = &ResourceForwardingPipeline{}
-	_ resource.ResourceWithImportState = &ResourceForwardingPipeline{}
+	_ resource.ResourceWithConfigure      = &ResourceForwardingPipeline{}
+	_ resource.ResourceWithValidateConfig = &ResourceForwardingPipeline{}
+	_ resource.ResourceWithImportState    = &ResourceForwardingPipeline{}
 )
 
 func NewForwardingPipelineResource() resource.Resource {
@@ -91,6 +93,25 @@ func (m *ResourceForwardingPipelineModel) ToMsg(ctx context.Context) (msg *telec
 	}
 
 	return
+}
+
+// ValidateConfig implements resource.ResourceWithValidateConfig.
+func (r *ResourceForwardingPipeline) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
+	var data ResourceForwardingPipelineModel
+	resp.Diagnostics.Append(data.Set(ctx, &telecastertypesv1beta1.ForwardingPipeline{})...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	msg, diags := data.ToMsg(ctx)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	if err := protovalidate.Validate(msg); err != nil {
+		resp.Diagnostics.AddError("Validation Error", err.Error())
+	}
 }
 
 func (r *ResourceForwardingPipeline) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
@@ -345,7 +366,7 @@ func (r *ResourceForwardingPipeline) Update(ctx context.Context, req resource.Up
 	}
 
 	if _, err := r.Client.UpdatePipeline(ctx, connect.NewRequest(&clusterv1beta1.UpdatePipelineRequest{
-		Ref: pipelineMsg.Ref,
+		Ref:  pipelineMsg.Ref,
 		Spec: pipelineMsg.Spec,
 	})); err != nil {
 		resp.Diagnostics.AddError(

@@ -73,8 +73,8 @@ type ForwardingPipelineStatusModel struct {
 }
 
 func (s *ForwardingPipelineStatusModel) Set(status *typesv1beta1.ForwardingPipelineStatus) (diagnostics diag.Diagnostics) {
-	s.CreatedAt = timetypes.NewRFC3339TimeValue(status.CreatedAt.AsTime())
-	s.UpdatedAt = timetypes.NewRFC3339TimeValue(status.UpdatedAt.AsTime())
+	s.CreatedAt = timestampToTimeValue(status.CreatedAt)
+	s.UpdatedAt = timestampToTimeValue(status.UpdatedAt)
 	s.StateCode = types.Int32Value(int32(status.State.Number()))
 	s.State = types.StringValue(status.State.String())
 	s.StateMessage = types.StringPointerValue(status.StateMessage)

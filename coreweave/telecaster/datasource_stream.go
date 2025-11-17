@@ -7,6 +7,7 @@ import (
 
 	clusterv1beta1 "bsr.core-services.ingress.coreweave.com/gen/go/coreweave/o11y-mgmt/protocolbuffers/go/coreweave/telecaster/svc/cluster/v1beta1"
 	typesv1beta1 "bsr.core-services.ingress.coreweave.com/gen/go/coreweave/o11y-mgmt/protocolbuffers/go/coreweave/telecaster/types/v1beta1"
+	"buf.build/go/protovalidate"
 	"connectrpc.com/connect"
 
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
@@ -21,7 +22,8 @@ import (
 )
 
 var (
-	_ datasource.DataSourceWithConfigure = &TelemetryStreamDataSource{}
+	_ datasource.DataSourceWithConfigure      = &TelemetryStreamDataSource{}
+	_ datasource.DataSourceWithValidateConfig = &TelemetryStreamDataSource{}
 
 	streamSpecKinds = []string{
 		typesv1beta1.TelemetryStreamSpec_Kind_not_set_case.String(),
@@ -100,6 +102,25 @@ func (s *TelemetryStreamDataSourceModel) toGetRequest(ctx context.Context) (msg 
 	msg = &clusterv1beta1.GetStreamRequest{Ref: refMsg}
 
 	return
+}
+
+func (s *TelemetryStreamDataSource) ValidateConfig(ctx context.Context, req datasource.ValidateConfigRequest, resp *datasource.ValidateConfigResponse) {
+	var data TelemetryStreamDataSourceModel
+
+	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	msg, diags := data.toGetRequest(ctx)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	if err := protovalidate.Validate(msg); err != nil {
+		resp.Diagnostics.AddError("Validation Error", err.Error())
+	}
 }
 
 func (s *TelemetryStreamDataSource) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
