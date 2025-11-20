@@ -25,9 +25,9 @@ func tfLogBaseFields(req connect.AnyRequest) map[string]any {
 
 func logFormatMessage(message proto.Message) string {
 	return prototext.MarshalOptions{
-		Multiline: false,
+		Multiline:    false,
 		AllowPartial: true,
-		EmitUnknown: true,
+		EmitUnknown:  true,
 	}.Format(message)
 }
 
