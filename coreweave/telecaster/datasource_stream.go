@@ -231,18 +231,3 @@ func (s *TelemetryStreamDataSource) Read(ctx context.Context, req datasource.Rea
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
-
-// MustRenderTelemetryStreamDataSource is a helper to render HCL for use in acceptance testing.
-// It should not be used by clients of this library.
-func MustRenderTelemetryStreamDataSource(ctx context.Context, resourceName string, stream *TelemetryStreamDataSourceModel) string {
-	// TODO: Implement HCL rendering for TelemetryStream data source
-	// This requires using hclwrite package to construct proper HCL
-	// Reference: coreweave/cks/data_source_cluster.go:MustRenderClusterDataSource
-	//
-	// The implementation should:
-	// 1. Create an hclwrite.NewEmptyFile()
-	// 2. Add a data block for "coreweave_telecaster_stream"
-	// 3. Set attributes from the model (ref with slug)
-	// 4. Return the rendered HCL string
-	panic("MustRenderTelemetryStreamDataSource not yet implemented - TODO")
-}

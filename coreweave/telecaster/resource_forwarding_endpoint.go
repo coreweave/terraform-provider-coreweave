@@ -1,7 +1,6 @@
 package telecaster
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"time"
@@ -13,7 +12,6 @@ import (
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave/telecaster/internal/model"
 	"github.com/coreweave/terraform-provider-coreweave/internal/coretf"
-	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
 	"github.com/hashicorp/terraform-plugin-framework-validators/resourcevalidator"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -27,7 +25,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/retry"
-	"github.com/zclconf/go-cty/cty"
 )
 
 var (
@@ -548,61 +545,4 @@ func (f *ForwardingEndpointResource) Update(ctx context.Context, req resource.Up
 	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
-}
-
-// MustRenderForwardingEndpointResource is a helper to render HCL for use in acceptance testing.
-// It should not be used by clients of this library.
-func MustRenderForwardingEndpointResource(ctx context.Context, resourceName string, endpoint *ForwardingEndpointResourceModel) string {
-	file := hclwrite.NewEmptyFile()
-	body := file.Body()
-
-	resource := body.AppendNewBlock("resource", []string{"coreweave_telecaster_forwarding_endpoint", resourceName})
-	resourceBody := resource.Body()
-
-	// Extract refModel and spec from the model
-	var refModel model.ForwardingEndpointRefModel
-	if err := endpoint.Ref.As(ctx, &refModel, basetypes.ObjectAsOptions{UnhandledNullAsEmpty: true}); err != nil {
-		panic(fmt.Sprintf("failed to extract ref: %v", err))
-	}
-
-	var specModel model.ForwardingEndpointSpecModel
-	if err := endpoint.Spec.As(ctx, &specModel, basetypes.ObjectAsOptions{UnhandledNullAsEmpty: true}); err != nil {
-		panic(fmt.Sprintf("failed to extract spec: %v", err))
-	}
-
-	// Set refMap nested object
-	refMap := make(map[string]cty.Value)
-	refMap["slug"] = cty.StringVal(refModel.Slug.ValueString())
-
-	specMap := make(map[string]cty.Value)
-	specMap["display_name"] = cty.StringVal(specModel.DisplayName.ValueString())
-
-	if specModel.S3 != nil {
-		specMap["s3"] = cty.ObjectVal(map[string]cty.Value{
-			"uri":                  cty.StringVal(specModel.S3.URI.ValueString()),
-			"region":               cty.StringVal(specModel.S3.Region.ValueString()),
-			"requires_credentials": cty.BoolVal(specModel.S3.RequiresCredentials.ValueBool()),
-		})
-	}
-
-	if specModel.HTTPS != nil {
-		httpsMap := make(map[string]cty.Value)
-		httpsMap["endpoint"] = cty.StringVal(specModel.HTTPS.Endpoint.ValueString())
-		if specModel.HTTPS.TLS != nil {
-			httpsMap["tls"] = cty.ObjectVal(map[string]cty.Value{
-				"ca_cert": cty.StringVal(specModel.HTTPS.TLS.CertificateAuthorityData.ValueString()),
-			})
-		}
-		specMap["https"] = cty.ObjectVal(httpsMap)
-	}
-
-	resourceBody.SetAttributeValue("ref", cty.ObjectVal(refMap))
-	resourceBody.SetAttributeValue("spec", cty.ObjectVal(specMap))
-
-	// Write to buffer and return
-	var buf bytes.Buffer
-	if _, err := file.WriteTo(&buf); err != nil {
-		panic(fmt.Sprintf("failed to write HCL: %v", err))
-	}
-	return buf.String()
 }
