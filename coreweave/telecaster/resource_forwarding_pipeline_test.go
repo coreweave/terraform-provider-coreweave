@@ -97,7 +97,7 @@ func init() {
 	})
 }
 
-func TestForwardingPipelineResourceModelRef_ToProto(t *testing.T) {
+func TestForwardingPipelineResourceModelRef_ToMsg(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -132,7 +132,7 @@ func TestForwardingPipelineResourceModelRef_ToProto(t *testing.T) {
 	}
 }
 
-func TestForwardingPipelineResourceSpecModel_ToProto(t *testing.T) {
+func TestForwardingPipelineResourceSpecModel_ToMsg(t *testing.T) {
 	t.Parallel()
 
 	specBase := func() *model.ForwardingPipelineSpecModel {
