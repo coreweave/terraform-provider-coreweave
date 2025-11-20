@@ -1,6 +1,7 @@
 package telecaster
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"time"
@@ -12,17 +13,21 @@ import (
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave/telecaster/internal/model"
 	"github.com/coreweave/terraform-provider-coreweave/internal/coretf"
+	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
 	"github.com/hashicorp/terraform-plugin-framework-validators/resourcevalidator"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
-	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/retry"
+	"github.com/zclconf/go-cty/cty"
 )
 
 var (
@@ -87,17 +92,25 @@ func (e *ForwardingEndpointResourceModel) Set(ctx context.Context, data *typesv1
 
 	var spec model.ForwardingEndpointSpecModel
 	diagnostics.Append(e.Spec.As(ctx, &spec, basetypes.ObjectAsOptions{})...)
+	if diagnostics.HasError() {
+		return
+	}
 	diagnostics.Append(spec.Set(data.Spec)...)
 	specObj, diags := types.ObjectValueFrom(ctx, e.Spec.AttributeTypes(ctx), &spec)
 	diagnostics.Append(diags...)
 	e.Spec = specObj
 
-	var status model.ForwardingEndpointStatusModel
-	diagnostics.Append(e.Status.As(ctx, &status, basetypes.ObjectAsOptions{UnhandledNullAsEmpty: true, UnhandledUnknownAsEmpty: true})...)
-	diagnostics.Append(status.Set(data.Status)...)
-	statusObj, diags := types.ObjectValueFrom(ctx, e.Status.AttributeTypes(ctx), &status)
-	diagnostics.Append(diags...)
-	e.Status = statusObj
+	if data.Status != nil {
+		var status model.ForwardingEndpointStatusModel
+		diagnostics.Append(e.Status.As(ctx, &status, basetypes.ObjectAsOptions{UnhandledNullAsEmpty: true, UnhandledUnknownAsEmpty: true})...)
+		if diagnostics.HasError() {
+			return
+		}
+		diagnostics.Append(status.Set(data.Status)...)
+		statusObj, diags := types.ObjectValueFrom(ctx, e.Status.AttributeTypes(ctx), &status)
+		diagnostics.Append(diags...)
+		e.Status = statusObj
+	}
 
 	return
 }
@@ -151,13 +164,45 @@ func (f *ForwardingEndpointResource) Schema(ctx context.Context, req resource.Sc
 					"slug": schema.StringAttribute{
 						MarkdownDescription: "The slug of the forwarding endpoint. Used as a unique identifier.",
 						Required:            true,
-						Validators:          []validator.String{},
+						PlanModifiers: []planmodifier.String{
+							stringplanmodifier.RequiresReplace(),
+						},
 					},
 				},
 			},
 			"spec": schema.SingleNestedAttribute{
 				MarkdownDescription: "The specification for the forwarding endpoint.",
 				Required:            true,
+				PlanModifiers: []planmodifier.Object{
+					objectplanmodifier.RequiresReplaceIf(func(ctx context.Context, or planmodifier.ObjectRequest, rrifr *objectplanmodifier.RequiresReplaceIfFuncResponse) {
+						if or.StateValue.IsNull() || or.PlanValue.IsUnknown() || or.ConfigValue.IsUnknown() {
+							return
+						}
+
+						var (
+							prior   model.ForwardingEndpointSpecModel
+							planned model.ForwardingEndpointSpecModel
+						)
+						rrifr.Diagnostics.Append(or.StateValue.As(ctx, &prior, basetypes.ObjectAsOptions{})...)
+						rrifr.Diagnostics.Append(or.PlanValue.As(ctx, &planned, basetypes.ObjectAsOptions{})...)
+						if rrifr.Diagnostics.HasError() {
+							return
+						}
+
+						// Render them to messages so we can easily detect the type
+						priorMsg, diags := prior.ToMsg()
+						rrifr.Diagnostics.Append(diags...)
+						plannedMsg, diags := planned.ToMsg()
+						rrifr.Diagnostics.Append(diags...)
+						if rrifr.Diagnostics.HasError() {
+							return
+						}
+
+						rrifr.RequiresReplace = plannedMsg.WhichConfig() != priorMsg.WhichConfig()
+					},
+						"If the type of the forwarding endpoint is configured and changes, Terraform will destroy and recreate the resource.",
+						"If the type of the forwarding endpoint is configured and changes, Terraform will destroy and recreate the resource."),
+				},
 				Attributes: map[string]schema.Attribute{
 					"display_name": schema.StringAttribute{
 						MarkdownDescription: "The display name of the forwarding endpoint.",
@@ -233,30 +278,6 @@ func (f *ForwardingEndpointResource) Schema(ctx context.Context, req resource.Sc
 								Optional:            true,
 								Computed:            true,
 							},
-							// "credentials": schema.SingleNestedAttribute{
-							// 	MarkdownDescription: "Credentials configuration for S3.",
-							// 	Optional:            true,
-							// 	Attributes: map[string]schema.Attribute{
-							// 		"access_key_id": schema.StringAttribute{
-							// 			MarkdownDescription: "The S3 access key ID.",
-							// 			Required:            true,
-							// 			Sensitive:           true,
-							// 			WriteOnly:           true,
-							// 		},
-							// 		"secret_access_key": schema.StringAttribute{
-							// 			MarkdownDescription: "The S3 secret access key.",
-							// 			Required:            true,
-							// 			Sensitive:           true,
-							// 			WriteOnly:           true,
-							// 		},
-							// 		"session_token": schema.StringAttribute{
-							// 			MarkdownDescription: "The S3 session token.",
-							// 			Optional:            true,
-							// 			Sensitive:           true,
-							// 			WriteOnly:           true,
-							// 		},
-							// 	},
-							// },
 						},
 					},
 					"https": schema.SingleNestedAttribute{
@@ -268,48 +289,6 @@ func (f *ForwardingEndpointResource) Schema(ctx context.Context, req resource.Sc
 								Required:            true,
 							},
 							"tls": tlsConfigModelAttribute(),
-							"basic_auth": schema.SingleNestedAttribute{
-								MarkdownDescription: "Basic authentication configuration for HTTPS.",
-								Optional:            true,
-								Attributes: map[string]schema.Attribute{
-									"username": schema.StringAttribute{
-										MarkdownDescription: "The username for basic authentication.",
-										Required:            true,
-										WriteOnly:           true,
-									},
-									"password": schema.StringAttribute{
-										MarkdownDescription: "The password for basic authentication.",
-										Required:            true,
-										Sensitive:           true,
-										WriteOnly:           true,
-									},
-								},
-							},
-							"bearer_token": schema.SingleNestedAttribute{
-								MarkdownDescription: "Bearer token authentication configuration for HTTPS.",
-								Optional:            true,
-								Attributes: map[string]schema.Attribute{
-									"token": schema.StringAttribute{
-										MarkdownDescription: "The bearer token.",
-										Required:            true,
-										Sensitive:           true,
-										WriteOnly:           true,
-									},
-								},
-							},
-							"auth_headers": schema.SingleNestedAttribute{
-								MarkdownDescription: "Authentication headers configuration for HTTPS.",
-								Optional:            true,
-								Attributes: map[string]schema.Attribute{
-									"headers": schema.MapAttribute{
-										MarkdownDescription: "A map of header names to values.",
-										ElementType:         types.StringType,
-										Required:            true,
-										Sensitive:           true,
-										WriteOnly:           true,
-									},
-								},
-							},
 						},
 					},
 				},
@@ -403,7 +382,11 @@ func (f *ForwardingEndpointResource) Create(ctx context.Context, req resource.Cr
 		return
 	}
 
-	data.Set(ctx, endpoint)
+	resp.Diagnostics.Append(data.Set(ctx, endpoint)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -438,8 +421,7 @@ func (f *ForwardingEndpointResource) Delete(ctx context.Context, req resource.De
 		Pending: []string{
 			typesv1beta1.ForwardingEndpointState_FORWARDING_ENDPOINT_STATE_PENDING.String(),
 		},
-		Target: []string{
-		},
+		Target: []string{},
 		Refresh: func() (any, string, error) {
 			result, err := f.Client.GetEndpoint(ctx, connect.NewRequest(&clusterv1beta1.GetEndpointRequest{
 				Ref: refMsg,
@@ -566,4 +548,61 @@ func (f *ForwardingEndpointResource) Update(ctx context.Context, req resource.Up
 	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+}
+
+// MustRenderForwardingEndpointResource is a helper to render HCL for use in acceptance testing.
+// It should not be used by clients of this library.
+func MustRenderForwardingEndpointResource(ctx context.Context, resourceName string, endpoint *ForwardingEndpointResourceModel) string {
+	file := hclwrite.NewEmptyFile()
+	body := file.Body()
+
+	resource := body.AppendNewBlock("resource", []string{"coreweave_telecaster_forwarding_endpoint", resourceName})
+	resourceBody := resource.Body()
+
+	// Extract refModel and spec from the model
+	var refModel model.ForwardingEndpointRefModel
+	if err := endpoint.Ref.As(ctx, &refModel, basetypes.ObjectAsOptions{UnhandledNullAsEmpty: true}); err != nil {
+		panic(fmt.Sprintf("failed to extract ref: %v", err))
+	}
+
+	var specModel model.ForwardingEndpointSpecModel
+	if err := endpoint.Spec.As(ctx, &specModel, basetypes.ObjectAsOptions{UnhandledNullAsEmpty: true}); err != nil {
+		panic(fmt.Sprintf("failed to extract spec: %v", err))
+	}
+
+	// Set refMap nested object
+	refMap := make(map[string]cty.Value)
+	refMap["slug"] = cty.StringVal(refModel.Slug.ValueString())
+
+	specMap := make(map[string]cty.Value)
+	specMap["display_name"] = cty.StringVal(specModel.DisplayName.ValueString())
+
+	if specModel.S3 != nil {
+		specMap["s3"] = cty.ObjectVal(map[string]cty.Value{
+			"uri":                  cty.StringVal(specModel.S3.URI.ValueString()),
+			"region":               cty.StringVal(specModel.S3.Region.ValueString()),
+			"requires_credentials": cty.BoolVal(specModel.S3.RequiresCredentials.ValueBool()),
+		})
+	}
+
+	if specModel.HTTPS != nil {
+		httpsMap := make(map[string]cty.Value)
+		httpsMap["endpoint"] = cty.StringVal(specModel.HTTPS.Endpoint.ValueString())
+		if specModel.HTTPS.TLS != nil {
+			httpsMap["tls"] = cty.ObjectVal(map[string]cty.Value{
+				"ca_cert": cty.StringVal(specModel.HTTPS.TLS.CertificateAuthorityData.ValueString()),
+			})
+		}
+		specMap["https"] = cty.ObjectVal(httpsMap)
+	}
+
+	resourceBody.SetAttributeValue("ref", cty.ObjectVal(refMap))
+	resourceBody.SetAttributeValue("spec", cty.ObjectVal(specMap))
+
+	// Write to buffer and return
+	var buf bytes.Buffer
+	if _, err := file.WriteTo(&buf); err != nil {
+		panic(fmt.Sprintf("failed to write HCL: %v", err))
+	}
+	return buf.String()
 }
