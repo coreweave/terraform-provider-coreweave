@@ -17,20 +17,12 @@ CoreWeave Telecaster forwarding pipeline
 
 ### Required
 
-- `ref` (Attributes) Reference to the Telecaster forwarding pipeline. (see [below for nested schema](#nestedatt--ref))
 - `spec` (Attributes) The specification for the forwarding pipeline. (see [below for nested schema](#nestedatt--spec))
 
 ### Read-Only
 
+- `ref` (Attributes) Reference to the Telecaster forwarding pipeline. (see [below for nested schema](#nestedatt--ref))
 - `status` (Attributes) The status of the forwarding pipeline. (see [below for nested schema](#nestedatt--status))
-
-<a id="nestedatt--ref"></a>
-### Nested Schema for `ref`
-
-Required:
-
-- `slug` (String) The slug of the forwarding pipeline. Used as a unique identifier.
-
 
 <a id="nestedatt--spec"></a>
 ### Nested Schema for `spec`
@@ -56,6 +48,14 @@ Required:
 
 - `slug` (String) The slug of the telemetry stream.
 
+
+
+<a id="nestedatt--ref"></a>
+### Nested Schema for `ref`
+
+Read-Only:
+
+- `slug` (String) The slug of the forwarding pipeline. Used as a unique identifier.
 
 
 <a id="nestedatt--status"></a>

@@ -55,35 +55,7 @@ Required:
 
 Optional:
 
-- `auth_headers` (Attributes) Authentication headers configuration for HTTPS. (see [below for nested schema](#nestedatt--spec--https--auth_headers))
-- `basic_auth` (Attributes) Basic authentication configuration for HTTPS. (see [below for nested schema](#nestedatt--spec--https--basic_auth))
-- `bearer_token` (Attributes) Bearer token authentication configuration for HTTPS. (see [below for nested schema](#nestedatt--spec--https--bearer_token))
 - `tls` (Attributes) Configuration for TLS connections. (see [below for nested schema](#nestedatt--spec--https--tls))
-
-<a id="nestedatt--spec--https--auth_headers"></a>
-### Nested Schema for `spec.https.auth_headers`
-
-Required:
-
-- `headers` (Map of String, Sensitive) A map of header names to values.
-
-
-<a id="nestedatt--spec--https--basic_auth"></a>
-### Nested Schema for `spec.https.basic_auth`
-
-Required:
-
-- `password` (String, Sensitive) The password for basic authentication.
-- `username` (String) The username for basic authentication.
-
-
-<a id="nestedatt--spec--https--bearer_token"></a>
-### Nested Schema for `spec.https.bearer_token`
-
-Required:
-
-- `token` (String, Sensitive) The bearer token.
-
 
 <a id="nestedatt--spec--https--tls"></a>
 ### Nested Schema for `spec.https.tls`
@@ -133,17 +105,7 @@ Required:
 
 Optional:
 
-- `basic_auth` (Attributes) Basic authentication configuration for Prometheus. (see [below for nested schema](#nestedatt--spec--prometheus--basic_auth))
 - `tls` (Attributes) Configuration for TLS connections. (see [below for nested schema](#nestedatt--spec--prometheus--tls))
-
-<a id="nestedatt--spec--prometheus--basic_auth"></a>
-### Nested Schema for `spec.prometheus.basic_auth`
-
-Required:
-
-- `password` (String, Sensitive) The password for basic authentication.
-- `username` (String) The username for basic authentication.
-
 
 <a id="nestedatt--spec--prometheus--tls"></a>
 ### Nested Schema for `spec.prometheus.tls`
