@@ -239,23 +239,6 @@ func (f *ForwardingEndpointResource) Schema(ctx context.Context, req resource.Sc
 								Required:            true,
 							},
 							"tls": tlsConfigModelAttribute(),
-							"basic_auth": schema.SingleNestedAttribute{
-								MarkdownDescription: "Basic authentication configuration for Prometheus.",
-								Optional:            true,
-								Attributes: map[string]schema.Attribute{
-									"username": schema.StringAttribute{
-										MarkdownDescription: "The username for basic authentication.",
-										Required:            true,
-										WriteOnly:           true,
-									},
-									"password": schema.StringAttribute{
-										MarkdownDescription: "The password for basic authentication.",
-										Required:            true,
-										Sensitive:           true,
-										WriteOnly:           true,
-									},
-								},
-							},
 						},
 					},
 					"s3": schema.SingleNestedAttribute{

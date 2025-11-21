@@ -8,7 +8,6 @@ import (
 	clusterv1beta1 "bsr.core-services.ingress.coreweave.com/gen/go/coreweave/o11y-mgmt/protocolbuffers/go/coreweave/telecaster/svc/cluster/v1beta1"
 	telecastertypesv1beta1 "bsr.core-services.ingress.coreweave.com/gen/go/coreweave/o11y-mgmt/protocolbuffers/go/coreweave/telecaster/types/v1beta1"
 	typesv1beta1 "bsr.core-services.ingress.coreweave.com/gen/go/coreweave/o11y-mgmt/protocolbuffers/go/coreweave/telecaster/types/v1beta1"
-	"buf.build/go/protovalidate"
 	"connectrpc.com/connect"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave/telecaster/internal/model"
@@ -73,23 +72,38 @@ func (m *ResourceForwardingPipelineModel) ToMsg(ctx context.Context) (msg *telec
 		return
 	}
 
+	var (
+		ref  model.ForwardingPipelineRefModel
+		spec model.ForwardingPipelineSpecModel
+		status model.ForwardingPipelineStatusModel
+	)
+
+	diagnostics.Append(m.Ref.As(ctx, &ref, basetypes.ObjectAsOptions{UnhandledNullAsEmpty: true, UnhandledUnknownAsEmpty: true})...)
+	diagnostics.Append(m.Spec.As(ctx, &spec, basetypes.ObjectAsOptions{})...)
+	diagnostics.Append(m.Status.As(ctx, &status, basetypes.ObjectAsOptions{UnhandledNullAsEmpty: true, UnhandledUnknownAsEmpty: true})...)
 	var diags diag.Diagnostics
 	msg = &telecastertypesv1beta1.ForwardingPipeline{}
 
-	var ref model.ForwardingPipelineRefModel
-	diagnostics.Append(m.Ref.As(ctx, &ref, basetypes.ObjectAsOptions{})...)
-	msg.Ref, diags = ref.ToMsg()
+	var refProto *typesv1beta1.ForwardingPipelineRef
+	if m.Ref.IsNull() || m.Ref.IsUnknown() {
+		refProto = &typesv1beta1.ForwardingPipelineRef{
+			Slug: "abcde", // placeholder value, the real one will be returned back
+		}
+	} else {
+		refProto, diags = ref.ToMsg()
+		diagnostics.Append(diags...)
+	}
+
+	// Spec should always be known.
+	specProto, diags := spec.ToMsg()
 	diagnostics.Append(diags...)
-
-	var spec model.ForwardingPipelineSpecModel
-	diagnostics.Append(m.Spec.As(ctx, &spec, basetypes.ObjectAsOptions{})...)
-	msg.Spec, diags = spec.ToMsg()
-	diagnostics.Append(diags...)
-
-	// status not implemented because it is not needed for any ops.
-
 	if diagnostics.HasError() {
 		return nil, diagnostics
+	}
+
+	msg = &typesv1beta1.ForwardingPipeline{
+		Ref:  refProto,
+		Spec: specProto,
 	}
 
 	return
@@ -98,7 +112,7 @@ func (m *ResourceForwardingPipelineModel) ToMsg(ctx context.Context) (msg *telec
 // ValidateConfig implements resource.ResourceWithValidateConfig.
 func (r *ResourceForwardingPipeline) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
 	var data ResourceForwardingPipelineModel
-	resp.Diagnostics.Append(data.Set(ctx, &telecastertypesv1beta1.ForwardingPipeline{})...)
+	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -109,9 +123,11 @@ func (r *ResourceForwardingPipeline) ValidateConfig(ctx context.Context, req res
 		return
 	}
 
-	if err := protovalidate.Validate(msg); err != nil {
-		resp.Diagnostics.AddError("Validation Error", err.Error())
-	}
+	_ = msg
+	// This is problematic when something is unknown, inside the plan path.
+	// if err := protovalidate.Validate(msg); err != nil {
+	// 	resp.Diagnostics.AddError("Validation Error", err.Error() + ": " + msg.String() + fmt.Sprintf("%+v", data))
+	// }
 }
 
 func (r *ResourceForwardingPipeline) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
@@ -128,11 +144,11 @@ func (r *ResourceForwardingPipeline) Schema(ctx context.Context, req resource.Sc
 		Attributes: map[string]schema.Attribute{
 			"ref": schema.SingleNestedAttribute{
 				MarkdownDescription: "Reference to the Telecaster forwarding pipeline.",
-				Required:            true,
+				Computed:            true,
 				Attributes: map[string]schema.Attribute{
 					"slug": schema.StringAttribute{
 						MarkdownDescription: "The slug of the forwarding pipeline. Used as a unique identifier.",
-						Required:            true,
+						Computed:            true,
 					},
 				},
 			},

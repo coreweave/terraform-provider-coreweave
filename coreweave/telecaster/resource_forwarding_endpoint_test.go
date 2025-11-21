@@ -3,6 +3,7 @@ package telecaster_test
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"math/rand/v2"
@@ -71,6 +72,19 @@ func init() {
 					if connect.CodeOf(err) == connect.CodeNotFound {
 						log.Printf("forwarding endpoint %s already deleted", endpoint.Ref.Slug)
 						continue
+					}
+					var connectErr *connect.Error
+					if errors.As(err, &connectErr) {
+						detailStrings := make([]string, len(connectErr.Details()))
+						for i, detail := range connectErr.Details() {
+							val, valueErr := detail.Value()
+							if valueErr != nil {
+								detailStrings[i] = fmt.Sprintf("unknown detail type: %s: %s", detail.Type(), valueErr.Error())
+							} else {
+								detailStrings[i] = fmt.Sprintf("detail %s: %s", detail.Type(), val)
+							}
+						}
+						return fmt.Errorf("failed to delete forwarding endpoint %s: %s: %s", endpoint.Ref.Slug, connectErr.Message(), strings.Join(detailStrings, ", "))
 					}
 					return fmt.Errorf("failed to delete forwarding endpoint %s: %w", endpoint.Ref.Slug, err)
 				}
@@ -182,7 +196,6 @@ func mustRenderForwardingEndpointResource(ctx context.Context, resourceName stri
 	resourceBody.SetAttributeValue("ref", cty.ObjectVal(refMap))
 	resourceBody.SetAttributeValue("spec", cty.ObjectVal(specMap))
 
-	// Write to buffer and return
 	var buf bytes.Buffer
 	if _, err := file.WriteTo(&buf); err != nil {
 		panic(fmt.Sprintf("failed to write HCL: %v", err))
