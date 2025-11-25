@@ -4,7 +4,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 )
 
-func tlsConfigModelAttribute() schema.SingleNestedAttribute {
+func tlsConfigAttribute() schema.SingleNestedAttribute {
 	return schema.SingleNestedAttribute{
 		MarkdownDescription: "Configuration for TLS connections.",
 		Attributes: map[string]schema.Attribute{

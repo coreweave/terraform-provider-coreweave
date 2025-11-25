@@ -13,6 +13,7 @@ import (
 	"github.com/coreweave/terraform-provider-coreweave/coreweave/telecaster/internal/model"
 	"github.com/coreweave/terraform-provider-coreweave/internal/coretf"
 	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
+	"github.com/hashicorp/terraform-plugin-framework-validators/objectvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/resourcevalidator"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -21,6 +22,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
@@ -43,9 +45,10 @@ type ForwardingEndpointResource struct {
 }
 
 type ForwardingEndpointResourceModel struct {
-	Ref    types.Object `tfsdk:"ref"`
-	Spec   types.Object `tfsdk:"spec"`
-	Status types.Object `tfsdk:"status"`
+	Ref         types.Object `tfsdk:"ref"`
+	Spec        types.Object `tfsdk:"spec"`
+	Credentials types.Object `tfsdk:"credentials"`
+	Status      types.Object `tfsdk:"status"`
 }
 
 func (e *ForwardingEndpointResourceModel) ToMsg(ctx context.Context) (msg *typesv1beta1.ForwardingEndpoint, diagnostics diag.Diagnostics) {
@@ -132,18 +135,82 @@ func (f *ForwardingEndpointResource) ValidateConfig(ctx context.Context, req res
 
 func (f *ForwardingEndpointResource) ConfigValidators(context.Context) []resource.ConfigValidator {
 	spec := path.MatchRoot("spec")
+
+	credentials := path.MatchRoot("credentials")
+
 	return []resource.ConfigValidator{
+		// Exactly one endpoint type must be configured
 		resourcevalidator.ExactlyOneOf(
 			spec.AtName("https"),
-			spec.AtName("kafka"),
 			spec.AtName("prometheus"),
 			spec.AtName("s3"),
 		),
+
+		// Credentials are mutually exclusive, but not required.
+		resourcevalidator.Conflicting(
+			credentials.AtName("prometheus"),
+			credentials.AtName("https"),
+			credentials.AtName("s3"),
+		),
+
+		resourcevalidator.Conflicting(spec.AtName("prometheus"), credentials.AtName("https")),
+		resourcevalidator.Conflicting(spec.AtName("prometheus"), credentials.AtName("s3")),
+		resourcevalidator.Conflicting(spec.AtName("s3"), credentials.AtName("prometheus")),
+		resourcevalidator.Conflicting(spec.AtName("s3"), credentials.AtName("https")),
+		resourcevalidator.Conflicting(spec.AtName("https"), credentials.AtName("prometheus")),
+		resourcevalidator.Conflicting(spec.AtName("https"), credentials.AtName("s3")),
 	}
 }
 
 func (f *ForwardingEndpointResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	resource.ImportStatePassthroughID(ctx, path.Root("ref").AtName("slug"), req, resp)
+}
+
+// endpointRequestWithCredentials is an interface for requests that can have credentials set.
+// Both CreateEndpointRequest and UpdateEndpointRequest implement these methods.
+type endpointRequestWithCredentials interface {
+	SetPrometheus(*typesv1beta1.PrometheusCredentials)
+	SetHttps(*typesv1beta1.HTTPSCredentials)
+	SetS3(*typesv1beta1.S3Credentials)
+}
+
+// applyCredentials extracts credentials from the resource model and applies them to the request.
+// Returns diagnostics if any errors occur during credential extraction or conversion.
+func applyCredentials(ctx context.Context, data *ForwardingEndpointResourceModel, req endpointRequestWithCredentials) (diagnostics diag.Diagnostics) {
+	if data.Credentials.IsNull() || data.Credentials.IsUnknown() {
+		return nil
+	}
+
+	var credentials model.ForwardingEndpointCredentialsModel
+	diagnostics.Append(data.Credentials.As(ctx, &credentials, basetypes.ObjectAsOptions{})...)
+	if diagnostics.HasError() {
+		return
+	}
+
+	if credentials.Prometheus != nil {
+		promCreds, diags := credentials.Prometheus.ToMsg()
+		diagnostics.Append(diags...)
+		if diagnostics.HasError() {
+			return
+		}
+		req.SetPrometheus(promCreds)
+	} else if credentials.HTTPS != nil {
+		httpsCreds, diags := credentials.HTTPS.ToMsg()
+		diagnostics.Append(diags...)
+		if diagnostics.HasError() {
+			return
+		}
+		req.SetHttps(httpsCreds)
+	} else if credentials.S3 != nil {
+		s3Creds, diags := credentials.S3.ToMsg()
+		diagnostics.Append(diags...)
+		if diagnostics.HasError() {
+			return
+		}
+		req.SetS3(s3Creds)
+	}
+
+	return
 }
 
 func (f *ForwardingEndpointResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -205,31 +272,6 @@ func (f *ForwardingEndpointResource) Schema(ctx context.Context, req resource.Sc
 						MarkdownDescription: "The display name of the forwarding endpoint.",
 						Required:            true,
 					},
-					"kafka": schema.SingleNestedAttribute{
-						MarkdownDescription: "Kafka forwarding endpoint configuration.",
-						Optional:            true,
-						Attributes: map[string]schema.Attribute{
-							"bootstrap_endpoints": schema.StringAttribute{
-								MarkdownDescription: "The Kafka bootstrap endpoints.",
-								Required:            true,
-							},
-							"topic": schema.StringAttribute{
-								MarkdownDescription: "The Kafka topic.",
-								Required:            true,
-							},
-							"tls": tlsConfigModelAttribute(),
-							"scram_auth": schema.SingleNestedAttribute{
-								MarkdownDescription: "SCRAM authentication configuration for Kafka.",
-								Optional:            true,
-								Attributes: map[string]schema.Attribute{
-									"mechanism": schema.StringAttribute{
-										MarkdownDescription: "The SCRAM mechanism (e.g., SCRAM-SHA-256, SCRAM-SHA-512).",
-										Optional:            true,
-									},
-								},
-							},
-						},
-					},
 					"prometheus": schema.SingleNestedAttribute{
 						MarkdownDescription: "Prometheus forwarding endpoint configuration.",
 						Optional:            true,
@@ -238,7 +280,7 @@ func (f *ForwardingEndpointResource) Schema(ctx context.Context, req resource.Sc
 								MarkdownDescription: "The Prometheus remote write endpoint.",
 								Required:            true,
 							},
-							"tls": tlsConfigModelAttribute(),
+							"tls": tlsConfigAttribute(),
 						},
 					},
 					"s3": schema.SingleNestedAttribute{
@@ -253,11 +295,6 @@ func (f *ForwardingEndpointResource) Schema(ctx context.Context, req resource.Sc
 								MarkdownDescription: "The S3 region.",
 								Required:            true,
 							},
-							"requires_credentials": schema.BoolAttribute{
-								MarkdownDescription: "Whether the S3 endpoint requires credentials.",
-								Optional:            true,
-								Computed:            true,
-							},
 						},
 					},
 					"https": schema.SingleNestedAttribute{
@@ -268,7 +305,66 @@ func (f *ForwardingEndpointResource) Schema(ctx context.Context, req resource.Sc
 								MarkdownDescription: "The HTTPS endpoint.",
 								Required:            true,
 							},
-							"tls": tlsConfigModelAttribute(),
+							"tls": tlsConfigAttribute(),
+						},
+					},
+				},
+			},
+			"credentials": schema.SingleNestedAttribute{
+				MarkdownDescription: "Authentication credentials for the forwarding endpoint. The credential type must match the endpoint type configured in spec.",
+				Optional:            true,
+				Validators: []validator.Object{
+				},
+				Attributes: map[string]schema.Attribute{
+					"prometheus": schema.SingleNestedAttribute{
+						MarkdownDescription: "Prometheus Remote Write authentication credentials.",
+						Optional:            true,
+						Validators: []validator.Object{
+							// The parent is implicitly included in the validator.
+							objectvalidator.ExactlyOneOf(
+								path.MatchRoot("credentials").AtName("prometheus"),
+								path.MatchRoot("credentials").AtName("https"),
+								path.MatchRoot("credentials").AtName("s3"),
+							),
+						},
+						Attributes: map[string]schema.Attribute{
+							"basic_auth":   basicAuthAttribute(),
+							"bearer_token": bearerTokenAttribute(),
+							"auth_headers": authHeadersAttribute(),
+						},
+					},
+				"https": schema.SingleNestedAttribute{
+					MarkdownDescription: "HTTPS endpoint authentication credentials.",
+					Optional:            true,
+					Validators: []validator.Object{},
+					Attributes: map[string]schema.Attribute{
+						"basic_auth":   basicAuthAttribute(),
+						"bearer_token": bearerTokenAttribute(),
+						"auth_headers": authHeadersAttribute(),
+					},
+				},
+					"s3": schema.SingleNestedAttribute{
+						MarkdownDescription: "AWS S3 authentication credentials.",
+						Optional:            true,
+						Attributes: map[string]schema.Attribute{
+							"access_key_id": schema.StringAttribute{
+								MarkdownDescription: "AWS access key ID.",
+								Required:            true,
+								WriteOnly:           true,
+								Sensitive:           true,
+							},
+							"secret_access_key": schema.StringAttribute{
+								MarkdownDescription: "AWS secret access key.",
+								Required:            true,
+								WriteOnly:           true,
+								Sensitive:           true,
+							},
+							"session_token": schema.StringAttribute{
+								MarkdownDescription: "AWS session token for temporary credentials (optional).",
+								Optional:            true,
+								WriteOnly:           true,
+								Sensitive:           true,
+							},
 						},
 					},
 				},
@@ -319,10 +415,18 @@ func (f *ForwardingEndpointResource) Create(ctx context.Context, req resource.Cr
 		return
 	}
 
-	if _, err := f.Client.CreateEndpoint(ctx, connect.NewRequest(&clusterv1beta1.CreateEndpointRequest{
+	createReq := &clusterv1beta1.CreateEndpointRequest{
 		Ref:  endpointMsg.Ref,
 		Spec: endpointMsg.Spec,
-	})); err != nil {
+	}
+
+	// Add credentials if provided
+	resp.Diagnostics.Append(applyCredentials(ctx, &data, createReq)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	if _, err := f.Client.CreateEndpoint(ctx, connect.NewRequest(createReq)); err != nil {
 		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
 		return
 	}
@@ -481,10 +585,18 @@ func (f *ForwardingEndpointResource) Update(ctx context.Context, req resource.Up
 		return
 	}
 
-	if _, err := f.Client.UpdateEndpoint(ctx, connect.NewRequest(&clusterv1beta1.UpdateEndpointRequest{
+	updateReq := &clusterv1beta1.UpdateEndpointRequest{
 		Ref:  endpointProto.Ref,
 		Spec: endpointProto.Spec,
-	})); err != nil {
+	}
+
+	// Add credentials if provided
+	resp.Diagnostics.Append(applyCredentials(ctx, &data, updateReq)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	if _, err := f.Client.UpdateEndpoint(ctx, connect.NewRequest(updateReq)); err != nil {
 		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
 		return
 	}

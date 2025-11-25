@@ -276,33 +276,6 @@ func createForwardingEndpointTestStep(ctx context.Context, t *testing.T, opts fo
 
 	specPath := tfjsonpath.New("spec")
 
-	if spec.Kafka != nil {
-		kafkaPath := specPath.AtMapKey("kafka")
-		stateChecks = append(stateChecks,
-			statecheck.ExpectKnownValue(fullResourceName, kafkaPath, knownvalue.NotNull()),
-			statecheck.ExpectKnownValue(fullResourceName, kafkaPath.AtMapKey("bootstrap_endpoints"), knownvalue.StringExact(spec.Kafka.BootstrapEndpoints.ValueString())),
-			statecheck.ExpectKnownValue(fullResourceName, kafkaPath.AtMapKey("topic"), knownvalue.StringExact(spec.Kafka.Topic.ValueString())),
-		)
-
-		if spec.Kafka.TLS != nil {
-			stateChecks = append(stateChecks,
-				statecheck.ExpectKnownValue(fullResourceName, kafkaPath.AtMapKey("tls"), knownvalue.NotNull()),
-			)
-		}
-
-		if spec.Kafka.ScramAuth != nil {
-			scramAuthPath := kafkaPath.AtMapKey("scram_auth")
-			stateChecks = append(stateChecks,
-				statecheck.ExpectKnownValue(fullResourceName, scramAuthPath, knownvalue.NotNull()),
-			)
-			if !spec.Kafka.ScramAuth.Mechanism.IsNull() {
-				stateChecks = append(stateChecks,
-					statecheck.ExpectKnownValue(fullResourceName, scramAuthPath.AtMapKey("mechanism"), knownvalue.StringExact(spec.Kafka.ScramAuth.Mechanism.ValueString())),
-				)
-			}
-		}
-	}
-
 	if spec.Prometheus != nil {
 		promPath := specPath.AtMapKey("prometheus")
 		stateChecks = append(stateChecks,
@@ -657,11 +630,6 @@ func TestForwardingEndpointResource_S3(t *testing.T) {
 	})
 }
 
-// TestForwardingEndpointResource_Kafka tests the full lifecycle of a Kafka forwarding endpoint
-func TestForwardingEndpointResource_Kafka(t *testing.T) {
-	t.Skip("Skipping acceptance test until Kafka endpoint is available")
-}
-
 // TestForwardingEndpointResource_Prometheus tests the full lifecycle of a Prometheus forwarding endpoint
 func TestForwardingEndpointResource_Prometheus(t *testing.T) {
 	t.Skip("Skipping acceptance test until a Prometheus endpoint is available")
@@ -818,4 +786,174 @@ func TestForwardingEndpointResource_Prometheus(t *testing.T) {
 			}),
 		},
 	})
+}
+
+// TestForwardingEndpointResource_InvalidConfiguration tests that conflicting endpoint configurations
+// are properly rejected during the planning phase. This validates that mutually exclusive options
+// cannot be set simultaneously, following the pattern of unit tests with plan-only validation.
+func TestForwardingEndpointResource_InvalidConfiguration(t *testing.T) {
+	t.Parallel()
+
+	// Test cases for mutually exclusive endpoint types
+	testCases := []struct {
+		name      string
+		specModel model.ForwardingEndpointSpecModel
+		wantError bool
+		errorMsg  string
+	}{
+		{
+			name: "valid_https_only",
+			specModel: model.ForwardingEndpointSpecModel{
+				DisplayName: types.StringValue("Valid HTTPS Endpoint"),
+				HTTPS: &model.ForwardingEndpointHTTPSModel{
+					Endpoint: types.StringValue("https://example.com"),
+				},
+			},
+			wantError: false,
+		},
+		{
+			name: "valid_s3_only",
+			specModel: model.ForwardingEndpointSpecModel{
+				DisplayName: types.StringValue("Valid S3 Endpoint"),
+				S3: &model.ForwardingEndpointS3Model{
+					URI:                 types.StringValue("s3://bucket/key"),
+					Region:              types.StringValue("us-east-1"),
+					RequiresCredentials: types.BoolValue(false),
+				},
+			},
+			wantError: false,
+		},
+		{
+			name: "valid_prometheus_only",
+			specModel: model.ForwardingEndpointSpecModel{
+				DisplayName: types.StringValue("Valid Prometheus Endpoint"),
+				Prometheus: &model.ForwardingEndpointPrometheusModel{
+					Endpoint: types.StringValue("http://prometheus.example.com:9090"),
+				},
+			},
+			wantError: false,
+		},
+		{
+			name: "invalid_https_and_s3",
+			specModel: model.ForwardingEndpointSpecModel{
+				DisplayName: types.StringValue("Invalid Dual Endpoint"),
+				HTTPS: &model.ForwardingEndpointHTTPSModel{
+					Endpoint: types.StringValue("https://example.com"),
+				},
+				S3: &model.ForwardingEndpointS3Model{
+					URI:                 types.StringValue("s3://bucket/key"),
+					Region:              types.StringValue("us-east-1"),
+					RequiresCredentials: types.BoolValue(false),
+				},
+			},
+			wantError: true,
+			errorMsg:  "exactly 1 auth method should be set, got 2",
+		},
+		{
+			name: "invalid_https_and_prometheus",
+			specModel: model.ForwardingEndpointSpecModel{
+				DisplayName: types.StringValue("Invalid Dual Endpoint"),
+				HTTPS: &model.ForwardingEndpointHTTPSModel{
+					Endpoint: types.StringValue("https://example.com"),
+				},
+				Prometheus: &model.ForwardingEndpointPrometheusModel{
+					Endpoint: types.StringValue("http://prometheus.example.com:9090"),
+				},
+			},
+			wantError: true,
+			errorMsg:  "exactly 1 auth method should be set, got 2",
+		},
+		{
+			name: "invalid_s3_and_prometheus",
+			specModel: model.ForwardingEndpointSpecModel{
+				DisplayName: types.StringValue("Invalid Dual Endpoint"),
+				S3: &model.ForwardingEndpointS3Model{
+					URI:                 types.StringValue("s3://bucket/key"),
+					Region:              types.StringValue("us-east-1"),
+					RequiresCredentials: types.BoolValue(false),
+				},
+				Prometheus: &model.ForwardingEndpointPrometheusModel{
+					Endpoint: types.StringValue("http://prometheus.example.com:9090"),
+				},
+			},
+			wantError: true,
+			errorMsg:  "exactly 1 auth method should be set, got 2",
+		},
+		{
+			name: "invalid_https_s3_and_prometheus",
+			specModel: model.ForwardingEndpointSpecModel{
+				DisplayName: types.StringValue("Invalid Triple Endpoint"),
+				HTTPS: &model.ForwardingEndpointHTTPSModel{
+					Endpoint: types.StringValue("https://example.com"),
+				},
+				S3: &model.ForwardingEndpointS3Model{
+					URI:                 types.StringValue("s3://bucket/key"),
+					Region:              types.StringValue("us-east-1"),
+					RequiresCredentials: types.BoolValue(false),
+				},
+				Prometheus: &model.ForwardingEndpointPrometheusModel{
+					Endpoint: types.StringValue("http://prometheus.example.com:9090"),
+				},
+			},
+			wantError: true,
+			errorMsg:  "exactly 1 auth method should be set, got 3",
+		},
+		{
+			name: "invalid_all_endpoints",
+			specModel: model.ForwardingEndpointSpecModel{
+				DisplayName: types.StringValue("Invalid All Endpoints"),
+				HTTPS: &model.ForwardingEndpointHTTPSModel{
+					Endpoint: types.StringValue("https://example.com"),
+				},
+				S3: &model.ForwardingEndpointS3Model{
+					URI:                 types.StringValue("s3://bucket/key"),
+					Region:              types.StringValue("us-east-1"),
+					RequiresCredentials: types.BoolValue(false),
+				},
+				Prometheus: &model.ForwardingEndpointPrometheusModel{
+					Endpoint: types.StringValue("http://prometheus.example.com:9090"),
+				},
+			},
+			wantError: true,
+			errorMsg:  "exactly 1 auth method should be set, got 4",
+		},
+		{
+			name: "invalid_no_endpoint",
+			specModel: model.ForwardingEndpointSpecModel{
+				DisplayName: types.StringValue("Invalid No Endpoint"),
+			},
+			wantError: true,
+			errorMsg:  "exactly 1 auth method should be set, got 0",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			// Test the ToMsg() conversion which validates mutual exclusivity
+			msg, diags := tc.specModel.ToMsg()
+
+			if tc.wantError {
+				// Expect errors for invalid configurations
+				assert.True(t, diags.HasError(), "Expected error for test case %q but got none", tc.name)
+				if diags.HasError() && tc.errorMsg != "" {
+					// Verify the error message contains expected text
+					found := false
+					for _, d := range diags.Errors() {
+						if strings.Contains(d.Detail(), tc.errorMsg) || strings.Contains(d.Summary(), tc.errorMsg) {
+							found = true
+							break
+						}
+					}
+					assert.True(t, found, "Expected error message to contain %q but got diagnostics: %v", tc.errorMsg, diags)
+				}
+				assert.Nil(t, msg, "Expected nil message for invalid configuration")
+			} else {
+				// Expect no errors for valid configurations
+				assert.False(t, diags.HasError(), "Expected no error for test case %q but got: %v", tc.name, diags)
+				assert.NotNil(t, msg, "Expected valid message for valid configuration")
+			}
+		})
+	}
 }
