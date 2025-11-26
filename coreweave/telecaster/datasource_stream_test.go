@@ -91,11 +91,6 @@ func TestTelemetryStreamDataSource_MetricsStream(t *testing.T) {
 	fullDataSourceName := fmt.Sprintf("data.coreweave_telecaster_stream.%s", dataSourceName)
 	ctx := t.Context()
 
-	type StreamConfig struct {
-		Slug string
-		Kind string
-	}
-
 	streams := []string{
 		"metrics-customer-cluster",
 		"metrics-platform",
