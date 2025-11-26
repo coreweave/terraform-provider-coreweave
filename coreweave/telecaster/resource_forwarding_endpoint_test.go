@@ -167,7 +167,6 @@ func mustRenderForwardingEndpointResource(ctx context.Context, resourceName stri
 		specMap["s3"] = cty.ObjectVal(map[string]cty.Value{
 			"uri":                  cty.StringVal(specModel.S3.URI.ValueString()),
 			"region":               cty.StringVal(specModel.S3.Region.ValueString()),
-			"requires_credentials": cty.BoolVal(specModel.S3.RequiresCredentials.ValueBool()),
 		})
 	}
 

@@ -6,7 +6,6 @@ import (
 	"time"
 
 	clusterv1beta1 "bsr.core-services.ingress.coreweave.com/gen/go/coreweave/o11y-mgmt/protocolbuffers/go/coreweave/telecaster/svc/cluster/v1beta1"
-	telecastertypesv1beta1 "bsr.core-services.ingress.coreweave.com/gen/go/coreweave/o11y-mgmt/protocolbuffers/go/coreweave/telecaster/types/v1beta1"
 	typesv1beta1 "bsr.core-services.ingress.coreweave.com/gen/go/coreweave/o11y-mgmt/protocolbuffers/go/coreweave/telecaster/types/v1beta1"
 	"connectrpc.com/connect"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
@@ -42,7 +41,7 @@ type ResourceForwardingPipelineModel struct {
 	Status types.Object `tfsdk:"status"`
 }
 
-func (m *ResourceForwardingPipelineModel) Set(ctx context.Context, pipeline *telecastertypesv1beta1.ForwardingPipeline) (diagnostics diag.Diagnostics) {
+func (m *ResourceForwardingPipelineModel) Set(ctx context.Context, pipeline *typesv1beta1.ForwardingPipeline) (diagnostics diag.Diagnostics) {
 	var ref model.ForwardingPipelineRefModel
 	diagnostics.Append(m.Ref.As(ctx, &ref, basetypes.ObjectAsOptions{})...)
 	diagnostics.Append(ref.Set(pipeline.Ref)...)
@@ -67,7 +66,7 @@ func (m *ResourceForwardingPipelineModel) Set(ctx context.Context, pipeline *tel
 	return
 }
 
-func (m *ResourceForwardingPipelineModel) ToMsg(ctx context.Context) (msg *telecastertypesv1beta1.ForwardingPipeline, diagnostics diag.Diagnostics) {
+func (m *ResourceForwardingPipelineModel) ToMsg(ctx context.Context) (msg *typesv1beta1.ForwardingPipeline, diagnostics diag.Diagnostics) {
 	if m == nil {
 		return
 	}
@@ -82,7 +81,7 @@ func (m *ResourceForwardingPipelineModel) ToMsg(ctx context.Context) (msg *telec
 	diagnostics.Append(m.Spec.As(ctx, &spec, basetypes.ObjectAsOptions{})...)
 	diagnostics.Append(m.Status.As(ctx, &status, basetypes.ObjectAsOptions{UnhandledNullAsEmpty: true, UnhandledUnknownAsEmpty: true})...)
 	var diags diag.Diagnostics
-	msg = &telecastertypesv1beta1.ForwardingPipeline{}
+	msg = &typesv1beta1.ForwardingPipeline{}
 
 	var refProto *typesv1beta1.ForwardingPipelineRef
 	if m.Ref.IsNull() || m.Ref.IsUnknown() {
@@ -124,6 +123,7 @@ func (r *ResourceForwardingPipeline) ValidateConfig(ctx context.Context, req res
 	}
 
 	_ = msg
+	// TODO: Uncomment this when validation is proper
 	// This is problematic when something is unknown, inside the plan path.
 	// if err := protovalidate.Validate(msg); err != nil {
 	// 	resp.Diagnostics.AddError("Validation Error", err.Error() + ": " + msg.String() + fmt.Sprintf("%+v", data))
@@ -243,17 +243,17 @@ func (r *ResourceForwardingPipeline) Create(ctx context.Context, req resource.Cr
 
 	pollConf := retry.StateChangeConf{
 		Pending: []string{
-			telecastertypesv1beta1.ForwardingPipelineState_FORWARDING_PIPELINE_STATE_PENDING.String(),
+			typesv1beta1.ForwardingPipelineState_FORWARDING_PIPELINE_STATE_PENDING.String(),
 		},
 		Target: []string{
-			telecastertypesv1beta1.ForwardingPipelineState_FORWARDING_PIPELINE_STATE_ACTIVE.String(),
+			typesv1beta1.ForwardingPipelineState_FORWARDING_PIPELINE_STATE_ACTIVE.String(),
 		},
 		Refresh: func() (result any, state string, err error) {
 			getResp, err := r.Client.GetPipeline(ctx, connect.NewRequest(&clusterv1beta1.GetPipelineRequest{
 				Ref: pipeline.Msg.Pipeline.Ref,
 			}))
 			if err != nil {
-				return nil, telecastertypesv1beta1.ForwardingPipelineState_FORWARDING_PIPELINE_STATE_UNSPECIFIED.String(), err
+				return nil, typesv1beta1.ForwardingPipelineState_FORWARDING_PIPELINE_STATE_UNSPECIFIED.String(), err
 			}
 			return getResp.Msg.Pipeline, getResp.Msg.Pipeline.Status.State.String(), nil
 		},
@@ -263,7 +263,7 @@ func (r *ResourceForwardingPipeline) Create(ctx context.Context, req resource.Cr
 	if finalPipelineRaw, err := pollConf.WaitForStateContext(ctx); err != nil {
 		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
 		return
-	} else if finalPipeline, ok := finalPipelineRaw.(*telecastertypesv1beta1.ForwardingPipeline); !ok {
+	} else if finalPipeline, ok := finalPipelineRaw.(*typesv1beta1.ForwardingPipeline); !ok {
 		resp.Diagnostics.AddError(
 			"Telecaster Pipeline Type Assertion Error",
 			fmt.Sprintf("Expected ForwardingPipeline type but got %T instead. This is a bug in the provider.", finalPipelineRaw),
@@ -310,7 +310,7 @@ func (r *ResourceForwardingPipeline) Delete(ctx context.Context, req resource.De
 
 	pollConf := retry.StateChangeConf{
 		Pending: []string{
-			telecastertypesv1beta1.ForwardingEndpointState_FORWARDING_ENDPOINT_STATE_PENDING.String(),
+			typesv1beta1.ForwardingEndpointState_FORWARDING_ENDPOINT_STATE_PENDING.String(),
 		},
 		Target: []string{
 			"deleted",
@@ -323,7 +323,7 @@ func (r *ResourceForwardingPipeline) Delete(ctx context.Context, req resource.De
 				if coreweave.IsNotFoundError(err) {
 					return nil, "deleted", nil
 				}
-				return nil, telecastertypesv1beta1.ForwardingPipelineState_FORWARDING_PIPELINE_STATE_UNSPECIFIED.String(), err
+				return nil, typesv1beta1.ForwardingPipelineState_FORWARDING_PIPELINE_STATE_UNSPECIFIED.String(), err
 			}
 			return getResp.Msg.Pipeline, getResp.Msg.Pipeline.Status.State.String(), nil
 		},
@@ -394,17 +394,17 @@ func (r *ResourceForwardingPipeline) Update(ctx context.Context, req resource.Up
 
 	pollConf := retry.StateChangeConf{
 		Pending: []string{
-			telecastertypesv1beta1.ForwardingPipelineState_FORWARDING_PIPELINE_STATE_PENDING.String(),
+			typesv1beta1.ForwardingPipelineState_FORWARDING_PIPELINE_STATE_PENDING.String(),
 		},
 		Target: []string{
-			telecastertypesv1beta1.ForwardingPipelineState_FORWARDING_PIPELINE_STATE_ACTIVE.String(),
+			typesv1beta1.ForwardingPipelineState_FORWARDING_PIPELINE_STATE_ACTIVE.String(),
 		},
 		Refresh: func() (result any, state string, err error) {
 			getResp, err := r.Client.GetPipeline(ctx, connect.NewRequest(&clusterv1beta1.GetPipelineRequest{
 				Ref: pipelineMsg.Ref,
 			}))
 			if err != nil {
-				return nil, telecastertypesv1beta1.ForwardingPipelineState_FORWARDING_PIPELINE_STATE_UNSPECIFIED.String(), err
+				return nil, typesv1beta1.ForwardingPipelineState_FORWARDING_PIPELINE_STATE_UNSPECIFIED.String(), err
 			}
 			return getResp.Msg.Pipeline, getResp.Msg.Pipeline.Status.State.String(), nil
 		},

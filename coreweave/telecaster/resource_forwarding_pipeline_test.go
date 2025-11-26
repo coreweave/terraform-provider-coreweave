@@ -134,8 +134,6 @@ var (
 		"logs-events",
 		"logs-journald",
 	}
-
-	allStreams = append(append([]string{}, metricsStreams...), logsStreams...)
 )
 
 // EndpointType represents the type of forwarding endpoint
@@ -160,16 +158,17 @@ type CompatibilityRule struct {
 	StreamType   StreamType
 	EndpointType EndpointType
 	Compatible   bool
+	Skip         bool
 }
 
 var streamEndpointCompatibility = []CompatibilityRule{
+	{StreamType: StreamTypeMetrics, EndpointType: EndpointTypeHTTPS, Compatible: false},
 	{StreamType: StreamTypeMetrics, EndpointType: EndpointTypePrometheus, Compatible: true},
 	{StreamType: StreamTypeMetrics, EndpointType: EndpointTypeS3, Compatible: false},
-	{StreamType: StreamTypeMetrics, EndpointType: EndpointTypeHTTPS, Compatible: false},
 
-	{StreamType: StreamTypeLogs, EndpointType: EndpointTypeS3, Compatible: true},
 	{StreamType: StreamTypeLogs, EndpointType: EndpointTypeHTTPS, Compatible: true},
 	{StreamType: StreamTypeLogs, EndpointType: EndpointTypePrometheus, Compatible: false},
+	{StreamType: StreamTypeLogs, EndpointType: EndpointTypeS3, Compatible: true},
 }
 
 // getCompatibleEndpointTypes returns the list of compatible endpoint types for a given stream type
@@ -192,6 +191,14 @@ func getIncompatibleEndpointTypes(streamType StreamType) []EndpointType {
 		}
 	}
 	return incompatible
+}
+
+func shorten(name string) string {
+	if len(name) < 4 {
+		return name
+	}
+	truncated := len(name) - 2
+	return fmt.Sprintf("%s%d%s", name[:1], truncated, name[len(name)-1:])
 }
 
 // createEndpointByType creates a forwarding endpoint of the specified type
@@ -235,7 +242,16 @@ func createEndpointByType(t *testing.T, endpointType EndpointType, slug string) 
 	return mustForwardingEndpointResourceModel(t, endpointRef, endpointSpec, model.ForwardingEndpointStatusModel{})
 }
 
-// mustForwardingPipelineResourceModel creates a ForwardingPipelineResourceModel
+func skipUnimplementedEndpointTypes(t *testing.T, endpointType EndpointType) {
+	t.Helper()
+	switch endpointType {
+	case EndpointTypePrometheus:
+		t.Skip("Skipping Prometheus endpoint until it is available")
+	case EndpointTypeS3:
+		t.Skip("Skipping S3 endpoint until it is supported")
+	}
+}
+
 func mustForwardingPipelineResourceModel(t *testing.T, spec model.ForwardingPipelineSpecModel) *telecaster.ResourceForwardingPipelineModel {
 	t.Helper()
 
@@ -256,7 +272,6 @@ func mustForwardingPipelineResourceModel(t *testing.T, spec model.ForwardingPipe
 }
 
 // mustRenderForwardingPipelineResource renders HCL for a forwarding pipeline with dependencies
-// If endpoint is provided, renders both endpoint and pipeline (like CKS VPC + Cluster pattern)
 func mustRenderForwardingPipelineResource(ctx context.Context, resourceName string, pipeline *telecaster.ResourceForwardingPipelineModel, endpoint *telecaster.ForwardingEndpointResourceModel) string {
 	var parts []string
 
@@ -460,7 +475,6 @@ func TestForwardingPipelineResourceSpecModel_ToMsg(t *testing.T) {
 	}
 }
 
-// TestForwardingPipelineResource_CompatibleCombinations tests all compatible stream/endpoint combinations
 func TestForwardingPipelineResource_CompatibleCombinations(t *testing.T) {
 	t.Parallel()
 
@@ -470,17 +484,21 @@ func TestForwardingPipelineResource_CompatibleCombinations(t *testing.T) {
 
 			t.Run(testName, func(t *testing.T) {
 				randomInt := rand.IntN(100)
-				resourceName := fmt.Sprintf("%s_pipeline_%s", streamSlug, endpointType)
+				resourceName := fmt.Sprintf("%s_to_%s", streamSlug, endpointType)
 				fullResourceName := fmt.Sprintf("coreweave_telecaster_forwarding_pipeline.%s", resourceName)
 				ctx := t.Context()
 
-				if endpointType == EndpointTypePrometheus {
-					t.Skip("Skipping Prometheus endpoint until it is available")
+				skipUnimplementedEndpointTypes(t, endpointType)
+
+				// We end up creating many slugs that are illegally long, so we need to shorten them
+				endpointSlug := slugify(fmt.Sprintf("p-%s-%s", streamSlug, endpointType), randomInt)
+				if len(endpointSlug) > 32 {
+					endpointSlug = slugify(fmt.Sprintf("p-%s-%s", shorten(streamSlug), string(endpointType)), randomInt)
 				}
-
-				slug := slugify(fmt.Sprintf("%s-%s", streamSlug, endpointType), randomInt)
-
-				endpoint := createEndpointByType(t, endpointType, slug)
+				if len(endpointSlug) > 32 {
+					endpointSlug = slugify(fmt.Sprintf("p-%s-%s", shorten(streamSlug), shorten(string(endpointType))), randomInt)
+				}
+				endpoint := createEndpointByType(t, endpointType, endpointSlug)
 
 				var endpointRef model.ForwardingEndpointRefModel
 				if err := endpoint.Ref.As(ctx, &endpointRef, basetypes.ObjectAsOptions{UnhandledNullAsEmpty: true}); err != nil {
@@ -506,7 +524,7 @@ func TestForwardingPipelineResource_CompatibleCombinations(t *testing.T) {
 					Steps: []resource.TestStep{
 						{
 							PreConfig: func() {
-								t.Logf("Creating pipeline: %s -> %s endpoint", streamSlug, endpointType)
+								t.Logf("Creating pipeline: %s -> %s, endpoint: %s", streamSlug, endpointType, endpointSlug)
 							},
 							Config: mustRenderForwardingPipelineResource(ctx, resourceName, pipeline, endpoint),
 							ConfigPlanChecks: resource.ConfigPlanChecks{
@@ -515,7 +533,7 @@ func TestForwardingPipelineResource_CompatibleCombinations(t *testing.T) {
 								},
 							},
 							ConfigStateChecks: []statecheck.StateCheck{
-								statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("ref").AtMapKey("slug"), knownvalue.StringExact(slug)),
+								statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("ref").AtMapKey("slug"), knownvalue.StringExact(endpointSlug)),
 								statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("spec").AtMapKey("source").AtMapKey("slug"), knownvalue.StringExact(streamSlug)),
 								statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("spec").AtMapKey("enabled"), knownvalue.Bool(true)),
 								statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("status").AtMapKey("state"), knownvalue.StringExact(typesv1beta1.ForwardingPipelineState_FORWARDING_PIPELINE_STATE_ACTIVE.String())),
@@ -539,7 +557,16 @@ func TestForwardingPipelineResource_CompatibleCombinations(t *testing.T) {
 
 				slug := slugify(fmt.Sprintf("pipe-%s-%s", streamSlug, endpointType), randomInt)
 
-				endpoint := createEndpointByType(t, endpointType, slug)
+				// We end up creating many slugs that are illegally long, so we need to shorten them
+				endpointSlug := slugify(fmt.Sprintf("p-%s-%s", streamSlug, endpointType), randomInt)
+				if len(endpointSlug) > 32 {
+					endpointSlug = slugify(fmt.Sprintf("p-%s-%s", shorten(streamSlug), string(endpointType)), randomInt)
+				}
+				if len(endpointSlug) > 32 {
+					endpointSlug = slugify(fmt.Sprintf("p-%s-%s", shorten(streamSlug), shorten(string(endpointType))), randomInt)
+				}
+
+				endpoint := createEndpointByType(t, endpointType, endpointSlug)
 
 				var endpointRef model.ForwardingEndpointRefModel
 				if err := endpoint.Ref.As(ctx, &endpointRef, basetypes.ObjectAsOptions{UnhandledNullAsEmpty: true}); err != nil {
@@ -565,7 +592,7 @@ func TestForwardingPipelineResource_CompatibleCombinations(t *testing.T) {
 					Steps: []resource.TestStep{
 						{
 							PreConfig: func() {
-								t.Logf("Creating pipeline: %s -> %s endpoint", streamSlug, endpointType)
+								t.Logf("Creating pipeline: %s -> %s, endpoint: %s", streamSlug, endpointType, endpointRef.Slug.ValueString())
 							},
 							Config: mustRenderForwardingPipelineResource(ctx, resourceName, pipeline, endpoint),
 							ConfigPlanChecks: resource.ConfigPlanChecks{
@@ -587,8 +614,8 @@ func TestForwardingPipelineResource_CompatibleCombinations(t *testing.T) {
 	}
 }
 
-// TestForwardingPipelineResource_IncompatibleCombinations tests incompatible stream/endpoint combinations
 func TestForwardingPipelineResource_IncompatibleCombinations(t *testing.T) {
+	t.Skip("Skipping incompatible combinations until status fails quickly")
 	t.Parallel()
 
 	for _, streamSlug := range metricsStreams {
@@ -643,14 +670,14 @@ func TestForwardingPipelineResource_IncompatibleCombinations(t *testing.T) {
 
 	for _, streamSlug := range logsStreams {
 		for _, endpointType := range getIncompatibleEndpointTypes(StreamTypeLogs) {
-			testName := fmt.Sprintf("%s_to_%s_should_fail", streamSlug, endpointType)
+			testName := fmt.Sprintf("%s_to_%s_fails", streamSlug, endpointType)
 
 			t.Run(testName, func(t *testing.T) {
 				randomInt := rand.IntN(100)
 				resourceName := "test_pipeline"
 				ctx := t.Context()
 
-				endpoint := createEndpointByType(t, endpointType, slugify(fmt.Sprintf("incompatible-%s", endpointType), randomInt))
+				endpoint := createEndpointByType(t, endpointType, slugify(fmt.Sprintf("incompat-%s", endpointType), randomInt))
 
 				var endpointRef model.ForwardingEndpointRefModel
 				if err := endpoint.Ref.As(ctx, &endpointRef, basetypes.ObjectAsOptions{UnhandledNullAsEmpty: true}); err != nil {

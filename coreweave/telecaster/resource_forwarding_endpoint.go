@@ -33,6 +33,7 @@ var (
 	_ resource.ResourceWithConfigure        = &ForwardingEndpointResource{}
 	_ resource.ResourceWithValidateConfig   = &ForwardingEndpointResource{}
 	_ resource.ResourceWithConfigValidators = &ForwardingEndpointResource{}
+	_ resource.ResourceWithModifyPlan       = &ForwardingEndpointResource{}
 	_ resource.ResourceWithImportState      = &ForwardingEndpointResource{}
 )
 
@@ -213,6 +214,32 @@ func applyCredentials(ctx context.Context, data *ForwardingEndpointResourceModel
 	return
 }
 
+func (f *ForwardingEndpointResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
+	var data ForwardingEndpointResourceModel
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	var spec model.ForwardingEndpointSpecModel
+	resp.Diagnostics.Append(data.Spec.As(ctx, &spec, basetypes.ObjectAsOptions{})...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	if spec.S3 != nil {
+		spec.S3.RequiresCredentials = types.BoolValue(!data.Credentials.IsNull())
+	}
+
+	specObj, diags := types.ObjectValueFrom(ctx, data.Spec.AttributeTypes(ctx), &spec)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	data.Spec = specObj
+
+	resp.Diagnostics.Append(resp.Plan.Set(ctx, &data)...)
+}
+
 func (f *ForwardingEndpointResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + "_telecaster_forwarding_endpoint"
 }
@@ -295,6 +322,10 @@ func (f *ForwardingEndpointResource) Schema(ctx context.Context, req resource.Sc
 								MarkdownDescription: "The S3 region.",
 								Required:            true,
 							},
+							"requires_credentials": schema.BoolAttribute{
+								MarkdownDescription: "Whether the S3 endpoint requires credentials. This is detected automatically based on the presence of credentials.",
+								Computed:            true,
+							},
 						},
 					},
 					"https": schema.SingleNestedAttribute{
@@ -313,14 +344,12 @@ func (f *ForwardingEndpointResource) Schema(ctx context.Context, req resource.Sc
 			"credentials": schema.SingleNestedAttribute{
 				MarkdownDescription: "Authentication credentials for the forwarding endpoint. The credential type must match the endpoint type configured in spec.",
 				Optional:            true,
-				Validators: []validator.Object{
-				},
+				Validators:          []validator.Object{},
 				Attributes: map[string]schema.Attribute{
 					"prometheus": schema.SingleNestedAttribute{
 						MarkdownDescription: "Prometheus Remote Write authentication credentials.",
 						Optional:            true,
 						Validators: []validator.Object{
-							// The parent is implicitly included in the validator.
 							objectvalidator.ExactlyOneOf(
 								path.MatchRoot("credentials").AtName("prometheus"),
 								path.MatchRoot("credentials").AtName("https"),
@@ -333,16 +362,16 @@ func (f *ForwardingEndpointResource) Schema(ctx context.Context, req resource.Sc
 							"auth_headers": authHeadersAttribute(),
 						},
 					},
-				"https": schema.SingleNestedAttribute{
-					MarkdownDescription: "HTTPS endpoint authentication credentials.",
-					Optional:            true,
-					Validators: []validator.Object{},
-					Attributes: map[string]schema.Attribute{
-						"basic_auth":   basicAuthAttribute(),
-						"bearer_token": bearerTokenAttribute(),
-						"auth_headers": authHeadersAttribute(),
+					"https": schema.SingleNestedAttribute{
+						MarkdownDescription: "HTTPS endpoint authentication credentials.",
+						Optional:            true,
+						Validators:          []validator.Object{},
+						Attributes: map[string]schema.Attribute{
+							"basic_auth":   basicAuthAttribute(),
+							"bearer_token": bearerTokenAttribute(),
+							"auth_headers": authHeadersAttribute(),
+						},
 					},
-				},
 					"s3": schema.SingleNestedAttribute{
 						MarkdownDescription: "AWS S3 authentication credentials.",
 						Optional:            true,
