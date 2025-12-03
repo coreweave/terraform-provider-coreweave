@@ -212,7 +212,7 @@ func (p *CoreweaveProvider) Resources(ctx context.Context) []func() resource.Res
 		objectstorage.NewBucketVersioningResource,
 		objectstorage.NewBucketPolicyResource,
 		objectstorage.NewBucketSettingsResource,
-		telecaster.NewForwardingEndpointResource,
+		telecaster.NewForwardingEndpointHTTPSResource,
 		telecaster.NewForwardingPipelineResource,
 	}
 }
