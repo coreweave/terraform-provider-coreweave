@@ -7,8 +7,7 @@ import (
 	clusterv1beta1 "bsr.core-services.ingress.coreweave.com/gen/go/coreweave/o11y-mgmt/protocolbuffers/go/coreweave/telecaster/svc/cluster/v1beta1"
 	typesv1beta1 "bsr.core-services.ingress.coreweave.com/gen/go/coreweave/o11y-mgmt/protocolbuffers/go/coreweave/telecaster/types/v1beta1"
 	"buf.build/go/protovalidate"
-	"connectrpc.com/connect"
-	"github.com/coreweave/terraform-provider-coreweave/coreweave"
+	"github.com/coreweave/terraform-provider-coreweave/coreweave/telecaster/internal"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave/telecaster/internal/model"
 	"github.com/coreweave/terraform-provider-coreweave/internal/coretf"
 	"github.com/hashicorp/terraform-plugin-framework-validators/objectvalidator"
@@ -225,14 +224,8 @@ func (r *HTTPSForwardingEndpointResource) Create(ctx context.Context, req resour
 		createReq.SetHttps(httpsCreds)
 	}
 
-	if _, err := r.Client.CreateEndpoint(ctx, connect.NewRequest(createReq)); err != nil {
-		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
-		return
-	}
-
-	endpoint, err := pollForEndpointReady(ctx, r.Client, endpointMsg.Ref, httpsEndpointTimeout)
-	if err != nil {
-		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
+	endpoint := createEndpoint(ctx, r.Client, createReq, httpsEndpointTimeout, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
 		return
 	}
 
@@ -251,22 +244,13 @@ func (r *HTTPSForwardingEndpointResource) Read(ctx context.Context, req resource
 		return
 	}
 
-	endpoint, err := readEndpointBySlug(ctx, r.Client, data.Slug.ValueString())
-	if err != nil {
-		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
+	endpoint := readEndpoint(ctx, r.Client, data.Slug.ValueString(), &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	if endpoint == nil {
-		resp.State.RemoveResource(ctx)
-		return
-	}
-
-	if configType := endpoint.Spec.WhichConfig(); configType != typesv1beta1.ForwardingEndpointSpec_Https_case {
-		resp.Diagnostics.AddError(
-			"Invalid Endpoint Type",
-			"The endpoint exists but is not an HTTPS endpoint. Actual type: "+configType.String(),
-		)
+	if endpoint.Spec.WhichConfig() != typesv1beta1.ForwardingEndpointSpec_Https_case {
+		resp.Diagnostics.AddError("Invalid Endpoint Type", "The endpoint is not an HTTPS endpoint")
 		return
 	}
 
@@ -311,14 +295,9 @@ func (r *HTTPSForwardingEndpointResource) Update(ctx context.Context, req resour
 		updateReq.SetHttps(httpsCreds)
 	}
 
-	if _, err := r.Client.UpdateEndpoint(ctx, connect.NewRequest(updateReq)); err != nil {
-		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
-		return
-	}
-
-	endpoint, err := pollForEndpointReady(ctx, r.Client, endpointMsg.Ref, httpsEndpointTimeout)
-	if err != nil {
-		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
+	endpoint, diags := updateEndpoint(ctx, r.Client, updateReq, httpsEndpointTimeout)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
 		return
 	}
 
@@ -337,5 +316,10 @@ func (r *HTTPSForwardingEndpointResource) Delete(ctx context.Context, req resour
 		return
 	}
 
-	deleteEndpoint(ctx, r.Client, data.toRef(), httpsEndpointTimeout, &resp.Diagnostics)
+	if err := internal.DeleteEndpointAndWait(ctx, r.Client, data.toRef()); err != nil {
+		resp.Diagnostics.AddError("Error deleting Telecaster endpoint", err.Error())
+		return
+	}
+
+	resp.State.RemoveResource(ctx)
 }

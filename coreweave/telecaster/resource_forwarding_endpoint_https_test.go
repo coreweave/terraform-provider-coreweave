@@ -3,16 +3,12 @@ package telecaster_test
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
-	"log"
 	"math/rand/v2"
 	"strings"
 	"testing"
-	"time"
 
-	clusterv1beta1 "bsr.core-services.ingress.coreweave.com/gen/go/coreweave/o11y-mgmt/protocolbuffers/go/coreweave/telecaster/svc/cluster/v1beta1"
-	"connectrpc.com/connect"
+	typesv1beta1 "bsr.core-services.ingress.coreweave.com/gen/go/coreweave/o11y-mgmt/protocolbuffers/go/coreweave/telecaster/types/v1beta1"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave/telecaster"
 	"github.com/coreweave/terraform-provider-coreweave/internal/provider"
 	"github.com/coreweave/terraform-provider-coreweave/internal/testutil"
@@ -31,91 +27,9 @@ func init() {
 	resource.AddTestSweepers("coreweave_telecaster_forwarding_endpoint_https", &resource.Sweeper{
 		Name:         "coreweave_telecaster_forwarding_endpoint_https",
 		Dependencies: []string{"coreweave_telecaster_forwarding_pipeline"},
-		F: func(r string) error {
-			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
-			defer cancel()
-
+		F:            func(r string) error {
 			testutil.SetEnvDefaults()
-			client, err := provider.BuildClient(ctx, provider.CoreweaveProviderModel{}, "", "")
-			if err != nil {
-				return fmt.Errorf("failed to build client: %w", err)
-			}
-
-			listResp, err := client.ListEndpoints(ctx, connect.NewRequest(&clusterv1beta1.ListEndpointsRequest{}))
-			if err != nil {
-				return fmt.Errorf("failed to list forwarding endpoints: %w", err)
-			}
-
-			for _, endpoint := range listResp.Msg.GetEndpoints() {
-				if !strings.HasPrefix(endpoint.Ref.Slug, AcceptanceTestPrefix) {
-					log.Printf("skipping forwarding endpoint %s because it does not have prefix %s", endpoint.Ref.Slug, AcceptanceTestPrefix)
-					continue
-				}
-
-				// Only sweep HTTPS endpoints
-				if endpoint.Spec.GetHttps() == nil {
-					continue
-				}
-
-				log.Printf("sweeping HTTPS forwarding endpoint %s", endpoint.Ref.Slug)
-				if testutil.SweepDryRun() {
-					log.Printf("skipping forwarding endpoint %s because of dry-run mode", endpoint.Ref.Slug)
-					continue
-				}
-
-				deleteCtx, deleteCancel := context.WithTimeout(ctx, 5*time.Minute)
-				defer deleteCancel()
-
-				if _, err := client.DeleteEndpoint(deleteCtx, connect.NewRequest(&clusterv1beta1.DeleteEndpointRequest{
-					Ref: endpoint.Ref,
-				})); err != nil {
-					if connect.CodeOf(err) == connect.CodeNotFound {
-						log.Printf("forwarding endpoint %s already deleted", endpoint.Ref.Slug)
-						continue
-					}
-					var connectErr *connect.Error
-					if errors.As(err, &connectErr) {
-						detailStrings := make([]string, len(connectErr.Details()))
-						for i, detail := range connectErr.Details() {
-							val, valueErr := detail.Value()
-							if valueErr != nil {
-								detailStrings[i] = fmt.Sprintf("unknown detail type: %s: %s", detail.Type(), valueErr.Error())
-							} else {
-								detailStrings[i] = fmt.Sprintf("detail %s: %s", detail.Type(), val)
-							}
-						}
-						return fmt.Errorf("failed to delete forwarding endpoint %s: %s: %s", endpoint.Ref.Slug, connectErr.Message(), strings.Join(detailStrings, ", "))
-					}
-					return fmt.Errorf("failed to delete forwarding endpoint %s: %w", endpoint.Ref.Slug, err)
-				}
-
-				waitCtx, waitCancel := context.WithTimeout(ctx, 5*time.Minute)
-				defer waitCancel()
-
-				ticker := time.NewTicker(5 * time.Second)
-				defer ticker.Stop()
-
-				for {
-					select {
-					case <-waitCtx.Done():
-						return fmt.Errorf("timeout waiting for forwarding endpoint %s to be deleted: %w", endpoint.Ref.Slug, waitCtx.Err())
-					case <-ticker.C:
-						_, err := client.GetEndpoint(waitCtx, connect.NewRequest(&clusterv1beta1.GetEndpointRequest{
-							Ref: endpoint.Ref,
-						}))
-						if connect.CodeOf(err) == connect.CodeNotFound {
-							log.Printf("forwarding endpoint %s successfully deleted", endpoint.Ref.Slug)
-							goto nextEndpoint
-						}
-						if err != nil {
-							return fmt.Errorf("error checking forwarding endpoint %s deletion status: %w", endpoint.Ref.Slug, err)
-						}
-					}
-				}
-			nextEndpoint:
-			}
-
-			return nil
+			return typedEndpointSweeper(typesv1beta1.ForwardingEndpointSpec_Https_case.String())(r)
 		},
 	})
 }
@@ -190,11 +104,10 @@ func createHTTPSEndpointTestStep(ctx context.Context, t *testing.T, opts httpsEn
 		statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("display_name"), knownvalue.StringExact(opts.Model.DisplayName)),
 		statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("endpoint"), knownvalue.StringExact(opts.Model.Endpoint)),
 
-		// Status fields should be set
 		statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("created_at"), knownvalue.NotNull()),
 		statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("updated_at"), knownvalue.NotNull()),
-		statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("state_code"), knownvalue.NotNull()),
-		statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("state"), knownvalue.NotNull()),
+		statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("state_code"), knownvalue.Int32Exact(int32(typesv1beta1.ForwardingEndpointState_FORWARDING_ENDPOINT_STATE_CONNECTED))),
+		statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("state"), knownvalue.StringExact(typesv1beta1.ForwardingEndpointState_FORWARDING_ENDPOINT_STATE_CONNECTED.String())),
 	}
 
 	if opts.Model.TLS != nil {
@@ -214,7 +127,6 @@ func createHTTPSEndpointTestStep(ctx context.Context, t *testing.T, opts httpsEn
 		ConfigStateChecks: stateChecks,
 	}
 
-	// Apply any custom options
 	for _, option := range opts.Options {
 		option(&testStep)
 	}
@@ -240,7 +152,6 @@ func TestHTTPSForwardingEndpointResource(t *testing.T) {
 			testutil.SetEnvDefaults()
 		},
 		Steps: []resource.TestStep{
-			// Create initial HTTPS endpoint
 			createHTTPSEndpointTestStep(ctx, t, httpsEndpointTestStep{
 				TestName:     "initial HTTPS forwarding endpoint",
 				ResourceName: resourceName,
@@ -251,7 +162,6 @@ func TestHTTPSForwardingEndpointResource(t *testing.T) {
 					},
 				},
 			}),
-			// No-op (noop)
 			createHTTPSEndpointTestStep(ctx, t, httpsEndpointTestStep{
 				TestName:     "no-op (noop)",
 				ResourceName: resourceName,
@@ -262,7 +172,6 @@ func TestHTTPSForwardingEndpointResource(t *testing.T) {
 					},
 				},
 			}),
-			// Update display name
 			createHTTPSEndpointTestStep(ctx, t, httpsEndpointTestStep{
 				TestName:     "update display name (update)",
 				ResourceName: resourceName,
@@ -277,7 +186,6 @@ func TestHTTPSForwardingEndpointResource(t *testing.T) {
 					},
 				},
 			}),
-			// Revert display name
 			createHTTPSEndpointTestStep(ctx, t, httpsEndpointTestStep{
 				TestName:     "revert display name (update)",
 				ResourceName: resourceName,
@@ -288,7 +196,6 @@ func TestHTTPSForwardingEndpointResource(t *testing.T) {
 					},
 				},
 			}),
-			// Update slug (requires replacement)
 			createHTTPSEndpointTestStep(ctx, t, httpsEndpointTestStep{
 				TestName:     "update slug (requires replacement)",
 				ResourceName: resourceName,
@@ -303,7 +210,6 @@ func TestHTTPSForwardingEndpointResource(t *testing.T) {
 					},
 				},
 			}),
-			// Revert slug (plan only)
 			createHTTPSEndpointTestStep(ctx, t, httpsEndpointTestStep{
 				TestName:     "revert slug (plan only) (requires replacement)",
 				ResourceName: resourceName,
@@ -328,7 +234,6 @@ func TestHTTPSForwardingEndpointResource_WithTLS(t *testing.T) {
 	fullResourceName := fmt.Sprintf("coreweave_telecaster_forwarding_endpoint_https.%s", resourceName)
 	ctx := t.Context()
 
-	// Sample base64-encoded CA certificate for testing
 	testCAData := "LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUJURENDQWZPZ0F3SUJBZ0lVZmRLdDdHWU9hRDZuL2pvb3A3OEVoT3Y3YkFvd0NnWUlLb1pJemowRUF3SXcKSERFYU1CZ0dBMVVFQXd3UlkyOXlaWGRsWVhabFkyRXRjbTl2ZEMwd0hoY05NalF4TVRFek1EQTBNVEExV2hjTgpNalV4TVRFek1EQTBNVEExV2pBY01Sb3dHQVlEVlFRRERCRmpiM0psZDJWaGRtVmpZUzF5YjI5ME1Ea1ZNQk1HCkJ5cUdTTTQ5QWdFR0NDcUdTTTQ5QXdFSEEwSUFCUElIdUMyQklIdlFyUlV0bjdodFFnY1NGRDlDbEs0U3BLN0sKaEhWaS9RQm9naVREMC9yMWRqRkViYmZHOW9DTzFodHpXWjd4aE1CRUY4NFJ2TlhtdWNlamdZWXdnWU13RGdZRApWUjBQQVFIL0JBUURBZ0VHTUJJR0ExVWRFd0VCL3dRSU1BWUJBZjhDQVFBd0hRWURWUjBPQkJZRUZOckZjS1dJClVOcWdXcWNxWk5FSVRzOVJuZGh4TUI4R0ExVWRJd1FZTUJhQUZOckZjS1dJVU5xZ1dxY3FaTkVJVHM5Um5kaHgKTUJrR0ExVWRFUVFTTUJDQ0RuZGxkR2h2YjJ0ekxuTjJZekFLQmdncWhrak9QUVFEQWdOSEFEQkVBaUJlM3NsYQpTWjc5bmxQeWJlYVY4NXp5VW9VQ1hVWjNvTnhjN1lZc3N0WDFuZ0lnSUhYQ0xEZUZWKzF2Mlk1RzdwN3N0VTRCClA0VTlScHlyVzhMWnhRdWhFYjQ9Ci0tLS0tRU5EIENFUlRJRklDQVRFLS0tLS0K"
 
 	baseModel := &HTTPSEndpointTestModel{
