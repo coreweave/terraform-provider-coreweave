@@ -14,20 +14,19 @@ type ForwardingEndpointRefModel struct {
 	Slug types.String `tfsdk:"slug"`
 }
 
-func (r *ForwardingEndpointRefModel) Set(ref *typesv1beta1.ForwardingEndpointRef) (diagnostics diag.Diagnostics) {
+func (r *ForwardingEndpointRefModel) Set(ref *typesv1beta1.ForwardingEndpointRef) {
 	r.Slug = types.StringValue(ref.Slug)
-	return
 }
 
-func (r *ForwardingEndpointRefModel) ToMsg() (msg *typesv1beta1.ForwardingEndpointRef, diagnostics diag.Diagnostics) {
+func (r *ForwardingEndpointRefModel) ToMsg() (msg *typesv1beta1.ForwardingEndpointRef) {
 	if r == nil {
-		return
+		return nil
 	}
 
 	msg = &typesv1beta1.ForwardingEndpointRef{
 		Slug: r.Slug.ValueString(),
 	}
-	return
+	return msg
 }
 
 type ForwardingEndpointSpecModel struct {
@@ -37,7 +36,8 @@ type ForwardingEndpointSpecModel struct {
 	HTTPS       *ForwardingEndpointHTTPSModel      `tfsdk:"https"`
 }
 
-func (e *ForwardingEndpointSpecModel) Set(msg *typesv1beta1.ForwardingEndpointSpec) (diagnostics diag.Diagnostics) {
+func (s *ForwardingEndpointSpecModel) Set(msg *typesv1beta1.ForwardingEndpointSpec) (diagnostics diag.Diagnostics) {
+	e := s
 	e.DisplayName = types.StringValue(msg.DisplayName)
 
 	e.Prometheus = nil
@@ -49,13 +49,16 @@ func (e *ForwardingEndpointSpecModel) Set(msg *typesv1beta1.ForwardingEndpointSp
 		diagnostics.AddError("no config set for forwarding endpoint", "Config must be set when using forwarding endpoint")
 	case typesv1beta1.ForwardingEndpointSpec_Prometheus_case:
 		e.Prometheus = new(ForwardingEndpointPrometheusModel)
-		diagnostics.Append(e.Prometheus.Set(msg.GetPrometheus())...)
+		e.Prometheus.Set(msg.GetPrometheus())
 	case typesv1beta1.ForwardingEndpointSpec_S3_case:
 		e.S3 = new(ForwardingEndpointS3Model)
-		diagnostics.Append(e.S3.Set(msg.GetS3())...)
+		e.S3.Set(msg.GetS3())
 	case typesv1beta1.ForwardingEndpointSpec_Https_case:
 		e.HTTPS = new(ForwardingEndpointHTTPSModel)
-		diagnostics.Append(e.HTTPS.Set(msg.GetHttps())...)
+		e.HTTPS.Set(msg.GetHttps())
+	case typesv1beta1.ForwardingEndpointSpec_Kafka_case:
+		// Kafka endpoints are not yet supported in the Terraform provider
+		diagnostics.AddError("Unsupported forwarding endpoint type", "Kafka endpoints are not yet supported")
 	default:
 		diagnostics.AddError("Unsupported forwarding endpoint type", fmt.Sprintf("unsupported forwarding endpoint config type: %s (%d)", kind.String(), kind))
 	}
@@ -68,7 +71,7 @@ type ForwardingEndpointPrometheusModel struct {
 	TLS      *TLSConfigModel `tfsdk:"tls"`
 }
 
-func (p *ForwardingEndpointPrometheusModel) Set(prom *typesv1beta1.PrometheusRemoteWriteConfig) (diagnostics diag.Diagnostics) {
+func (p *ForwardingEndpointPrometheusModel) Set(prom *typesv1beta1.PrometheusRemoteWriteConfig) {
 	p.Endpoint = types.StringValue(prom.Endpoint)
 	var tls *TLSConfigModel
 	if prom.Tls != nil {
@@ -76,13 +79,11 @@ func (p *ForwardingEndpointPrometheusModel) Set(prom *typesv1beta1.PrometheusRem
 		tls.Set(prom.Tls)
 	}
 	p.TLS = tls
-
-	return
 }
 
-func (p *ForwardingEndpointPrometheusModel) ToMsg() (msg *typesv1beta1.PrometheusRemoteWriteConfig, diagnostics diag.Diagnostics) {
+func (p *ForwardingEndpointPrometheusModel) ToMsg() (msg *typesv1beta1.PrometheusRemoteWriteConfig) {
 	if p == nil {
-		return
+		return nil
 	}
 
 	msg = &typesv1beta1.PrometheusRemoteWriteConfig{
@@ -90,7 +91,7 @@ func (p *ForwardingEndpointPrometheusModel) ToMsg() (msg *typesv1beta1.Prometheu
 		Tls:      p.TLS.ToMsg(),
 	}
 
-	return
+	return msg
 }
 
 type ForwardingEndpointS3Model struct {
@@ -99,16 +100,15 @@ type ForwardingEndpointS3Model struct {
 	RequiresCredentials types.Bool   `tfsdk:"requires_credentials"`
 }
 
-func (s *ForwardingEndpointS3Model) Set(s3 *typesv1beta1.S3Config) (diagnostics diag.Diagnostics) {
+func (s *ForwardingEndpointS3Model) Set(s3 *typesv1beta1.S3Config) {
 	s.URI = types.StringValue(s3.Uri)
 	s.Region = types.StringValue(s3.Region)
 	s.RequiresCredentials = types.BoolValue(s3.RequiresCredentials)
-	return
 }
 
-func (s *ForwardingEndpointS3Model) ToMsg() (msg *typesv1beta1.S3Config, diagnostics diag.Diagnostics) {
+func (s *ForwardingEndpointS3Model) ToMsg() (msg *typesv1beta1.S3Config) {
 	if s == nil {
-		return
+		return nil
 	}
 
 	msg = &typesv1beta1.S3Config{
@@ -117,7 +117,7 @@ func (s *ForwardingEndpointS3Model) ToMsg() (msg *typesv1beta1.S3Config, diagnos
 		RequiresCredentials: s.RequiresCredentials.ValueBool(),
 	}
 
-	return
+	return msg
 }
 
 type ForwardingEndpointHTTPSModel struct {
@@ -125,7 +125,7 @@ type ForwardingEndpointHTTPSModel struct {
 	TLS      *TLSConfigModel `tfsdk:"tls"`
 }
 
-func (h *ForwardingEndpointHTTPSModel) Set(https *typesv1beta1.HTTPSConfig) (diagnostics diag.Diagnostics) {
+func (h *ForwardingEndpointHTTPSModel) Set(https *typesv1beta1.HTTPSConfig) {
 	h.Endpoint = types.StringValue(https.Endpoint)
 
 	var tls *TLSConfigModel
@@ -134,13 +134,11 @@ func (h *ForwardingEndpointHTTPSModel) Set(https *typesv1beta1.HTTPSConfig) (dia
 		tls.Set(https.Tls)
 	}
 	h.TLS = tls
-
-	return
 }
 
-func (h *ForwardingEndpointHTTPSModel) ToMsg() (msg *typesv1beta1.HTTPSConfig, diagnostics diag.Diagnostics) {
+func (h *ForwardingEndpointHTTPSModel) ToMsg() (msg *typesv1beta1.HTTPSConfig) {
 	if h == nil {
-		return
+		return nil
 	}
 
 	msg = &typesv1beta1.HTTPSConfig{
@@ -148,7 +146,7 @@ func (h *ForwardingEndpointHTTPSModel) ToMsg() (msg *typesv1beta1.HTTPSConfig, d
 		Tls:      h.TLS.ToMsg(),
 	}
 
-	return
+	return msg
 }
 
 func (s *ForwardingEndpointSpecModel) ToMsg() (spec *typesv1beta1.ForwardingEndpointSpec, diagnostics diag.Diagnostics) {
@@ -164,22 +162,19 @@ func (s *ForwardingEndpointSpecModel) ToMsg() (spec *typesv1beta1.ForwardingEndp
 
 	if s.Prometheus != nil {
 		configuredImplementations = append(configuredImplementations, "prometheus")
-		prometheusMsg, diags := s.Prometheus.ToMsg()
-		diagnostics.Append(diags...)
+		prometheusMsg := s.Prometheus.ToMsg()
 		spec.SetPrometheus(prometheusMsg)
 	}
 
 	if s.S3 != nil {
 		configuredImplementations = append(configuredImplementations, "s3")
-		s3Msg, diags := s.S3.ToMsg()
-		diagnostics.Append(diags...)
+		s3Msg := s.S3.ToMsg()
 		spec.SetS3(s3Msg)
 	}
 
 	if s.HTTPS != nil {
 		configuredImplementations = append(configuredImplementations, "https")
-		httpsMsg, diags := s.HTTPS.ToMsg()
-		diagnostics.Append(diags...)
+		httpsMsg := s.HTTPS.ToMsg()
 		spec.SetHttps(httpsMsg)
 	}
 
@@ -213,11 +208,10 @@ type ForwardingEndpointStatusModel struct {
 	StateMessage types.String      `tfsdk:"state_message"`
 }
 
-func (s *ForwardingEndpointStatusModel) Set(status *typesv1beta1.ForwardingEndpointStatus) (diagnostics diag.Diagnostics) {
+func (s *ForwardingEndpointStatusModel) Set(status *typesv1beta1.ForwardingEndpointStatus) {
 	s.CreatedAt = timestampToTimeValue(status.CreatedAt)
 	s.UpdatedAt = timestampToTimeValue(status.UpdatedAt)
 	s.StateCode = types.Int32Value(int32(status.State.Number()))
 	s.State = types.StringValue(status.State.String())
 	s.StateMessage = types.StringPointerValue(status.StateMessage)
-	return
 }

@@ -31,6 +31,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const (
+	testPipelineResourceName = "test_pipeline"
+)
+
 var (
 	//go:embed testdata
 	testdata embed.FS
@@ -219,10 +223,14 @@ func createHTTPSEndpoint(t *testing.T, slug string) *HTTPSEndpointTestModel {
 func skipUnimplementedEndpointTypes(t *testing.T, endpointType EndpointType) {
 	t.Helper()
 	switch endpointType {
+	case EndpointTypeHTTPS:
+		// HTTPS is implemented, continue
 	case EndpointTypePrometheus:
 		t.Skip("Skipping Prometheus endpoint until it is available")
 	case EndpointTypeS3:
 		t.Skip("Skipping S3 endpoint until it is supported")
+	default:
+		t.Skipf("Unknown endpoint type: %s", endpointType)
 	}
 }
 
@@ -374,8 +382,7 @@ func TestForwardingPipelineResourceModelRef_ToMsg(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			msg, diags := tt.input.ToMsg()
-			assert.Empty(t, diags)
+			msg := tt.input.ToMsg()
 			assert.Equal(t, tt.expected, msg)
 		})
 	}
@@ -438,8 +445,7 @@ func TestForwardingPipelineResourceSpecModel_ToMsg(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			msg, diags := tt.input.ToMsg()
-			assert.Empty(t, diags)
+			msg := tt.input.ToMsg()
 			assert.Equal(t, tt.expected, msg)
 		})
 	}
@@ -629,10 +635,10 @@ func TestForwardingPipelineResource_IncompatibleCombinations(t *testing.T) {
 		for _, endpointType := range getIncompatibleEndpointTypes(StreamTypeLogs) {
 			testName := fmt.Sprintf("%s_to_%s_fails", streamSlug, endpointType)
 
-			t.Run(testName, func(t *testing.T) {
-				randomInt := rand.IntN(100)
-				resourceName := "test_pipeline"
-				ctx := t.Context()
+		t.Run(testName, func(t *testing.T) {
+			randomInt := rand.IntN(100)
+			resourceName := testPipelineResourceName
+			ctx := t.Context()
 
 				// TODO: When S3/Prometheus endpoints are implemented, dispatch based on endpointType
 				endpoint := createHTTPSEndpoint(t, slugify(fmt.Sprintf("incompat-%s", endpointType), randomInt))

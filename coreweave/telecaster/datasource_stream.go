@@ -62,7 +62,7 @@ func (s *TelemetryStreamDataSourceModel) Set(ctx context.Context, stream *typesv
 	var ref model.TelemetryStreamRefModel
 	// .As() hydrates information from the plan and schema into the model before we set it. Unhandled nulls/unknowns are not acceptable for refs.
 	diagnostics.Append(s.Ref.As(ctx, &ref, basetypes.ObjectAsOptions{})...)
-	diagnostics.Append(ref.Set(stream.Ref)...)
+	ref.Set(stream.Ref)
 	refObj, diags := types.ObjectValueFrom(ctx, s.Ref.AttributeTypes(ctx), &ref)
 	diagnostics.Append(diags...)
 	s.Ref = refObj
@@ -70,14 +70,14 @@ func (s *TelemetryStreamDataSourceModel) Set(ctx context.Context, stream *typesv
 	var spec TelemetryStreamDataSourceSpecModel
 	// Hydrate like ref, but allow unhandled nulls/unknowns since this is not expected be known before we read.
 	diagnostics.Append(s.Spec.As(ctx, &spec, basetypes.ObjectAsOptions{UnhandledNullAsEmpty: true, UnhandledUnknownAsEmpty: true})...)
-	diagnostics.Append(spec.Set(stream.Spec)...)
+	spec.Set(stream.Spec)
 	specObj, specDiags := types.ObjectValueFrom(ctx, s.Spec.AttributeTypes(ctx), &spec)
 	diagnostics.Append(specDiags...)
 	s.Spec = specObj
 
 	var status model.TelemetryStreamStatusModel
 	diagnostics.Append(s.Status.As(ctx, &status, basetypes.ObjectAsOptions{UnhandledNullAsEmpty: true, UnhandledUnknownAsEmpty: true})...)
-	diagnostics.Append(status.Set(stream.Status)...)
+	status.Set(stream.Status)
 	statusObj, statusDiags := types.ObjectValueFrom(ctx, s.Status.AttributeTypes(ctx), &status)
 	diagnostics.Append(statusDiags...)
 	s.Status = statusObj
@@ -91,8 +91,7 @@ func (s *TelemetryStreamDataSourceModel) toGetRequest(ctx context.Context) (msg 
 	if diagnostics.HasError() {
 		return
 	}
-	refMsg, diags := ref.ToMsg()
-	diagnostics.Append(diags...)
+	refMsg := ref.ToMsg()
 
 	if diagnostics.HasError() {
 		return

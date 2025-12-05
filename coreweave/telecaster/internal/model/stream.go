@@ -13,21 +13,20 @@ type TelemetryStreamRefModel struct {
 	Slug types.String `tfsdk:"slug"`
 }
 
-func (r *TelemetryStreamRefModel) Set(ref *typesv1beta1.TelemetryStreamRef) (diagnostics diag.Diagnostics) {
+func (r *TelemetryStreamRefModel) Set(ref *typesv1beta1.TelemetryStreamRef) {
 	r.Slug = types.StringValue(ref.Slug)
-	return
 }
 
-func (r *TelemetryStreamRefModel) ToMsg() (msg *typesv1beta1.TelemetryStreamRef, diagnostics diag.Diagnostics) {
+func (r *TelemetryStreamRefModel) ToMsg() (msg *typesv1beta1.TelemetryStreamRef) {
 	if r == nil {
-		return
+		return nil
 	}
 
 	msg = &typesv1beta1.TelemetryStreamRef{
 		Slug: r.Slug.ValueString(),
 	}
 
-	return
+	return msg
 }
 
 type TelemetryStreamSpecModel struct {
@@ -40,6 +39,8 @@ func (s *TelemetryStreamSpecModel) Set(spec *typesv1beta1.TelemetryStreamSpec) (
 	s.DisplayName = types.StringValue(spec.DisplayName)
 
 	switch k := spec.WhichKind(); k {
+	case typesv1beta1.TelemetryStreamSpec_Kind_not_set_case:
+		diagnostics.AddError("Stream kind not set", "A telemetry stream must specify either logs or metrics")
 	case typesv1beta1.TelemetryStreamSpec_Metrics_case:
 		s.Metrics = new(MetricsStreamSpecModel)
 		diagnostics.Append(s.Metrics.Set(spec.GetMetrics())...)
@@ -75,11 +76,10 @@ type TelemetryStreamStatusModel struct {
 	StateMessage types.String      `tfsdk:"state_message"`
 }
 
-func (s *TelemetryStreamStatusModel) Set(status *typesv1beta1.TelemetryStreamStatus) (diagnostics diag.Diagnostics) {
+func (s *TelemetryStreamStatusModel) Set(status *typesv1beta1.TelemetryStreamStatus) {
 	s.CreatedAt = timestampToTimeValue(status.CreatedAt)
 	s.UpdatedAt = timestampToTimeValue(status.UpdatedAt)
 	s.StateCode = types.Int32Value(int32(status.State.Number()))
 	s.StateString = types.StringValue(status.State.String())
 	s.StateMessage = types.StringPointerValue(status.StateMessage)
-	return
 }

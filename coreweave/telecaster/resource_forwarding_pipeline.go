@@ -44,21 +44,21 @@ type ResourceForwardingPipelineModel struct {
 func (m *ResourceForwardingPipelineModel) Set(ctx context.Context, pipeline *typesv1beta1.ForwardingPipeline) (diagnostics diag.Diagnostics) {
 	var ref model.ForwardingPipelineRefModel
 	diagnostics.Append(m.Ref.As(ctx, &ref, basetypes.ObjectAsOptions{})...)
-	diagnostics.Append(ref.Set(pipeline.Ref)...)
+	ref.Set(pipeline.Ref)
 	refObj, diags := types.ObjectValueFrom(ctx, m.Ref.AttributeTypes(ctx), ref)
 	diagnostics.Append(diags...)
 	m.Ref = refObj
 
 	var spec model.ForwardingPipelineSpecModel
 	diagnostics.Append(m.Spec.As(ctx, &spec, basetypes.ObjectAsOptions{})...)
-	diagnostics.Append(spec.Set(pipeline.Spec)...)
+	spec.Set(pipeline.Spec)
 	specObject, diags := types.ObjectValueFrom(ctx, m.Spec.AttributeTypes(ctx), spec)
 	diagnostics.Append(diags...)
 	m.Spec = specObject
 
 	var status model.ForwardingPipelineStatusModel
 	diagnostics.Append(m.Status.As(ctx, &status, basetypes.ObjectAsOptions{})...)
-	diagnostics.Append(status.Set(pipeline.Status)...)
+	status.Set(pipeline.Status)
 	statusObject, diags := types.ObjectValueFrom(ctx, m.Status.AttributeTypes(ctx), status)
 	diagnostics.Append(diags...)
 	m.Status = statusObject
@@ -68,7 +68,7 @@ func (m *ResourceForwardingPipelineModel) Set(ctx context.Context, pipeline *typ
 
 func (m *ResourceForwardingPipelineModel) ToMsg(ctx context.Context) (msg *typesv1beta1.ForwardingPipeline, diagnostics diag.Diagnostics) {
 	if m == nil {
-		return
+		return nil, nil
 	}
 
 	var (
@@ -80,8 +80,6 @@ func (m *ResourceForwardingPipelineModel) ToMsg(ctx context.Context) (msg *types
 	diagnostics.Append(m.Ref.As(ctx, &ref, basetypes.ObjectAsOptions{UnhandledNullAsEmpty: true, UnhandledUnknownAsEmpty: true})...)
 	diagnostics.Append(m.Spec.As(ctx, &spec, basetypes.ObjectAsOptions{})...)
 	diagnostics.Append(m.Status.As(ctx, &status, basetypes.ObjectAsOptions{UnhandledNullAsEmpty: true, UnhandledUnknownAsEmpty: true})...)
-	var diags diag.Diagnostics
-	msg = &typesv1beta1.ForwardingPipeline{}
 
 	var refProto *typesv1beta1.ForwardingPipelineRef
 	if m.Ref.IsNull() || m.Ref.IsUnknown() {
@@ -89,13 +87,11 @@ func (m *ResourceForwardingPipelineModel) ToMsg(ctx context.Context) (msg *types
 			Slug: "abcde", // placeholder value, the real one will be returned back
 		}
 	} else {
-		refProto, diags = ref.ToMsg()
-		diagnostics.Append(diags...)
+		refProto = ref.ToMsg()
 	}
 
 	// Spec should always be known.
-	specProto, diags := spec.ToMsg()
-	diagnostics.Append(diags...)
+	specProto := spec.ToMsg()
 	if diagnostics.HasError() {
 		return nil, diagnostics
 	}
@@ -105,7 +101,7 @@ func (m *ResourceForwardingPipelineModel) ToMsg(ctx context.Context) (msg *types
 		Spec: specProto,
 	}
 
-	return
+	return msg, diagnostics
 }
 
 // ValidateConfig implements resource.ResourceWithValidateConfig.

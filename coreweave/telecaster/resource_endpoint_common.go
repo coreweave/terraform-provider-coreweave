@@ -40,7 +40,7 @@ type endpointCommon struct {
 	StateMessage types.String      `tfsdk:"state_message"`
 }
 
-func (e *endpointCommon) setFromEndpoint(endpoint *typesv1beta1.ForwardingEndpoint) (diagnostics diag.Diagnostics) {
+func (e *endpointCommon) setFromEndpoint(endpoint *typesv1beta1.ForwardingEndpoint) {
 	if endpoint == nil {
 		return
 	}
@@ -58,15 +58,13 @@ func (e *endpointCommon) setFromEndpoint(endpoint *typesv1beta1.ForwardingEndpoi
 	// Set status fields
 	if endpoint.Status != nil {
 		var status model.ForwardingEndpointStatusModel
-		diagnostics.Append(status.Set(endpoint.Status)...)
+		status.Set(endpoint.Status)
 		e.CreatedAt = status.CreatedAt
 		e.UpdatedAt = status.UpdatedAt
 		e.StateCode = status.StateCode
 		e.State = status.State
 		e.StateMessage = status.StateMessage
 	}
-
-	return
 }
 
 func (e *endpointCommon) toRef() *typesv1beta1.ForwardingEndpointRef {
@@ -157,32 +155,6 @@ func pollForEndpointReady(ctx context.Context, client *coreweave.Client, ref *ty
 	}
 
 	return endpoint, nil
-}
-
-func pollForEndpointDeleted(ctx context.Context, client *coreweave.Client, ref *typesv1beta1.ForwardingEndpointRef, timeout time.Duration) error {
-	pollConf := retry.StateChangeConf{
-		Pending: []string{
-			typesv1beta1.ForwardingEndpointState_FORWARDING_ENDPOINT_STATE_PENDING.String(),
-		},
-		Target: []string{},
-		Refresh: func() (any, string, error) {
-			result, err := client.GetEndpoint(ctx, connect.NewRequest(&clusterv1beta1.GetEndpointRequest{
-				Ref: ref,
-			}))
-			if err != nil {
-				if coreweave.IsNotFoundError(err) {
-					return nil, "", nil
-				}
-				return nil, typesv1beta1.ForwardingEndpointState_FORWARDING_ENDPOINT_STATE_UNSPECIFIED.String(), err
-			}
-			endpoint := result.Msg.GetEndpoint()
-			return endpoint, endpoint.GetStatus().GetState().String(), nil
-		},
-		Timeout: timeout,
-	}
-
-	_, err := pollConf.WaitForStateContext(ctx)
-	return err
 }
 
 func readEndpointBySlug(ctx context.Context, client *coreweave.Client, slug string) (*typesv1beta1.ForwardingEndpoint, error) {
