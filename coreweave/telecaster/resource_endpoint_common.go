@@ -199,17 +199,48 @@ func readEndpointBySlug(ctx context.Context, client *coreweave.Client, slug stri
 	return getResp.Msg.GetEndpoint(), nil
 }
 
-func deleteEndpoint(ctx context.Context, client *coreweave.Client, ref *typesv1beta1.ForwardingEndpointRef, timeout time.Duration, diags *diag.Diagnostics) {
-	if _, err := client.DeleteEndpoint(ctx, connect.NewRequest(&clusterv1beta1.DeleteEndpointRequest{
-		Ref: ref,
-	})); err != nil {
+func readEndpoint(ctx context.Context, client *coreweave.Client, slug string, diags *diag.Diagnostics) *typesv1beta1.ForwardingEndpoint {
+	endpoint, err := readEndpointBySlug(ctx, client, slug)
+	if err != nil {
 		coreweave.HandleAPIError(ctx, err, diags)
+		return nil
+	}
+
+	if endpoint == nil {
+		return nil
+	}
+
+	return endpoint
+}
+
+func createEndpoint(ctx context.Context, client *coreweave.Client, req *clusterv1beta1.CreateEndpointRequest, timeout time.Duration, diags *diag.Diagnostics) *typesv1beta1.ForwardingEndpoint {
+	if _, err := client.CreateEndpoint(ctx, connect.NewRequest(req)); err != nil {
+		coreweave.HandleAPIError(ctx, err, diags)
+		return nil
+	}
+
+	endpoint, err := pollForEndpointReady(ctx, client, req.Ref, timeout)
+	if err != nil {
+		coreweave.HandleAPIError(ctx, err, diags)
+		return nil
+	}
+
+	return endpoint
+}
+
+func updateEndpoint(ctx context.Context, client *coreweave.Client, req *clusterv1beta1.UpdateEndpointRequest, timeout time.Duration) (endpoint *typesv1beta1.ForwardingEndpoint, diagnostics diag.Diagnostics) {
+	_, err := client.UpdateEndpoint(ctx, connect.NewRequest(req))
+	if err != nil {
+		coreweave.HandleAPIError(ctx, err, &diagnostics)
 		return
 	}
 
-	if err := pollForEndpointDeleted(ctx, client, ref, timeout); err != nil {
-		coreweave.HandleAPIError(ctx, err, diags)
+	endpoint, err = pollForEndpointReady(ctx, client, req.Ref, timeout)
+	if err != nil {
+		coreweave.HandleAPIError(ctx, err, &diagnostics)
+		return
 	}
+	return
 }
 
 func (e *endpointCommon) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
