@@ -10,12 +10,10 @@ import (
 	"github.com/coreweave/terraform-provider-coreweave/coreweave/telecaster/internal"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave/telecaster/internal/model"
 	"github.com/coreweave/terraform-provider-coreweave/internal/coretf"
-	"github.com/hashicorp/terraform-plugin-framework-validators/objectvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
-	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 )
@@ -46,12 +44,12 @@ type HTTPSForwardingEndpointModel struct {
 	Credentials *model.HTTPSCredentialsModel `tfsdk:"credentials"`
 }
 
-func (m *HTTPSForwardingEndpointModel) setFromEndpoint(ctx context.Context, endpoint *typesv1beta1.ForwardingEndpoint) (diagnostics diag.Diagnostics) {
+func (m *HTTPSForwardingEndpointModel) setFromEndpoint(_ context.Context, endpoint *typesv1beta1.ForwardingEndpoint) {
 	if endpoint == nil {
 		return
 	}
 
-	diagnostics.Append(m.endpointCommon.setFromEndpoint(endpoint)...)
+	m.endpointCommon.setFromEndpoint(endpoint)
 
 	if endpoint.Spec != nil && endpoint.Spec.GetHttps() != nil {
 		httpsConfig := endpoint.Spec.GetHttps()
@@ -62,11 +60,9 @@ func (m *HTTPSForwardingEndpointModel) setFromEndpoint(ctx context.Context, endp
 			m.TLS.Set(httpsConfig.Tls)
 		}
 	}
-
-	return
 }
 
-func (m *HTTPSForwardingEndpointModel) toMsg(ctx context.Context) (msg *typesv1beta1.ForwardingEndpoint, diagnostics diag.Diagnostics) {
+func (m *HTTPSForwardingEndpointModel) toMsg(_ context.Context) (msg *typesv1beta1.ForwardingEndpoint) {
 	httpsConfig := &typesv1beta1.HTTPSConfig{
 		Endpoint: m.Endpoint.ValueString(),
 		Tls:      m.TLS.ToMsg(),
@@ -83,7 +79,7 @@ func (m *HTTPSForwardingEndpointModel) toMsg(ctx context.Context) (msg *typesv1b
 	}
 	msg.Spec.SetHttps(httpsConfig)
 
-	return msg, diagnostics
+	return
 }
 
 func (m *HTTPSForwardingEndpointModel) toCredentials() (credentials *typesv1beta1.HTTPSCredentials, diagnostics diag.Diagnostics) {
@@ -115,56 +111,9 @@ func (r *HTTPSForwardingEndpointResource) Schema(ctx context.Context, req resour
 		MarkdownDescription: "Authentication credentials for the HTTPS endpoint. At most one of basic_auth, bearer_token, or auth_headers should be set.",
 		Optional:            true,
 		Attributes: map[string]schema.Attribute{
-			"basic_auth": schema.SingleNestedAttribute{
-				MarkdownDescription: "HTTP Basic authentication credentials.",
-				Optional:            true,
-				Validators: []validator.Object{
-					objectvalidator.ExactlyOneOf(
-						path.MatchRoot("credentials").AtName("basic_auth"),
-						path.MatchRoot("credentials").AtName("bearer_token"),
-						path.MatchRoot("credentials").AtName("auth_headers"),
-					),
-				},
-				Attributes: map[string]schema.Attribute{
-					"username": schema.StringAttribute{
-						MarkdownDescription: "Username for HTTP Basic authentication.",
-						Required:            true,
-						Sensitive:           true,
-						WriteOnly:           true,
-					},
-					"password": schema.StringAttribute{
-						MarkdownDescription: "Password for HTTP Basic authentication.",
-						Required:            true,
-						Sensitive:           true,
-						WriteOnly:           true,
-					},
-				},
-			},
-			"bearer_token": schema.SingleNestedAttribute{
-				MarkdownDescription: "Bearer token authentication credentials.",
-				Optional:            true,
-				Attributes: map[string]schema.Attribute{
-					"token": schema.StringAttribute{
-						MarkdownDescription: "Bearer token value.",
-						Required:            true,
-						Sensitive:           true,
-						WriteOnly:           true,
-					},
-				},
-			},
-			"auth_headers": schema.SingleNestedAttribute{
-				MarkdownDescription: "Custom HTTP headers for authentication.",
-				Optional:            true,
-				Attributes: map[string]schema.Attribute{
-					"headers": schema.MapAttribute{
-						MarkdownDescription: "Map of HTTP header names to values for authentication.",
-						Required:            true,
-						Sensitive:           true,
-						WriteOnly:           true,
-						ElementType:         types.StringType,
-					},
-				},
-			},
+			"basic_auth": basicAuthAttribute(),
+			"bearer_token": bearerTokenAttribute(),
+			"auth_headers": authHeadersAttribute(),
 		},
 	}
 
@@ -181,11 +130,7 @@ func (r *HTTPSForwardingEndpointResource) ValidateConfig(ctx context.Context, re
 		return
 	}
 
-	msg, diags := data.toMsg(ctx)
-	resp.Diagnostics.Append(diags...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
+	msg := data.toMsg(ctx)
 
 	if err := protovalidate.Validate(msg); err != nil {
 		resp.Diagnostics.AddError("Validation Error", err.Error())
@@ -203,11 +148,7 @@ func (r *HTTPSForwardingEndpointResource) Create(ctx context.Context, req resour
 		return
 	}
 
-	endpointMsg, diags := data.toMsg(ctx)
-	resp.Diagnostics.Append(diags...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
+	endpointMsg := data.toMsg(ctx)
 
 	createReq := &clusterv1beta1.CreateEndpointRequest{
 		Ref:  endpointMsg.Ref,
@@ -229,7 +170,7 @@ func (r *HTTPSForwardingEndpointResource) Create(ctx context.Context, req resour
 		return
 	}
 
-	resp.Diagnostics.Append(data.setFromEndpoint(ctx, endpoint)...)
+	data.setFromEndpoint(ctx, endpoint)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -254,7 +195,7 @@ func (r *HTTPSForwardingEndpointResource) Read(ctx context.Context, req resource
 		return
 	}
 
-	resp.Diagnostics.Append(data.setFromEndpoint(ctx, endpoint)...)
+	data.setFromEndpoint(ctx, endpoint)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -275,11 +216,7 @@ func (r *HTTPSForwardingEndpointResource) Update(ctx context.Context, req resour
 		return
 	}
 
-	endpointMsg, diags := data.toMsg(ctx)
-	resp.Diagnostics.Append(diags...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
+	endpointMsg := data.toMsg(ctx)
 
 	updateReq := &clusterv1beta1.UpdateEndpointRequest{
 		Ref:  endpointMsg.Ref,
@@ -301,7 +238,7 @@ func (r *HTTPSForwardingEndpointResource) Update(ctx context.Context, req resour
 		return
 	}
 
-	resp.Diagnostics.Append(data.setFromEndpoint(ctx, endpoint)...)
+	data.setFromEndpoint(ctx, endpoint)
 	if resp.Diagnostics.HasError() {
 		return
 	}
