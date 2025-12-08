@@ -26,21 +26,21 @@ import (
 )
 
 func init() {
-	resource.AddTestSweepers("coreweave_telecaster_forwarding_endpoint_https", &resource.Sweeper{
-		Name:         "coreweave_telecaster_forwarding_endpoint_https",
+	resource.AddTestSweepers("coreweave_telecaster_forwarding_endpoint_prometheus", &resource.Sweeper{
+		Name:         "coreweave_telecaster_forwarding_endpoint_prometheus",
 		Dependencies: []string{"coreweave_telecaster_forwarding_pipeline"},
 		F: func(r string) error {
 			testutil.SetEnvDefaults()
-			return typedEndpointSweeper(typesv1beta1.ForwardingEndpointSpec_Https_case.String())(r)
+			return typedEndpointSweeper(typesv1beta1.ForwardingEndpointSpec_Prometheus_case.String())(r)
 		},
 	})
 }
 
-func renderHTTPSEndpointResource(resourceName string, m *model.ForwardingEndpointHTTPSModel) string {
+func renderPrometheusEndpointResource(resourceName string, m *model.ForwardingEndpointPrometheusModel) string {
 	file := hclwrite.NewEmptyFile()
 	body := file.Body()
 
-	resource := body.AppendNewBlock("resource", []string{"coreweave_telecaster_forwarding_endpoint_https", resourceName})
+	resource := body.AppendNewBlock("resource", []string{"coreweave_telecaster_forwarding_endpoint_prometheus", resourceName})
 	resourceBody := resource.Body()
 
 	resourceBody.SetAttributeValue("slug", cty.StringVal(m.Slug.ValueString()))
@@ -85,33 +85,33 @@ func renderHTTPSEndpointResource(resourceName string, m *model.ForwardingEndpoin
 	return buf.String()
 }
 
-func TestHTTPSForwardingEndpointSchema(t *testing.T) {
+func TestPrometheusForwardingEndpointSchema(t *testing.T) {
 	t.Parallel()
 
 	ctx := t.Context()
 	schemaRequest := fwresource.SchemaRequest{}
 	schemaResponse := &fwresource.SchemaResponse{}
 
-	telecaster.NewForwardingEndpointHTTPSResource().Schema(ctx, schemaRequest, schemaResponse)
+	telecaster.NewForwardingEndpointPrometheusResource().Schema(ctx, schemaRequest, schemaResponse)
 	assert.False(t, schemaResponse.Diagnostics.HasError(), "Schema request returned errors: %v", schemaResponse.Diagnostics)
 
 	diagnostics := schemaResponse.Schema.ValidateImplementation(ctx)
 	assert.False(t, diagnostics.HasError(), "Schema implementation is invalid: %v", diagnostics)
 }
 
-type httpsEndpointTestStep struct {
+type prometheusEndpointTestStep struct {
 	TestName         string
 	ResourceName     string
-	Model            *model.ForwardingEndpointHTTPSModel
+	Model            *model.ForwardingEndpointPrometheusModel
 	ConfigPlanChecks resource.ConfigPlanChecks
 	Options          []testStepOption
 }
 
-func createHTTPSEndpointTestStep(ctx context.Context, t *testing.T, opts httpsEndpointTestStep) resource.TestStep {
+func createPrometheusEndpointTestStep(ctx context.Context, t *testing.T, opts prometheusEndpointTestStep) resource.TestStep {
 	t.Helper()
 
 	metadataResp := new(fwresource.MetadataResponse)
-	telecaster.NewForwardingEndpointHTTPSResource().Metadata(ctx, fwresource.MetadataRequest{ProviderTypeName: "coreweave"}, metadataResp)
+	telecaster.NewForwardingEndpointPrometheusResource().Metadata(ctx, fwresource.MetadataRequest{ProviderTypeName: "coreweave"}, metadataResp)
 
 	fullResourceName := strings.Join([]string{metadataResp.TypeName, opts.ResourceName}, ".")
 
@@ -135,9 +135,9 @@ func createHTTPSEndpointTestStep(ctx context.Context, t *testing.T, opts httpsEn
 
 	testStep := resource.TestStep{
 		PreConfig: func() {
-			t.Logf("Beginning coreweave_telecaster_forwarding_endpoint_https test: %s", opts.TestName)
+			t.Logf("Beginning coreweave_telecaster_forwarding_endpoint_prometheus test: %s", opts.TestName)
 		},
-		Config:            renderHTTPSEndpointResource(opts.ResourceName, opts.Model),
+		Config:            renderPrometheusEndpointResource(opts.ResourceName, opts.Model),
 		ConfigPlanChecks:  opts.ConfigPlanChecks,
 		ConfigStateChecks: stateChecks,
 	}
@@ -149,19 +149,19 @@ func createHTTPSEndpointTestStep(ctx context.Context, t *testing.T, opts httpsEn
 	return testStep
 }
 
-func TestHTTPSForwardingEndpointResource(t *testing.T) {
+func TestPrometheusForwardingEndpointResource(t *testing.T) {
 	t.Run("core lifecycle", func(t *testing.T) {
 		randomInt := rand.IntN(100)
-		resourceName := fmt.Sprintf("test_acc_https_%d", randomInt)
-		fullResourceName := fmt.Sprintf("coreweave_telecaster_forwarding_endpoint_https.%s", resourceName)
+		resourceName := fmt.Sprintf("test_acc_prometheus_%d", randomInt)
+		fullResourceName := fmt.Sprintf("coreweave_telecaster_forwarding_endpoint_prometheus.%s", resourceName)
 		ctx := t.Context()
 
-		baseModel := &model.ForwardingEndpointHTTPSModel{
+		baseModel := &model.ForwardingEndpointPrometheusModel{
 			ForwardingEndpointModelCore: model.ForwardingEndpointModelCore{
-				Slug:        types.StringValue(slugify("https-fe", randomInt)),
-				DisplayName: types.StringValue("Test HTTPS Endpoint"),
+				Slug:        types.StringValue(slugify("prom-fe", randomInt)),
+				DisplayName: types.StringValue("Test Prometheus Endpoint"),
 			},
-			Endpoint: types.StringValue("http://telecaster-console.us-east-03-core-services.int.coreweave.com:9000/"),
+			Endpoint: types.StringValue("http://prometheus.us-east-03-core-services.int.coreweave.com:9090/api/v1/write"),
 		}
 
 		resource.ParallelTest(t, resource.TestCase{
@@ -170,8 +170,8 @@ func TestHTTPSForwardingEndpointResource(t *testing.T) {
 				testutil.SetEnvDefaults()
 			},
 			Steps: []resource.TestStep{
-				createHTTPSEndpointTestStep(ctx, t, httpsEndpointTestStep{
-					TestName:     "initial HTTPS forwarding endpoint",
+				createPrometheusEndpointTestStep(ctx, t, prometheusEndpointTestStep{
+					TestName:     "initial Prometheus forwarding endpoint",
 					ResourceName: resourceName,
 					Model:        baseModel,
 					ConfigPlanChecks: resource.ConfigPlanChecks{
@@ -180,7 +180,7 @@ func TestHTTPSForwardingEndpointResource(t *testing.T) {
 						},
 					},
 				}),
-				createHTTPSEndpointTestStep(ctx, t, httpsEndpointTestStep{
+				createPrometheusEndpointTestStep(ctx, t, prometheusEndpointTestStep{
 					TestName:     "no-op (noop)",
 					ResourceName: resourceName,
 					Model:        baseModel,
@@ -190,11 +190,11 @@ func TestHTTPSForwardingEndpointResource(t *testing.T) {
 						},
 					},
 				}),
-				createHTTPSEndpointTestStep(ctx, t, httpsEndpointTestStep{
+				createPrometheusEndpointTestStep(ctx, t, prometheusEndpointTestStep{
 					TestName:     "update display name (update)",
 					ResourceName: resourceName,
-					Model: with(baseModel, func(m *model.ForwardingEndpointHTTPSModel) {
-						m.DisplayName = types.StringValue("Updated HTTPS Endpoint")
+					Model: with(baseModel, func(m *model.ForwardingEndpointPrometheusModel) {
+						m.DisplayName = types.StringValue("Updated Prometheus Endpoint")
 					}),
 					ConfigPlanChecks: resource.ConfigPlanChecks{
 						PreApply: []plancheck.PlanCheck{
@@ -202,7 +202,7 @@ func TestHTTPSForwardingEndpointResource(t *testing.T) {
 						},
 					},
 				}),
-				createHTTPSEndpointTestStep(ctx, t, httpsEndpointTestStep{
+				createPrometheusEndpointTestStep(ctx, t, prometheusEndpointTestStep{
 					TestName:     "revert display name (update)",
 					ResourceName: resourceName,
 					Model:        baseModel,
@@ -212,11 +212,11 @@ func TestHTTPSForwardingEndpointResource(t *testing.T) {
 						},
 					},
 				}),
-				createHTTPSEndpointTestStep(ctx, t, httpsEndpointTestStep{
+				createPrometheusEndpointTestStep(ctx, t, prometheusEndpointTestStep{
 					TestName:     "update slug (requires replacement)",
 					ResourceName: resourceName,
-					Model: with(baseModel, func(m *model.ForwardingEndpointHTTPSModel) {
-						m.Slug = types.StringValue(slugify("https-fe2", randomInt))
+					Model: with(baseModel, func(m *model.ForwardingEndpointPrometheusModel) {
+						m.Slug = types.StringValue(slugify("prometheus-fe2", randomInt))
 					}),
 					ConfigPlanChecks: resource.ConfigPlanChecks{
 						PreApply: []plancheck.PlanCheck{
@@ -224,7 +224,7 @@ func TestHTTPSForwardingEndpointResource(t *testing.T) {
 						},
 					},
 				}),
-				createHTTPSEndpointTestStep(ctx, t, httpsEndpointTestStep{
+				createPrometheusEndpointTestStep(ctx, t, prometheusEndpointTestStep{
 					TestName:     "revert slug (plan only) (requires replacement)",
 					ResourceName: resourceName,
 					Model:        baseModel,
@@ -244,18 +244,18 @@ func TestHTTPSForwardingEndpointResource(t *testing.T) {
 
 	t.Run("with TLS", func(t *testing.T) {
 		randomInt := rand.IntN(100)
-		resourceName := fmt.Sprintf("test_acc_https_tls_%d", randomInt)
-		fullResourceName := fmt.Sprintf("coreweave_telecaster_forwarding_endpoint_https.%s", resourceName)
+		resourceName := fmt.Sprintf("test_acc_prometheus_tls_%d", randomInt)
+		fullResourceName := fmt.Sprintf("coreweave_telecaster_forwarding_endpoint_prometheus.%s", resourceName)
 		ctx := t.Context()
 
 		testCAData := "LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUJURENDQWZPZ0F3SUJBZ0lVZmRLdDdHWU9hRDZuL2pvb3A3OEVoT3Y3YkFvd0NnWUlLb1pJemowRUF3SXcKSERFYU1CZ0dBMVVFQXd3UlkyOXlaWGRsWVhabFkyRXRjbTl2ZEMwd0hoY05NalF4TVRFek1EQTBNVEExV2hjTgpNalV4TVRFek1EQTBNVEExV2pBY01Sb3dHQVlEVlFRRERCRmpiM0psZDJWaGRtVmpZUzF5YjI5ME1Ea1ZNQk1HCkJ5cUdTTTQ5QWdFR0NDcUdTTTQ5QXdFSEEwSUFCUElIdUMyQklIdlFyUlV0bjdodFFnY1NGRDlDbEs0U3BLN0sKaEhWaS9RQm9naVREMC9yMWRqRkViYmZHOW9DTzFodHpXWjd4aE1CRUY4NFJ2TlhtdWNlamdZWXdnWU13RGdZRApWUjBQQVFIL0JBUURBZ0VHTUJJR0ExVWRFd0VCL3dRSU1BWUJBZjhDQVFBd0hRWURWUjBPQkJZRUZOckZjS1dJClVOcWdXcWNxWk5FSVRzOVJuZGh4TUI4R0ExVWRJd1FZTUJhQUZOckZjS1dJVU5xZ1dxY3FaTkVJVHM5Um5kaHgKTUJrR0ExVWRFUVFTTUJDQ0RuZGxkR2h2YjJ0ekxuTjJZekFLQmdncWhrak9QUVFEQWdOSEFEQkVBaUJlM3NsYQpTWjc5bmxQeWJlYVY4NXp5VW9VQ1hVWjNvTnhjN1lZc3N0WDFuZ0lnSUhYQ0xEZUZWKzF2Mlk1RzdwN3N0VTRCClA0VTlScHlyVzhMWnhRdWhFYjQ9Ci0tLS0tRU5EIENFUlRJRklDQVRFLS0tLS0K"
 
-		baseModel := &model.ForwardingEndpointHTTPSModel{
+		baseModel := &model.ForwardingEndpointPrometheusModel{
 			ForwardingEndpointModelCore: model.ForwardingEndpointModelCore{
-				Slug:        types.StringValue(slugify("https-tls", randomInt)),
-				DisplayName: types.StringValue("Test HTTPS Endpoint with TLS"),
+				Slug:        types.StringValue(slugify("prom-fe-tls", randomInt)),
+				DisplayName: types.StringValue("Test Prometheus Endpoint with TLS"),
 			},
-			Endpoint: types.StringValue("https://secure-endpoint.example.com/"),
+			Endpoint: types.StringValue("https://secure-prometheus.example.com/api/v1/write"),
 			TLS: &model.TLSConfigModel{
 				CertificateAuthorityData: types.StringValue(testCAData),
 			},
@@ -267,8 +267,8 @@ func TestHTTPSForwardingEndpointResource(t *testing.T) {
 				testutil.SetEnvDefaults()
 			},
 			Steps: []resource.TestStep{
-				createHTTPSEndpointTestStep(ctx, t, httpsEndpointTestStep{
-					TestName:     "initial HTTPS endpoint with TLS",
+				createPrometheusEndpointTestStep(ctx, t, prometheusEndpointTestStep{
+					TestName:     "initial Prometheus endpoint with TLS",
 					ResourceName: resourceName,
 					Model:        baseModel,
 					ConfigPlanChecks: resource.ConfigPlanChecks{
@@ -277,7 +277,7 @@ func TestHTTPSForwardingEndpointResource(t *testing.T) {
 						},
 					},
 				}),
-				createHTTPSEndpointTestStep(ctx, t, httpsEndpointTestStep{
+				createPrometheusEndpointTestStep(ctx, t, prometheusEndpointTestStep{
 					TestName:     "no-op (noop)",
 					ResourceName: resourceName,
 					Model:        baseModel,
@@ -287,10 +287,10 @@ func TestHTTPSForwardingEndpointResource(t *testing.T) {
 						},
 					},
 				}),
-				createHTTPSEndpointTestStep(ctx, t, httpsEndpointTestStep{
+				createPrometheusEndpointTestStep(ctx, t, prometheusEndpointTestStep{
 					TestName:     "remove TLS (update)",
 					ResourceName: resourceName,
-					Model: with(baseModel, func(m *model.ForwardingEndpointHTTPSModel) {
+					Model: with(baseModel, func(m *model.ForwardingEndpointPrometheusModel) {
 						m.TLS = nil
 					}),
 					ConfigPlanChecks: resource.ConfigPlanChecks{
@@ -299,7 +299,7 @@ func TestHTTPSForwardingEndpointResource(t *testing.T) {
 						},
 					},
 				}),
-				createHTTPSEndpointTestStep(ctx, t, httpsEndpointTestStep{
+				createPrometheusEndpointTestStep(ctx, t, prometheusEndpointTestStep{
 					TestName:     "add TLS back (update)",
 					ResourceName: resourceName,
 					Model:        baseModel,
@@ -315,17 +315,17 @@ func TestHTTPSForwardingEndpointResource(t *testing.T) {
 
 	t.Run("with credentials", func(t *testing.T) {
 		randomInt := rand.IntN(100)
-		resourceName := fmt.Sprintf("test_acc_https_credentials_%d", randomInt)
-		fullResourceName := fmt.Sprintf("coreweave_telecaster_forwarding_endpoint_https.%s", resourceName)
+		resourceName := fmt.Sprintf("test_acc_prometheus_credentials_%d", randomInt)
+		fullResourceName := fmt.Sprintf("coreweave_telecaster_forwarding_endpoint_prometheus.%s", resourceName)
 		ctx := t.Context()
 
-		baseModel := &model.ForwardingEndpointHTTPSModel{
+		baseModel := &model.ForwardingEndpointPrometheusModel{
 			ForwardingEndpointModelCore: model.ForwardingEndpointModelCore{
-				Slug:        types.StringValue(slugify("https-credentials", randomInt)),
-				DisplayName: types.StringValue("Test HTTPS Endpoint with Credentials"),
+				Slug:        types.StringValue(slugify("prom-fe-creds", randomInt)),
+				DisplayName: types.StringValue("Test Prometheus Endpoint with Credentials"),
 			},
-			Endpoint: types.StringValue("https://secure-endpoint.example.com/"),
-			Credentials: &model.HTTPSCredentialsModel{
+			Endpoint: types.StringValue("https://secure-prometheus.example.com/api/v1/write"),
+			Credentials: &model.PrometheusCredentialsModel{
 				BasicAuth: &model.BasicAuthCredentialsModel{
 					Username: types.StringValue("testuser"),
 					Password: types.StringValue("testpassword"),
@@ -339,8 +339,8 @@ func TestHTTPSForwardingEndpointResource(t *testing.T) {
 				testutil.SetEnvDefaults()
 			},
 			Steps: []resource.TestStep{
-				createHTTPSEndpointTestStep(ctx, t, httpsEndpointTestStep{
-					TestName:     "initial HTTPS endpoint with credentials",
+				createPrometheusEndpointTestStep(ctx, t, prometheusEndpointTestStep{
+					TestName:     "initial Prometheus endpoint with credentials",
 					ResourceName: resourceName,
 					Model:        baseModel,
 					ConfigPlanChecks: resource.ConfigPlanChecks{

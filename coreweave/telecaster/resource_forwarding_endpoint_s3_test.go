@@ -26,54 +26,35 @@ import (
 )
 
 func init() {
-	resource.AddTestSweepers("coreweave_telecaster_forwarding_endpoint_https", &resource.Sweeper{
-		Name:         "coreweave_telecaster_forwarding_endpoint_https",
+	resource.AddTestSweepers("coreweave_telecaster_forwarding_endpoint_s3", &resource.Sweeper{
+		Name:         "coreweave_telecaster_forwarding_endpoint_s3",
 		Dependencies: []string{"coreweave_telecaster_forwarding_pipeline"},
 		F: func(r string) error {
 			testutil.SetEnvDefaults()
-			return typedEndpointSweeper(typesv1beta1.ForwardingEndpointSpec_Https_case.String())(r)
+			return typedEndpointSweeper(typesv1beta1.ForwardingEndpointSpec_S3_case.String())(r)
 		},
 	})
 }
 
-func renderHTTPSEndpointResource(resourceName string, m *model.ForwardingEndpointHTTPSModel) string {
+func renderS3EndpointResource(resourceName string, m *model.ForwardingEndpointS3Model) string {
 	file := hclwrite.NewEmptyFile()
 	body := file.Body()
 
-	resource := body.AppendNewBlock("resource", []string{"coreweave_telecaster_forwarding_endpoint_https", resourceName})
+	resource := body.AppendNewBlock("resource", []string{"coreweave_telecaster_forwarding_endpoint_s3", resourceName})
 	resourceBody := resource.Body()
 
 	resourceBody.SetAttributeValue("slug", cty.StringVal(m.Slug.ValueString()))
 	resourceBody.SetAttributeValue("display_name", cty.StringVal(m.DisplayName.ValueString()))
-	resourceBody.SetAttributeValue("endpoint", cty.StringVal(m.Endpoint.ValueString()))
-
-	if m.TLS != nil {
-		resourceBody.SetAttributeValue("tls", cty.ObjectVal(map[string]cty.Value{
-			"certificate_authority_data": cty.StringVal(m.TLS.CertificateAuthorityData.ValueString()),
-		}))
-	}
+	resourceBody.SetAttributeValue("bucket", cty.StringVal(m.Bucket.ValueString()))
+	resourceBody.SetAttributeValue("region", cty.StringVal(m.Region.ValueString()))
 
 	if m.Credentials != nil {
-		credsObj := make(map[string]cty.Value)
-		if m.Credentials.BasicAuth != nil {
-			credsObj["basic_auth"] = cty.ObjectVal(map[string]cty.Value{
-				"username": cty.StringVal(m.Credentials.BasicAuth.Username.ValueString()),
-				"password": cty.StringVal(m.Credentials.BasicAuth.Password.ValueString()),
-			})
+		credsObj := map[string]cty.Value{
+			"access_key_id":     cty.StringVal(m.Credentials.AccessKeyID.ValueString()),
+			"secret_access_key": cty.StringVal(m.Credentials.SecretAccessKey.ValueString()),
 		}
-		if m.Credentials.BearerToken != nil {
-			credsObj["bearer_token"] = cty.ObjectVal(map[string]cty.Value{
-				"token": cty.StringVal(m.Credentials.BearerToken.Token.ValueString()),
-			})
-		}
-		if m.Credentials.AuthHeaders != nil {
-			headersMap := make(map[string]cty.Value)
-			for key, value := range m.Credentials.AuthHeaders.Headers {
-				headersMap[key] = cty.StringVal(value)
-			}
-			credsObj["auth_headers"] = cty.ObjectVal(map[string]cty.Value{
-				"headers": cty.MapVal(headersMap),
-			})
+		if !m.Credentials.SessionToken.IsNull() {
+			credsObj["session_token"] = cty.StringVal(m.Credentials.SessionToken.ValueString())
 		}
 		resourceBody.SetAttributeValue("credentials", cty.ObjectVal(credsObj))
 	}
@@ -85,40 +66,41 @@ func renderHTTPSEndpointResource(resourceName string, m *model.ForwardingEndpoin
 	return buf.String()
 }
 
-func TestHTTPSForwardingEndpointSchema(t *testing.T) {
+func TestS3ForwardingEndpointSchema(t *testing.T) {
 	t.Parallel()
 
 	ctx := t.Context()
 	schemaRequest := fwresource.SchemaRequest{}
 	schemaResponse := &fwresource.SchemaResponse{}
 
-	telecaster.NewForwardingEndpointHTTPSResource().Schema(ctx, schemaRequest, schemaResponse)
+	telecaster.NewForwardingEndpointS3Resource().Schema(ctx, schemaRequest, schemaResponse)
 	assert.False(t, schemaResponse.Diagnostics.HasError(), "Schema request returned errors: %v", schemaResponse.Diagnostics)
 
 	diagnostics := schemaResponse.Schema.ValidateImplementation(ctx)
 	assert.False(t, diagnostics.HasError(), "Schema implementation is invalid: %v", diagnostics)
 }
 
-type httpsEndpointTestStep struct {
+type s3EndpointTestStep struct {
 	TestName         string
 	ResourceName     string
-	Model            *model.ForwardingEndpointHTTPSModel
+	Model            *model.ForwardingEndpointS3Model
 	ConfigPlanChecks resource.ConfigPlanChecks
 	Options          []testStepOption
 }
 
-func createHTTPSEndpointTestStep(ctx context.Context, t *testing.T, opts httpsEndpointTestStep) resource.TestStep {
+func createS3EndpointTestStep(ctx context.Context, t *testing.T, opts s3EndpointTestStep) resource.TestStep {
 	t.Helper()
 
 	metadataResp := new(fwresource.MetadataResponse)
-	telecaster.NewForwardingEndpointHTTPSResource().Metadata(ctx, fwresource.MetadataRequest{ProviderTypeName: "coreweave"}, metadataResp)
+	telecaster.NewForwardingEndpointS3Resource().Metadata(ctx, fwresource.MetadataRequest{ProviderTypeName: "coreweave"}, metadataResp)
 
 	fullResourceName := strings.Join([]string{metadataResp.TypeName, opts.ResourceName}, ".")
 
 	stateChecks := []statecheck.StateCheck{
 		statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("slug"), knownvalue.StringExact(opts.Model.Slug.ValueString())),
 		statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("display_name"), knownvalue.StringExact(opts.Model.DisplayName.ValueString())),
-		statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("endpoint"), knownvalue.StringExact(opts.Model.Endpoint.ValueString())),
+		statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("bucket"), knownvalue.StringExact(opts.Model.Bucket.ValueString())),
+		statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("region"), knownvalue.StringExact(opts.Model.Region.ValueString())),
 
 		statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("created_at"), knownvalue.NotNull()),
 		statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("updated_at"), knownvalue.NotNull()),
@@ -126,18 +108,11 @@ func createHTTPSEndpointTestStep(ctx context.Context, t *testing.T, opts httpsEn
 		statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("state"), knownvalue.StringExact(typesv1beta1.ForwardingEndpointState_FORWARDING_ENDPOINT_STATE_CONNECTED.String())),
 	}
 
-	if opts.Model.TLS != nil {
-		stateChecks = append(stateChecks,
-			statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("tls"), knownvalue.NotNull()),
-			statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("tls").AtMapKey("certificate_authority_data"), knownvalue.StringExact(opts.Model.TLS.CertificateAuthorityData.ValueString())),
-		)
-	}
-
 	testStep := resource.TestStep{
 		PreConfig: func() {
-			t.Logf("Beginning coreweave_telecaster_forwarding_endpoint_https test: %s", opts.TestName)
+			t.Logf("Beginning coreweave_telecaster_forwarding_endpoint_s3 test: %s", opts.TestName)
 		},
-		Config:            renderHTTPSEndpointResource(opts.ResourceName, opts.Model),
+		Config:            renderS3EndpointResource(opts.ResourceName, opts.Model),
 		ConfigPlanChecks:  opts.ConfigPlanChecks,
 		ConfigStateChecks: stateChecks,
 	}
@@ -149,19 +124,20 @@ func createHTTPSEndpointTestStep(ctx context.Context, t *testing.T, opts httpsEn
 	return testStep
 }
 
-func TestHTTPSForwardingEndpointResource(t *testing.T) {
+func TestS3ForwardingEndpointResource(t *testing.T) {
 	t.Run("core lifecycle", func(t *testing.T) {
 		randomInt := rand.IntN(100)
-		resourceName := fmt.Sprintf("test_acc_https_%d", randomInt)
-		fullResourceName := fmt.Sprintf("coreweave_telecaster_forwarding_endpoint_https.%s", resourceName)
+		resourceName := fmt.Sprintf("test_acc_s3_%d", randomInt)
+		fullResourceName := fmt.Sprintf("coreweave_telecaster_forwarding_endpoint_s3.%s", resourceName)
 		ctx := t.Context()
 
-		baseModel := &model.ForwardingEndpointHTTPSModel{
+		baseModel := &model.ForwardingEndpointS3Model{
 			ForwardingEndpointModelCore: model.ForwardingEndpointModelCore{
-				Slug:        types.StringValue(slugify("https-fe", randomInt)),
-				DisplayName: types.StringValue("Test HTTPS Endpoint"),
+				Slug:        types.StringValue(slugify("s3-fe", randomInt)),
+				DisplayName: types.StringValue("Test S3 Endpoint"),
 			},
-			Endpoint: types.StringValue("http://telecaster-console.us-east-03-core-services.int.coreweave.com:9000/"),
+			Bucket: types.StringValue("s3://test-bucket"),
+			Region: types.StringValue("us-east-1"),
 		}
 
 		resource.ParallelTest(t, resource.TestCase{
@@ -170,8 +146,8 @@ func TestHTTPSForwardingEndpointResource(t *testing.T) {
 				testutil.SetEnvDefaults()
 			},
 			Steps: []resource.TestStep{
-				createHTTPSEndpointTestStep(ctx, t, httpsEndpointTestStep{
-					TestName:     "initial HTTPS forwarding endpoint",
+				createS3EndpointTestStep(ctx, t, s3EndpointTestStep{
+					TestName:     "initial S3 forwarding endpoint",
 					ResourceName: resourceName,
 					Model:        baseModel,
 					ConfigPlanChecks: resource.ConfigPlanChecks{
@@ -180,7 +156,7 @@ func TestHTTPSForwardingEndpointResource(t *testing.T) {
 						},
 					},
 				}),
-				createHTTPSEndpointTestStep(ctx, t, httpsEndpointTestStep{
+				createS3EndpointTestStep(ctx, t, s3EndpointTestStep{
 					TestName:     "no-op (noop)",
 					ResourceName: resourceName,
 					Model:        baseModel,
@@ -190,11 +166,11 @@ func TestHTTPSForwardingEndpointResource(t *testing.T) {
 						},
 					},
 				}),
-				createHTTPSEndpointTestStep(ctx, t, httpsEndpointTestStep{
+				createS3EndpointTestStep(ctx, t, s3EndpointTestStep{
 					TestName:     "update display name (update)",
 					ResourceName: resourceName,
-					Model: with(baseModel, func(m *model.ForwardingEndpointHTTPSModel) {
-						m.DisplayName = types.StringValue("Updated HTTPS Endpoint")
+					Model: with(baseModel, func(m *model.ForwardingEndpointS3Model) {
+						m.DisplayName = types.StringValue("Updated S3 Endpoint")
 					}),
 					ConfigPlanChecks: resource.ConfigPlanChecks{
 						PreApply: []plancheck.PlanCheck{
@@ -202,7 +178,7 @@ func TestHTTPSForwardingEndpointResource(t *testing.T) {
 						},
 					},
 				}),
-				createHTTPSEndpointTestStep(ctx, t, httpsEndpointTestStep{
+				createS3EndpointTestStep(ctx, t, s3EndpointTestStep{
 					TestName:     "revert display name (update)",
 					ResourceName: resourceName,
 					Model:        baseModel,
@@ -212,11 +188,11 @@ func TestHTTPSForwardingEndpointResource(t *testing.T) {
 						},
 					},
 				}),
-				createHTTPSEndpointTestStep(ctx, t, httpsEndpointTestStep{
+				createS3EndpointTestStep(ctx, t, s3EndpointTestStep{
 					TestName:     "update slug (requires replacement)",
 					ResourceName: resourceName,
-					Model: with(baseModel, func(m *model.ForwardingEndpointHTTPSModel) {
-						m.Slug = types.StringValue(slugify("https-fe2", randomInt))
+					Model: with(baseModel, func(m *model.ForwardingEndpointS3Model) {
+						m.Slug = types.StringValue(slugify("s3-fe2", randomInt))
 					}),
 					ConfigPlanChecks: resource.ConfigPlanChecks{
 						PreApply: []plancheck.PlanCheck{
@@ -224,7 +200,7 @@ func TestHTTPSForwardingEndpointResource(t *testing.T) {
 						},
 					},
 				}),
-				createHTTPSEndpointTestStep(ctx, t, httpsEndpointTestStep{
+				createS3EndpointTestStep(ctx, t, s3EndpointTestStep{
 					TestName:     "revert slug (plan only) (requires replacement)",
 					ResourceName: resourceName,
 					Model:        baseModel,
@@ -242,22 +218,22 @@ func TestHTTPSForwardingEndpointResource(t *testing.T) {
 		})
 	})
 
-	t.Run("with TLS", func(t *testing.T) {
+	t.Run("with credentials", func(t *testing.T) {
 		randomInt := rand.IntN(100)
-		resourceName := fmt.Sprintf("test_acc_https_tls_%d", randomInt)
-		fullResourceName := fmt.Sprintf("coreweave_telecaster_forwarding_endpoint_https.%s", resourceName)
+		resourceName := fmt.Sprintf("test_acc_s3_credentials_%d", randomInt)
+		fullResourceName := fmt.Sprintf("coreweave_telecaster_forwarding_endpoint_s3.%s", resourceName)
 		ctx := t.Context()
 
-		testCAData := "LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUJURENDQWZPZ0F3SUJBZ0lVZmRLdDdHWU9hRDZuL2pvb3A3OEVoT3Y3YkFvd0NnWUlLb1pJemowRUF3SXcKSERFYU1CZ0dBMVVFQXd3UlkyOXlaWGRsWVhabFkyRXRjbTl2ZEMwd0hoY05NalF4TVRFek1EQTBNVEExV2hjTgpNalV4TVRFek1EQTBNVEExV2pBY01Sb3dHQVlEVlFRRERCRmpiM0psZDJWaGRtVmpZUzF5YjI5ME1Ea1ZNQk1HCkJ5cUdTTTQ5QWdFR0NDcUdTTTQ5QXdFSEEwSUFCUElIdUMyQklIdlFyUlV0bjdodFFnY1NGRDlDbEs0U3BLN0sKaEhWaS9RQm9naVREMC9yMWRqRkViYmZHOW9DTzFodHpXWjd4aE1CRUY4NFJ2TlhtdWNlamdZWXdnWU13RGdZRApWUjBQQVFIL0JBUURBZ0VHTUJJR0ExVWRFd0VCL3dRSU1BWUJBZjhDQVFBd0hRWURWUjBPQkJZRUZOckZjS1dJClVOcWdXcWNxWk5FSVRzOVJuZGh4TUI4R0ExVWRJd1FZTUJhQUZOckZjS1dJVU5xZ1dxY3FaTkVJVHM5Um5kaHgKTUJrR0ExVWRFUVFTTUJDQ0RuZGxkR2h2YjJ0ekxuTjJZekFLQmdncWhrak9QUVFEQWdOSEFEQkVBaUJlM3NsYQpTWjc5bmxQeWJlYVY4NXp5VW9VQ1hVWjNvTnhjN1lZc3N0WDFuZ0lnSUhYQ0xEZUZWKzF2Mlk1RzdwN3N0VTRCClA0VTlScHlyVzhMWnhRdWhFYjQ9Ci0tLS0tRU5EIENFUlRJRklDQVRFLS0tLS0K"
-
-		baseModel := &model.ForwardingEndpointHTTPSModel{
+		baseModel := &model.ForwardingEndpointS3Model{
 			ForwardingEndpointModelCore: model.ForwardingEndpointModelCore{
-				Slug:        types.StringValue(slugify("https-tls", randomInt)),
-				DisplayName: types.StringValue("Test HTTPS Endpoint with TLS"),
+				Slug:        types.StringValue(slugify("s3-credentials", randomInt)),
+				DisplayName: types.StringValue("Test S3 Endpoint with Credentials"),
 			},
-			Endpoint: types.StringValue("https://secure-endpoint.example.com/"),
-			TLS: &model.TLSConfigModel{
-				CertificateAuthorityData: types.StringValue(testCAData),
+			Bucket: types.StringValue("s3://secure-bucket"),
+			Region: types.StringValue("us-west-2"),
+			Credentials: &model.S3CredentialsModel{
+				AccessKeyID:     types.StringValue("AKIAIOSFODNN7EXAMPLE"),
+				SecretAccessKey: types.StringValue("wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"),
 			},
 		}
 
@@ -267,8 +243,8 @@ func TestHTTPSForwardingEndpointResource(t *testing.T) {
 				testutil.SetEnvDefaults()
 			},
 			Steps: []resource.TestStep{
-				createHTTPSEndpointTestStep(ctx, t, httpsEndpointTestStep{
-					TestName:     "initial HTTPS endpoint with TLS",
+				createS3EndpointTestStep(ctx, t, s3EndpointTestStep{
+					TestName:     "initial S3 endpoint with credentials",
 					ResourceName: resourceName,
 					Model:        baseModel,
 					ConfigPlanChecks: resource.ConfigPlanChecks{
@@ -277,7 +253,7 @@ func TestHTTPSForwardingEndpointResource(t *testing.T) {
 						},
 					},
 				}),
-				createHTTPSEndpointTestStep(ctx, t, httpsEndpointTestStep{
+				createS3EndpointTestStep(ctx, t, s3EndpointTestStep{
 					TestName:     "no-op (noop)",
 					ResourceName: resourceName,
 					Model:        baseModel,
@@ -287,49 +263,27 @@ func TestHTTPSForwardingEndpointResource(t *testing.T) {
 						},
 					},
 				}),
-				createHTTPSEndpointTestStep(ctx, t, httpsEndpointTestStep{
-					TestName:     "remove TLS (update)",
-					ResourceName: resourceName,
-					Model: with(baseModel, func(m *model.ForwardingEndpointHTTPSModel) {
-						m.TLS = nil
-					}),
-					ConfigPlanChecks: resource.ConfigPlanChecks{
-						PreApply: []plancheck.PlanCheck{
-							plancheck.ExpectResourceAction(fullResourceName, plancheck.ResourceActionUpdate),
-						},
-					},
-				}),
-				createHTTPSEndpointTestStep(ctx, t, httpsEndpointTestStep{
-					TestName:     "add TLS back (update)",
-					ResourceName: resourceName,
-					Model:        baseModel,
-					ConfigPlanChecks: resource.ConfigPlanChecks{
-						PreApply: []plancheck.PlanCheck{
-							plancheck.ExpectResourceAction(fullResourceName, plancheck.ResourceActionUpdate),
-						},
-					},
-				}),
 			},
 		})
 	})
 
-	t.Run("with credentials", func(t *testing.T) {
+	t.Run("with session token", func(t *testing.T) {
 		randomInt := rand.IntN(100)
-		resourceName := fmt.Sprintf("test_acc_https_credentials_%d", randomInt)
-		fullResourceName := fmt.Sprintf("coreweave_telecaster_forwarding_endpoint_https.%s", resourceName)
+		resourceName := fmt.Sprintf("test_acc_s3_session_token_%d", randomInt)
+		fullResourceName := fmt.Sprintf("coreweave_telecaster_forwarding_endpoint_s3.%s", resourceName)
 		ctx := t.Context()
 
-		baseModel := &model.ForwardingEndpointHTTPSModel{
+		baseModel := &model.ForwardingEndpointS3Model{
 			ForwardingEndpointModelCore: model.ForwardingEndpointModelCore{
-				Slug:        types.StringValue(slugify("https-credentials", randomInt)),
-				DisplayName: types.StringValue("Test HTTPS Endpoint with Credentials"),
+				Slug:        types.StringValue(slugify("s3-session-token", randomInt)),
+				DisplayName: types.StringValue("Test S3 Endpoint with Session Token"),
 			},
-			Endpoint: types.StringValue("https://secure-endpoint.example.com/"),
-			Credentials: &model.HTTPSCredentialsModel{
-				BasicAuth: &model.BasicAuthCredentialsModel{
-					Username: types.StringValue("testuser"),
-					Password: types.StringValue("testpassword"),
-				},
+			Bucket: types.StringValue("s3://secure-bucket-with-token"),
+			Region: types.StringValue("us-west-2"),
+			Credentials: &model.S3CredentialsModel{
+				AccessKeyID:     types.StringValue("AKIAIOSFODNN7EXAMPLE"),
+				SecretAccessKey: types.StringValue("wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"),
+				SessionToken:    types.StringValue("FwoGZXIvYXdzEBYaDGV4YW1wbGVzZXNzaW9u"),
 			},
 		}
 
@@ -339,8 +293,8 @@ func TestHTTPSForwardingEndpointResource(t *testing.T) {
 				testutil.SetEnvDefaults()
 			},
 			Steps: []resource.TestStep{
-				createHTTPSEndpointTestStep(ctx, t, httpsEndpointTestStep{
-					TestName:     "initial HTTPS endpoint with credentials",
+				createS3EndpointTestStep(ctx, t, s3EndpointTestStep{
+					TestName:     "initial S3 endpoint with session token",
 					ResourceName: resourceName,
 					Model:        baseModel,
 					ConfigPlanChecks: resource.ConfigPlanChecks{

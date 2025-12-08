@@ -59,3 +59,44 @@ func authHeadersAttribute() schema.SingleNestedAttribute {
 		},
 	}
 }
+
+// s3CredentialsAttribute returns a reusable S3 credentials schema.
+func s3CredentialsAttribute() schema.SingleNestedAttribute {
+	return schema.SingleNestedAttribute{
+		MarkdownDescription: "AWS credentials for S3 bucket access.",
+		Optional:            true,
+		Attributes: map[string]schema.Attribute{
+			"access_key_id": schema.StringAttribute{
+				MarkdownDescription: "AWS Access Key ID for S3 authentication.",
+				Required:            true,
+				Sensitive:           true,
+				// WriteOnly:           true,
+			},
+			"secret_access_key": schema.StringAttribute{
+				MarkdownDescription: "AWS Secret Access Key for S3 authentication.",
+				Required:            true,
+				Sensitive:           true,
+				WriteOnly:           true,
+			},
+			"session_token": schema.StringAttribute{
+				MarkdownDescription: "AWS Session Token for temporary S3 credentials (optional).",
+				Optional:            true,
+				Sensitive:           true,
+				WriteOnly:           true,
+			},
+		},
+	}
+}
+
+// prometheusCredentialsAttribute returns a reusable Prometheus credentials schema.
+func prometheusCredentialsAttribute() schema.SingleNestedAttribute {
+	return schema.SingleNestedAttribute{
+		MarkdownDescription: "Authentication credentials for the Prometheus Remote Write endpoint. At most one of basic_auth, bearer_token, or auth_headers should be set.",
+		Optional:            true,
+		Attributes: map[string]schema.Attribute{
+			"basic_auth":   basicAuthAttribute(),
+			"bearer_token": bearerTokenAttribute(),
+			"auth_headers": authHeadersAttribute(),
+		},
+	}
+}
