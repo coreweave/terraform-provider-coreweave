@@ -14,7 +14,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
-	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 )
 
@@ -34,63 +33,6 @@ func NewForwardingEndpointHTTPSResource() resource.Resource {
 
 type HTTPSForwardingEndpointResource struct {
 	coretf.CoreResource
-}
-
-type HTTPSForwardingEndpointModel struct {
-	endpointCommon
-
-	Endpoint    types.String                 `tfsdk:"endpoint"`
-	TLS         *model.TLSConfigModel        `tfsdk:"tls"`
-	Credentials *model.HTTPSCredentialsModel `tfsdk:"credentials"`
-}
-
-func (m *HTTPSForwardingEndpointModel) setFromEndpoint(_ context.Context, endpoint *typesv1beta1.ForwardingEndpoint) {
-	if endpoint == nil {
-		return
-	}
-
-	m.endpointCommon.setFromEndpoint(endpoint)
-
-	if endpoint.Spec != nil && endpoint.Spec.GetHttps() != nil {
-		httpsConfig := endpoint.Spec.GetHttps()
-		m.Endpoint = types.StringValue(httpsConfig.Endpoint)
-
-		if httpsConfig.Tls != nil {
-			m.TLS = new(model.TLSConfigModel)
-			m.TLS.Set(httpsConfig.Tls)
-		}
-	}
-}
-
-func (m *HTTPSForwardingEndpointModel) toMsg(_ context.Context) (msg *typesv1beta1.ForwardingEndpoint) {
-	httpsConfig := &typesv1beta1.HTTPSConfig{
-		Endpoint: m.Endpoint.ValueString(),
-		Tls:      m.TLS.ToMsg(),
-	}
-
-	msg = &typesv1beta1.ForwardingEndpoint{
-		Ref: m.toRef(),
-		Spec: &typesv1beta1.ForwardingEndpointSpec{
-			DisplayName: m.DisplayName.ValueString(),
-			Config: &typesv1beta1.ForwardingEndpointSpec_Https{
-				Https: httpsConfig,
-			},
-		},
-	}
-	msg.Spec.SetHttps(httpsConfig)
-
-	return
-}
-
-func (m *HTTPSForwardingEndpointModel) toCredentials() (credentials *typesv1beta1.HTTPSCredentials, diagnostics diag.Diagnostics) {
-	if m.Credentials == nil {
-		return nil, nil
-	}
-
-	credentials, diags := m.Credentials.ToMsg()
-	diagnostics.Append(diags...)
-
-	return credentials, diagnostics
 }
 
 func (r *HTTPSForwardingEndpointResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -124,13 +66,17 @@ func (r *HTTPSForwardingEndpointResource) Schema(ctx context.Context, req resour
 }
 
 func (r *HTTPSForwardingEndpointResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
-	var data HTTPSForwardingEndpointModel
+	var data model.ForwardingEndpointHTTPSModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	msg := data.toMsg(ctx)
+	msg, diagnostics := data.ToMsg()
+	resp.Diagnostics.Append(diagnostics...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 
 	if err := protovalidate.Validate(msg); err != nil {
 		resp.Diagnostics.AddError("Validation Error", err.Error())
@@ -141,36 +87,52 @@ func (r *HTTPSForwardingEndpointResource) ImportState(ctx context.Context, req r
 	resource.ImportStatePassthroughID(ctx, path.Root("slug"), req, resp)
 }
 
+func getHTTPSCredentials(data model.ForwardingEndpointHTTPSModel) (credentials *typesv1beta1.HTTPSCredentials, diagnostics diag.Diagnostics) {
+	if data.Credentials == nil {
+		return nil, nil
+	}
+
+	credentials, diags := data.Credentials.ToMsg()
+	diagnostics.Append(diags...)
+	return credentials, diagnostics
+}
+
 func (r *HTTPSForwardingEndpointResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
-	var data HTTPSForwardingEndpointModel
+	var data model.ForwardingEndpointHTTPSModel
+	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
+
+	// Grab the creds before we load the full plan, because write-only attributes are removed at the plan stage.
+	creds, diags := getHTTPSCredentials(data)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	endpointMsg := data.toMsg(ctx)
+	endpointMsg, diagnostics := data.ToMsg()
+	resp.Diagnostics.Append(diagnostics...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 
 	createReq := &clusterv1beta1.CreateEndpointRequest{
 		Ref:  endpointMsg.Ref,
 		Spec: endpointMsg.Spec,
 	}
 
-	// Add credentials if provided
-	httpsCreds, diags := data.toCredentials()
-	resp.Diagnostics.Append(diags...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
-	if httpsCreds != nil {
-		createReq.SetHttps(httpsCreds)
-	}
+	// SetHttps sets the credentials oneof with the HTTPSCredentials.
+	createReq.SetHttps(creds)
 
 	endpoint := createEndpoint(ctx, r.Client, createReq, httpsEndpointTimeout, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	data.setFromEndpoint(ctx, endpoint)
+	data.Set(endpoint)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -179,7 +141,7 @@ func (r *HTTPSForwardingEndpointResource) Create(ctx context.Context, req resour
 }
 
 func (r *HTTPSForwardingEndpointResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
-	var data HTTPSForwardingEndpointModel
+	var data model.ForwardingEndpointHTTPSModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -195,7 +157,7 @@ func (r *HTTPSForwardingEndpointResource) Read(ctx context.Context, req resource
 		return
 	}
 
-	data.setFromEndpoint(ctx, endpoint)
+	resp.Diagnostics.Append(data.Set(endpoint)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -210,27 +172,28 @@ func (r *HTTPSForwardingEndpointResource) Read(ctx context.Context, req resource
 }
 
 func (r *HTTPSForwardingEndpointResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	var data HTTPSForwardingEndpointModel
+	var data model.ForwardingEndpointHTTPSModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	endpointMsg := data.toMsg(ctx)
-
+	endpointMsg, diagnostics := data.ToMsg()
+	resp.Diagnostics.Append(diagnostics...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 	updateReq := &clusterv1beta1.UpdateEndpointRequest{
-		Ref:  endpointMsg.Ref,
-		Spec: endpointMsg.Spec,
+		Ref:  endpointMsg.GetRef(),
+		Spec: endpointMsg.GetSpec(),
 	}
 
-	httpsCreds, diags := data.toCredentials()
+	creds, diags := getHTTPSCredentials(data)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	if httpsCreds != nil {
-		updateReq.SetHttps(httpsCreds)
-	}
+	updateReq.SetHttps(creds)
 
 	endpoint, diags := updateEndpoint(ctx, r.Client, updateReq, httpsEndpointTimeout)
 	resp.Diagnostics.Append(diags...)
@@ -238,7 +201,7 @@ func (r *HTTPSForwardingEndpointResource) Update(ctx context.Context, req resour
 		return
 	}
 
-	data.setFromEndpoint(ctx, endpoint)
+	resp.Diagnostics.Append(data.Set(endpoint)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -247,13 +210,19 @@ func (r *HTTPSForwardingEndpointResource) Update(ctx context.Context, req resour
 }
 
 func (r *HTTPSForwardingEndpointResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
-	var data HTTPSForwardingEndpointModel
+	var data model.ForwardingEndpointHTTPSModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	if err := internal.DeleteEndpointAndWait(ctx, r.Client, data.toRef()); err != nil {
+	endpointMsg, diagnostics := data.ToMsg()
+	resp.Diagnostics.Append(diagnostics...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	if err := internal.DeleteEndpointAndWait(ctx, r.Client, endpointMsg.GetRef()); err != nil {
 		resp.Diagnostics.AddError("Error deleting Telecaster endpoint", err.Error())
 		return
 	}

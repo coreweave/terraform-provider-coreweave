@@ -9,69 +9,14 @@ import (
 	typesv1beta1 "bsr.core-services.ingress.coreweave.com/gen/go/coreweave/o11y-mgmt/protocolbuffers/go/coreweave/telecaster/types/v1beta1"
 	"connectrpc.com/connect"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
-	"github.com/coreweave/terraform-provider-coreweave/coreweave/telecaster/internal/model"
 	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
-	"github.com/hashicorp/terraform-plugin-framework/path"
-	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int32planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
-	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/retry"
 )
-
-// endpointCommon contains common fields for all forwarding endpoint types.
-// This struct captures the flattened ref and status, plus the display_name from spec.
-// Endpoint-specific resources embed this and add their own config fields.
-type endpointCommon struct {
-	// From ref
-	Slug types.String `tfsdk:"slug"`
-
-	// From spec (common)
-	DisplayName types.String `tfsdk:"display_name"`
-
-	// Status fields (computed)
-	CreatedAt    timetypes.RFC3339 `tfsdk:"created_at"`
-	UpdatedAt    timetypes.RFC3339 `tfsdk:"updated_at"`
-	StateCode    types.Int32       `tfsdk:"state_code"`
-	State        types.String      `tfsdk:"state"`
-	StateMessage types.String      `tfsdk:"state_message"`
-}
-
-func (e *endpointCommon) setFromEndpoint(endpoint *typesv1beta1.ForwardingEndpoint) {
-	if endpoint == nil {
-		return
-	}
-
-	// Set ref fields
-	if endpoint.Ref != nil {
-		e.Slug = types.StringValue(endpoint.Ref.Slug)
-	}
-
-	// Set spec fields
-	if endpoint.Spec != nil {
-		e.DisplayName = types.StringValue(endpoint.Spec.DisplayName)
-	}
-
-	// Set status fields
-	if endpoint.Status != nil {
-		var status model.ForwardingEndpointStatusModel
-		status.Set(endpoint.Status)
-		e.CreatedAt = status.CreatedAt
-		e.UpdatedAt = status.UpdatedAt
-		e.StateCode = status.StateCode
-		e.State = status.State
-		e.StateMessage = status.StateMessage
-	}
-}
-
-func (e *endpointCommon) toRef() *typesv1beta1.ForwardingEndpointRef {
-	return &typesv1beta1.ForwardingEndpointRef{
-		Slug: e.Slug.ValueString(),
-	}
-}
 
 func commonEndpointSchema() map[string]schema.Attribute {
 	return map[string]schema.Attribute{
@@ -213,8 +158,4 @@ func updateEndpoint(ctx context.Context, client *coreweave.Client, req *clusterv
 		return
 	}
 	return
-}
-
-func (e *endpointCommon) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	resource.ImportStatePassthroughID(ctx, path.Root("slug"), req, resp)
 }
