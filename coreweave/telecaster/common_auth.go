@@ -15,7 +15,7 @@ func basicAuthAttribute() schema.SingleNestedAttribute {
 				MarkdownDescription: "Username for HTTP Basic authentication.",
 				Required:            true,
 				Sensitive:           true,
-				WriteOnly:           true,
+				// WriteOnly:           true,
 			},
 			"password": schema.StringAttribute{
 				MarkdownDescription: "Password for HTTP Basic authentication.",

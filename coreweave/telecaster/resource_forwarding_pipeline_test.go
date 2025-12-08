@@ -205,12 +205,14 @@ func shorten(name string) string {
 	return fmt.Sprintf("%s%d%s", name[:1], truncated, name[len(name)-1:])
 }
 
-func createHTTPSEndpoint(t *testing.T, slug string) *HTTPSEndpointTestModel {
+func createHTTPSEndpoint(t *testing.T, slug string) *model.ForwardingEndpointHTTPSModel {
 	t.Helper()
-	return &HTTPSEndpointTestModel{
-		Slug:        slug,
-		DisplayName: fmt.Sprintf("Test HTTPS Endpoint - %s", slug),
-		Endpoint:    "http://telecaster-console.us-east-03-core-services.int.coreweave.com:9000/",
+	return &model.ForwardingEndpointHTTPSModel{
+		ForwardingEndpointModelCore: model.ForwardingEndpointModelCore{
+			Slug:        types.StringValue(slug),
+			DisplayName: types.StringValue(fmt.Sprintf("Test HTTPS Endpoint - %s", slug)),
+		},
+		Endpoint: types.StringValue("http://telecaster-console.us-east-03-core-services.int.coreweave.com:9000/"),
 	}
 }
 
@@ -254,7 +256,7 @@ func mustForwardingPipelineResourceModel(t *testing.T, spec model.ForwardingPipe
 }
 
 // mustRenderForwardingPipelineResource renders HCL for a forwarding pipeline with dependencies
-func mustRenderForwardingPipelineResource(ctx context.Context, resourceName string, pipeline *telecaster.ResourceForwardingPipelineModel, endpoint *HTTPSEndpointTestModel) string {
+func mustRenderForwardingPipelineResource(ctx context.Context, resourceName string, pipeline *telecaster.ResourceForwardingPipelineModel, endpoint *model.ForwardingEndpointHTTPSModel) string {
 	var parts []string
 
 	if endpoint != nil {
@@ -482,7 +484,7 @@ func TestForwardingPipelineResource_CompatibleCombinations(t *testing.T) {
 						Slug: types.StringValue(streamSlug),
 					},
 					Destination: model.ForwardingEndpointRefModel{
-						Slug: types.StringValue(endpoint.Slug),
+						Slug: types.StringValue(endpoint.Slug.ValueString()),
 					},
 					Enabled: types.BoolValue(true),
 				}
@@ -545,7 +547,7 @@ func TestForwardingPipelineResource_CompatibleCombinations(t *testing.T) {
 						Slug: types.StringValue(streamSlug),
 					},
 					Destination: model.ForwardingEndpointRefModel{
-						Slug: types.StringValue(endpoint.Slug),
+						Slug: types.StringValue(endpoint.Slug.ValueString()),
 					},
 					Enabled: types.BoolValue(true),
 				}
@@ -594,10 +596,9 @@ func TestForwardingPipelineResource_IncompatibleCombinations(t *testing.T) {
 
 				slug := slugify(fmt.Sprintf("incompat-%s", endpointType), randomInt)
 
-				// TODO: When S3/Prometheus endpoints are implemented, dispatch based on endpointType
 				endpoint := createHTTPSEndpoint(t, slug)
 
-				if endpoint.Slug == "" {
+				if endpoint.Slug.IsNull() || endpoint.Slug.IsUnknown() {
 					t.Fatalf("endpoint slug is empty: %+v", endpoint)
 				}
 
@@ -606,7 +607,7 @@ func TestForwardingPipelineResource_IncompatibleCombinations(t *testing.T) {
 						Slug: types.StringValue(streamSlug),
 					},
 					Destination: model.ForwardingEndpointRefModel{
-						Slug: types.StringValue(endpoint.Slug),
+						Slug: types.StringValue(endpoint.Slug.ValueString()),
 					},
 					Enabled: types.BoolValue(true),
 				}
@@ -648,7 +649,7 @@ func TestForwardingPipelineResource_IncompatibleCombinations(t *testing.T) {
 						Slug: types.StringValue(streamSlug),
 					},
 					Destination: model.ForwardingEndpointRefModel{
-						Slug: types.StringValue(endpoint.Slug),
+						Slug: types.StringValue(endpoint.Slug.ValueString()),
 					},
 					Enabled: types.BoolValue(true),
 				}
@@ -692,7 +693,7 @@ func TestForwardingPipelineResource_Lifecycle(t *testing.T) {
 			Slug: types.StringValue(streamSlug),
 		},
 		Destination: model.ForwardingEndpointRefModel{
-			Slug: types.StringValue(endpoint.Slug),
+			Slug: types.StringValue(endpoint.Slug.ValueString()),
 		},
 		Enabled: types.BoolValue(true),
 	}
@@ -739,7 +740,7 @@ func TestForwardingPipelineResource_Lifecycle(t *testing.T) {
 						Slug: types.StringValue(streamSlug),
 					},
 					Destination: model.ForwardingEndpointRefModel{
-						Slug: types.StringValue(endpoint.Slug),
+						Slug: types.StringValue(endpoint.Slug.ValueString()),
 					},
 					Enabled: types.BoolValue(false),
 				}), endpoint),
@@ -796,7 +797,7 @@ func TestForwardingPipelineResource_InvalidStream(t *testing.T) {
 			Slug: types.StringValue("nonexistent-stream"),
 		},
 		Destination: model.ForwardingEndpointRefModel{
-			Slug: types.StringValue(endpoint.Slug),
+			Slug: types.StringValue(endpoint.Slug.ValueString()),
 		},
 		Enabled: types.BoolValue(true),
 	}
