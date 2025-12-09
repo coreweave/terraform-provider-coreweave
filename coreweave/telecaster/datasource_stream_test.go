@@ -1,7 +1,6 @@
 package telecaster_test
 
 import (
-	"context"
 	"fmt"
 	"regexp"
 	"strings"
@@ -14,7 +13,6 @@ import (
 	"github.com/coreweave/terraform-provider-coreweave/internal/testutil"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/knownvalue"
 	"github.com/hashicorp/terraform-plugin-testing/statecheck"
@@ -41,110 +39,118 @@ func TestTelemetryStreamDataSourceSchema(t *testing.T) {
 	assert.False(t, diagnostics.HasError(), "Schema implementation is invalid: %v", diagnostics)
 }
 
-// mustTelemetryStreamDataSourceModel creates a TelemetryStreamDataSourceModel from a ref
-func mustTelemetryStreamDataSourceModel(t *testing.T, ref model.TelemetryStreamRefModel) *telecaster.TelemetryStreamDataSourceModel {
+// mustTelemetryStreamDataSourceModel creates a TelemetryStreamDataSourceModel from a slug
+func mustTelemetryStreamDataSourceModel(t *testing.T, slug string) *model.TelemetryStreamDataSourceModel {
 	t.Helper()
 
-	ctx := t.Context()
-
-	schemaResp := new(datasource.SchemaResponse)
-	telecaster.NewTelemetryStreamDataSource().Schema(ctx, datasource.SchemaRequest{}, schemaResp)
-	if schemaResp.Diagnostics.HasError() {
-		t.Fatalf("failed to get schema: %v", schemaResp.Diagnostics)
+	return &model.TelemetryStreamDataSourceModel{
+		Slug: types.StringValue(slug),
 	}
-
-	dsModel := telecaster.TelemetryStreamDataSourceModel{}
-
-	refAttrTypes := schemaResp.Schema.Attributes["ref"].GetType().(basetypes.ObjectType).AttrTypes
-	refObj, diags := types.ObjectValueFrom(ctx, refAttrTypes, ref)
-	if diags.HasError() {
-		t.Fatalf("failed to create ref object: %v", diags)
-	}
-	dsModel.Ref = refObj
-
-	specAttrTypes := schemaResp.Schema.Attributes["spec"].GetType().(basetypes.ObjectType).AttrTypes
-	statusAttrTypes := schemaResp.Schema.Attributes["status"].GetType().(basetypes.ObjectType).AttrTypes
-	dsModel.Spec = types.ObjectUnknown(specAttrTypes)
-	dsModel.Status = types.ObjectUnknown(statusAttrTypes)
-
-	return &dsModel
 }
 
-func mustRenderTelemetryStreamDataSource(ctx context.Context, resourceName string, stream *telecaster.TelemetryStreamDataSourceModel) string {
-	var ref model.TelemetryStreamRefModel
-	if err := stream.Ref.As(ctx, &ref, basetypes.ObjectAsOptions{UnhandledNullAsEmpty: true}); err != nil {
-		panic(fmt.Sprintf("failed to extract ref: %v", err))
-	}
-
+func mustRenderTelemetryStreamDataSource(resourceName string, stream *model.TelemetryStreamDataSourceModel) string {
 	var buf strings.Builder
 	buf.WriteString(fmt.Sprintf("data %q %q {\n", telemetryStreamDataSourceName, resourceName))
-	buf.WriteString("  ref = {\n")
-	buf.WriteString(fmt.Sprintf("    slug = %q\n", ref.Slug.ValueString()))
-	buf.WriteString("  }\n")
+	buf.WriteString(fmt.Sprintf("  slug = %q\n", stream.Slug.ValueString()))
 	buf.WriteString("}\n")
 
 	return buf.String()
 }
 
-// TestTelemetryStreamDataSource_MetricsStream tests reading a metrics stream specifically
-func TestTelemetryStreamDataSource_MetricsStream(t *testing.T) {
-	t.Parallel()
-	dataSourceName := "test_acc_metrics_stream"
-	fullDataSourceName := fmt.Sprintf("data.%s.%s", telemetryStreamDataSourceName, dataSourceName)
-	ctx := t.Context()
+type streamDataSourceTestStep struct {
+	TestName         string
+	DataSourceName   string
+	Slug             string
+	StateChecks      []statecheck.StateCheck
+	ExpectError      *regexp.Regexp
+}
 
-	streams := []string{
+func metricsStreamStateChecks(fullDataSourceName string) []statecheck.StateCheck {
+	return []statecheck.StateCheck{
+		statecheck.ExpectKnownValue(fullDataSourceName, tfjsonpath.New("kind"), knownvalue.StringExact("metrics")),
+		statecheck.ExpectKnownValue(fullDataSourceName, tfjsonpath.New("metrics"), knownvalue.NotNull()),
+		statecheck.ExpectKnownValue(fullDataSourceName, tfjsonpath.New("logs"), knownvalue.Null()),
+	}
+}
+
+func logsStreamStateChecks(fullDataSourceName string) []statecheck.StateCheck {
+	return []statecheck.StateCheck{
+		statecheck.ExpectKnownValue(fullDataSourceName, tfjsonpath.New("kind"), knownvalue.StringExact("logs")),
+		statecheck.ExpectKnownValue(fullDataSourceName, tfjsonpath.New("logs"), knownvalue.NotNull()),
+		statecheck.ExpectKnownValue(fullDataSourceName, tfjsonpath.New("metrics"), knownvalue.Null()),
+	}
+}
+
+func createStreamDataSourceTestStep(t *testing.T, opts streamDataSourceTestStep) resource.TestStep {
+	t.Helper()
+
+	fullDataSourceName := fmt.Sprintf("data.%s.%s", telemetryStreamDataSourceName, opts.DataSourceName)
+	model := mustTelemetryStreamDataSourceModel(t, opts.Slug)
+
+	var stateChecks []statecheck.StateCheck
+
+	// Only add state checks if we're not expecting an error
+	if opts.ExpectError == nil {
+		stateChecks = []statecheck.StateCheck{
+			// Ref field (flattened)
+			statecheck.ExpectKnownValue(fullDataSourceName, tfjsonpath.New("slug"), knownvalue.StringExact(opts.Slug)),
+
+			// Spec fields (flattened)
+			statecheck.ExpectKnownValue(fullDataSourceName, tfjsonpath.New("display_name"), knownvalue.NotNull()),
+
+			// Status fields (flattened)
+			statecheck.ExpectKnownValue(fullDataSourceName, tfjsonpath.New("created_at"), knownvalue.NotNull()),
+			statecheck.ExpectKnownValue(fullDataSourceName, tfjsonpath.New("updated_at"), knownvalue.NotNull()),
+			statecheck.ExpectKnownValue(fullDataSourceName, tfjsonpath.New("state"), knownvalue.StringExact(typesv1beta1.TelemetryStreamState_TELEMETRY_STREAM_STATE_ACTIVE.String())),
+		}
+
+		// Append additional state checks provided by caller
+		stateChecks = append(stateChecks, opts.StateChecks...)
+	}
+
+	testStep := resource.TestStep{
+		PreConfig: func() {
+			t.Logf("Beginning %s test: %s", telemetryStreamDataSourceName, opts.TestName)
+		},
+		Config:            mustRenderTelemetryStreamDataSource(opts.DataSourceName, model),
+		ConfigStateChecks: stateChecks,
+		ExpectError:       opts.ExpectError,
+	}
+
+	return testStep
+}
+
+// TestTelemetryStreamDataSource consolidates all acceptance tests
+func TestTelemetryStreamDataSource(t *testing.T) {
+	t.Parallel()
+	metricsStreams := []string{
 		"metrics-customer-cluster",
 		"metrics-platform",
 	}
 
-	for _, stream := range streams {
-		refModel := model.TelemetryStreamRefModel{
-			Slug: types.StringValue(stream),
-		}
+	for _, stream := range metricsStreams {
+		t.Run(fmt.Sprintf("metrics/%s", stream), func(t *testing.T) {
+			dataSourceName := "test_acc_metrics_stream"
+			fullDataSourceName := fmt.Sprintf("data.%s.%s", telemetryStreamDataSourceName, dataSourceName)
 
-		t.Run(stream, func(t *testing.T) {
 			resource.ParallelTest(t, resource.TestCase{
 				ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
 				PreCheck: func() {
 					testutil.SetEnvDefaults()
 				},
 				Steps: []resource.TestStep{
-					{
-						PreConfig: func() {
-							t.Logf("Beginning metrics stream data source test: %s", stream)
-						},
-						Config: mustRenderTelemetryStreamDataSource(ctx, dataSourceName, mustTelemetryStreamDataSourceModel(t, refModel)),
-						ConfigStateChecks: []statecheck.StateCheck{
-							statecheck.ExpectKnownValue(fullDataSourceName, tfjsonpath.New("ref"), knownvalue.NotNull()),
-							statecheck.ExpectKnownValue(fullDataSourceName, tfjsonpath.New("ref").AtMapKey("slug"), knownvalue.StringExact(stream)),
-
-							statecheck.ExpectKnownValue(fullDataSourceName, tfjsonpath.New("spec"), knownvalue.NotNull()),
-							statecheck.ExpectKnownValue(fullDataSourceName, tfjsonpath.New("spec").AtMapKey("display_name"), knownvalue.NotNull()),
-							statecheck.ExpectKnownValue(fullDataSourceName, tfjsonpath.New("spec").AtMapKey("kind"), knownvalue.StringExact("metrics")),
-							statecheck.ExpectKnownValue(fullDataSourceName, tfjsonpath.New("spec").AtMapKey("metrics"), knownvalue.NotNull()),
-							statecheck.ExpectKnownValue(fullDataSourceName, tfjsonpath.New("spec").AtMapKey("logs"), knownvalue.Null()),
-
-							statecheck.ExpectKnownValue(fullDataSourceName, tfjsonpath.New("status"), knownvalue.NotNull()),
-							statecheck.ExpectKnownValue(fullDataSourceName, tfjsonpath.New("status").AtMapKey("created_at"), knownvalue.NotNull()),
-							statecheck.ExpectKnownValue(fullDataSourceName, tfjsonpath.New("status").AtMapKey("updated_at"), knownvalue.NotNull()),
-							statecheck.ExpectKnownValue(fullDataSourceName, tfjsonpath.New("status").AtMapKey("state"), knownvalue.StringExact(typesv1beta1.TelemetryStreamState_TELEMETRY_STREAM_STATE_ACTIVE.String())),
-						},
-					},
+					createStreamDataSourceTestStep(t, streamDataSourceTestStep{
+						TestName:       fmt.Sprintf("metrics stream: %s", stream),
+						DataSourceName: dataSourceName,
+						Slug:           stream,
+						StateChecks:    metricsStreamStateChecks(fullDataSourceName),
+					}),
 				},
 			})
 		})
 	}
-}
 
-// TestTelemetryStreamDataSource_LogsStream tests reading a logs stream specifically
-func TestTelemetryStreamDataSource_LogsStream(t *testing.T) {
-	t.Parallel()
-	dataSourceName := "test_acc_logs_stream"
-	fullDataSourceName := fmt.Sprintf("data.%s.%s", telemetryStreamDataSourceName, dataSourceName)
-	ctx := t.Context()
-
-	slugs := []string{
+	logsStreams := []string{
 		"logs-audit-caios",
 		"logs-audit-console",
 		"logs-audit-kube-api",
@@ -153,149 +159,72 @@ func TestTelemetryStreamDataSource_LogsStream(t *testing.T) {
 		"logs-journald",
 	}
 
-	for _, slug := range slugs {
-		refModel := model.TelemetryStreamRefModel{
-			Slug: types.StringValue(slug),
-		}
+	for _, slug := range logsStreams {
+		t.Run(fmt.Sprintf("logs/%s", slug), func(t *testing.T) {
+			dataSourceName := "test_acc_logs_stream"
+			fullDataSourceName := fmt.Sprintf("data.%s.%s", telemetryStreamDataSourceName, dataSourceName)
 
-		t.Run(slug, func(t *testing.T) {
 			resource.ParallelTest(t, resource.TestCase{
 				ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
 				PreCheck: func() {
 					testutil.SetEnvDefaults()
 				},
 				Steps: []resource.TestStep{
-					{
-						PreConfig: func() {
-							t.Logf("Beginning logs stream data source test: %s", slug)
-						},
-						Config: mustRenderTelemetryStreamDataSource(ctx, dataSourceName, mustTelemetryStreamDataSourceModel(t, refModel)),
-						ConfigStateChecks: []statecheck.StateCheck{
-							statecheck.ExpectKnownValue(fullDataSourceName, tfjsonpath.New("ref"), knownvalue.NotNull()),
-							statecheck.ExpectKnownValue(fullDataSourceName, tfjsonpath.New("ref").AtMapKey("slug"), knownvalue.StringExact(slug)),
-
-							statecheck.ExpectKnownValue(fullDataSourceName, tfjsonpath.New("spec"), knownvalue.NotNull()),
-							statecheck.ExpectKnownValue(fullDataSourceName, tfjsonpath.New("spec").AtMapKey("display_name"), knownvalue.NotNull()),
-							statecheck.ExpectKnownValue(fullDataSourceName, tfjsonpath.New("spec").AtMapKey("kind"), knownvalue.StringExact("logs")),
-							statecheck.ExpectKnownValue(fullDataSourceName, tfjsonpath.New("spec").AtMapKey("logs"), knownvalue.NotNull()),
-							statecheck.ExpectKnownValue(fullDataSourceName, tfjsonpath.New("spec").AtMapKey("metrics"), knownvalue.Null()),
-
-							statecheck.ExpectKnownValue(fullDataSourceName, tfjsonpath.New("status"), knownvalue.NotNull()),
-							statecheck.ExpectKnownValue(fullDataSourceName, tfjsonpath.New("status").AtMapKey("created_at"), knownvalue.NotNull()),
-							statecheck.ExpectKnownValue(fullDataSourceName, tfjsonpath.New("status").AtMapKey("updated_at"), knownvalue.NotNull()),
-							statecheck.ExpectKnownValue(fullDataSourceName, tfjsonpath.New("status").AtMapKey("state"), knownvalue.StringExact(typesv1beta1.TelemetryStreamState_TELEMETRY_STREAM_STATE_ACTIVE.String())),
-						},
-					},
+					createStreamDataSourceTestStep(t, streamDataSourceTestStep{
+						TestName:       fmt.Sprintf("logs stream: %s", slug),
+						DataSourceName: dataSourceName,
+						Slug:           slug,
+						StateChecks:    logsStreamStateChecks(fullDataSourceName),
+					}),
 				},
 			})
 		})
 	}
-}
 
-// TestTelemetryStreamDataSource_NotFound tests behavior when stream doesn't exist
-func TestTelemetryStreamDataSource_NotFound(t *testing.T) {
-	ctx := t.Context()
-	dataSourceName := "test_acc_stream_notfound"
-
-	nonExistentSlug := "nonexistent-stream"
-
-	refModel := model.TelemetryStreamRefModel{
-		Slug: types.StringValue(nonExistentSlug),
-	}
-
-	resource.ParallelTest(t, resource.TestCase{
-		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
-		PreCheck: func() {
-			testutil.SetEnvDefaults()
-		},
-		Steps: []resource.TestStep{
-			{
-				PreConfig: func() {
-					t.Logf("Beginning stream not found test with slug: %s", nonExistentSlug)
-				},
-				Config: mustRenderTelemetryStreamDataSource(ctx, dataSourceName, mustTelemetryStreamDataSourceModel(t, refModel)),
+	t.Run("not_found", func(t *testing.T) {
+		resource.ParallelTest(t, resource.TestCase{
+			ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+			PreCheck: func() {
+				testutil.SetEnvDefaults()
 			},
-		},
-	})
-}
-
-// TestTelemetryStreamDataSource_InvalidSlug tests validation with an invalid slug
-func TestTelemetryStreamDataSource_InvalidSlug(t *testing.T) {
-	dataSourceName := "test_acc_stream_invalid"
-	ctx := t.Context()
-
-	refModel := model.TelemetryStreamRefModel{
-		Slug: types.StringValue("invalid-slug-way-too-long-to-be-valid"),
-	}
-
-	resource.ParallelTest(t, resource.TestCase{
-		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
-		PreCheck: func() {
-			testutil.SetEnvDefaults()
-		},
-		Steps: []resource.TestStep{
-			{
-				PreConfig: func() {
-					t.Logf("Beginning invalid slug test")
-				},
-				Config:      mustRenderTelemetryStreamDataSource(ctx, dataSourceName, mustTelemetryStreamDataSourceModel(t, refModel)),
-				ExpectError: regexp.MustCompile(`(?i)(validation|invalid|required|empty)`),
+			Steps: []resource.TestStep{
+				createStreamDataSourceTestStep(t, streamDataSourceTestStep{
+					TestName:       "stream not found",
+					DataSourceName: "test_acc_stream_notfound",
+					Slug:           "nonexistent-stream",
+					ExpectError:    regexp.MustCompile(`(?i)(not found)`),
+				}),
 			},
-		},
+		})
 	})
-}
 
-// TestTelemetryStreamDataSourceModel_Set validates the Set method works correctly
-func TestTelemetryStreamDataSourceModel_Set(t *testing.T) {
-	t.Parallel()
-
-	ctx := context.Background()
-
-	schemaResp := &datasource.SchemaResponse{}
-	telecaster.NewTelemetryStreamDataSource().Schema(ctx, datasource.SchemaRequest{}, schemaResp)
-	if schemaResp.Diagnostics.HasError() {
-		t.Fatalf("failed to get schema: %v", schemaResp.Diagnostics)
-	}
-
-	// Create a model
-	dsModel := telecaster.TelemetryStreamDataSourceModel{}
-	refModel := model.TelemetryStreamRefModel{
-		Slug: types.StringValue("test-stream"),
-	}
-
-	refAttrTypes := schemaResp.Schema.Attributes["ref"].GetType().(basetypes.ObjectType).AttrTypes
-	refObj, diags := types.ObjectValueFrom(ctx, refAttrTypes, refModel)
-	if diags.HasError() {
-		t.Fatalf("failed to create ref object: %v", diags)
-	}
-	dsModel.Ref = refObj
-
-	// Verify ref can be extracted
-	var extractedRef model.TelemetryStreamRefModel
-	diags = dsModel.Ref.As(ctx, &extractedRef, basetypes.ObjectAsOptions{})
-	if diags.HasError() {
-		t.Fatalf("failed to extract ref: %v", diags)
-	}
-
-	assert.Equal(t, "test-stream", extractedRef.Slug.ValueString(), "slug should match")
+	t.Run("invalid_slug", func(t *testing.T) {
+		resource.ParallelTest(t, resource.TestCase{
+			ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+			PreCheck: func() {
+				testutil.SetEnvDefaults()
+			},
+			Steps: []resource.TestStep{
+				createStreamDataSourceTestStep(t, streamDataSourceTestStep{
+					TestName:       "invalid slug validation",
+					DataSourceName: "test_acc_stream_invalid",
+					Slug:           "invalid-slug-way-too-long-to-be-valid",
+					ExpectError:    regexp.MustCompile(`(?i)(validation|invalid|required|empty)`),
+				}),
+			},
+		})
+	})
 }
 
 // TestTelemetryStreamDataSource_RenderFunction validates the HCL rendering function
 func TestTelemetryStreamDataSource_RenderFunction(t *testing.T) {
 	t.Parallel()
 
-	ctx := context.Background()
+	slug := "test-render-stream"
+	streamModel := mustTelemetryStreamDataSourceModel(t, slug)
 
-	refModel := model.TelemetryStreamRefModel{
-		Slug: types.StringValue("test-render-stream"),
-	}
+	hcl := mustRenderTelemetryStreamDataSource("test_stream", streamModel)
 
-	streamModel := mustTelemetryStreamDataSourceModel(t, refModel)
-
-	// Render the HCL
-	hcl := mustRenderTelemetryStreamDataSource(ctx, "test_stream", streamModel)
-
-	// Verify HCL contains expected elements
 	assert.Contains(t, hcl, fmt.Sprintf("data %q %q", telemetryStreamDataSourceName, "test_stream"), "HCL should contain data block")
-	assert.Contains(t, hcl, fmt.Sprintf("slug = %q", refModel.Slug.ValueString()), "HCL should contain slug")
+	assert.Contains(t, hcl, fmt.Sprintf("slug = %q", slug), "HCL should contain slug")
 }

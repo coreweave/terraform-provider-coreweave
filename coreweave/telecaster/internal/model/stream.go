@@ -83,3 +83,63 @@ func (s *TelemetryStreamStatusModel) Set(status *typesv1beta1.TelemetryStreamSta
 	s.StateString = types.StringValue(status.State.String())
 	s.StateMessage = types.StringPointerValue(status.StateMessage)
 }
+
+// TelemetryStreamDataSourceModel is a flattened model for the stream data source
+// that combines ref, spec, and status fields at the top level, similar to endpoint resources.
+type TelemetryStreamDataSourceModel struct {
+
+	Slug types.String `tfsdk:"slug"`
+
+	DisplayName types.String            `tfsdk:"display_name"`
+	Kind        types.String            `tfsdk:"kind"`
+	Logs        *LogsStreamSpecModel    `tfsdk:"logs"`
+	Metrics     *MetricsStreamSpecModel `tfsdk:"metrics"`
+
+	CreatedAt    timetypes.RFC3339 `tfsdk:"created_at"`
+	UpdatedAt    timetypes.RFC3339 `tfsdk:"updated_at"`
+	StateCode    types.Int32       `tfsdk:"state_code"`
+	State        types.String      `tfsdk:"state"`
+	StateMessage types.String      `tfsdk:"state_message"`
+}
+
+func (m *TelemetryStreamDataSourceModel) Set(stream *typesv1beta1.TelemetryStream) (diagnostics diag.Diagnostics) {
+	if stream == nil {
+		return
+	}
+
+	m.Slug = types.StringValue(stream.Ref.Slug)
+
+	m.DisplayName = types.StringValue(stream.Spec.DisplayName)
+	m.Kind = types.StringValue(stream.Spec.WhichKind().String())
+
+	switch k := stream.Spec.WhichKind(); k {
+	case typesv1beta1.TelemetryStreamSpec_Kind_not_set_case:
+		// Kind not set - leave both nil
+	case typesv1beta1.TelemetryStreamSpec_Metrics_case:
+		m.Metrics = new(MetricsStreamSpecModel)
+		diagnostics.Append(m.Metrics.Set(stream.Spec.GetMetrics())...)
+	case typesv1beta1.TelemetryStreamSpec_Logs_case:
+		m.Logs = new(LogsStreamSpecModel)
+		diagnostics.Append(m.Logs.Set(stream.Spec.GetLogs())...)
+	default:
+		diagnostics.AddError("Unknown Stream Spec Kind", fmt.Sprintf("spec's kind %q (%d) is not recognized by the provider. This may not be implemented in the provider yet, or may require an update.", k.String(), k))
+	}
+
+	m.CreatedAt = timestampToTimeValue(stream.Status.CreatedAt)
+	m.UpdatedAt = timestampToTimeValue(stream.Status.UpdatedAt)
+	m.StateCode = types.Int32Value(int32(stream.Status.State.Number()))
+	m.State = types.StringValue(stream.Status.State.String())
+	m.StateMessage = types.StringPointerValue(stream.Status.StateMessage)
+
+	return
+}
+
+func (m *TelemetryStreamDataSourceModel) ToRef() *typesv1beta1.TelemetryStreamRef {
+	if m == nil {
+		return nil
+	}
+
+	return &typesv1beta1.TelemetryStreamRef{
+		Slug: m.Slug.ValueString(),
+	}
+}

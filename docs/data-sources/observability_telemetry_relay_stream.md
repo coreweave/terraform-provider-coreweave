@@ -3,12 +3,12 @@
 page_title: "coreweave_observability_telemetry_relay_stream Data Source - coreweave"
 subcategory: ""
 description: |-
-  CoreWeave Telecaster stream data source
+  CoreWeave Telecaster stream data source. Read telemetry stream configuration and status.
 ---
 
 # coreweave_observability_telemetry_relay_stream (Data Source)
 
-CoreWeave Telecaster stream data source
+CoreWeave Telecaster stream data source. Read telemetry stream configuration and status.
 
 
 
@@ -17,50 +17,23 @@ CoreWeave Telecaster stream data source
 
 ### Required
 
-- `ref` (Attributes) Reference to the Telecaster stream. (see [below for nested schema](#nestedatt--ref))
+- `slug` (String) The slug of the stream. Used as a unique identifier.
 
 ### Read-Only
 
-- `spec` (Attributes) The specification for the stream. (see [below for nested schema](#nestedatt--spec))
-- `status` (Attributes) The status of the stream. (see [below for nested schema](#nestedatt--status))
-
-<a id="nestedatt--ref"></a>
-### Nested Schema for `ref`
-
-Required:
-
-- `slug` (String) The slug of the stream. Used as a unique identifier.
-
-
-<a id="nestedatt--spec"></a>
-### Nested Schema for `spec`
-
-Optional:
-
-- `logs` (Attributes) Logs stream configuration, if it is a logs stream. (see [below for nested schema](#nestedatt--spec--logs))
-- `metrics` (Attributes) Metrics stream configuration, if it is a metrics stream. (see [below for nested schema](#nestedatt--spec--metrics))
-
-Read-Only:
-
+- `created_at` (String) The time the stream was created.
 - `display_name` (String) The display name of the stream.
 - `kind` (String) The kind of the stream (one of: not set, metrics, logs)
-
-<a id="nestedatt--spec--logs"></a>
-### Nested Schema for `spec.logs`
-
-
-<a id="nestedatt--spec--metrics"></a>
-### Nested Schema for `spec.metrics`
-
-
-
-<a id="nestedatt--status"></a>
-### Nested Schema for `status`
-
-Read-Only:
-
-- `created_at` (String) The time the stream was created.
+- `logs` (Attributes) Logs stream configuration, if it is a logs stream. (see [below for nested schema](#nestedatt--logs))
+- `metrics` (Attributes) Metrics stream configuration, if it is a metrics stream. (see [below for nested schema](#nestedatt--metrics))
 - `state` (String) The string representation of the stream state.
 - `state_code` (Number) The numeric state code of the stream.
 - `state_message` (String) Additional information about the current stream state.
 - `updated_at` (String) The time the stream was last updated.
+
+<a id="nestedatt--logs"></a>
+### Nested Schema for `logs`
+
+
+<a id="nestedatt--metrics"></a>
+### Nested Schema for `metrics`
