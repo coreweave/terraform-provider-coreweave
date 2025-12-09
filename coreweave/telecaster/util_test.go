@@ -61,6 +61,8 @@ func resourceName(resource fwresource.Resource) string {
 	return metadataResp.TypeName
 }
 
+// datasourceName returns the datasource name for the given datasource using datasource+provider metadata.
+// This is useful for programmatically constructing datasource names that are definitionally correct.
 func datasourceName(datasource fwdatasource.DataSource) string {
 	providerMetadataResp := new(fwprovider.MetadataResponse)
 	new(provider.CoreweaveProvider).Metadata(context.Background(), fwprovider.MetadataRequest{}, providerMetadataResp)

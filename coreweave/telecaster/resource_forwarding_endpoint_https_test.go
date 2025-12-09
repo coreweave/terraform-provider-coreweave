@@ -2,6 +2,7 @@ package telecaster_test
 
 import (
 	"bytes"
+	"embed"
 	"fmt"
 	"math/rand/v2"
 	"testing"
@@ -20,10 +21,14 @@ import (
 	"github.com/hashicorp/terraform-plugin-testing/statecheck"
 	"github.com/hashicorp/terraform-plugin-testing/tfjsonpath"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/zclconf/go-cty/cty"
 )
 
 var (
+	//go:embed testdata
+	httpsEndpointTestdata embed.FS
+
 	httpsEndpointResourceName string = resourceName(telecaster.NewForwardingEndpointHTTPSResource())
 )
 
@@ -45,8 +50,7 @@ func renderHTTPSEndpointResource(resourceName string, m *model.ForwardingEndpoin
 	resource := body.AppendNewBlock("resource", []string{httpsEndpointResourceName, resourceName})
 	resourceBody := resource.Body()
 
-	resourceBody.SetAttributeValue("slug", cty.StringVal(m.Slug.ValueString()))
-	resourceBody.SetAttributeValue("display_name", cty.StringVal(m.DisplayName.ValueString()))
+	setCommonEndpointAttributes(resourceBody, m.ForwardingEndpointModelCore)
 	resourceBody.SetAttributeValue("endpoint", cty.StringVal(m.Endpoint.ValueString()))
 
 	if m.TLS != nil {
@@ -347,5 +351,49 @@ func TestHTTPSForwardingEndpointResource(t *testing.T) {
 				}),
 			},
 		})
+	})
+}
+
+// TestHTTPSForwardingEndpointResource_RenderFunction validates HCL rendering against testdata
+func TestHTTPSForwardingEndpointResource_RenderFunction(t *testing.T) {
+	t.Parallel()
+
+	t.Run("basic endpoint", func(t *testing.T) {
+		t.Parallel()
+
+		endpoint := &model.ForwardingEndpointHTTPSModel{
+			ForwardingEndpointModelCore: model.ForwardingEndpointModelCore{
+				Slug:        types.StringValue("test-https-endpoint"),
+				DisplayName: types.StringValue("Test HTTPS Endpoint"),
+			},
+			Endpoint: types.StringValue("https://example.com/telemetry"),
+		}
+
+		expectedHCL, err := httpsEndpointTestdata.ReadFile("testdata/hcl_endpoint_https_basic.tf")
+		require.NoError(t, err)
+
+		hcl := renderHTTPSEndpointResource("test", endpoint)
+		assert.Equal(t, string(expectedHCL), hcl)
+	})
+
+	t.Run("with TLS", func(t *testing.T) {
+		t.Parallel()
+
+		endpoint := &model.ForwardingEndpointHTTPSModel{
+			ForwardingEndpointModelCore: model.ForwardingEndpointModelCore{
+				Slug:        types.StringValue("test-https-tls"),
+				DisplayName: types.StringValue("Test HTTPS with TLS"),
+			},
+			Endpoint: types.StringValue("https://example.com/telemetry"),
+			TLS: &model.TLSConfigModel{
+				CertificateAuthorityData: types.StringValue("LS0tLS1CRUdJTi=="),
+			},
+		}
+
+		expectedHCL, err := httpsEndpointTestdata.ReadFile("testdata/hcl_endpoint_https_with_tls.tf")
+		require.NoError(t, err)
+
+		hcl := renderHTTPSEndpointResource("test_tls", endpoint)
+		assert.Equal(t, string(expectedHCL), hcl)
 	})
 }

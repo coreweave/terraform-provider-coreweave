@@ -1,6 +1,7 @@
 package telecaster_test
 
 import (
+	"embed"
 	"fmt"
 	"regexp"
 	"strings"
@@ -18,9 +19,13 @@ import (
 	"github.com/hashicorp/terraform-plugin-testing/statecheck"
 	"github.com/hashicorp/terraform-plugin-testing/tfjsonpath"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 var (
+	//go:embed testdata
+	streamTestdata embed.FS
+
 	telemetryStreamDataSourceName string = datasourceName(telecaster.NewTelemetryStreamDataSource())
 )
 
@@ -37,15 +42,6 @@ func TestTelemetryStreamDataSourceSchema(t *testing.T) {
 
 	diagnostics := schemaResponse.Schema.ValidateImplementation(ctx)
 	assert.False(t, diagnostics.HasError(), "Schema implementation is invalid: %v", diagnostics)
-}
-
-// mustTelemetryStreamDataSourceModel creates a TelemetryStreamDataSourceModel from a slug
-func mustTelemetryStreamDataSourceModel(t *testing.T, slug string) *model.TelemetryStreamDataSourceModel {
-	t.Helper()
-
-	return &model.TelemetryStreamDataSourceModel{
-		Slug: types.StringValue(slug),
-	}
 }
 
 func mustRenderTelemetryStreamDataSource(resourceName string, stream *model.TelemetryStreamDataSourceModel) string {
@@ -85,26 +81,24 @@ func createStreamDataSourceTestStep(t *testing.T, opts streamDataSourceTestStep)
 	t.Helper()
 
 	fullDataSourceName := fmt.Sprintf("data.%s.%s", telemetryStreamDataSourceName, opts.DataSourceName)
-	model := mustTelemetryStreamDataSourceModel(t, opts.Slug)
+	model := &model.TelemetryStreamDataSourceModel{
+		Slug: types.StringValue(opts.Slug),
+	}
 
 	var stateChecks []statecheck.StateCheck
 
 	// Only add state checks if we're not expecting an error
 	if opts.ExpectError == nil {
 		stateChecks = []statecheck.StateCheck{
-			// Ref field (flattened)
 			statecheck.ExpectKnownValue(fullDataSourceName, tfjsonpath.New("slug"), knownvalue.StringExact(opts.Slug)),
 
-			// Spec fields (flattened)
 			statecheck.ExpectKnownValue(fullDataSourceName, tfjsonpath.New("display_name"), knownvalue.NotNull()),
 
-			// Status fields (flattened)
 			statecheck.ExpectKnownValue(fullDataSourceName, tfjsonpath.New("created_at"), knownvalue.NotNull()),
 			statecheck.ExpectKnownValue(fullDataSourceName, tfjsonpath.New("updated_at"), knownvalue.NotNull()),
 			statecheck.ExpectKnownValue(fullDataSourceName, tfjsonpath.New("state"), knownvalue.StringExact(typesv1beta1.TelemetryStreamState_TELEMETRY_STREAM_STATE_ACTIVE.String())),
 		}
 
-		// Append additional state checks provided by caller
 		stateChecks = append(stateChecks, opts.StateChecks...)
 	}
 
@@ -220,11 +214,14 @@ func TestTelemetryStreamDataSource(t *testing.T) {
 func TestTelemetryStreamDataSource_RenderFunction(t *testing.T) {
 	t.Parallel()
 
-	slug := "test-render-stream"
-	streamModel := mustTelemetryStreamDataSourceModel(t, slug)
+	streamModel := &model.TelemetryStreamDataSourceModel{
+		Slug: types.StringValue("test-render-stream"),
+	}
+
+	expectedHCL, err := streamTestdata.ReadFile("testdata/hcl_stream_datasource.tf")
+	require.NoError(t, err)
 
 	hcl := mustRenderTelemetryStreamDataSource("test_stream", streamModel)
 
-	assert.Contains(t, hcl, fmt.Sprintf("data %q %q", telemetryStreamDataSourceName, "test_stream"), "HCL should contain data block")
-	assert.Contains(t, hcl, fmt.Sprintf("slug = %q", slug), "HCL should contain slug")
+	assert.Equal(t, string(expectedHCL), hcl)
 }

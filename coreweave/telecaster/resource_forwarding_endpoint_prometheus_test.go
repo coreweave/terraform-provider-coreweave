@@ -2,6 +2,7 @@ package telecaster_test
 
 import (
 	"bytes"
+	"embed"
 	"fmt"
 	"math/rand/v2"
 	"testing"
@@ -20,10 +21,14 @@ import (
 	"github.com/hashicorp/terraform-plugin-testing/statecheck"
 	"github.com/hashicorp/terraform-plugin-testing/tfjsonpath"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/zclconf/go-cty/cty"
 )
 
 var (
+	//go:embed testdata
+	prometheusEndpointTestdata embed.FS
+
 	prometheusEndpointResourceName string = resourceName(telecaster.NewForwardingEndpointPrometheusResource())
 )
 
@@ -45,8 +50,7 @@ func renderPrometheusEndpointResource(resourceName string, m *model.ForwardingEn
 	resource := body.AppendNewBlock("resource", []string{prometheusEndpointResourceName, resourceName})
 	resourceBody := resource.Body()
 
-	resourceBody.SetAttributeValue("slug", cty.StringVal(m.Slug.ValueString()))
-	resourceBody.SetAttributeValue("display_name", cty.StringVal(m.DisplayName.ValueString()))
+	setCommonEndpointAttributes(resourceBody, m.ForwardingEndpointModelCore)
 	resourceBody.SetAttributeValue("endpoint", cty.StringVal(m.Endpoint.ValueString()))
 
 	if m.TLS != nil {
@@ -348,4 +352,23 @@ func TestPrometheusForwardingEndpointResource(t *testing.T) {
 			},
 		})
 	})
+}
+
+// TestPrometheusForwardingEndpointResource_RenderFunction validates HCL rendering against testdata
+func TestPrometheusForwardingEndpointResource_RenderFunction(t *testing.T) {
+	t.Parallel()
+
+	endpoint := &model.ForwardingEndpointPrometheusModel{
+		ForwardingEndpointModelCore: model.ForwardingEndpointModelCore{
+			Slug:        types.StringValue("test-prometheus-endpoint"),
+			DisplayName: types.StringValue("Test Prometheus Endpoint"),
+		},
+		Endpoint: types.StringValue("https://prometheus.example.com/api/v1/write"),
+	}
+
+	expectedHCL, err := prometheusEndpointTestdata.ReadFile("testdata/hcl_endpoint_prometheus_basic.tf")
+	require.NoError(t, err)
+
+	hcl := renderPrometheusEndpointResource("test", endpoint)
+	assert.Equal(t, string(expectedHCL), hcl)
 }
