@@ -38,11 +38,13 @@ const (
 var (
 	//go:embed testdata
 	testdata embed.FS
+
+	pipelineResourceName string = resourceName(telecaster.NewForwardingPipelineResource())
 )
 
 func init() {
-	resource.AddTestSweepers("coreweave_telecaster_forwarding_pipeline", &resource.Sweeper{
-		Name:         "coreweave_telecaster_forwarding_pipeline",
+	resource.AddTestSweepers(pipelineResourceName, &resource.Sweeper{
+		Name:         pipelineResourceName,
 		Dependencies: []string{},
 		F: func(r string) error {
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
@@ -270,7 +272,7 @@ func mustRenderForwardingPipelineResource(ctx context.Context, resourceName stri
 
 	// Build the HCL as a simple string
 	var hcl strings.Builder
-	hcl.WriteString(fmt.Sprintf("resource %q %q {\n", "coreweave_telecaster_forwarding_pipeline", resourceName))
+	hcl.WriteString(fmt.Sprintf("resource %q %q {\n", pipelineResourceName, resourceName))
 	hcl.WriteString("  spec = {\n")
 	hcl.WriteString("    source = {\n")
 	hcl.WriteString(fmt.Sprintf("      slug = %q\n", specModel.Source.Slug.ValueString()))
@@ -279,7 +281,7 @@ func mustRenderForwardingPipelineResource(ctx context.Context, resourceName stri
 
 	if endpoint != nil {
 		// Use the flattened slug attribute from the new HTTPS endpoint resource
-		hcl.WriteString(fmt.Sprintf("      slug = coreweave_telecaster_forwarding_endpoint_https.%s.slug\n", resourceName))
+		hcl.WriteString(fmt.Sprintf("      slug = %s.%s.slug\n", httpsEndpointResourceName, resourceName))
 	} else {
 		hcl.WriteString(fmt.Sprintf("      slug = %q\n", specModel.Destination.Slug.ValueString()))
 	}
@@ -341,7 +343,7 @@ func TestMustRenderForwardingPipelineResource(t *testing.T) {
 		pipeline := mustForwardingPipelineResourceModel(t,
 			model.ForwardingPipelineSpecModel{
 				Source:      model.TelemetryStreamRefModel{Slug: types.StringValue("test-stream")},
-				Destination: model.ForwardingEndpointRefModel{Slug: types.StringValue("${coreweave_telecaster_forwarding_endpoint_https.endpoint.slug}")},
+				Destination: model.ForwardingEndpointRefModel{Slug: types.StringValue(fmt.Sprintf("${%s.endpoint.slug}", httpsEndpointResourceName))},
 				Enabled:     types.BoolValue(true),
 			},
 		)
@@ -464,7 +466,7 @@ func TestForwardingPipelineResource_CompatibleCombinations(t *testing.T) {
 			t.Run(testName, func(t *testing.T) {
 				randomInt := rand.IntN(100)
 				resourceName := fmt.Sprintf("%s_to_%s", streamSlug, endpointType)
-				fullResourceName := fmt.Sprintf("coreweave_telecaster_forwarding_pipeline.%s", resourceName)
+				fullResourceName := fmt.Sprintf("%s.%s", pipelineResourceName, resourceName)
 				ctx := t.Context()
 
 				skipUnimplementedEndpointTypes(t, endpointType)
@@ -526,7 +528,7 @@ func TestForwardingPipelineResource_CompatibleCombinations(t *testing.T) {
 			t.Run(testName, func(t *testing.T) {
 				randomInt := rand.IntN(100)
 				resourceName := testName
-				fullResourceName := fmt.Sprintf("coreweave_telecaster_forwarding_pipeline.%s", resourceName)
+				fullResourceName := fmt.Sprintf("%s.%s", pipelineResourceName, resourceName)
 				ctx := t.Context()
 
 				slug := slugify(fmt.Sprintf("pipe-%s-%s", streamSlug, endpointType), randomInt)
@@ -680,7 +682,7 @@ func TestForwardingPipelineResource_Lifecycle(t *testing.T) {
 	t.Skip()
 	randomInt := rand.IntN(100)
 	resourceName := "test_pipeline"
-	fullResourceName := fmt.Sprintf("coreweave_telecaster_forwarding_pipeline.%s", resourceName)
+	fullResourceName := fmt.Sprintf("%s.%s", pipelineResourceName, resourceName)
 	ctx := t.Context()
 
 	streamSlug := logsStreams[0]

@@ -2,10 +2,8 @@ package telecaster_test
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"math/rand/v2"
-	"strings"
 	"testing"
 
 	typesv1beta1 "bsr.core-services.ingress.coreweave.com/gen/go/coreweave/o11y-mgmt/protocolbuffers/go/coreweave/telecaster/types/v1beta1"
@@ -25,10 +23,14 @@ import (
 	"github.com/zclconf/go-cty/cty"
 )
 
+var (
+	s3EndpointResourceName string = resourceName(telecaster.NewForwardingEndpointS3Resource())
+)
+
 func init() {
-	resource.AddTestSweepers("coreweave_telecaster_forwarding_endpoint_s3", &resource.Sweeper{
-		Name:         "coreweave_telecaster_forwarding_endpoint_s3",
-		Dependencies: []string{"coreweave_telecaster_forwarding_pipeline"},
+	resource.AddTestSweepers(s3EndpointResourceName, &resource.Sweeper{
+		Name:         s3EndpointResourceName,
+		Dependencies: []string{pipelineResourceName},
 		F: func(r string) error {
 			testutil.SetEnvDefaults()
 			return typedEndpointSweeper(typesv1beta1.ForwardingEndpointSpec_S3_case.String())(r)
@@ -40,7 +42,7 @@ func renderS3EndpointResource(resourceName string, m *model.ForwardingEndpointS3
 	file := hclwrite.NewEmptyFile()
 	body := file.Body()
 
-	resource := body.AppendNewBlock("resource", []string{"coreweave_telecaster_forwarding_endpoint_s3", resourceName})
+	resource := body.AppendNewBlock("resource", []string{s3EndpointResourceName, resourceName})
 	resourceBody := resource.Body()
 
 	resourceBody.SetAttributeValue("slug", cty.StringVal(m.Slug.ValueString()))
@@ -88,13 +90,10 @@ type s3EndpointTestStep struct {
 	Options          []testStepOption
 }
 
-func createS3EndpointTestStep(ctx context.Context, t *testing.T, opts s3EndpointTestStep) resource.TestStep {
+func createS3EndpointTestStep(t *testing.T, opts s3EndpointTestStep) resource.TestStep {
 	t.Helper()
 
-	metadataResp := new(fwresource.MetadataResponse)
-	telecaster.NewForwardingEndpointS3Resource().Metadata(ctx, fwresource.MetadataRequest{ProviderTypeName: "coreweave"}, metadataResp)
-
-	fullResourceName := strings.Join([]string{metadataResp.TypeName, opts.ResourceName}, ".")
+	fullResourceName := fmt.Sprintf("%s.%s", s3EndpointResourceName, opts.ResourceName)
 
 	stateChecks := []statecheck.StateCheck{
 		statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("slug"), knownvalue.StringExact(opts.Model.Slug.ValueString())),
@@ -110,7 +109,7 @@ func createS3EndpointTestStep(ctx context.Context, t *testing.T, opts s3Endpoint
 
 	testStep := resource.TestStep{
 		PreConfig: func() {
-			t.Logf("Beginning coreweave_telecaster_forwarding_endpoint_s3 test: %s", opts.TestName)
+			t.Logf("Beginning %s test: %s", s3EndpointResourceName, opts.TestName)
 		},
 		Config:            renderS3EndpointResource(opts.ResourceName, opts.Model),
 		ConfigPlanChecks:  opts.ConfigPlanChecks,
@@ -128,8 +127,7 @@ func TestS3ForwardingEndpointResource(t *testing.T) {
 	t.Run("core lifecycle", func(t *testing.T) {
 		randomInt := rand.IntN(100)
 		resourceName := fmt.Sprintf("test_acc_s3_%d", randomInt)
-		fullResourceName := fmt.Sprintf("coreweave_telecaster_forwarding_endpoint_s3.%s", resourceName)
-		ctx := t.Context()
+		fullResourceName := fmt.Sprintf("%s.%s", s3EndpointResourceName, resourceName)
 
 		baseModel := &model.ForwardingEndpointS3Model{
 			ForwardingEndpointModelCore: model.ForwardingEndpointModelCore{
@@ -146,7 +144,7 @@ func TestS3ForwardingEndpointResource(t *testing.T) {
 				testutil.SetEnvDefaults()
 			},
 			Steps: []resource.TestStep{
-				createS3EndpointTestStep(ctx, t, s3EndpointTestStep{
+				createS3EndpointTestStep(t, s3EndpointTestStep{
 					TestName:     "initial S3 forwarding endpoint",
 					ResourceName: resourceName,
 					Model:        baseModel,
@@ -156,7 +154,7 @@ func TestS3ForwardingEndpointResource(t *testing.T) {
 						},
 					},
 				}),
-				createS3EndpointTestStep(ctx, t, s3EndpointTestStep{
+				createS3EndpointTestStep(t, s3EndpointTestStep{
 					TestName:     "no-op (noop)",
 					ResourceName: resourceName,
 					Model:        baseModel,
@@ -166,7 +164,7 @@ func TestS3ForwardingEndpointResource(t *testing.T) {
 						},
 					},
 				}),
-				createS3EndpointTestStep(ctx, t, s3EndpointTestStep{
+				createS3EndpointTestStep(t, s3EndpointTestStep{
 					TestName:     "update display name (update)",
 					ResourceName: resourceName,
 					Model: with(baseModel, func(m *model.ForwardingEndpointS3Model) {
@@ -178,7 +176,7 @@ func TestS3ForwardingEndpointResource(t *testing.T) {
 						},
 					},
 				}),
-				createS3EndpointTestStep(ctx, t, s3EndpointTestStep{
+				createS3EndpointTestStep(t, s3EndpointTestStep{
 					TestName:     "revert display name (update)",
 					ResourceName: resourceName,
 					Model:        baseModel,
@@ -188,7 +186,7 @@ func TestS3ForwardingEndpointResource(t *testing.T) {
 						},
 					},
 				}),
-				createS3EndpointTestStep(ctx, t, s3EndpointTestStep{
+				createS3EndpointTestStep(t, s3EndpointTestStep{
 					TestName:     "update slug (requires replacement)",
 					ResourceName: resourceName,
 					Model: with(baseModel, func(m *model.ForwardingEndpointS3Model) {
@@ -200,7 +198,7 @@ func TestS3ForwardingEndpointResource(t *testing.T) {
 						},
 					},
 				}),
-				createS3EndpointTestStep(ctx, t, s3EndpointTestStep{
+				createS3EndpointTestStep(t, s3EndpointTestStep{
 					TestName:     "revert slug (plan only) (requires replacement)",
 					ResourceName: resourceName,
 					Model:        baseModel,
@@ -221,8 +219,7 @@ func TestS3ForwardingEndpointResource(t *testing.T) {
 	t.Run("with credentials", func(t *testing.T) {
 		randomInt := rand.IntN(100)
 		resourceName := fmt.Sprintf("test_acc_s3_credentials_%d", randomInt)
-		fullResourceName := fmt.Sprintf("coreweave_telecaster_forwarding_endpoint_s3.%s", resourceName)
-		ctx := t.Context()
+		fullResourceName := fmt.Sprintf("%s.%s", s3EndpointResourceName, resourceName)
 
 		baseModel := &model.ForwardingEndpointS3Model{
 			ForwardingEndpointModelCore: model.ForwardingEndpointModelCore{
@@ -243,7 +240,7 @@ func TestS3ForwardingEndpointResource(t *testing.T) {
 				testutil.SetEnvDefaults()
 			},
 			Steps: []resource.TestStep{
-				createS3EndpointTestStep(ctx, t, s3EndpointTestStep{
+				createS3EndpointTestStep(t, s3EndpointTestStep{
 					TestName:     "initial S3 endpoint with credentials",
 					ResourceName: resourceName,
 					Model:        baseModel,
@@ -253,7 +250,7 @@ func TestS3ForwardingEndpointResource(t *testing.T) {
 						},
 					},
 				}),
-				createS3EndpointTestStep(ctx, t, s3EndpointTestStep{
+				createS3EndpointTestStep(t, s3EndpointTestStep{
 					TestName:     "no-op (noop)",
 					ResourceName: resourceName,
 					Model:        baseModel,
@@ -270,8 +267,7 @@ func TestS3ForwardingEndpointResource(t *testing.T) {
 	t.Run("with session token", func(t *testing.T) {
 		randomInt := rand.IntN(100)
 		resourceName := fmt.Sprintf("test_acc_s3_session_token_%d", randomInt)
-		fullResourceName := fmt.Sprintf("coreweave_telecaster_forwarding_endpoint_s3.%s", resourceName)
-		ctx := t.Context()
+		fullResourceName := fmt.Sprintf("%s.%s", s3EndpointResourceName, resourceName)
 
 		baseModel := &model.ForwardingEndpointS3Model{
 			ForwardingEndpointModelCore: model.ForwardingEndpointModelCore{
@@ -293,7 +289,7 @@ func TestS3ForwardingEndpointResource(t *testing.T) {
 				testutil.SetEnvDefaults()
 			},
 			Steps: []resource.TestStep{
-				createS3EndpointTestStep(ctx, t, s3EndpointTestStep{
+				createS3EndpointTestStep(t, s3EndpointTestStep{
 					TestName:     "initial S3 endpoint with session token",
 					ResourceName: resourceName,
 					Model:        baseModel,

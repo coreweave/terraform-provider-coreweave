@@ -30,7 +30,7 @@ type PrometheusForwardingEndpointResource struct {
 }
 
 func (r *PrometheusForwardingEndpointResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
-	resp.TypeName = req.ProviderTypeName + "_telecaster_forwarding_endpoint_prometheus"
+	resp.TypeName = req.ProviderTypeName + "_observability_telemetry_relay_endpoint_prometheus"
 }
 
 func (r *PrometheusForwardingEndpointResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {

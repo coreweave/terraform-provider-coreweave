@@ -2,10 +2,8 @@ package telecaster_test
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"math/rand/v2"
-	"strings"
 	"testing"
 
 	typesv1beta1 "bsr.core-services.ingress.coreweave.com/gen/go/coreweave/o11y-mgmt/protocolbuffers/go/coreweave/telecaster/types/v1beta1"
@@ -25,10 +23,14 @@ import (
 	"github.com/zclconf/go-cty/cty"
 )
 
+var (
+	httpsEndpointResourceName string = resourceName(telecaster.NewForwardingEndpointHTTPSResource())
+)
+
 func init() {
-	resource.AddTestSweepers("coreweave_telecaster_forwarding_endpoint_https", &resource.Sweeper{
-		Name:         "coreweave_telecaster_forwarding_endpoint_https",
-		Dependencies: []string{"coreweave_telecaster_forwarding_pipeline"},
+	resource.AddTestSweepers(httpsEndpointResourceName, &resource.Sweeper{
+		Name:         httpsEndpointResourceName,
+		Dependencies: []string{resourceName(telecaster.NewForwardingPipelineResource())},
 		F: func(r string) error {
 			testutil.SetEnvDefaults()
 			return typedEndpointSweeper(typesv1beta1.ForwardingEndpointSpec_Https_case.String())(r)
@@ -40,7 +42,7 @@ func renderHTTPSEndpointResource(resourceName string, m *model.ForwardingEndpoin
 	file := hclwrite.NewEmptyFile()
 	body := file.Body()
 
-	resource := body.AppendNewBlock("resource", []string{"coreweave_telecaster_forwarding_endpoint_https", resourceName})
+	resource := body.AppendNewBlock("resource", []string{httpsEndpointResourceName, resourceName})
 	resourceBody := resource.Body()
 
 	resourceBody.SetAttributeValue("slug", cty.StringVal(m.Slug.ValueString()))
@@ -107,13 +109,10 @@ type httpsEndpointTestStep struct {
 	Options          []testStepOption
 }
 
-func createHTTPSEndpointTestStep(ctx context.Context, t *testing.T, opts httpsEndpointTestStep) resource.TestStep {
+func createHTTPSEndpointTestStep(t *testing.T, opts httpsEndpointTestStep) resource.TestStep {
 	t.Helper()
 
-	metadataResp := new(fwresource.MetadataResponse)
-	telecaster.NewForwardingEndpointHTTPSResource().Metadata(ctx, fwresource.MetadataRequest{ProviderTypeName: "coreweave"}, metadataResp)
-
-	fullResourceName := strings.Join([]string{metadataResp.TypeName, opts.ResourceName}, ".")
+	fullResourceName := fmt.Sprintf("%s.%s", httpsEndpointResourceName, opts.ResourceName)
 
 	stateChecks := []statecheck.StateCheck{
 		statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("slug"), knownvalue.StringExact(opts.Model.Slug.ValueString())),
@@ -135,7 +134,7 @@ func createHTTPSEndpointTestStep(ctx context.Context, t *testing.T, opts httpsEn
 
 	testStep := resource.TestStep{
 		PreConfig: func() {
-			t.Logf("Beginning coreweave_telecaster_forwarding_endpoint_https test: %s", opts.TestName)
+			t.Logf("Beginning %s test: %s", httpsEndpointResourceName, opts.TestName)
 		},
 		Config:            renderHTTPSEndpointResource(opts.ResourceName, opts.Model),
 		ConfigPlanChecks:  opts.ConfigPlanChecks,
@@ -153,8 +152,7 @@ func TestHTTPSForwardingEndpointResource(t *testing.T) {
 	t.Run("core lifecycle", func(t *testing.T) {
 		randomInt := rand.IntN(100)
 		resourceName := fmt.Sprintf("test_acc_https_%d", randomInt)
-		fullResourceName := fmt.Sprintf("coreweave_telecaster_forwarding_endpoint_https.%s", resourceName)
-		ctx := t.Context()
+		fullResourceName := fmt.Sprintf("%s.%s", httpsEndpointResourceName, resourceName)
 
 		baseModel := &model.ForwardingEndpointHTTPSModel{
 			ForwardingEndpointModelCore: model.ForwardingEndpointModelCore{
@@ -170,7 +168,7 @@ func TestHTTPSForwardingEndpointResource(t *testing.T) {
 				testutil.SetEnvDefaults()
 			},
 			Steps: []resource.TestStep{
-				createHTTPSEndpointTestStep(ctx, t, httpsEndpointTestStep{
+				createHTTPSEndpointTestStep(t, httpsEndpointTestStep{
 					TestName:     "initial HTTPS forwarding endpoint",
 					ResourceName: resourceName,
 					Model:        baseModel,
@@ -180,7 +178,7 @@ func TestHTTPSForwardingEndpointResource(t *testing.T) {
 						},
 					},
 				}),
-				createHTTPSEndpointTestStep(ctx, t, httpsEndpointTestStep{
+				createHTTPSEndpointTestStep(t, httpsEndpointTestStep{
 					TestName:     "no-op (noop)",
 					ResourceName: resourceName,
 					Model:        baseModel,
@@ -190,7 +188,7 @@ func TestHTTPSForwardingEndpointResource(t *testing.T) {
 						},
 					},
 				}),
-				createHTTPSEndpointTestStep(ctx, t, httpsEndpointTestStep{
+				createHTTPSEndpointTestStep(t, httpsEndpointTestStep{
 					TestName:     "update display name (update)",
 					ResourceName: resourceName,
 					Model: with(baseModel, func(m *model.ForwardingEndpointHTTPSModel) {
@@ -202,7 +200,7 @@ func TestHTTPSForwardingEndpointResource(t *testing.T) {
 						},
 					},
 				}),
-				createHTTPSEndpointTestStep(ctx, t, httpsEndpointTestStep{
+				createHTTPSEndpointTestStep(t, httpsEndpointTestStep{
 					TestName:     "revert display name (update)",
 					ResourceName: resourceName,
 					Model:        baseModel,
@@ -212,7 +210,7 @@ func TestHTTPSForwardingEndpointResource(t *testing.T) {
 						},
 					},
 				}),
-				createHTTPSEndpointTestStep(ctx, t, httpsEndpointTestStep{
+				createHTTPSEndpointTestStep(t, httpsEndpointTestStep{
 					TestName:     "update slug (requires replacement)",
 					ResourceName: resourceName,
 					Model: with(baseModel, func(m *model.ForwardingEndpointHTTPSModel) {
@@ -224,7 +222,7 @@ func TestHTTPSForwardingEndpointResource(t *testing.T) {
 						},
 					},
 				}),
-				createHTTPSEndpointTestStep(ctx, t, httpsEndpointTestStep{
+				createHTTPSEndpointTestStep(t, httpsEndpointTestStep{
 					TestName:     "revert slug (plan only) (requires replacement)",
 					ResourceName: resourceName,
 					Model:        baseModel,
@@ -245,8 +243,7 @@ func TestHTTPSForwardingEndpointResource(t *testing.T) {
 	t.Run("with TLS", func(t *testing.T) {
 		randomInt := rand.IntN(100)
 		resourceName := fmt.Sprintf("test_acc_https_tls_%d", randomInt)
-		fullResourceName := fmt.Sprintf("coreweave_telecaster_forwarding_endpoint_https.%s", resourceName)
-		ctx := t.Context()
+		fullResourceName := fmt.Sprintf("%s.%s", httpsEndpointResourceName, resourceName)
 
 		testCAData := "LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUJURENDQWZPZ0F3SUJBZ0lVZmRLdDdHWU9hRDZuL2pvb3A3OEVoT3Y3YkFvd0NnWUlLb1pJemowRUF3SXcKSERFYU1CZ0dBMVVFQXd3UlkyOXlaWGRsWVhabFkyRXRjbTl2ZEMwd0hoY05NalF4TVRFek1EQTBNVEExV2hjTgpNalV4TVRFek1EQTBNVEExV2pBY01Sb3dHQVlEVlFRRERCRmpiM0psZDJWaGRtVmpZUzF5YjI5ME1Ea1ZNQk1HCkJ5cUdTTTQ5QWdFR0NDcUdTTTQ5QXdFSEEwSUFCUElIdUMyQklIdlFyUlV0bjdodFFnY1NGRDlDbEs0U3BLN0sKaEhWaS9RQm9naVREMC9yMWRqRkViYmZHOW9DTzFodHpXWjd4aE1CRUY4NFJ2TlhtdWNlamdZWXdnWU13RGdZRApWUjBQQVFIL0JBUURBZ0VHTUJJR0ExVWRFd0VCL3dRSU1BWUJBZjhDQVFBd0hRWURWUjBPQkJZRUZOckZjS1dJClVOcWdXcWNxWk5FSVRzOVJuZGh4TUI4R0ExVWRJd1FZTUJhQUZOckZjS1dJVU5xZ1dxY3FaTkVJVHM5Um5kaHgKTUJrR0ExVWRFUVFTTUJDQ0RuZGxkR2h2YjJ0ekxuTjJZekFLQmdncWhrak9QUVFEQWdOSEFEQkVBaUJlM3NsYQpTWjc5bmxQeWJlYVY4NXp5VW9VQ1hVWjNvTnhjN1lZc3N0WDFuZ0lnSUhYQ0xEZUZWKzF2Mlk1RzdwN3N0VTRCClA0VTlScHlyVzhMWnhRdWhFYjQ9Ci0tLS0tRU5EIENFUlRJRklDQVRFLS0tLS0K"
 
@@ -267,7 +264,7 @@ func TestHTTPSForwardingEndpointResource(t *testing.T) {
 				testutil.SetEnvDefaults()
 			},
 			Steps: []resource.TestStep{
-				createHTTPSEndpointTestStep(ctx, t, httpsEndpointTestStep{
+				createHTTPSEndpointTestStep(t, httpsEndpointTestStep{
 					TestName:     "initial HTTPS endpoint with TLS",
 					ResourceName: resourceName,
 					Model:        baseModel,
@@ -277,7 +274,7 @@ func TestHTTPSForwardingEndpointResource(t *testing.T) {
 						},
 					},
 				}),
-				createHTTPSEndpointTestStep(ctx, t, httpsEndpointTestStep{
+				createHTTPSEndpointTestStep(t, httpsEndpointTestStep{
 					TestName:     "no-op (noop)",
 					ResourceName: resourceName,
 					Model:        baseModel,
@@ -287,7 +284,7 @@ func TestHTTPSForwardingEndpointResource(t *testing.T) {
 						},
 					},
 				}),
-				createHTTPSEndpointTestStep(ctx, t, httpsEndpointTestStep{
+				createHTTPSEndpointTestStep(t, httpsEndpointTestStep{
 					TestName:     "remove TLS (update)",
 					ResourceName: resourceName,
 					Model: with(baseModel, func(m *model.ForwardingEndpointHTTPSModel) {
@@ -299,7 +296,7 @@ func TestHTTPSForwardingEndpointResource(t *testing.T) {
 						},
 					},
 				}),
-				createHTTPSEndpointTestStep(ctx, t, httpsEndpointTestStep{
+				createHTTPSEndpointTestStep(t, httpsEndpointTestStep{
 					TestName:     "add TLS back (update)",
 					ResourceName: resourceName,
 					Model:        baseModel,
@@ -316,8 +313,7 @@ func TestHTTPSForwardingEndpointResource(t *testing.T) {
 	t.Run("with credentials", func(t *testing.T) {
 		randomInt := rand.IntN(100)
 		resourceName := fmt.Sprintf("test_acc_https_credentials_%d", randomInt)
-		fullResourceName := fmt.Sprintf("coreweave_telecaster_forwarding_endpoint_https.%s", resourceName)
-		ctx := t.Context()
+		fullResourceName := fmt.Sprintf("%s.%s", httpsEndpointResourceName, resourceName)
 
 		baseModel := &model.ForwardingEndpointHTTPSModel{
 			ForwardingEndpointModelCore: model.ForwardingEndpointModelCore{
@@ -339,7 +335,7 @@ func TestHTTPSForwardingEndpointResource(t *testing.T) {
 				testutil.SetEnvDefaults()
 			},
 			Steps: []resource.TestStep{
-				createHTTPSEndpointTestStep(ctx, t, httpsEndpointTestStep{
+				createHTTPSEndpointTestStep(t, httpsEndpointTestStep{
 					TestName:     "initial HTTPS endpoint with credentials",
 					ResourceName: resourceName,
 					Model:        baseModel,

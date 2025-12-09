@@ -29,7 +29,7 @@ type S3ForwardingEndpointResource struct {
 }
 
 func (r *S3ForwardingEndpointResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
-	resp.TypeName = req.ProviderTypeName + "_telecaster_forwarding_endpoint_s3"
+	resp.TypeName = req.ProviderTypeName + "_observability_telemetry_relay_endpoint_s3"
 }
 
 func (r *S3ForwardingEndpointResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {

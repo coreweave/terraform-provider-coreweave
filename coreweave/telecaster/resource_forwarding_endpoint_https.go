@@ -30,7 +30,7 @@ type HTTPSForwardingEndpointResource struct {
 }
 
 func (r *HTTPSForwardingEndpointResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
-	resp.TypeName = req.ProviderTypeName + "_telecaster_forwarding_endpoint_https"
+	resp.TypeName = req.ProviderTypeName + "_observability_telemetry_relay_endpoint_https"
 }
 
 func (r *HTTPSForwardingEndpointResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {

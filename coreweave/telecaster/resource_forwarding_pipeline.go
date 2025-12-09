@@ -131,7 +131,7 @@ func (r *ResourceForwardingPipeline) ImportState(ctx context.Context, req resour
 }
 
 func (r *ResourceForwardingPipeline) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
-	resp.TypeName = req.ProviderTypeName + "_telecaster_forwarding_pipeline"
+	resp.TypeName = req.ProviderTypeName + "_observability_telemetry_relay_pipeline"
 }
 
 func (r *ResourceForwardingPipeline) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {

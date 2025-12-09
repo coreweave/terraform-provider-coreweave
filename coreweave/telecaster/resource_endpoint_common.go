@@ -19,8 +19,7 @@ import (
 )
 
 const (
-	endpointTimeout              = 10 * time.Minute
-	defaultDeleteEndpointTimeout = 5 * time.Minute
+	endpointTimeout = 5 * time.Minute
 )
 
 func commonEndpointSchema() map[string]schema.Attribute {
@@ -214,7 +213,7 @@ func deleteEndpointAndWait(ctx context.Context, client *coreweave.Client, ref *t
 			endpoint := result.Msg.GetEndpoint()
 			return endpoint, endpoint.GetStatus().GetState().String(), nil
 		},
-		Timeout: defaultDeleteEndpointTimeout,
+		Timeout: endpointTimeout,
 	}
 
 	if _, err := pollConf.WaitForStateContext(ctx); err != nil {
