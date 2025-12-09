@@ -122,7 +122,7 @@ func (s *TelemetryStreamDataSource) ValidateConfig(ctx context.Context, req data
 }
 
 func (s *TelemetryStreamDataSource) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
-	resp.TypeName = req.ProviderTypeName + "_telecaster_stream"
+	resp.TypeName = req.ProviderTypeName + "_observability_telemetry_relay_stream"
 }
 
 func (s *TelemetryStreamDataSource) Schema(ctx context.Context, req datasource.SchemaRequest, resp *datasource.SchemaResponse) {

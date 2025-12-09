@@ -1,4 +1,4 @@
-resource "coreweave_telecaster_forwarding_pipeline" "test" {
+resource "coreweave_observability_telemetry_relay_pipeline" "test" {
   spec = {
     source = {
       slug = "test-stream"

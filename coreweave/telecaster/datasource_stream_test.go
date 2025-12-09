@@ -3,7 +3,6 @@ package telecaster_test
 import (
 	"context"
 	"fmt"
-	"math/rand/v2"
 	"regexp"
 	"strings"
 	"testing"
@@ -21,6 +20,10 @@ import (
 	"github.com/hashicorp/terraform-plugin-testing/statecheck"
 	"github.com/hashicorp/terraform-plugin-testing/tfjsonpath"
 	"github.com/stretchr/testify/assert"
+)
+
+var (
+	telemetryStreamDataSourceName string = datasourceName(telecaster.NewTelemetryStreamDataSource())
 )
 
 // TestTelemetryStreamDataSourceSchema validates the datasource schema implementation
@@ -74,7 +77,7 @@ func mustRenderTelemetryStreamDataSource(ctx context.Context, resourceName strin
 	}
 
 	var buf strings.Builder
-	buf.WriteString(fmt.Sprintf("data \"coreweave_telecaster_stream\" %q {\n", resourceName))
+	buf.WriteString(fmt.Sprintf("data %q %q {\n", telemetryStreamDataSourceName, resourceName))
 	buf.WriteString("  ref = {\n")
 	buf.WriteString(fmt.Sprintf("    slug = %q\n", ref.Slug.ValueString()))
 	buf.WriteString("  }\n")
@@ -85,10 +88,9 @@ func mustRenderTelemetryStreamDataSource(ctx context.Context, resourceName strin
 
 // TestTelemetryStreamDataSource_MetricsStream tests reading a metrics stream specifically
 func TestTelemetryStreamDataSource_MetricsStream(t *testing.T) {
-	t.Parallel() // this is ok because we nest the parallels in sub-tests
-	randomInt := rand.IntN(100)
-	dataSourceName := fmt.Sprintf("test_acc_metrics_stream_%d", randomInt)
-	fullDataSourceName := fmt.Sprintf("data.coreweave_telecaster_stream.%s", dataSourceName)
+	t.Parallel()
+	dataSourceName := "test_acc_metrics_stream"
+	fullDataSourceName := fmt.Sprintf("data.%s.%s", telemetryStreamDataSourceName, dataSourceName)
 	ctx := t.Context()
 
 	streams := []string{
@@ -137,9 +139,9 @@ func TestTelemetryStreamDataSource_MetricsStream(t *testing.T) {
 
 // TestTelemetryStreamDataSource_LogsStream tests reading a logs stream specifically
 func TestTelemetryStreamDataSource_LogsStream(t *testing.T) {
-	t.Parallel() // this is ok because we nest the parallels in sub-tests
+	t.Parallel()
 	dataSourceName := "test_acc_logs_stream"
-	fullDataSourceName := fmt.Sprintf("data.coreweave_telecaster_stream.%s", dataSourceName)
+	fullDataSourceName := fmt.Sprintf("data.%s.%s", telemetryStreamDataSourceName, dataSourceName)
 	ctx := t.Context()
 
 	slugs := []string{
@@ -294,8 +296,6 @@ func TestTelemetryStreamDataSource_RenderFunction(t *testing.T) {
 	hcl := mustRenderTelemetryStreamDataSource(ctx, "test_stream", streamModel)
 
 	// Verify HCL contains expected elements
-	assert.Contains(t, hcl, `data "coreweave_telecaster_stream"`, "HCL should contain data block")
-	assert.Contains(t, hcl, `"test_stream"`, "HCL should contain resource name")
-	assert.Contains(t, hcl, "ref", "HCL should contain ref block")
-	assert.Contains(t, hcl, `slug = "test-render-stream"`, "HCL should contain slug")
+	assert.Contains(t, hcl, fmt.Sprintf("data %q %q", telemetryStreamDataSourceName, "test_stream"), "HCL should contain data block")
+	assert.Contains(t, hcl, fmt.Sprintf("slug = %q", refModel.Slug.ValueString()), "HCL should contain slug")
 }

@@ -2,10 +2,8 @@ package telecaster_test
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"math/rand/v2"
-	"strings"
 	"testing"
 
 	typesv1beta1 "bsr.core-services.ingress.coreweave.com/gen/go/coreweave/o11y-mgmt/protocolbuffers/go/coreweave/telecaster/types/v1beta1"
@@ -25,10 +23,14 @@ import (
 	"github.com/zclconf/go-cty/cty"
 )
 
+var (
+	prometheusEndpointResourceName string = resourceName(telecaster.NewForwardingEndpointPrometheusResource())
+)
+
 func init() {
-	resource.AddTestSweepers("coreweave_telecaster_forwarding_endpoint_prometheus", &resource.Sweeper{
-		Name:         "coreweave_telecaster_forwarding_endpoint_prometheus",
-		Dependencies: []string{"coreweave_telecaster_forwarding_pipeline"},
+	resource.AddTestSweepers(prometheusEndpointResourceName, &resource.Sweeper{
+		Name:         prometheusEndpointResourceName,
+		Dependencies: []string{pipelineResourceName},
 		F: func(r string) error {
 			testutil.SetEnvDefaults()
 			return typedEndpointSweeper(typesv1beta1.ForwardingEndpointSpec_Prometheus_case.String())(r)
@@ -40,7 +42,7 @@ func renderPrometheusEndpointResource(resourceName string, m *model.ForwardingEn
 	file := hclwrite.NewEmptyFile()
 	body := file.Body()
 
-	resource := body.AppendNewBlock("resource", []string{"coreweave_telecaster_forwarding_endpoint_prometheus", resourceName})
+	resource := body.AppendNewBlock("resource", []string{prometheusEndpointResourceName, resourceName})
 	resourceBody := resource.Body()
 
 	resourceBody.SetAttributeValue("slug", cty.StringVal(m.Slug.ValueString()))
@@ -107,13 +109,10 @@ type prometheusEndpointTestStep struct {
 	Options          []testStepOption
 }
 
-func createPrometheusEndpointTestStep(ctx context.Context, t *testing.T, opts prometheusEndpointTestStep) resource.TestStep {
+func createPrometheusEndpointTestStep(t *testing.T, opts prometheusEndpointTestStep) resource.TestStep {
 	t.Helper()
 
-	metadataResp := new(fwresource.MetadataResponse)
-	telecaster.NewForwardingEndpointPrometheusResource().Metadata(ctx, fwresource.MetadataRequest{ProviderTypeName: "coreweave"}, metadataResp)
-
-	fullResourceName := strings.Join([]string{metadataResp.TypeName, opts.ResourceName}, ".")
+	fullResourceName := fmt.Sprintf("%s.%s", prometheusEndpointResourceName, opts.ResourceName)
 
 	stateChecks := []statecheck.StateCheck{
 		statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("slug"), knownvalue.StringExact(opts.Model.Slug.ValueString())),
@@ -135,7 +134,7 @@ func createPrometheusEndpointTestStep(ctx context.Context, t *testing.T, opts pr
 
 	testStep := resource.TestStep{
 		PreConfig: func() {
-			t.Logf("Beginning coreweave_telecaster_forwarding_endpoint_prometheus test: %s", opts.TestName)
+			t.Logf("Beginning %s test: %s", prometheusEndpointResourceName, opts.TestName)
 		},
 		Config:            renderPrometheusEndpointResource(opts.ResourceName, opts.Model),
 		ConfigPlanChecks:  opts.ConfigPlanChecks,
@@ -153,8 +152,7 @@ func TestPrometheusForwardingEndpointResource(t *testing.T) {
 	t.Run("core lifecycle", func(t *testing.T) {
 		randomInt := rand.IntN(100)
 		resourceName := fmt.Sprintf("test_acc_prometheus_%d", randomInt)
-		fullResourceName := fmt.Sprintf("coreweave_telecaster_forwarding_endpoint_prometheus.%s", resourceName)
-		ctx := t.Context()
+		fullResourceName := fmt.Sprintf("%s.%s", prometheusEndpointResourceName, resourceName)
 
 		baseModel := &model.ForwardingEndpointPrometheusModel{
 			ForwardingEndpointModelCore: model.ForwardingEndpointModelCore{
@@ -170,7 +168,7 @@ func TestPrometheusForwardingEndpointResource(t *testing.T) {
 				testutil.SetEnvDefaults()
 			},
 			Steps: []resource.TestStep{
-				createPrometheusEndpointTestStep(ctx, t, prometheusEndpointTestStep{
+				createPrometheusEndpointTestStep(t, prometheusEndpointTestStep{
 					TestName:     "initial Prometheus forwarding endpoint",
 					ResourceName: resourceName,
 					Model:        baseModel,
@@ -180,7 +178,7 @@ func TestPrometheusForwardingEndpointResource(t *testing.T) {
 						},
 					},
 				}),
-				createPrometheusEndpointTestStep(ctx, t, prometheusEndpointTestStep{
+				createPrometheusEndpointTestStep(t, prometheusEndpointTestStep{
 					TestName:     "no-op (noop)",
 					ResourceName: resourceName,
 					Model:        baseModel,
@@ -190,7 +188,7 @@ func TestPrometheusForwardingEndpointResource(t *testing.T) {
 						},
 					},
 				}),
-				createPrometheusEndpointTestStep(ctx, t, prometheusEndpointTestStep{
+				createPrometheusEndpointTestStep(t, prometheusEndpointTestStep{
 					TestName:     "update display name (update)",
 					ResourceName: resourceName,
 					Model: with(baseModel, func(m *model.ForwardingEndpointPrometheusModel) {
@@ -202,7 +200,7 @@ func TestPrometheusForwardingEndpointResource(t *testing.T) {
 						},
 					},
 				}),
-				createPrometheusEndpointTestStep(ctx, t, prometheusEndpointTestStep{
+				createPrometheusEndpointTestStep(t, prometheusEndpointTestStep{
 					TestName:     "revert display name (update)",
 					ResourceName: resourceName,
 					Model:        baseModel,
@@ -212,7 +210,7 @@ func TestPrometheusForwardingEndpointResource(t *testing.T) {
 						},
 					},
 				}),
-				createPrometheusEndpointTestStep(ctx, t, prometheusEndpointTestStep{
+				createPrometheusEndpointTestStep(t, prometheusEndpointTestStep{
 					TestName:     "update slug (requires replacement)",
 					ResourceName: resourceName,
 					Model: with(baseModel, func(m *model.ForwardingEndpointPrometheusModel) {
@@ -224,7 +222,7 @@ func TestPrometheusForwardingEndpointResource(t *testing.T) {
 						},
 					},
 				}),
-				createPrometheusEndpointTestStep(ctx, t, prometheusEndpointTestStep{
+				createPrometheusEndpointTestStep(t, prometheusEndpointTestStep{
 					TestName:     "revert slug (plan only) (requires replacement)",
 					ResourceName: resourceName,
 					Model:        baseModel,
@@ -245,8 +243,7 @@ func TestPrometheusForwardingEndpointResource(t *testing.T) {
 	t.Run("with TLS", func(t *testing.T) {
 		randomInt := rand.IntN(100)
 		resourceName := fmt.Sprintf("test_acc_prometheus_tls_%d", randomInt)
-		fullResourceName := fmt.Sprintf("coreweave_telecaster_forwarding_endpoint_prometheus.%s", resourceName)
-		ctx := t.Context()
+		fullResourceName := fmt.Sprintf("%s.%s", prometheusEndpointResourceName, resourceName)
 
 		testCAData := "LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUJURENDQWZPZ0F3SUJBZ0lVZmRLdDdHWU9hRDZuL2pvb3A3OEVoT3Y3YkFvd0NnWUlLb1pJemowRUF3SXcKSERFYU1CZ0dBMVVFQXd3UlkyOXlaWGRsWVhabFkyRXRjbTl2ZEMwd0hoY05NalF4TVRFek1EQTBNVEExV2hjTgpNalV4TVRFek1EQTBNVEExV2pBY01Sb3dHQVlEVlFRRERCRmpiM0psZDJWaGRtVmpZUzF5YjI5ME1Ea1ZNQk1HCkJ5cUdTTTQ5QWdFR0NDcUdTTTQ5QXdFSEEwSUFCUElIdUMyQklIdlFyUlV0bjdodFFnY1NGRDlDbEs0U3BLN0sKaEhWaS9RQm9naVREMC9yMWRqRkViYmZHOW9DTzFodHpXWjd4aE1CRUY4NFJ2TlhtdWNlamdZWXdnWU13RGdZRApWUjBQQVFIL0JBUURBZ0VHTUJJR0ExVWRFd0VCL3dRSU1BWUJBZjhDQVFBd0hRWURWUjBPQkJZRUZOckZjS1dJClVOcWdXcWNxWk5FSVRzOVJuZGh4TUI4R0ExVWRJd1FZTUJhQUZOckZjS1dJVU5xZ1dxY3FaTkVJVHM5Um5kaHgKTUJrR0ExVWRFUVFTTUJDQ0RuZGxkR2h2YjJ0ekxuTjJZekFLQmdncWhrak9QUVFEQWdOSEFEQkVBaUJlM3NsYQpTWjc5bmxQeWJlYVY4NXp5VW9VQ1hVWjNvTnhjN1lZc3N0WDFuZ0lnSUhYQ0xEZUZWKzF2Mlk1RzdwN3N0VTRCClA0VTlScHlyVzhMWnhRdWhFYjQ9Ci0tLS0tRU5EIENFUlRJRklDQVRFLS0tLS0K"
 
@@ -267,7 +264,7 @@ func TestPrometheusForwardingEndpointResource(t *testing.T) {
 				testutil.SetEnvDefaults()
 			},
 			Steps: []resource.TestStep{
-				createPrometheusEndpointTestStep(ctx, t, prometheusEndpointTestStep{
+				createPrometheusEndpointTestStep(t, prometheusEndpointTestStep{
 					TestName:     "initial Prometheus endpoint with TLS",
 					ResourceName: resourceName,
 					Model:        baseModel,
@@ -277,7 +274,7 @@ func TestPrometheusForwardingEndpointResource(t *testing.T) {
 						},
 					},
 				}),
-				createPrometheusEndpointTestStep(ctx, t, prometheusEndpointTestStep{
+				createPrometheusEndpointTestStep(t, prometheusEndpointTestStep{
 					TestName:     "no-op (noop)",
 					ResourceName: resourceName,
 					Model:        baseModel,
@@ -287,7 +284,7 @@ func TestPrometheusForwardingEndpointResource(t *testing.T) {
 						},
 					},
 				}),
-				createPrometheusEndpointTestStep(ctx, t, prometheusEndpointTestStep{
+				createPrometheusEndpointTestStep(t, prometheusEndpointTestStep{
 					TestName:     "remove TLS (update)",
 					ResourceName: resourceName,
 					Model: with(baseModel, func(m *model.ForwardingEndpointPrometheusModel) {
@@ -299,7 +296,7 @@ func TestPrometheusForwardingEndpointResource(t *testing.T) {
 						},
 					},
 				}),
-				createPrometheusEndpointTestStep(ctx, t, prometheusEndpointTestStep{
+				createPrometheusEndpointTestStep(t, prometheusEndpointTestStep{
 					TestName:     "add TLS back (update)",
 					ResourceName: resourceName,
 					Model:        baseModel,
@@ -316,8 +313,7 @@ func TestPrometheusForwardingEndpointResource(t *testing.T) {
 	t.Run("with credentials", func(t *testing.T) {
 		randomInt := rand.IntN(100)
 		resourceName := fmt.Sprintf("test_acc_prometheus_credentials_%d", randomInt)
-		fullResourceName := fmt.Sprintf("coreweave_telecaster_forwarding_endpoint_prometheus.%s", resourceName)
-		ctx := t.Context()
+		fullResourceName := fmt.Sprintf("%s.%s", prometheusEndpointResourceName, resourceName)
 
 		baseModel := &model.ForwardingEndpointPrometheusModel{
 			ForwardingEndpointModelCore: model.ForwardingEndpointModelCore{
@@ -339,7 +335,7 @@ func TestPrometheusForwardingEndpointResource(t *testing.T) {
 				testutil.SetEnvDefaults()
 			},
 			Steps: []resource.TestStep{
-				createPrometheusEndpointTestStep(ctx, t, prometheusEndpointTestStep{
+				createPrometheusEndpointTestStep(t, prometheusEndpointTestStep{
 					TestName:     "initial Prometheus endpoint with credentials",
 					ResourceName: resourceName,
 					Model:        baseModel,
