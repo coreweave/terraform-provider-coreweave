@@ -2,6 +2,7 @@ package telecaster_test
 
 import (
 	"bytes"
+	"embed"
 	"fmt"
 	"math/rand/v2"
 	"testing"
@@ -20,10 +21,14 @@ import (
 	"github.com/hashicorp/terraform-plugin-testing/statecheck"
 	"github.com/hashicorp/terraform-plugin-testing/tfjsonpath"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/zclconf/go-cty/cty"
 )
 
 var (
+	//go:embed testdata
+	s3EndpointTestdata embed.FS
+
 	s3EndpointResourceName string = resourceName(telecaster.NewForwardingEndpointS3Resource())
 )
 
@@ -45,8 +50,7 @@ func renderS3EndpointResource(resourceName string, m *model.ForwardingEndpointS3
 	resource := body.AppendNewBlock("resource", []string{s3EndpointResourceName, resourceName})
 	resourceBody := resource.Body()
 
-	resourceBody.SetAttributeValue("slug", cty.StringVal(m.Slug.ValueString()))
-	resourceBody.SetAttributeValue("display_name", cty.StringVal(m.DisplayName.ValueString()))
+	setCommonEndpointAttributes(resourceBody, m.ForwardingEndpointModelCore)
 	resourceBody.SetAttributeValue("bucket", cty.StringVal(m.Bucket.ValueString()))
 	resourceBody.SetAttributeValue("region", cty.StringVal(m.Region.ValueString()))
 
@@ -302,4 +306,24 @@ func TestS3ForwardingEndpointResource(t *testing.T) {
 			},
 		})
 	})
+}
+
+// TestS3ForwardingEndpointResource_RenderFunction validates HCL rendering against testdata
+func TestS3ForwardingEndpointResource_RenderFunction(t *testing.T) {
+	t.Parallel()
+
+	endpoint := &model.ForwardingEndpointS3Model{
+		ForwardingEndpointModelCore: model.ForwardingEndpointModelCore{
+			Slug:        types.StringValue("test-s3-endpoint"),
+			DisplayName: types.StringValue("Test S3 Endpoint"),
+		},
+		Bucket: types.StringValue("s3://my-telemetry-bucket"),
+		Region: types.StringValue("us-east-1"),
+	}
+
+	expectedHCL, err := s3EndpointTestdata.ReadFile("testdata/hcl_endpoint_s3_basic.tf")
+	require.NoError(t, err)
+
+	hcl := renderS3EndpointResource("test", endpoint)
+	assert.Equal(t, string(expectedHCL), hcl)
 }
