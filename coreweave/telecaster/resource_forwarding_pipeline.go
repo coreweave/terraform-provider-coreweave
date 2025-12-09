@@ -72,8 +72,8 @@ func (m *ResourceForwardingPipelineModel) ToMsg(ctx context.Context) (msg *types
 	}
 
 	var (
-		ref  model.ForwardingPipelineRefModel
-		spec model.ForwardingPipelineSpecModel
+		ref    model.ForwardingPipelineRefModel
+		spec   model.ForwardingPipelineSpecModel
 		status model.ForwardingPipelineStatusModel
 	)
 
