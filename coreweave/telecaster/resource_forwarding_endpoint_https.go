@@ -2,12 +2,10 @@ package telecaster
 
 import (
 	"context"
-	"time"
 
 	clusterv1beta1 "bsr.core-services.ingress.coreweave.com/gen/go/coreweave/o11y-mgmt/protocolbuffers/go/coreweave/telecaster/svc/cluster/v1beta1"
 	typesv1beta1 "bsr.core-services.ingress.coreweave.com/gen/go/coreweave/o11y-mgmt/protocolbuffers/go/coreweave/telecaster/types/v1beta1"
 	"buf.build/go/protovalidate"
-	"github.com/coreweave/terraform-provider-coreweave/coreweave/telecaster/internal"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave/telecaster/internal/model"
 	"github.com/coreweave/terraform-provider-coreweave/internal/coretf"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -15,10 +13,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
-)
-
-const (
-	httpsEndpointTimeout = 10 * time.Minute
 )
 
 var (
@@ -53,7 +47,7 @@ func (r *HTTPSForwardingEndpointResource) Schema(ctx context.Context, req resour
 		MarkdownDescription: "Authentication credentials for the HTTPS endpoint. At most one of basic_auth, bearer_token, or auth_headers should be set.",
 		Optional:            true,
 		Attributes: map[string]schema.Attribute{
-			"basic_auth": basicAuthAttribute(),
+			"basic_auth":   basicAuthAttribute(),
 			"bearer_token": bearerTokenAttribute(),
 			"auth_headers": authHeadersAttribute(),
 		},
@@ -127,12 +121,13 @@ func (r *HTTPSForwardingEndpointResource) Create(ctx context.Context, req resour
 	// SetHttps sets the credentials oneof with the HTTPSCredentials.
 	createReq.SetHttps(creds)
 
-	endpoint := createEndpoint(ctx, r.Client, createReq, httpsEndpointTimeout, &resp.Diagnostics)
+	endpoint, diags := createEndpoint(ctx, r.Client, createReq)
+	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	data.Set(endpoint)
+	resp.Diagnostics.Append(data.Set(endpoint)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -195,7 +190,7 @@ func (r *HTTPSForwardingEndpointResource) Update(ctx context.Context, req resour
 	}
 	updateReq.SetHttps(creds)
 
-	endpoint, diags := updateEndpoint(ctx, r.Client, updateReq, httpsEndpointTimeout)
+	endpoint, diags := updateEndpoint(ctx, r.Client, updateReq)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -216,14 +211,8 @@ func (r *HTTPSForwardingEndpointResource) Delete(ctx context.Context, req resour
 		return
 	}
 
-	endpointMsg, diagnostics := data.ToMsg()
-	resp.Diagnostics.Append(diagnostics...)
+	resp.Diagnostics.Append(deleteEndpoint(ctx, r.Client, &data)...)
 	if resp.Diagnostics.HasError() {
-		return
-	}
-
-	if err := internal.DeleteEndpointAndWait(ctx, r.Client, endpointMsg.GetRef()); err != nil {
-		resp.Diagnostics.AddError("Error deleting Telecaster endpoint", err.Error())
 		return
 	}
 

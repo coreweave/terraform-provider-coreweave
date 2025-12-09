@@ -636,10 +636,10 @@ func TestForwardingPipelineResource_IncompatibleCombinations(t *testing.T) {
 		for _, endpointType := range getIncompatibleEndpointTypes(StreamTypeLogs) {
 			testName := fmt.Sprintf("%s_to_%s_fails", streamSlug, endpointType)
 
-		t.Run(testName, func(t *testing.T) {
-			randomInt := rand.IntN(100)
-			resourceName := testPipelineResourceName
-			ctx := t.Context()
+			t.Run(testName, func(t *testing.T) {
+				randomInt := rand.IntN(100)
+				resourceName := testPipelineResourceName
+				ctx := t.Context()
 
 				// TODO: When S3/Prometheus endpoints are implemented, dispatch based on endpointType
 				endpoint := createHTTPSEndpoint(t, slugify(fmt.Sprintf("incompat-%s", endpointType), randomInt))
