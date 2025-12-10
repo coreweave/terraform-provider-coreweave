@@ -30,7 +30,7 @@ func (r *TelemetryStreamRef) ToMsg() (msg *typesv1beta1.TelemetryStreamRef) {
 }
 
 type TelemetryStreamSpec struct {
-	DisplayName types.String            `tfsdk:"display_name"`
+	DisplayName types.String       `tfsdk:"display_name"`
 	Logs        *LogsStreamSpec    `tfsdk:"logs"`
 	Metrics     *MetricsStreamSpec `tfsdk:"metrics"`
 }
@@ -89,8 +89,8 @@ func (s *TelemetryStreamStatus) Set(status *typesv1beta1.TelemetryStreamStatus) 
 type TelemetryStreamDataSource struct {
 	Slug types.String `tfsdk:"slug"`
 
-	DisplayName types.String            `tfsdk:"display_name"`
-	Kind        types.String            `tfsdk:"kind"`
+	DisplayName types.String       `tfsdk:"display_name"`
+	Kind        types.String       `tfsdk:"kind"`
 	Logs        *LogsStreamSpec    `tfsdk:"logs"`
 	Metrics     *MetricsStreamSpec `tfsdk:"metrics"`
 
