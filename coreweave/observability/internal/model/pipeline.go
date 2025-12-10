@@ -32,7 +32,7 @@ func (m *ForwardingPipelineRef) ToMsg() (msg *typesv1beta1.ForwardingPipelineRef
 type ForwardingPipelineSpec struct {
 	Source      TelemetryStreamRef    `tfsdk:"source"`
 	Destination ForwardingEndpointRef `tfsdk:"destination"`
-	Enabled     types.Bool                 `tfsdk:"enabled"`
+	Enabled     types.Bool            `tfsdk:"enabled"`
 }
 
 func (m *ForwardingPipelineSpec) Set(spec *typesv1beta1.ForwardingPipelineSpec) {

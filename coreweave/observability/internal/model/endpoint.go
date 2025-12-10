@@ -100,7 +100,7 @@ func (m *ForwardingEndpointCore) coreMsg() (msg *typesv1beta1.ForwardingEndpoint
 
 type ForwardingEndpointHTTPS struct {
 	ForwardingEndpointCore
-	Endpoint    types.String           `tfsdk:"endpoint"`
+	Endpoint    types.String      `tfsdk:"endpoint"`
 	TLS         *TLSConfig        `tfsdk:"tls"`
 	Credentials *HTTPSCredentials `tfsdk:"credentials"`
 }
@@ -145,7 +145,7 @@ func (m *ForwardingEndpointHTTPS) ToMsg() (msg *typesv1beta1.ForwardingEndpoint,
 
 type ForwardingEndpointPrometheus struct {
 	ForwardingEndpointCore
-	Endpoint    types.String                `tfsdk:"endpoint"`
+	Endpoint    types.String           `tfsdk:"endpoint"`
 	TLS         *TLSConfig             `tfsdk:"tls"`
 	Credentials *PrometheusCredentials `tfsdk:"credentials"`
 }
@@ -188,8 +188,8 @@ func (m *ForwardingEndpointPrometheus) ToMsg() (msg *typesv1beta1.ForwardingEndp
 
 type ForwardingEndpointS3 struct {
 	ForwardingEndpointCore
-	Bucket      types.String        `tfsdk:"bucket"`
-	Region      types.String        `tfsdk:"region"`
+	Bucket      types.String   `tfsdk:"bucket"`
+	Region      types.String   `tfsdk:"region"`
 	Credentials *S3Credentials `tfsdk:"credentials"`
 }
 
