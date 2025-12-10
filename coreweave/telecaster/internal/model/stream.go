@@ -87,7 +87,6 @@ func (s *TelemetryStreamStatusModel) Set(status *typesv1beta1.TelemetryStreamSta
 // TelemetryStreamDataSourceModel is a flattened model for the stream data source
 // that combines ref, spec, and status fields at the top level, similar to endpoint resources.
 type TelemetryStreamDataSourceModel struct {
-
 	Slug types.String `tfsdk:"slug"`
 
 	DisplayName types.String            `tfsdk:"display_name"`
