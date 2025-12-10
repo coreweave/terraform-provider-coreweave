@@ -60,7 +60,7 @@ func (r *HTTPSForwardingEndpointResource) Schema(ctx context.Context, req resour
 }
 
 func (r *HTTPSForwardingEndpointResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
-	var data model.ForwardingEndpointHTTPSModel
+	var data model.ForwardingEndpointHTTPS
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -81,7 +81,7 @@ func (r *HTTPSForwardingEndpointResource) ImportState(ctx context.Context, req r
 	resource.ImportStatePassthroughID(ctx, path.Root("slug"), req, resp)
 }
 
-func getHTTPSCredentials(data model.ForwardingEndpointHTTPSModel) (credentials *typesv1beta1.HTTPSCredentials, diagnostics diag.Diagnostics) {
+func getHTTPSCredentials(data model.ForwardingEndpointHTTPS) (credentials *typesv1beta1.HTTPSCredentials, diagnostics diag.Diagnostics) {
 	if data.Credentials == nil {
 		return nil, nil
 	}
@@ -92,7 +92,7 @@ func getHTTPSCredentials(data model.ForwardingEndpointHTTPSModel) (credentials *
 }
 
 func (r *HTTPSForwardingEndpointResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
-	var data model.ForwardingEndpointHTTPSModel
+	var data model.ForwardingEndpointHTTPS
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
 
 	// Grab the creds before we load the full plan, because write-only attributes are removed at the plan stage.
@@ -136,7 +136,7 @@ func (r *HTTPSForwardingEndpointResource) Create(ctx context.Context, req resour
 }
 
 func (r *HTTPSForwardingEndpointResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
-	var data model.ForwardingEndpointHTTPSModel
+	var data model.ForwardingEndpointHTTPS
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -167,7 +167,7 @@ func (r *HTTPSForwardingEndpointResource) Read(ctx context.Context, req resource
 }
 
 func (r *HTTPSForwardingEndpointResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	var data model.ForwardingEndpointHTTPSModel
+	var data model.ForwardingEndpointHTTPS
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -205,7 +205,7 @@ func (r *HTTPSForwardingEndpointResource) Update(ctx context.Context, req resour
 }
 
 func (r *HTTPSForwardingEndpointResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
-	var data model.ForwardingEndpointHTTPSModel
+	var data model.ForwardingEndpointHTTPS
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
 	if resp.Diagnostics.HasError() {
 		return

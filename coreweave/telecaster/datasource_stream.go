@@ -38,7 +38,7 @@ type TelemetryStreamDataSource struct {
 }
 
 func (s *TelemetryStreamDataSource) ValidateConfig(ctx context.Context, req datasource.ValidateConfigRequest, resp *datasource.ValidateConfigResponse) {
-	var data model.TelemetryStreamDataSourceModel
+	var data model.TelemetryStreamDataSource
 
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
 	if resp.Diagnostics.HasError() {
@@ -114,7 +114,7 @@ func (s *TelemetryStreamDataSource) Schema(ctx context.Context, req datasource.S
 }
 
 func (s *TelemetryStreamDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
-	var data model.TelemetryStreamDataSourceModel
+	var data model.TelemetryStreamDataSource
 
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
 	if resp.Diagnostics.HasError() {

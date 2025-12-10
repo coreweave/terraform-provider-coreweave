@@ -44,7 +44,7 @@ func TestTelemetryStreamDataSourceSchema(t *testing.T) {
 	assert.False(t, diagnostics.HasError(), "Schema implementation is invalid: %v", diagnostics)
 }
 
-func mustRenderTelemetryStreamDataSource(resourceName string, stream *model.TelemetryStreamDataSourceModel) string {
+func mustRenderTelemetryStreamDataSource(resourceName string, stream *model.TelemetryStreamDataSource) string {
 	var buf strings.Builder
 	buf.WriteString(fmt.Sprintf("data %q %q {\n", telemetryStreamDataSourceName, resourceName))
 	buf.WriteString(fmt.Sprintf("  slug = %q\n", stream.Slug.ValueString()))
@@ -81,7 +81,7 @@ func createStreamDataSourceTestStep(t *testing.T, opts streamDataSourceTestStep)
 	t.Helper()
 
 	fullDataSourceName := fmt.Sprintf("data.%s.%s", telemetryStreamDataSourceName, opts.DataSourceName)
-	model := &model.TelemetryStreamDataSourceModel{
+	model := &model.TelemetryStreamDataSource{
 		Slug: types.StringValue(opts.Slug),
 	}
 
@@ -214,7 +214,7 @@ func TestTelemetryStreamDataSource(t *testing.T) {
 func TestTelemetryStreamDataSource_RenderFunction(t *testing.T) {
 	t.Parallel()
 
-	streamModel := &model.TelemetryStreamDataSourceModel{
+	streamModel := &model.TelemetryStreamDataSource{
 		Slug: types.StringValue("test-render-stream"),
 	}
 

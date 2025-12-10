@@ -42,7 +42,7 @@ type ResourceForwardingPipeline struct {
 
 // ValidateConfig implements resource.ResourceWithValidateConfig.
 func (r *ResourceForwardingPipeline) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
-	var data model.ForwardingPipelineModel
+	var data model.ForwardingPipeline
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -145,7 +145,7 @@ func (r *ResourceForwardingPipeline) Schema(ctx context.Context, req resource.Sc
 }
 
 func (r *ResourceForwardingPipeline) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
-	var data model.ForwardingPipelineModel
+	var data model.ForwardingPipeline
 
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
 	if resp.Diagnostics.HasError() {
@@ -182,7 +182,7 @@ func (r *ResourceForwardingPipeline) Create(ctx context.Context, req resource.Cr
 }
 
 func (r *ResourceForwardingPipeline) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
-	var data model.ForwardingPipelineModel
+	var data model.ForwardingPipeline
 
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
 	if resp.Diagnostics.HasError() {
@@ -233,7 +233,7 @@ func (r *ResourceForwardingPipeline) Delete(ctx context.Context, req resource.De
 }
 
 func (r *ResourceForwardingPipeline) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
-	var data model.ForwardingPipelineModel
+	var data model.ForwardingPipeline
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -261,7 +261,7 @@ func (r *ResourceForwardingPipeline) Read(ctx context.Context, req resource.Read
 }
 
 func (r *ResourceForwardingPipeline) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	var data model.ForwardingPipelineModel
+	var data model.ForwardingPipeline
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
 	if resp.Diagnostics.HasError() {
 		return

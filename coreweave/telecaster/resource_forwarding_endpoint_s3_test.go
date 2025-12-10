@@ -43,14 +43,14 @@ func init() {
 	})
 }
 
-func renderS3EndpointResource(resourceName string, m *model.ForwardingEndpointS3Model) string {
+func renderS3EndpointResource(resourceName string, m *model.ForwardingEndpointS3) string {
 	file := hclwrite.NewEmptyFile()
 	body := file.Body()
 
 	resource := body.AppendNewBlock("resource", []string{s3EndpointResourceName, resourceName})
 	resourceBody := resource.Body()
 
-	setCommonEndpointAttributes(resourceBody, m.ForwardingEndpointModelCore)
+	setCommonEndpointAttributes(resourceBody, m.ForwardingEndpointCore)
 	resourceBody.SetAttributeValue("bucket", cty.StringVal(m.Bucket.ValueString()))
 	resourceBody.SetAttributeValue("region", cty.StringVal(m.Region.ValueString()))
 
@@ -89,7 +89,7 @@ func TestS3ForwardingEndpointSchema(t *testing.T) {
 type s3EndpointTestStep struct {
 	TestName         string
 	ResourceName     string
-	Model            *model.ForwardingEndpointS3Model
+	Model            *model.ForwardingEndpointS3
 	ConfigPlanChecks resource.ConfigPlanChecks
 	Options          []testStepOption
 }
@@ -133,8 +133,8 @@ func TestS3ForwardingEndpointResource(t *testing.T) {
 		resourceName := fmt.Sprintf("test_acc_s3_%d", randomInt)
 		fullResourceName := fmt.Sprintf("%s.%s", s3EndpointResourceName, resourceName)
 
-		baseModel := &model.ForwardingEndpointS3Model{
-			ForwardingEndpointModelCore: model.ForwardingEndpointModelCore{
+		baseModel := &model.ForwardingEndpointS3{
+			ForwardingEndpointCore: model.ForwardingEndpointCore{
 				Slug:        types.StringValue(slugify("s3-fe", randomInt)),
 				DisplayName: types.StringValue("Test S3 Endpoint"),
 			},
@@ -171,7 +171,7 @@ func TestS3ForwardingEndpointResource(t *testing.T) {
 				createS3EndpointTestStep(t, s3EndpointTestStep{
 					TestName:     "update display name (update)",
 					ResourceName: resourceName,
-					Model: with(baseModel, func(m *model.ForwardingEndpointS3Model) {
+					Model: with(baseModel, func(m *model.ForwardingEndpointS3) {
 						m.DisplayName = types.StringValue("Updated S3 Endpoint")
 					}),
 					ConfigPlanChecks: resource.ConfigPlanChecks{
@@ -193,7 +193,7 @@ func TestS3ForwardingEndpointResource(t *testing.T) {
 				createS3EndpointTestStep(t, s3EndpointTestStep{
 					TestName:     "update slug (requires replacement)",
 					ResourceName: resourceName,
-					Model: with(baseModel, func(m *model.ForwardingEndpointS3Model) {
+					Model: with(baseModel, func(m *model.ForwardingEndpointS3) {
 						m.Slug = types.StringValue(slugify("s3-fe2", randomInt))
 					}),
 					ConfigPlanChecks: resource.ConfigPlanChecks{
@@ -225,14 +225,14 @@ func TestS3ForwardingEndpointResource(t *testing.T) {
 		resourceName := fmt.Sprintf("test_acc_s3_credentials_%d", randomInt)
 		fullResourceName := fmt.Sprintf("%s.%s", s3EndpointResourceName, resourceName)
 
-		baseModel := &model.ForwardingEndpointS3Model{
-			ForwardingEndpointModelCore: model.ForwardingEndpointModelCore{
+		baseModel := &model.ForwardingEndpointS3{
+			ForwardingEndpointCore: model.ForwardingEndpointCore{
 				Slug:        types.StringValue(slugify("s3-credentials", randomInt)),
 				DisplayName: types.StringValue("Test S3 Endpoint with Credentials"),
 			},
 			Bucket: types.StringValue("s3://secure-bucket"),
 			Region: types.StringValue("us-west-2"),
-			Credentials: &model.S3CredentialsModel{
+			Credentials: &model.S3Credentials{
 				AccessKeyID:     types.StringValue("AKIAIOSFODNN7EXAMPLE"),
 				SecretAccessKey: types.StringValue("wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"),
 			},
@@ -273,14 +273,14 @@ func TestS3ForwardingEndpointResource(t *testing.T) {
 		resourceName := fmt.Sprintf("test_acc_s3_session_token_%d", randomInt)
 		fullResourceName := fmt.Sprintf("%s.%s", s3EndpointResourceName, resourceName)
 
-		baseModel := &model.ForwardingEndpointS3Model{
-			ForwardingEndpointModelCore: model.ForwardingEndpointModelCore{
+		baseModel := &model.ForwardingEndpointS3{
+			ForwardingEndpointCore: model.ForwardingEndpointCore{
 				Slug:        types.StringValue(slugify("s3-session-token", randomInt)),
 				DisplayName: types.StringValue("Test S3 Endpoint with Session Token"),
 			},
 			Bucket: types.StringValue("s3://secure-bucket-with-token"),
 			Region: types.StringValue("us-west-2"),
-			Credentials: &model.S3CredentialsModel{
+			Credentials: &model.S3Credentials{
 				AccessKeyID:     types.StringValue("AKIAIOSFODNN7EXAMPLE"),
 				SecretAccessKey: types.StringValue("wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"),
 				SessionToken:    types.StringValue("FwoGZXIvYXdzEBYaDGV4YW1wbGVzZXNzaW9u"),
@@ -312,8 +312,8 @@ func TestS3ForwardingEndpointResource(t *testing.T) {
 func TestS3ForwardingEndpointResource_RenderFunction(t *testing.T) {
 	t.Parallel()
 
-	endpoint := &model.ForwardingEndpointS3Model{
-		ForwardingEndpointModelCore: model.ForwardingEndpointModelCore{
+	endpoint := &model.ForwardingEndpointS3{
+		ForwardingEndpointCore: model.ForwardingEndpointCore{
 			Slug:        types.StringValue("test-s3-endpoint"),
 			DisplayName: types.StringValue("Test S3 Endpoint"),
 		},

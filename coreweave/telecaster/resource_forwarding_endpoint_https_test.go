@@ -43,14 +43,14 @@ func init() {
 	})
 }
 
-func renderHTTPSEndpointResource(resourceName string, m *model.ForwardingEndpointHTTPSModel) string {
+func renderHTTPSEndpointResource(resourceName string, m *model.ForwardingEndpointHTTPS) string {
 	file := hclwrite.NewEmptyFile()
 	body := file.Body()
 
 	resource := body.AppendNewBlock("resource", []string{httpsEndpointResourceName, resourceName})
 	resourceBody := resource.Body()
 
-	setCommonEndpointAttributes(resourceBody, m.ForwardingEndpointModelCore)
+	setCommonEndpointAttributes(resourceBody, m.ForwardingEndpointCore)
 	resourceBody.SetAttributeValue("endpoint", cty.StringVal(m.Endpoint.ValueString()))
 
 	if m.TLS != nil {
@@ -108,7 +108,7 @@ func TestHTTPSForwardingEndpointSchema(t *testing.T) {
 type httpsEndpointTestStep struct {
 	TestName         string
 	ResourceName     string
-	Model            *model.ForwardingEndpointHTTPSModel
+	Model            *model.ForwardingEndpointHTTPS
 	ConfigPlanChecks resource.ConfigPlanChecks
 	Options          []testStepOption
 }
@@ -158,8 +158,8 @@ func TestHTTPSForwardingEndpointResource(t *testing.T) {
 		resourceName := fmt.Sprintf("test_acc_https_%d", randomInt)
 		fullResourceName := fmt.Sprintf("%s.%s", httpsEndpointResourceName, resourceName)
 
-		baseModel := &model.ForwardingEndpointHTTPSModel{
-			ForwardingEndpointModelCore: model.ForwardingEndpointModelCore{
+		baseModel := &model.ForwardingEndpointHTTPS{
+			ForwardingEndpointCore: model.ForwardingEndpointCore{
 				Slug:        types.StringValue(slugify("https-fe", randomInt)),
 				DisplayName: types.StringValue("Test HTTPS Endpoint"),
 			},
@@ -195,7 +195,7 @@ func TestHTTPSForwardingEndpointResource(t *testing.T) {
 				createHTTPSEndpointTestStep(t, httpsEndpointTestStep{
 					TestName:     "update display name (update)",
 					ResourceName: resourceName,
-					Model: with(baseModel, func(m *model.ForwardingEndpointHTTPSModel) {
+					Model: with(baseModel, func(m *model.ForwardingEndpointHTTPS) {
 						m.DisplayName = types.StringValue("Updated HTTPS Endpoint")
 					}),
 					ConfigPlanChecks: resource.ConfigPlanChecks{
@@ -217,7 +217,7 @@ func TestHTTPSForwardingEndpointResource(t *testing.T) {
 				createHTTPSEndpointTestStep(t, httpsEndpointTestStep{
 					TestName:     "update slug (requires replacement)",
 					ResourceName: resourceName,
-					Model: with(baseModel, func(m *model.ForwardingEndpointHTTPSModel) {
+					Model: with(baseModel, func(m *model.ForwardingEndpointHTTPS) {
 						m.Slug = types.StringValue(slugify("https-fe2", randomInt))
 					}),
 					ConfigPlanChecks: resource.ConfigPlanChecks{
@@ -251,13 +251,13 @@ func TestHTTPSForwardingEndpointResource(t *testing.T) {
 
 		testCAData := "LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUJURENDQWZPZ0F3SUJBZ0lVZmRLdDdHWU9hRDZuL2pvb3A3OEVoT3Y3YkFvd0NnWUlLb1pJemowRUF3SXcKSERFYU1CZ0dBMVVFQXd3UlkyOXlaWGRsWVhabFkyRXRjbTl2ZEMwd0hoY05NalF4TVRFek1EQTBNVEExV2hjTgpNalV4TVRFek1EQTBNVEExV2pBY01Sb3dHQVlEVlFRRERCRmpiM0psZDJWaGRtVmpZUzF5YjI5ME1Ea1ZNQk1HCkJ5cUdTTTQ5QWdFR0NDcUdTTTQ5QXdFSEEwSUFCUElIdUMyQklIdlFyUlV0bjdodFFnY1NGRDlDbEs0U3BLN0sKaEhWaS9RQm9naVREMC9yMWRqRkViYmZHOW9DTzFodHpXWjd4aE1CRUY4NFJ2TlhtdWNlamdZWXdnWU13RGdZRApWUjBQQVFIL0JBUURBZ0VHTUJJR0ExVWRFd0VCL3dRSU1BWUJBZjhDQVFBd0hRWURWUjBPQkJZRUZOckZjS1dJClVOcWdXcWNxWk5FSVRzOVJuZGh4TUI4R0ExVWRJd1FZTUJhQUZOckZjS1dJVU5xZ1dxY3FaTkVJVHM5Um5kaHgKTUJrR0ExVWRFUVFTTUJDQ0RuZGxkR2h2YjJ0ekxuTjJZekFLQmdncWhrak9QUVFEQWdOSEFEQkVBaUJlM3NsYQpTWjc5bmxQeWJlYVY4NXp5VW9VQ1hVWjNvTnhjN1lZc3N0WDFuZ0lnSUhYQ0xEZUZWKzF2Mlk1RzdwN3N0VTRCClA0VTlScHlyVzhMWnhRdWhFYjQ9Ci0tLS0tRU5EIENFUlRJRklDQVRFLS0tLS0K"
 
-		baseModel := &model.ForwardingEndpointHTTPSModel{
-			ForwardingEndpointModelCore: model.ForwardingEndpointModelCore{
+		baseModel := &model.ForwardingEndpointHTTPS{
+			ForwardingEndpointCore: model.ForwardingEndpointCore{
 				Slug:        types.StringValue(slugify("https-tls", randomInt)),
 				DisplayName: types.StringValue("Test HTTPS Endpoint with TLS"),
 			},
 			Endpoint: types.StringValue("https://secure-endpoint.example.com/"),
-			TLS: &model.TLSConfigModel{
+			TLS: &model.TLSConfig{
 				CertificateAuthorityData: types.StringValue(testCAData),
 			},
 		}
@@ -291,7 +291,7 @@ func TestHTTPSForwardingEndpointResource(t *testing.T) {
 				createHTTPSEndpointTestStep(t, httpsEndpointTestStep{
 					TestName:     "remove TLS (update)",
 					ResourceName: resourceName,
-					Model: with(baseModel, func(m *model.ForwardingEndpointHTTPSModel) {
+					Model: with(baseModel, func(m *model.ForwardingEndpointHTTPS) {
 						m.TLS = nil
 					}),
 					ConfigPlanChecks: resource.ConfigPlanChecks{
@@ -319,14 +319,14 @@ func TestHTTPSForwardingEndpointResource(t *testing.T) {
 		resourceName := fmt.Sprintf("test_acc_https_credentials_%d", randomInt)
 		fullResourceName := fmt.Sprintf("%s.%s", httpsEndpointResourceName, resourceName)
 
-		baseModel := &model.ForwardingEndpointHTTPSModel{
-			ForwardingEndpointModelCore: model.ForwardingEndpointModelCore{
+		baseModel := &model.ForwardingEndpointHTTPS{
+			ForwardingEndpointCore: model.ForwardingEndpointCore{
 				Slug:        types.StringValue(slugify("https-credentials", randomInt)),
 				DisplayName: types.StringValue("Test HTTPS Endpoint with Credentials"),
 			},
 			Endpoint: types.StringValue("https://secure-endpoint.example.com/"),
-			Credentials: &model.HTTPSCredentialsModel{
-				BasicAuth: &model.BasicAuthCredentialsModel{
+			Credentials: &model.HTTPSCredentials{
+				BasicAuth: &model.BasicAuthCredentials{
 					Username: types.StringValue("testuser"),
 					Password: types.StringValue("testpassword"),
 				},
@@ -361,8 +361,8 @@ func TestHTTPSForwardingEndpointResource_RenderFunction(t *testing.T) {
 	t.Run("basic endpoint", func(t *testing.T) {
 		t.Parallel()
 
-		endpoint := &model.ForwardingEndpointHTTPSModel{
-			ForwardingEndpointModelCore: model.ForwardingEndpointModelCore{
+		endpoint := &model.ForwardingEndpointHTTPS{
+			ForwardingEndpointCore: model.ForwardingEndpointCore{
 				Slug:        types.StringValue("test-https-endpoint"),
 				DisplayName: types.StringValue("Test HTTPS Endpoint"),
 			},
@@ -379,13 +379,13 @@ func TestHTTPSForwardingEndpointResource_RenderFunction(t *testing.T) {
 	t.Run("with TLS", func(t *testing.T) {
 		t.Parallel()
 
-		endpoint := &model.ForwardingEndpointHTTPSModel{
-			ForwardingEndpointModelCore: model.ForwardingEndpointModelCore{
+		endpoint := &model.ForwardingEndpointHTTPS{
+			ForwardingEndpointCore: model.ForwardingEndpointCore{
 				Slug:        types.StringValue("test-https-tls"),
 				DisplayName: types.StringValue("Test HTTPS with TLS"),
 			},
 			Endpoint: types.StringValue("https://example.com/telemetry"),
-			TLS: &model.TLSConfigModel{
+			TLS: &model.TLSConfig{
 				CertificateAuthorityData: types.StringValue("LS0tLS1CRUdJTi=="),
 			},
 		}

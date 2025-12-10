@@ -54,7 +54,7 @@ func (r *S3ForwardingEndpointResource) Schema(ctx context.Context, req resource.
 }
 
 func (r *S3ForwardingEndpointResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
-	var data model.ForwardingEndpointS3Model
+	var data model.ForwardingEndpointS3
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -75,7 +75,7 @@ func (r *S3ForwardingEndpointResource) ImportState(ctx context.Context, req reso
 	resource.ImportStatePassthroughID(ctx, path.Root("slug"), req, resp)
 }
 
-func getS3Credentials(data model.ForwardingEndpointS3Model) *typesv1beta1.S3Credentials {
+func getS3Credentials(data model.ForwardingEndpointS3) *typesv1beta1.S3Credentials {
 	if data.Credentials == nil {
 		return nil
 	}
@@ -84,7 +84,7 @@ func getS3Credentials(data model.ForwardingEndpointS3Model) *typesv1beta1.S3Cred
 }
 
 func (r *S3ForwardingEndpointResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
-	var data model.ForwardingEndpointS3Model
+	var data model.ForwardingEndpointS3
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
 
 	// Grab the creds before we load the full plan, because write-only attributes are removed at the plan stage.
@@ -124,7 +124,7 @@ func (r *S3ForwardingEndpointResource) Create(ctx context.Context, req resource.
 }
 
 func (r *S3ForwardingEndpointResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
-	var data model.ForwardingEndpointS3Model
+	var data model.ForwardingEndpointS3
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -156,7 +156,7 @@ func (r *S3ForwardingEndpointResource) Read(ctx context.Context, req resource.Re
 }
 
 func (r *S3ForwardingEndpointResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	var data model.ForwardingEndpointS3Model
+	var data model.ForwardingEndpointS3
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
 
 	// Grab the creds before we load the full plan, because write-only attributes are removed at the plan stage.
@@ -195,7 +195,7 @@ func (r *S3ForwardingEndpointResource) Update(ctx context.Context, req resource.
 }
 
 func (r *S3ForwardingEndpointResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
-	var data model.ForwardingEndpointS3Model
+	var data model.ForwardingEndpointS3
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
 	if resp.Diagnostics.HasError() {
 		return

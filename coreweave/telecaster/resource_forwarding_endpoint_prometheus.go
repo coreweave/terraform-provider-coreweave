@@ -52,7 +52,7 @@ func (r *PrometheusForwardingEndpointResource) Schema(ctx context.Context, req r
 }
 
 func (r *PrometheusForwardingEndpointResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
-	var data model.ForwardingEndpointPrometheusModel
+	var data model.ForwardingEndpointPrometheus
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -73,7 +73,7 @@ func (r *PrometheusForwardingEndpointResource) ImportState(ctx context.Context, 
 	resource.ImportStatePassthroughID(ctx, path.Root("slug"), req, resp)
 }
 
-func getPrometheusCredentials(data model.ForwardingEndpointPrometheusModel) (credentials *typesv1beta1.PrometheusCredentials, diagnostics diag.Diagnostics) {
+func getPrometheusCredentials(data model.ForwardingEndpointPrometheus) (credentials *typesv1beta1.PrometheusCredentials, diagnostics diag.Diagnostics) {
 	if data.Credentials == nil {
 		return nil, nil
 	}
@@ -84,7 +84,7 @@ func getPrometheusCredentials(data model.ForwardingEndpointPrometheusModel) (cre
 }
 
 func (r *PrometheusForwardingEndpointResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
-	var data model.ForwardingEndpointPrometheusModel
+	var data model.ForwardingEndpointPrometheus
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
 
 	// Grab the creds before we load the full plan, because write-only attributes are removed at the plan stage.
@@ -128,7 +128,7 @@ func (r *PrometheusForwardingEndpointResource) Create(ctx context.Context, req r
 }
 
 func (r *PrometheusForwardingEndpointResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
-	var data model.ForwardingEndpointPrometheusModel
+	var data model.ForwardingEndpointPrometheus
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -159,7 +159,7 @@ func (r *PrometheusForwardingEndpointResource) Read(ctx context.Context, req res
 }
 
 func (r *PrometheusForwardingEndpointResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	var data model.ForwardingEndpointPrometheusModel
+	var data model.ForwardingEndpointPrometheus
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
 
 	// Grab the creds before we load the full plan, because write-only attributes are removed at the plan stage.
@@ -202,7 +202,7 @@ func (r *PrometheusForwardingEndpointResource) Update(ctx context.Context, req r
 }
 
 func (r *PrometheusForwardingEndpointResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
-	var data model.ForwardingEndpointPrometheusModel
+	var data model.ForwardingEndpointPrometheus
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
 	if resp.Diagnostics.HasError() {
 		return

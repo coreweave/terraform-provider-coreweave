@@ -8,7 +8,7 @@ import (
 
 // setCommonEndpointAttributes sets common writable attributes from ForwardingEndpointModelCore
 // that are present in all endpoint types (slug, display_name).
-func setCommonEndpointAttributes(body *hclwrite.Body, core model.ForwardingEndpointModelCore) {
+func setCommonEndpointAttributes(body *hclwrite.Body, core model.ForwardingEndpointCore) {
 	body.SetAttributeValue("slug", cty.StringVal(core.Slug.ValueString()))
 	body.SetAttributeValue("display_name", cty.StringVal(core.DisplayName.ValueString()))
 }

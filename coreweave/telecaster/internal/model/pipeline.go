@@ -8,16 +8,16 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-type ForwardingPipelineRefModel struct {
+type ForwardingPipelineRef struct {
 	Slug types.String `tfsdk:"slug"`
 }
 
-func (m *ForwardingPipelineRefModel) Set(ref *typesv1beta1.ForwardingPipelineRef) {
+func (m *ForwardingPipelineRef) Set(ref *typesv1beta1.ForwardingPipelineRef) {
 	r := m
 	r.Slug = types.StringValue(ref.Slug)
 }
 
-func (m *ForwardingPipelineRefModel) ToMsg() (msg *typesv1beta1.ForwardingPipelineRef) {
+func (m *ForwardingPipelineRef) ToMsg() (msg *typesv1beta1.ForwardingPipelineRef) {
 	if m == nil {
 		return nil
 	}
@@ -29,19 +29,19 @@ func (m *ForwardingPipelineRefModel) ToMsg() (msg *typesv1beta1.ForwardingPipeli
 	return msg
 }
 
-type ForwardingPipelineSpecModel struct {
-	Source      TelemetryStreamRefModel    `tfsdk:"source"`
-	Destination ForwardingEndpointRefModel `tfsdk:"destination"`
+type ForwardingPipelineSpec struct {
+	Source      TelemetryStreamRef    `tfsdk:"source"`
+	Destination ForwardingEndpointRef `tfsdk:"destination"`
 	Enabled     types.Bool                 `tfsdk:"enabled"`
 }
 
-func (m *ForwardingPipelineSpecModel) Set(spec *typesv1beta1.ForwardingPipelineSpec) {
+func (m *ForwardingPipelineSpec) Set(spec *typesv1beta1.ForwardingPipelineSpec) {
 	m.Source.Set(spec.GetSource())
 	m.Destination.Set(spec.GetDestination())
 	m.Enabled = types.BoolValue(spec.Enabled)
 }
 
-func (m *ForwardingPipelineSpecModel) ToMsg() (msg *typesv1beta1.ForwardingPipelineSpec) {
+func (m *ForwardingPipelineSpec) ToMsg() (msg *typesv1beta1.ForwardingPipelineSpec) {
 	if m == nil {
 		return nil
 	}
@@ -56,7 +56,7 @@ func (m *ForwardingPipelineSpecModel) ToMsg() (msg *typesv1beta1.ForwardingPipel
 	return msg
 }
 
-type ForwardingPipelineStatusModel struct {
+type ForwardingPipelineStatus struct {
 	CreatedAt    timetypes.RFC3339 `tfsdk:"created_at"`
 	UpdatedAt    timetypes.RFC3339 `tfsdk:"updated_at"`
 	StateCode    types.Int32       `tfsdk:"state_code"`
@@ -64,7 +64,7 @@ type ForwardingPipelineStatusModel struct {
 	StateMessage types.String      `tfsdk:"state_message"`
 }
 
-func (s *ForwardingPipelineStatusModel) Set(status *typesv1beta1.ForwardingPipelineStatus) {
+func (s *ForwardingPipelineStatus) Set(status *typesv1beta1.ForwardingPipelineStatus) {
 	s.CreatedAt = timestampToTimeValue(status.CreatedAt)
 	s.UpdatedAt = timestampToTimeValue(status.UpdatedAt)
 	s.StateCode = types.Int32Value(int32(status.State.Number()))
@@ -72,9 +72,9 @@ func (s *ForwardingPipelineStatusModel) Set(status *typesv1beta1.ForwardingPipel
 	s.StateMessage = types.StringPointerValue(status.StateMessage)
 }
 
-// ForwardingPipelineModel is a flattened model that combines ref, spec, and status
+// ForwardingPipeline is a flattened model that combines ref, spec, and status
 // fields at the top level, similar to endpoint resources and stream data source.
-type ForwardingPipelineModel struct {
+type ForwardingPipeline struct {
 	Slug types.String `tfsdk:"slug"`
 
 	SourceSlug      types.String `tfsdk:"source_slug"`
@@ -89,7 +89,7 @@ type ForwardingPipelineModel struct {
 }
 
 // Set sets the model from a ForwardingPipeline message.
-func (m *ForwardingPipelineModel) Set(pipeline *typesv1beta1.ForwardingPipeline) (diagnostics diag.Diagnostics) {
+func (m *ForwardingPipeline) Set(pipeline *typesv1beta1.ForwardingPipeline) (diagnostics diag.Diagnostics) {
 	if pipeline == nil {
 		return
 	}
@@ -114,7 +114,7 @@ func (m *ForwardingPipelineModel) Set(pipeline *typesv1beta1.ForwardingPipeline)
 }
 
 // ToMsg converts the model to a ForwardingPipeline message.
-func (m *ForwardingPipelineModel) ToMsg() (msg *typesv1beta1.ForwardingPipeline, diagnostics diag.Diagnostics) {
+func (m *ForwardingPipeline) ToMsg() (msg *typesv1beta1.ForwardingPipeline, diagnostics diag.Diagnostics) {
 	if m == nil {
 		return nil, nil
 	}
@@ -162,7 +162,7 @@ func (m *ForwardingPipelineModel) ToMsg() (msg *typesv1beta1.ForwardingPipeline,
 }
 
 // ToRef returns a ForwardingPipelineRef from the model.
-func (m *ForwardingPipelineModel) ToRef() *typesv1beta1.ForwardingPipelineRef {
+func (m *ForwardingPipeline) ToRef() *typesv1beta1.ForwardingPipelineRef {
 	if m == nil {
 		return nil
 	}

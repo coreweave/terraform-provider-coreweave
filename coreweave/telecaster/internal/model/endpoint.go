@@ -8,15 +8,15 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-type ForwardingEndpointRefModel struct {
+type ForwardingEndpointRef struct {
 	Slug types.String `tfsdk:"slug"`
 }
 
-func (r *ForwardingEndpointRefModel) Set(ref *typesv1beta1.ForwardingEndpointRef) {
+func (r *ForwardingEndpointRef) Set(ref *typesv1beta1.ForwardingEndpointRef) {
 	r.Slug = types.StringValue(ref.Slug)
 }
 
-func (r *ForwardingEndpointRefModel) ToMsg() (msg *typesv1beta1.ForwardingEndpointRef) {
+func (r *ForwardingEndpointRef) ToMsg() (msg *typesv1beta1.ForwardingEndpointRef) {
 	if r == nil {
 		return nil
 	}
@@ -27,9 +27,9 @@ func (r *ForwardingEndpointRefModel) ToMsg() (msg *typesv1beta1.ForwardingEndpoi
 	return msg
 }
 
-// ForwardingEndpointModelCore is the core model for all forwarding endpoint types.
+// ForwardingEndpointCore is the core model for all forwarding endpoint types.
 // It does not include any implementation-specific fields, and should mostly be embedded in the implementation-specific models.
-type ForwardingEndpointModelCore struct {
+type ForwardingEndpointCore struct {
 	Slug types.String `tfsdk:"slug"`
 
 	DisplayName types.String `tfsdk:"display_name"`
@@ -43,7 +43,7 @@ type ForwardingEndpointModelCore struct {
 
 // coreSet sets the model from a ForwardingEndpoint message.
 // It is not exported because it should only be called by the implementation-specific models, in conjunction with additional fields.
-func (m *ForwardingEndpointModelCore) coreSet(endpoint *typesv1beta1.ForwardingEndpoint) {
+func (m *ForwardingEndpointCore) coreSet(endpoint *typesv1beta1.ForwardingEndpoint) {
 	m.Slug = types.StringValue(endpoint.Ref.Slug)
 	m.DisplayName = types.StringValue(endpoint.Spec.DisplayName)
 	m.CreatedAt = timestampToTimeValue(endpoint.Status.CreatedAt)
@@ -57,7 +57,7 @@ func (m *ForwardingEndpointModelCore) coreSet(endpoint *typesv1beta1.ForwardingE
 // It is not exported because it should only be called by the implementation-specific models, in conjunction with additional fields.
 // It does not set any values associated with oneOf fields associated with different resources.
 // It does initialize top-level fields which may never be nil.
-func (m *ForwardingEndpointModelCore) coreMsg() (msg *typesv1beta1.ForwardingEndpoint, diagnostics diag.Diagnostics) {
+func (m *ForwardingEndpointCore) coreMsg() (msg *typesv1beta1.ForwardingEndpoint, diagnostics diag.Diagnostics) {
 	if m == nil {
 		return msg, diagnostics
 	}
@@ -98,16 +98,16 @@ func (m *ForwardingEndpointModelCore) coreMsg() (msg *typesv1beta1.ForwardingEnd
 	return msg, diagnostics
 }
 
-type ForwardingEndpointHTTPSModel struct {
-	ForwardingEndpointModelCore
+type ForwardingEndpointHTTPS struct {
+	ForwardingEndpointCore
 	Endpoint    types.String           `tfsdk:"endpoint"`
-	TLS         *TLSConfigModel        `tfsdk:"tls"`
-	Credentials *HTTPSCredentialsModel `tfsdk:"credentials"`
+	TLS         *TLSConfig        `tfsdk:"tls"`
+	Credentials *HTTPSCredentials `tfsdk:"credentials"`
 }
 
 // Set sets the model from a ForwardingEndpoint message.
 // This implementation behaves a bit differently than most, because it presents a single model for both the HTTPS config and the credentials.
-func (m *ForwardingEndpointHTTPSModel) Set(endpoint *typesv1beta1.ForwardingEndpoint) (diagnostics diag.Diagnostics) {
+func (m *ForwardingEndpointHTTPS) Set(endpoint *typesv1beta1.ForwardingEndpoint) (diagnostics diag.Diagnostics) {
 	if endpoint.Spec.WhichConfig() != typesv1beta1.ForwardingEndpointSpec_Https_case {
 		diagnostics.AddError("Invalid Endpoint Type", "The endpoint is not an HTTPS endpoint")
 		return
@@ -118,14 +118,14 @@ func (m *ForwardingEndpointHTTPSModel) Set(endpoint *typesv1beta1.ForwardingEndp
 	httpsConfig := endpoint.Spec.GetHttps()
 	m.Endpoint = types.StringValue(httpsConfig.Endpoint)
 	if httpsConfig.Tls != nil {
-		m.TLS = new(TLSConfigModel)
+		m.TLS = new(TLSConfig)
 		m.TLS.Set(httpsConfig.Tls)
 	}
 
 	return
 }
 
-func (m *ForwardingEndpointHTTPSModel) ToMsg() (msg *typesv1beta1.ForwardingEndpoint, diagnostics diag.Diagnostics) {
+func (m *ForwardingEndpointHTTPS) ToMsg() (msg *typesv1beta1.ForwardingEndpoint, diagnostics diag.Diagnostics) {
 	if m == nil {
 		return
 	}
@@ -143,14 +143,14 @@ func (m *ForwardingEndpointHTTPSModel) ToMsg() (msg *typesv1beta1.ForwardingEndp
 	return msg, diagnostics
 }
 
-type ForwardingEndpointPrometheusModel struct {
-	ForwardingEndpointModelCore
+type ForwardingEndpointPrometheus struct {
+	ForwardingEndpointCore
 	Endpoint    types.String                `tfsdk:"endpoint"`
-	TLS         *TLSConfigModel             `tfsdk:"tls"`
-	Credentials *PrometheusCredentialsModel `tfsdk:"credentials"`
+	TLS         *TLSConfig             `tfsdk:"tls"`
+	Credentials *PrometheusCredentials `tfsdk:"credentials"`
 }
 
-func (m *ForwardingEndpointPrometheusModel) Set(endpoint *typesv1beta1.ForwardingEndpoint) (diagnostics diag.Diagnostics) {
+func (m *ForwardingEndpointPrometheus) Set(endpoint *typesv1beta1.ForwardingEndpoint) (diagnostics diag.Diagnostics) {
 	if endpoint.Spec.WhichConfig() != typesv1beta1.ForwardingEndpointSpec_Prometheus_case {
 		diagnostics.AddError("Invalid Endpoint Type", "The endpoint is not a Prometheus endpoint")
 		return
@@ -161,14 +161,14 @@ func (m *ForwardingEndpointPrometheusModel) Set(endpoint *typesv1beta1.Forwardin
 	prometheusConfig := endpoint.Spec.GetPrometheus()
 	m.Endpoint = types.StringValue(prometheusConfig.Endpoint)
 	if prometheusConfig.Tls != nil {
-		m.TLS = new(TLSConfigModel)
+		m.TLS = new(TLSConfig)
 		m.TLS.Set(prometheusConfig.Tls)
 	}
 
 	return
 }
 
-func (m *ForwardingEndpointPrometheusModel) ToMsg() (msg *typesv1beta1.ForwardingEndpoint, diagnostics diag.Diagnostics) {
+func (m *ForwardingEndpointPrometheus) ToMsg() (msg *typesv1beta1.ForwardingEndpoint, diagnostics diag.Diagnostics) {
 	if m == nil {
 		return
 	}
@@ -186,14 +186,14 @@ func (m *ForwardingEndpointPrometheusModel) ToMsg() (msg *typesv1beta1.Forwardin
 	return msg, diagnostics
 }
 
-type ForwardingEndpointS3Model struct {
-	ForwardingEndpointModelCore
+type ForwardingEndpointS3 struct {
+	ForwardingEndpointCore
 	Bucket      types.String        `tfsdk:"bucket"`
 	Region      types.String        `tfsdk:"region"`
-	Credentials *S3CredentialsModel `tfsdk:"credentials"`
+	Credentials *S3Credentials `tfsdk:"credentials"`
 }
 
-func (m *ForwardingEndpointS3Model) Set(endpoint *typesv1beta1.ForwardingEndpoint) (diagnostics diag.Diagnostics) {
+func (m *ForwardingEndpointS3) Set(endpoint *typesv1beta1.ForwardingEndpoint) (diagnostics diag.Diagnostics) {
 	if endpoint.Spec.WhichConfig() != typesv1beta1.ForwardingEndpointSpec_S3_case {
 		diagnostics.AddError("Invalid Endpoint Type", "The endpoint is not an S3 endpoint")
 		return
@@ -208,7 +208,7 @@ func (m *ForwardingEndpointS3Model) Set(endpoint *typesv1beta1.ForwardingEndpoin
 	return
 }
 
-func (m *ForwardingEndpointS3Model) ToMsg() (msg *typesv1beta1.ForwardingEndpoint, diagnostics diag.Diagnostics) {
+func (m *ForwardingEndpointS3) ToMsg() (msg *typesv1beta1.ForwardingEndpoint, diagnostics diag.Diagnostics) {
 	if m == nil {
 		return
 	}
