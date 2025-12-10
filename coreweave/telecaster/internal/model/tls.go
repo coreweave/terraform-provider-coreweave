@@ -5,15 +5,15 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
-type TLSConfigModel struct {
+type TLSConfig struct {
 	CertificateAuthorityData types.String `tfsdk:"certificate_authority_data"`
 }
 
-func (t *TLSConfigModel) Set(tlsConfig *typesv1beta1.TLSConfig) {
+func (t *TLSConfig) Set(tlsConfig *typesv1beta1.TLSConfig) {
 	t.CertificateAuthorityData = types.StringValue(tlsConfig.CertificateAuthorityData)
 }
 
-func (t *TLSConfigModel) ToMsg() *typesv1beta1.TLSConfig {
+func (t *TLSConfig) ToMsg() *typesv1beta1.TLSConfig {
 	if t == nil {
 		return nil
 	}

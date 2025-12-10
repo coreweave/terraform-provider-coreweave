@@ -3,12 +3,12 @@
 page_title: "coreweave_observability_telemetry_relay_pipeline Resource - coreweave"
 subcategory: ""
 description: |-
-  CoreWeave Telecaster forwarding pipeline
+  CoreWeave Telecaster forwarding pipeline. Connects a telemetry stream to a forwarding endpoint.
 ---
 
 # coreweave_observability_telemetry_relay_pipeline (Resource)
 
-CoreWeave Telecaster forwarding pipeline
+CoreWeave Telecaster forwarding pipeline. Connects a telemetry stream to a forwarding endpoint.
 
 
 
@@ -17,51 +17,12 @@ CoreWeave Telecaster forwarding pipeline
 
 ### Required
 
-- `spec` (Attributes) The specification for the forwarding pipeline. (see [below for nested schema](#nestedatt--spec))
+- `destination_slug` (String) The slug of the forwarding endpoint to send data to.
+- `enabled` (Boolean) Whether the forwarding pipeline is enabled.
+- `slug` (String) The slug of the forwarding pipeline. Used as a unique identifier.
+- `source_slug` (String) The slug of the telemetry stream to forward.
 
 ### Read-Only
-
-- `ref` (Attributes) Reference to the Telecaster forwarding pipeline. (see [below for nested schema](#nestedatt--ref))
-- `status` (Attributes) The status of the forwarding pipeline. (see [below for nested schema](#nestedatt--status))
-
-<a id="nestedatt--spec"></a>
-### Nested Schema for `spec`
-
-Required:
-
-- `destination` (Attributes) The forwarding endpoint to send data to. (see [below for nested schema](#nestedatt--spec--destination))
-- `enabled` (Boolean) Whether the forwarding pipeline is enabled.
-- `source` (Attributes) The telemetry stream to forward. (see [below for nested schema](#nestedatt--spec--source))
-
-<a id="nestedatt--spec--destination"></a>
-### Nested Schema for `spec.destination`
-
-Required:
-
-- `slug` (String) The slug of the forwarding endpoint.
-
-
-<a id="nestedatt--spec--source"></a>
-### Nested Schema for `spec.source`
-
-Required:
-
-- `slug` (String) The slug of the telemetry stream.
-
-
-
-<a id="nestedatt--ref"></a>
-### Nested Schema for `ref`
-
-Read-Only:
-
-- `slug` (String) The slug of the forwarding pipeline. Used as a unique identifier.
-
-
-<a id="nestedatt--status"></a>
-### Nested Schema for `status`
-
-Read-Only:
 
 - `created_at` (String) The time the forwarding pipeline was created.
 - `state` (String) The current state of the forwarding pipeline.

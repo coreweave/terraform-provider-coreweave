@@ -43,14 +43,14 @@ func init() {
 	})
 }
 
-func renderPrometheusEndpointResource(resourceName string, m *model.ForwardingEndpointPrometheusModel) string {
+func renderPrometheusEndpointResource(resourceName string, m *model.ForwardingEndpointPrometheus) string {
 	file := hclwrite.NewEmptyFile()
 	body := file.Body()
 
 	resource := body.AppendNewBlock("resource", []string{prometheusEndpointResourceName, resourceName})
 	resourceBody := resource.Body()
 
-	setCommonEndpointAttributes(resourceBody, m.ForwardingEndpointModelCore)
+	setCommonEndpointAttributes(resourceBody, m.ForwardingEndpointCore)
 	resourceBody.SetAttributeValue("endpoint", cty.StringVal(m.Endpoint.ValueString()))
 
 	if m.TLS != nil {
@@ -108,7 +108,7 @@ func TestPrometheusForwardingEndpointSchema(t *testing.T) {
 type prometheusEndpointTestStep struct {
 	TestName         string
 	ResourceName     string
-	Model            *model.ForwardingEndpointPrometheusModel
+	Model            *model.ForwardingEndpointPrometheus
 	ConfigPlanChecks resource.ConfigPlanChecks
 	Options          []testStepOption
 }
@@ -158,8 +158,8 @@ func TestPrometheusForwardingEndpointResource(t *testing.T) {
 		resourceName := fmt.Sprintf("test_acc_prometheus_%d", randomInt)
 		fullResourceName := fmt.Sprintf("%s.%s", prometheusEndpointResourceName, resourceName)
 
-		baseModel := &model.ForwardingEndpointPrometheusModel{
-			ForwardingEndpointModelCore: model.ForwardingEndpointModelCore{
+		baseModel := &model.ForwardingEndpointPrometheus{
+			ForwardingEndpointCore: model.ForwardingEndpointCore{
 				Slug:        types.StringValue(slugify("prom-fe", randomInt)),
 				DisplayName: types.StringValue("Test Prometheus Endpoint"),
 			},
@@ -195,7 +195,7 @@ func TestPrometheusForwardingEndpointResource(t *testing.T) {
 				createPrometheusEndpointTestStep(t, prometheusEndpointTestStep{
 					TestName:     "update display name (update)",
 					ResourceName: resourceName,
-					Model: with(baseModel, func(m *model.ForwardingEndpointPrometheusModel) {
+					Model: with(baseModel, func(m *model.ForwardingEndpointPrometheus) {
 						m.DisplayName = types.StringValue("Updated Prometheus Endpoint")
 					}),
 					ConfigPlanChecks: resource.ConfigPlanChecks{
@@ -217,7 +217,7 @@ func TestPrometheusForwardingEndpointResource(t *testing.T) {
 				createPrometheusEndpointTestStep(t, prometheusEndpointTestStep{
 					TestName:     "update slug (requires replacement)",
 					ResourceName: resourceName,
-					Model: with(baseModel, func(m *model.ForwardingEndpointPrometheusModel) {
+					Model: with(baseModel, func(m *model.ForwardingEndpointPrometheus) {
 						m.Slug = types.StringValue(slugify("prometheus-fe2", randomInt))
 					}),
 					ConfigPlanChecks: resource.ConfigPlanChecks{
@@ -251,13 +251,13 @@ func TestPrometheusForwardingEndpointResource(t *testing.T) {
 
 		testCAData := "LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUJURENDQWZPZ0F3SUJBZ0lVZmRLdDdHWU9hRDZuL2pvb3A3OEVoT3Y3YkFvd0NnWUlLb1pJemowRUF3SXcKSERFYU1CZ0dBMVVFQXd3UlkyOXlaWGRsWVhabFkyRXRjbTl2ZEMwd0hoY05NalF4TVRFek1EQTBNVEExV2hjTgpNalV4TVRFek1EQTBNVEExV2pBY01Sb3dHQVlEVlFRRERCRmpiM0psZDJWaGRtVmpZUzF5YjI5ME1Ea1ZNQk1HCkJ5cUdTTTQ5QWdFR0NDcUdTTTQ5QXdFSEEwSUFCUElIdUMyQklIdlFyUlV0bjdodFFnY1NGRDlDbEs0U3BLN0sKaEhWaS9RQm9naVREMC9yMWRqRkViYmZHOW9DTzFodHpXWjd4aE1CRUY4NFJ2TlhtdWNlamdZWXdnWU13RGdZRApWUjBQQVFIL0JBUURBZ0VHTUJJR0ExVWRFd0VCL3dRSU1BWUJBZjhDQVFBd0hRWURWUjBPQkJZRUZOckZjS1dJClVOcWdXcWNxWk5FSVRzOVJuZGh4TUI4R0ExVWRJd1FZTUJhQUZOckZjS1dJVU5xZ1dxY3FaTkVJVHM5Um5kaHgKTUJrR0ExVWRFUVFTTUJDQ0RuZGxkR2h2YjJ0ekxuTjJZekFLQmdncWhrak9QUVFEQWdOSEFEQkVBaUJlM3NsYQpTWjc5bmxQeWJlYVY4NXp5VW9VQ1hVWjNvTnhjN1lZc3N0WDFuZ0lnSUhYQ0xEZUZWKzF2Mlk1RzdwN3N0VTRCClA0VTlScHlyVzhMWnhRdWhFYjQ9Ci0tLS0tRU5EIENFUlRJRklDQVRFLS0tLS0K"
 
-		baseModel := &model.ForwardingEndpointPrometheusModel{
-			ForwardingEndpointModelCore: model.ForwardingEndpointModelCore{
+		baseModel := &model.ForwardingEndpointPrometheus{
+			ForwardingEndpointCore: model.ForwardingEndpointCore{
 				Slug:        types.StringValue(slugify("prom-fe-tls", randomInt)),
 				DisplayName: types.StringValue("Test Prometheus Endpoint with TLS"),
 			},
 			Endpoint: types.StringValue("https://secure-prometheus.example.com/api/v1/write"),
-			TLS: &model.TLSConfigModel{
+			TLS: &model.TLSConfig{
 				CertificateAuthorityData: types.StringValue(testCAData),
 			},
 		}
@@ -291,7 +291,7 @@ func TestPrometheusForwardingEndpointResource(t *testing.T) {
 				createPrometheusEndpointTestStep(t, prometheusEndpointTestStep{
 					TestName:     "remove TLS (update)",
 					ResourceName: resourceName,
-					Model: with(baseModel, func(m *model.ForwardingEndpointPrometheusModel) {
+					Model: with(baseModel, func(m *model.ForwardingEndpointPrometheus) {
 						m.TLS = nil
 					}),
 					ConfigPlanChecks: resource.ConfigPlanChecks{
@@ -319,14 +319,14 @@ func TestPrometheusForwardingEndpointResource(t *testing.T) {
 		resourceName := fmt.Sprintf("test_acc_prometheus_credentials_%d", randomInt)
 		fullResourceName := fmt.Sprintf("%s.%s", prometheusEndpointResourceName, resourceName)
 
-		baseModel := &model.ForwardingEndpointPrometheusModel{
-			ForwardingEndpointModelCore: model.ForwardingEndpointModelCore{
+		baseModel := &model.ForwardingEndpointPrometheus{
+			ForwardingEndpointCore: model.ForwardingEndpointCore{
 				Slug:        types.StringValue(slugify("prom-fe-creds", randomInt)),
 				DisplayName: types.StringValue("Test Prometheus Endpoint with Credentials"),
 			},
 			Endpoint: types.StringValue("https://secure-prometheus.example.com/api/v1/write"),
-			Credentials: &model.PrometheusCredentialsModel{
-				BasicAuth: &model.BasicAuthCredentialsModel{
+			Credentials: &model.PrometheusCredentials{
+				BasicAuth: &model.BasicAuthCredentials{
 					Username: types.StringValue("testuser"),
 					Password: types.StringValue("testpassword"),
 				},
@@ -358,8 +358,8 @@ func TestPrometheusForwardingEndpointResource(t *testing.T) {
 func TestPrometheusForwardingEndpointResource_RenderFunction(t *testing.T) {
 	t.Parallel()
 
-	endpoint := &model.ForwardingEndpointPrometheusModel{
-		ForwardingEndpointModelCore: model.ForwardingEndpointModelCore{
+	endpoint := &model.ForwardingEndpointPrometheus{
+		ForwardingEndpointCore: model.ForwardingEndpointCore{
 			Slug:        types.StringValue("test-prometheus-endpoint"),
 			DisplayName: types.StringValue("Test Prometheus Endpoint"),
 		},

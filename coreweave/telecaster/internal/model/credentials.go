@@ -11,12 +11,12 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
-// KafkaCredentialsModel contains authentication credentials for Kafka endpoints.
-type KafkaCredentialsModel struct {
-	Scram *KafkaScramCredentialsModel `tfsdk:"scram"`
+// KafkaCredentials contains authentication credentials for Kafka endpoints.
+type KafkaCredentials struct {
+	Scram *KafkaScramCredentials `tfsdk:"scram"`
 }
 
-func (k *KafkaCredentialsModel) Set(ctx context.Context, msg *typesv1beta1.KafkaCredentials) (diagnostics diag.Diagnostics) {
+func (k *KafkaCredentials) Set(ctx context.Context, msg *typesv1beta1.KafkaCredentials) (diagnostics diag.Diagnostics) {
 	if msg == nil {
 		return nil
 	}
@@ -27,7 +27,7 @@ func (k *KafkaCredentialsModel) Set(ctx context.Context, msg *typesv1beta1.Kafka
 	case typesv1beta1.KafkaCredentials_Auth_not_set_case:
 		diagnostics.AddError("no auth set for kafka credentials", "Auth must be set when using kafka credentials")
 	case typesv1beta1.KafkaCredentials_Scram_case:
-		k.Scram = new(KafkaScramCredentialsModel)
+		k.Scram = new(KafkaScramCredentials)
 		k.Scram.Set(ctx, msg.GetScram())
 	default:
 		diagnostics.AddError("Unsupported Kafka auth type", fmt.Sprintf("unsupported kafka auth type: %s (%d)", kind.String(), kind))
@@ -36,7 +36,7 @@ func (k *KafkaCredentialsModel) Set(ctx context.Context, msg *typesv1beta1.Kafka
 	return
 }
 
-func (k *KafkaCredentialsModel) ToMsg() (msg *typesv1beta1.KafkaCredentials, diagnostics diag.Diagnostics) {
+func (k *KafkaCredentials) ToMsg() (msg *typesv1beta1.KafkaCredentials, diagnostics diag.Diagnostics) {
 	if k == nil {
 		return nil, nil
 	}
@@ -63,18 +63,18 @@ func (k *KafkaCredentialsModel) ToMsg() (msg *typesv1beta1.KafkaCredentials, dia
 	return msg, diagnostics
 }
 
-// KafkaScramCredentialsModel contains username and password for SCRAM authentication.
-type KafkaScramCredentialsModel struct {
+// KafkaScramCredentials contains username and password for SCRAM authentication.
+type KafkaScramCredentials struct {
 	Username types.String `tfsdk:"username"`
 	Password types.String `tfsdk:"password"`
 }
 
-func (k *KafkaScramCredentialsModel) Set(_ context.Context, msg *typesv1beta1.KafkaScramCredentials) {
+func (k *KafkaScramCredentials) Set(_ context.Context, msg *typesv1beta1.KafkaScramCredentials) {
 	k.Username = types.StringValue(msg.Username)
 	k.Password = types.StringValue(msg.Password)
 }
 
-func (k *KafkaScramCredentialsModel) ToMsg() (msg *typesv1beta1.KafkaScramCredentials) {
+func (k *KafkaScramCredentials) ToMsg() (msg *typesv1beta1.KafkaScramCredentials) {
 	if k == nil {
 		return nil
 	}
@@ -87,18 +87,18 @@ func (k *KafkaScramCredentialsModel) ToMsg() (msg *typesv1beta1.KafkaScramCreden
 	return msg
 }
 
-// BasicAuthCredentialsModel contains username and password for HTTP Basic authentication.
-type BasicAuthCredentialsModel struct {
+// BasicAuthCredentials contains username and password for HTTP Basic authentication.
+type BasicAuthCredentials struct {
 	Username types.String `tfsdk:"username"`
 	Password types.String `tfsdk:"password"`
 }
 
-func (b *BasicAuthCredentialsModel) Set(_ context.Context, msg *typesv1beta1.BasicAuthCredentials) {
+func (b *BasicAuthCredentials) Set(_ context.Context, msg *typesv1beta1.BasicAuthCredentials) {
 	b.Username = types.StringValue(msg.Username)
 	b.Password = types.StringValue(msg.Password)
 }
 
-func (b *BasicAuthCredentialsModel) ToMsg() (msg *typesv1beta1.BasicAuthCredentials) {
+func (b *BasicAuthCredentials) ToMsg() (msg *typesv1beta1.BasicAuthCredentials) {
 	if b == nil {
 		return nil
 	}
@@ -111,16 +111,16 @@ func (b *BasicAuthCredentialsModel) ToMsg() (msg *typesv1beta1.BasicAuthCredenti
 	return msg
 }
 
-// BearerTokenCredentialsModel contains a bearer token for HTTP Authorization header authentication.
-type BearerTokenCredentialsModel struct {
+// BearerTokenCredentials contains a bearer token for HTTP Authorization header authentication.
+type BearerTokenCredentials struct {
 	Token types.String `tfsdk:"token"`
 }
 
-func (b *BearerTokenCredentialsModel) Set(_ context.Context, msg *typesv1beta1.BearerTokenCredentials) {
+func (b *BearerTokenCredentials) Set(_ context.Context, msg *typesv1beta1.BearerTokenCredentials) {
 	b.Token = types.StringValue(msg.Token)
 }
 
-func (b *BearerTokenCredentialsModel) ToMsg() (msg *typesv1beta1.BearerTokenCredentials) {
+func (b *BearerTokenCredentials) ToMsg() (msg *typesv1beta1.BearerTokenCredentials) {
 	if b == nil {
 		return nil
 	}
@@ -132,16 +132,16 @@ func (b *BearerTokenCredentialsModel) ToMsg() (msg *typesv1beta1.BearerTokenCred
 	return msg
 }
 
-// AuthHeadersCredentialsModel contains custom HTTP headers for authentication.
-type AuthHeadersCredentialsModel struct {
+// AuthHeadersCredentials contains custom HTTP headers for authentication.
+type AuthHeadersCredentials struct {
 	Headers map[string]string `tfsdk:"headers"`
 }
 
-func (h *AuthHeadersCredentialsModel) Set(_ context.Context, msg *typesv1beta1.AuthHeadersCredentials) {
+func (h *AuthHeadersCredentials) Set(_ context.Context, msg *typesv1beta1.AuthHeadersCredentials) {
 	h.Headers = maps.Clone(msg.Headers)
 }
 
-func (h *AuthHeadersCredentialsModel) ToMsg() (msg *typesv1beta1.AuthHeadersCredentials) {
+func (h *AuthHeadersCredentials) ToMsg() (msg *typesv1beta1.AuthHeadersCredentials) {
 	if h == nil {
 		return nil
 	}
@@ -153,14 +153,14 @@ func (h *AuthHeadersCredentialsModel) ToMsg() (msg *typesv1beta1.AuthHeadersCred
 	return msg
 }
 
-// PrometheusCredentialsModel contains authentication credentials for Prometheus Remote Write endpoints.
-type PrometheusCredentialsModel struct {
-	BasicAuth   *BasicAuthCredentialsModel   `tfsdk:"basic_auth"`
-	BearerToken *BearerTokenCredentialsModel `tfsdk:"bearer_token"`
-	AuthHeaders *AuthHeadersCredentialsModel `tfsdk:"auth_headers"`
+// PrometheusCredentials contains authentication credentials for Prometheus Remote Write endpoints.
+type PrometheusCredentials struct {
+	BasicAuth   *BasicAuthCredentials   `tfsdk:"basic_auth"`
+	BearerToken *BearerTokenCredentials `tfsdk:"bearer_token"`
+	AuthHeaders *AuthHeadersCredentials `tfsdk:"auth_headers"`
 }
 
-func (p *PrometheusCredentialsModel) Set(ctx context.Context, msg *typesv1beta1.PrometheusCredentials) (diagnostics diag.Diagnostics) {
+func (p *PrometheusCredentials) Set(ctx context.Context, msg *typesv1beta1.PrometheusCredentials) (diagnostics diag.Diagnostics) {
 	if msg == nil {
 		return nil
 	}
@@ -173,13 +173,13 @@ func (p *PrometheusCredentialsModel) Set(ctx context.Context, msg *typesv1beta1.
 	case typesv1beta1.PrometheusCredentials_Auth_not_set_case:
 		diagnostics.AddError("no auth set for prometheus", "Auth must be set when using prometheus endpoint")
 	case typesv1beta1.PrometheusCredentials_BasicAuth_case:
-		p.BasicAuth = new(BasicAuthCredentialsModel)
+		p.BasicAuth = new(BasicAuthCredentials)
 		p.BasicAuth.Set(ctx, msg.GetBasicAuth())
 	case typesv1beta1.PrometheusCredentials_BearerToken_case:
-		p.BearerToken = new(BearerTokenCredentialsModel)
+		p.BearerToken = new(BearerTokenCredentials)
 		p.BearerToken.Set(ctx, msg.GetBearerToken())
 	case typesv1beta1.PrometheusCredentials_AuthHeaders_case:
-		p.AuthHeaders = new(AuthHeadersCredentialsModel)
+		p.AuthHeaders = new(AuthHeadersCredentials)
 		p.AuthHeaders.Set(ctx, msg.GetAuthHeaders())
 	default:
 		diagnostics.AddError("Unsupported Prometheus auth type", fmt.Sprintf("unsupported prometheus auth type: %s (%d)", kind.String(), kind))
@@ -188,7 +188,7 @@ func (p *PrometheusCredentialsModel) Set(ctx context.Context, msg *typesv1beta1.
 	return
 }
 
-func (p *PrometheusCredentialsModel) ToMsg() (msg *typesv1beta1.PrometheusCredentials, diagnostics diag.Diagnostics) {
+func (p *PrometheusCredentials) ToMsg() (msg *typesv1beta1.PrometheusCredentials, diagnostics diag.Diagnostics) {
 	if p == nil {
 		return nil, nil
 	}
@@ -225,14 +225,14 @@ func (p *PrometheusCredentialsModel) ToMsg() (msg *typesv1beta1.PrometheusCreden
 	return msg, diagnostics
 }
 
-// HTTPSCredentialsModel contains authentication credentials for HTTPS endpoints.
-type HTTPSCredentialsModel struct {
-	BasicAuth   *BasicAuthCredentialsModel   `tfsdk:"basic_auth"`
-	BearerToken *BearerTokenCredentialsModel `tfsdk:"bearer_token"`
-	AuthHeaders *AuthHeadersCredentialsModel `tfsdk:"auth_headers"`
+// HTTPSCredentials contains authentication credentials for HTTPS endpoints.
+type HTTPSCredentials struct {
+	BasicAuth   *BasicAuthCredentials   `tfsdk:"basic_auth"`
+	BearerToken *BearerTokenCredentials `tfsdk:"bearer_token"`
+	AuthHeaders *AuthHeadersCredentials `tfsdk:"auth_headers"`
 }
 
-func (h *HTTPSCredentialsModel) Set(ctx context.Context, msg *typesv1beta1.HTTPSCredentials) (diagnostics diag.Diagnostics) {
+func (h *HTTPSCredentials) Set(ctx context.Context, msg *typesv1beta1.HTTPSCredentials) (diagnostics diag.Diagnostics) {
 	if msg == nil {
 		return nil
 	}
@@ -245,13 +245,13 @@ func (h *HTTPSCredentialsModel) Set(ctx context.Context, msg *typesv1beta1.HTTPS
 	case typesv1beta1.HTTPSCredentials_Auth_not_set_case:
 		diagnostics.AddError("no auth set for https credentials", "Auth must be set when using https credentials")
 	case typesv1beta1.HTTPSCredentials_BasicAuth_case:
-		h.BasicAuth = new(BasicAuthCredentialsModel)
+		h.BasicAuth = new(BasicAuthCredentials)
 		h.BasicAuth.Set(ctx, msg.GetBasicAuth())
 	case typesv1beta1.HTTPSCredentials_BearerToken_case:
-		h.BearerToken = new(BearerTokenCredentialsModel)
+		h.BearerToken = new(BearerTokenCredentials)
 		h.BearerToken.Set(ctx, msg.GetBearerToken())
 	case typesv1beta1.HTTPSCredentials_AuthHeaders_case:
-		h.AuthHeaders = new(AuthHeadersCredentialsModel)
+		h.AuthHeaders = new(AuthHeadersCredentials)
 		h.AuthHeaders.Set(ctx, msg.GetAuthHeaders())
 	default:
 		diagnostics.AddError("Unsupported HTTPS auth type", fmt.Sprintf("unsupported https auth type: %s (%d)", kind.String(), kind))
@@ -260,7 +260,7 @@ func (h *HTTPSCredentialsModel) Set(ctx context.Context, msg *typesv1beta1.HTTPS
 	return
 }
 
-func (h *HTTPSCredentialsModel) ToMsg() (msg *typesv1beta1.HTTPSCredentials, diagnostics diag.Diagnostics) {
+func (h *HTTPSCredentials) ToMsg() (msg *typesv1beta1.HTTPSCredentials, diagnostics diag.Diagnostics) {
 	if h == nil {
 		return nil, nil
 	}
@@ -297,14 +297,14 @@ func (h *HTTPSCredentialsModel) ToMsg() (msg *typesv1beta1.HTTPSCredentials, dia
 	return msg, diagnostics
 }
 
-// S3CredentialsModel contains AWS credentials for S3 bucket access.
-type S3CredentialsModel struct {
+// S3Credentials contains AWS credentials for S3 bucket access.
+type S3Credentials struct {
 	AccessKeyID     types.String `tfsdk:"access_key_id"`
 	SecretAccessKey types.String `tfsdk:"secret_access_key"`
 	SessionToken    types.String `tfsdk:"session_token"`
 }
 
-func (s *S3CredentialsModel) Set(_ context.Context, msg *typesv1beta1.S3Credentials) {
+func (s *S3Credentials) Set(_ context.Context, msg *typesv1beta1.S3Credentials) {
 	s.AccessKeyID = types.StringValue(msg.AccessKeyId)
 	s.SecretAccessKey = types.StringValue(msg.SecretAccessKey)
 	if msg.SessionToken == "" {
@@ -314,7 +314,7 @@ func (s *S3CredentialsModel) Set(_ context.Context, msg *typesv1beta1.S3Credenti
 	}
 }
 
-func (s *S3CredentialsModel) ToMsg() (msg *typesv1beta1.S3Credentials) {
+func (s *S3Credentials) ToMsg() (msg *typesv1beta1.S3Credentials) {
 	if s == nil {
 		return nil
 	}
