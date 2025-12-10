@@ -89,11 +89,7 @@ type ForwardingPipeline struct {
 }
 
 // Set sets the model from a ForwardingPipeline message.
-func (m *ForwardingPipeline) Set(pipeline *typesv1beta1.ForwardingPipeline) (diagnostics diag.Diagnostics) {
-	if pipeline == nil {
-		return
-	}
-
+func (m *ForwardingPipeline) Set(pipeline *typesv1beta1.ForwardingPipeline) {
 	m.Slug = types.StringValue(pipeline.Ref.Slug)
 
 	if pipeline.Spec.Source != nil {
@@ -109,8 +105,6 @@ func (m *ForwardingPipeline) Set(pipeline *typesv1beta1.ForwardingPipeline) (dia
 	m.StateCode = types.Int32Value(int32(pipeline.Status.State.Number()))
 	m.State = types.StringValue(pipeline.Status.State.String())
 	m.StateMessage = types.StringPointerValue(pipeline.Status.StateMessage)
-
-	return
 }
 
 // ToMsg converts the model to a ForwardingPipeline message.
