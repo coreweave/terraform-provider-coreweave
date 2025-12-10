@@ -5,13 +5,8 @@ resource "coreweave_observability_telemetry_relay_endpoint_https" "test" {
 }
 
 resource "coreweave_observability_telemetry_relay_pipeline" "test" {
-  spec = {
-    source = {
-      slug = "test-stream"
-    }
-    destination = {
-      slug = coreweave_observability_telemetry_relay_endpoint_https.test.slug
-    }
-    enabled = true
-  }
+  slug             = "test-pipeline"
+  source_slug      = "test-stream"
+  destination_slug = coreweave_observability_telemetry_relay_endpoint_https.test.slug
+  enabled          = true
 }

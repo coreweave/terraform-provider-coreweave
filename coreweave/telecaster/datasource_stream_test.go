@@ -54,11 +54,11 @@ func mustRenderTelemetryStreamDataSource(resourceName string, stream *model.Tele
 }
 
 type streamDataSourceTestStep struct {
-	TestName         string
-	DataSourceName   string
-	Slug             string
-	StateChecks      []statecheck.StateCheck
-	ExpectError      *regexp.Regexp
+	TestName       string
+	DataSourceName string
+	Slug           string
+	StateChecks    []statecheck.StateCheck
+	ExpectError    *regexp.Regexp
 }
 
 func metricsStreamStateChecks(fullDataSourceName string) []statecheck.StateCheck {

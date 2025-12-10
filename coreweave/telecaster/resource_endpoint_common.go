@@ -106,32 +106,20 @@ func pollForEndpointReady(ctx context.Context, client *coreweave.Client, ref *ty
 	return endpoint, nil
 }
 
-func readEndpointBySlug(ctx context.Context, client *coreweave.Client, slug string) (*typesv1beta1.ForwardingEndpoint, error) {
+func readEndpoint(ctx context.Context, client *coreweave.Client, slug string, diags *diag.Diagnostics) *typesv1beta1.ForwardingEndpoint {
 	ref := &typesv1beta1.ForwardingEndpointRef{Slug: slug}
 	getResp, err := client.GetEndpoint(ctx, connect.NewRequest(&clusterv1beta1.GetEndpointRequest{
 		Ref: ref,
 	}))
 	if err != nil {
 		if coreweave.IsNotFoundError(err) {
-			return nil, nil
+			return nil
 		}
-		return nil, err
-	}
-	return getResp.Msg.GetEndpoint(), nil
-}
-
-func readEndpoint(ctx context.Context, client *coreweave.Client, slug string, diags *diag.Diagnostics) *typesv1beta1.ForwardingEndpoint {
-	endpoint, err := readEndpointBySlug(ctx, client, slug)
-	if err != nil {
 		coreweave.HandleAPIError(ctx, err, diags)
 		return nil
 	}
 
-	if endpoint == nil {
-		return nil
-	}
-
-	return endpoint
+	return getResp.Msg.GetEndpoint()
 }
 
 func createEndpoint(ctx context.Context, client *coreweave.Client, req *clusterv1beta1.CreateEndpointRequest) (endpoint *typesv1beta1.ForwardingEndpoint, diagnostics diag.Diagnostics) {

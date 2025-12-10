@@ -7,18 +7,23 @@ import (
 
 	clusterv1beta1 "bsr.core-services.ingress.coreweave.com/gen/go/coreweave/o11y-mgmt/protocolbuffers/go/coreweave/telecaster/svc/cluster/v1beta1"
 	typesv1beta1 "bsr.core-services.ingress.coreweave.com/gen/go/coreweave/o11y-mgmt/protocolbuffers/go/coreweave/telecaster/types/v1beta1"
+	"buf.build/go/protovalidate"
 	"connectrpc.com/connect"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave/telecaster/internal/model"
 	"github.com/coreweave/terraform-provider-coreweave/internal/coretf"
 	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
-	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
-	"github.com/hashicorp/terraform-plugin-framework/types"
-	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int32planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/retry"
+)
+
+const (
+	pipelineTimeout = 10 * time.Minute
 )
 
 var (
@@ -35,95 +40,28 @@ type ResourceForwardingPipeline struct {
 	coretf.CoreResource
 }
 
-type ResourceForwardingPipelineModel struct {
-	Ref    types.Object `tfsdk:"ref"`
-	Spec   types.Object `tfsdk:"spec"`
-	Status types.Object `tfsdk:"status"`
-}
-
-func (m *ResourceForwardingPipelineModel) Set(ctx context.Context, pipeline *typesv1beta1.ForwardingPipeline) (diagnostics diag.Diagnostics) {
-	var ref model.ForwardingPipelineRefModel
-	diagnostics.Append(m.Ref.As(ctx, &ref, basetypes.ObjectAsOptions{})...)
-	ref.Set(pipeline.Ref)
-	refObj, diags := types.ObjectValueFrom(ctx, m.Ref.AttributeTypes(ctx), ref)
-	diagnostics.Append(diags...)
-	m.Ref = refObj
-
-	var spec model.ForwardingPipelineSpecModel
-	diagnostics.Append(m.Spec.As(ctx, &spec, basetypes.ObjectAsOptions{})...)
-	spec.Set(pipeline.Spec)
-	specObject, diags := types.ObjectValueFrom(ctx, m.Spec.AttributeTypes(ctx), spec)
-	diagnostics.Append(diags...)
-	m.Spec = specObject
-
-	var status model.ForwardingPipelineStatusModel
-	diagnostics.Append(m.Status.As(ctx, &status, basetypes.ObjectAsOptions{})...)
-	status.Set(pipeline.Status)
-	statusObject, diags := types.ObjectValueFrom(ctx, m.Status.AttributeTypes(ctx), status)
-	diagnostics.Append(diags...)
-	m.Status = statusObject
-
-	return
-}
-
-func (m *ResourceForwardingPipelineModel) ToMsg(ctx context.Context) (msg *typesv1beta1.ForwardingPipeline, diagnostics diag.Diagnostics) {
-	if m == nil {
-		return nil, nil
-	}
-
-	var (
-		ref    model.ForwardingPipelineRefModel
-		spec   model.ForwardingPipelineSpecModel
-		status model.ForwardingPipelineStatusModel
-	)
-
-	diagnostics.Append(m.Ref.As(ctx, &ref, basetypes.ObjectAsOptions{UnhandledNullAsEmpty: true, UnhandledUnknownAsEmpty: true})...)
-	diagnostics.Append(m.Spec.As(ctx, &spec, basetypes.ObjectAsOptions{})...)
-	diagnostics.Append(m.Status.As(ctx, &status, basetypes.ObjectAsOptions{UnhandledNullAsEmpty: true, UnhandledUnknownAsEmpty: true})...)
-
-	var refProto *typesv1beta1.ForwardingPipelineRef
-	if m.Ref.IsNull() || m.Ref.IsUnknown() {
-		refProto = &typesv1beta1.ForwardingPipelineRef{
-			Slug: "abcde", // placeholder value, the real one will be returned back
-		}
-	} else {
-		refProto = ref.ToMsg()
-	}
-
-	// Spec should always be known.
-	specProto := spec.ToMsg()
-	if diagnostics.HasError() {
-		return nil, diagnostics
-	}
-
-	msg = &typesv1beta1.ForwardingPipeline{
-		Ref:  refProto,
-		Spec: specProto,
-	}
-
-	return msg, diagnostics
-}
-
 // ValidateConfig implements resource.ResourceWithValidateConfig.
 func (r *ResourceForwardingPipeline) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
-	var data ResourceForwardingPipelineModel
+	var data model.ForwardingPipelineModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	msg, diags := data.ToMsg(ctx)
+	// Skip validation if any values are unknown (e.g., during plan with resource references)
+	if data.SourceSlug.IsUnknown() || data.DestinationSlug.IsUnknown() {
+		return
+	}
+
+	msg, diags := data.ToMsg()
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	_ = msg
-	// TODO: Uncomment this when validation is proper
-	// This is problematic when something is unknown, inside the plan path.
-	// if err := protovalidate.Validate(msg); err != nil {
-	// 	resp.Diagnostics.AddError("Validation Error", err.Error() + ": " + msg.String() + fmt.Sprintf("%+v", data))
-	// }
+	if err := protovalidate.Validate(msg); err != nil {
+		resp.Diagnostics.AddError("Validation Error", err.Error())
+	}
 }
 
 func (r *ResourceForwardingPipeline) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
@@ -136,74 +74,70 @@ func (r *ResourceForwardingPipeline) Metadata(ctx context.Context, req resource.
 
 func (r *ResourceForwardingPipeline) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		MarkdownDescription: "CoreWeave Telecaster forwarding pipeline",
+		MarkdownDescription: "CoreWeave Telecaster forwarding pipeline. Connects a telemetry stream to a forwarding endpoint.",
 		Attributes: map[string]schema.Attribute{
-			"ref": schema.SingleNestedAttribute{
-				MarkdownDescription: "Reference to the Telecaster forwarding pipeline.",
-				Computed:            true,
-				Attributes: map[string]schema.Attribute{
-					"slug": schema.StringAttribute{
-						MarkdownDescription: "The slug of the forwarding pipeline. Used as a unique identifier.",
-						Computed:            true,
-					},
-				},
-			},
-			"spec": schema.SingleNestedAttribute{
-				MarkdownDescription: "The specification for the forwarding pipeline.",
+			// Ref fields
+			"slug": schema.StringAttribute{
+				MarkdownDescription: "The slug of the forwarding pipeline. Used as a unique identifier.",
 				Required:            true,
-				Attributes: map[string]schema.Attribute{
-					"source": schema.SingleNestedAttribute{
-						MarkdownDescription: "The telemetry stream to forward.",
-						Required:            true,
-						Attributes: map[string]schema.Attribute{
-							"slug": schema.StringAttribute{
-								MarkdownDescription: "The slug of the telemetry stream.",
-								Required:            true,
-							},
-						},
-					},
-					"destination": schema.SingleNestedAttribute{
-						MarkdownDescription: "The forwarding endpoint to send data to.",
-						Required:            true,
-						Attributes: map[string]schema.Attribute{
-							"slug": schema.StringAttribute{
-								MarkdownDescription: "The slug of the forwarding endpoint.",
-								Required:            true,
-							},
-						},
-					},
-					"enabled": schema.BoolAttribute{
-						MarkdownDescription: "Whether the forwarding pipeline is enabled.",
-						Required:            true,
-					},
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
 				},
 			},
-			"status": schema.SingleNestedAttribute{
-				MarkdownDescription: "The status of the forwarding pipeline.",
+
+			// Spec fields
+			"source_slug": schema.StringAttribute{
+				MarkdownDescription: "The slug of the telemetry stream to forward.",
+				Required:            true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
+			},
+			"destination_slug": schema.StringAttribute{
+				MarkdownDescription: "The slug of the forwarding endpoint to send data to.",
+				Required:            true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
+			},
+			"enabled": schema.BoolAttribute{
+				MarkdownDescription: "Whether the forwarding pipeline is enabled.",
+				Required:            true,
+			},
+
+			// Status fields
+			"created_at": schema.StringAttribute{
+				MarkdownDescription: "The time the forwarding pipeline was created.",
 				Computed:            true,
-				Attributes: map[string]schema.Attribute{
-					"created_at": schema.StringAttribute{
-						MarkdownDescription: "The time the forwarding pipeline was created.",
-						Computed:            true,
-						CustomType:          timetypes.RFC3339Type{},
-					},
-					"updated_at": schema.StringAttribute{
-						MarkdownDescription: "The time the forwarding pipeline was last updated.",
-						Computed:            true,
-						CustomType:          timetypes.RFC3339Type{},
-					},
-					"state_code": schema.Int32Attribute{
-						MarkdownDescription: "The numeric state code of the forwarding pipeline.",
-						Computed:            true,
-					},
-					"state": schema.StringAttribute{
-						MarkdownDescription: "The current state of the forwarding pipeline.",
-						Computed:            true,
-					},
-					"state_message": schema.StringAttribute{
-						MarkdownDescription: "A message associated with the current state of the forwarding pipeline.",
-						Computed:            true,
-					},
+				CustomType:          timetypes.RFC3339Type{},
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
+			},
+			"updated_at": schema.StringAttribute{
+				MarkdownDescription: "The time the forwarding pipeline was last updated.",
+				Computed:            true,
+				CustomType:          timetypes.RFC3339Type{},
+			},
+			"state_code": schema.Int32Attribute{
+				MarkdownDescription: "The numeric state code of the forwarding pipeline.",
+				Computed:            true,
+				PlanModifiers: []planmodifier.Int32{
+					int32planmodifier.UseStateForUnknown(),
+				},
+			},
+			"state": schema.StringAttribute{
+				MarkdownDescription: "The current state of the forwarding pipeline.",
+				Computed:            true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
+			},
+			"state_message": schema.StringAttribute{
+				MarkdownDescription: "A message associated with the current state of the forwarding pipeline.",
+				Computed:            true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
 		},
@@ -211,167 +145,129 @@ func (r *ResourceForwardingPipeline) Schema(ctx context.Context, req resource.Sc
 }
 
 func (r *ResourceForwardingPipeline) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
-	var data ResourceForwardingPipelineModel
+	var data model.ForwardingPipelineModel
 
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	pipelineMsg, diags := data.ToMsg(ctx)
+	pipelineMsg, diags := data.ToMsg()
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	pipeline, err := r.Client.CreatePipeline(ctx, connect.NewRequest(&clusterv1beta1.CreatePipelineRequest{
+	createResp, err := r.Client.CreatePipeline(ctx, connect.NewRequest(&clusterv1beta1.CreatePipelineRequest{
 		Ref:  pipelineMsg.Ref,
 		Spec: pipelineMsg.Spec,
 	}))
 	if err != nil {
 		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
-		resp.Diagnostics.AddError(
-			"Error Creating Telecaster Forwarding Pipeline",
-			fmt.Sprintf("Could not create Telecaster Forwarding Pipeline %q: %v", pipelineMsg.Ref.Slug, err),
-		)
 		return
 	}
 
-	pollConf := retry.StateChangeConf{
-		Pending: []string{
-			typesv1beta1.ForwardingPipelineState_FORWARDING_PIPELINE_STATE_PENDING.String(),
-		},
-		Target: []string{
-			typesv1beta1.ForwardingPipelineState_FORWARDING_PIPELINE_STATE_ACTIVE.String(),
-		},
-		Refresh: func() (result any, state string, err error) {
-			getResp, err := r.Client.GetPipeline(ctx, connect.NewRequest(&clusterv1beta1.GetPipelineRequest{
-				Ref: pipeline.Msg.Pipeline.Ref,
-			}))
-			if err != nil {
-				return nil, typesv1beta1.ForwardingPipelineState_FORWARDING_PIPELINE_STATE_UNSPECIFIED.String(), err
-			}
-			return getResp.Msg.Pipeline, getResp.Msg.Pipeline.Status.State.String(), nil
-		},
-		Timeout: 10 * time.Minute,
-	}
-
-	if finalPipelineRaw, err := pollConf.WaitForStateContext(ctx); err != nil {
+	pipeline, err := pollForPipelineActive(ctx, r.Client, createResp.Msg.Pipeline.Ref)
+	if err != nil {
 		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
 		return
-	} else if finalPipeline, ok := finalPipelineRaw.(*typesv1beta1.ForwardingPipeline); !ok {
-		resp.Diagnostics.AddError(
-			"Telecaster Pipeline Type Assertion Error",
-			fmt.Sprintf("Expected ForwardingPipeline type but got %T instead. This is a bug in the provider.", finalPipelineRaw),
-		)
-	} else {
-		resp.Diagnostics.Append(data.Set(ctx, finalPipeline)...)
 	}
 
+	resp.Diagnostics.Append(data.Set(pipeline)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
 func (r *ResourceForwardingPipeline) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
-	var data ResourceForwardingPipelineModel
+	var data model.ForwardingPipelineModel
 
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	pipelineMsg, diags := data.ToMsg(ctx)
-	resp.Diagnostics.Append(diags...)
+	ref := data.ToRef()
+
+	if _, err := r.Client.DeletePipeline(ctx, connect.NewRequest(&clusterv1beta1.DeletePipelineRequest{
+		Ref: ref,
+	})); err != nil {
+		if connect.CodeOf(err) == connect.CodeNotFound {
+			resp.State.RemoveResource(ctx)
+			return
+		}
+		resp.Diagnostics.AddError("Error deleting Telecaster forwarding pipeline", fmt.Sprintf("failed to delete pipeline %q: %v", ref.Slug, err))
+		return
+	}
+
+	// Poll until the pipeline is fully deleted
+	pollConf := retry.StateChangeConf{
+		Pending: []string{
+			typesv1beta1.ForwardingPipelineState_FORWARDING_PIPELINE_STATE_PENDING.String(),
+		},
+		Target: []string{},
+		Refresh: func() (any, string, error) {
+			result, err := r.Client.GetPipeline(ctx, connect.NewRequest(&clusterv1beta1.GetPipelineRequest{
+				Ref: ref,
+			}))
+			if err != nil {
+				if coreweave.IsNotFoundError(err) {
+					return nil, "", nil
+				}
+				return nil, typesv1beta1.ForwardingPipelineState_FORWARDING_PIPELINE_STATE_UNSPECIFIED.String(), err
+			}
+			pipeline := result.Msg.Pipeline
+			return pipeline, pipeline.Status.State.String(), nil
+		},
+		Timeout: pipelineTimeout,
+	}
+
+	if _, err := pollConf.WaitForStateContext(ctx); err != nil {
+		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
+		return
+	}
+
+	resp.State.RemoveResource(ctx)
+}
+
+func (r *ResourceForwardingPipeline) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
+	var data model.ForwardingPipelineModel
+	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	_, err := r.Client.DeletePipeline(ctx, connect.NewRequest(&clusterv1beta1.DeletePipelineRequest{
-		Ref: pipelineMsg.Ref,
+	ref := &typesv1beta1.ForwardingPipelineRef{Slug: data.Slug.ValueString()}
+	getResp, err := r.Client.GetPipeline(ctx, connect.NewRequest(&clusterv1beta1.GetPipelineRequest{
+		Ref: ref,
 	}))
 	if err != nil {
 		if coreweave.IsNotFoundError(err) {
 			resp.State.RemoveResource(ctx)
 			return
 		}
-
-		resp.Diagnostics.AddError(
-			"Error Deleting Telecaster Forwarding Pipeline",
-			fmt.Sprintf("Could not delete Telecaster Forwarding Pipeline %q: %v", pipelineMsg.Ref.Slug, err),
-		)
-		return
-	}
-
-	pollConf := retry.StateChangeConf{
-		Pending: []string{
-			typesv1beta1.ForwardingEndpointState_FORWARDING_ENDPOINT_STATE_PENDING.String(),
-		},
-		Target: []string{
-			"deleted",
-		},
-		Refresh: func() (result any, state string, err error) {
-			getResp, err := r.Client.GetPipeline(ctx, connect.NewRequest(&clusterv1beta1.GetPipelineRequest{
-				Ref: pipelineMsg.Ref,
-			}))
-			if err != nil {
-				if coreweave.IsNotFoundError(err) {
-					return nil, "deleted", nil
-				}
-				return nil, typesv1beta1.ForwardingPipelineState_FORWARDING_PIPELINE_STATE_UNSPECIFIED.String(), err
-			}
-			return getResp.Msg.Pipeline, getResp.Msg.Pipeline.Status.State.String(), nil
-		},
-		Timeout: 10 * time.Minute,
-	}
-
-	if _, err = pollConf.WaitForStateContext(ctx); err != nil {
 		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
 		return
 	}
-	resp.State.RemoveResource(ctx)
-}
 
-func (r *ResourceForwardingPipeline) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
-	var data ResourceForwardingPipelineModel
-	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+	resp.Diagnostics.Append(data.Set(getResp.Msg.Pipeline)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	pipelineMsg, diags := data.ToMsg(ctx)
-	resp.Diagnostics.Append(diags...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
-
-	getResp, err := r.Client.GetPipeline(ctx, connect.NewRequest(&clusterv1beta1.GetPipelineRequest{
-		Ref: pipelineMsg.Ref,
-	}))
-	if err != nil {
-		resp.Diagnostics.AddError(
-			"Error Reading Telecaster Forwarding Pipeline",
-			fmt.Sprintf("Could not read Telecaster Forwarding Pipeline %q: %v", pipelineMsg.Ref.Slug, err),
-		)
-		return
-	}
-
-	resp.Diagnostics.Append(data.Set(ctx, getResp.Msg.Pipeline)...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
 func (r *ResourceForwardingPipeline) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	var data ResourceForwardingPipelineModel
-	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+	var data model.ForwardingPipelineModel
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	pipelineMsg, diags := data.ToMsg(ctx)
+	pipelineMsg, diags := data.ToMsg()
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -381,13 +277,25 @@ func (r *ResourceForwardingPipeline) Update(ctx context.Context, req resource.Up
 		Ref:  pipelineMsg.Ref,
 		Spec: pipelineMsg.Spec,
 	})); err != nil {
-		resp.Diagnostics.AddError(
-			"Error Updating Telecaster Forwarding Pipeline",
-			fmt.Sprintf("Could not update Telecaster Forwarding Pipeline %q: %v", pipelineMsg.Ref.Slug, err),
-		)
+		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
 		return
 	}
 
+	pipeline, err := pollForPipelineActive(ctx, r.Client, pipelineMsg.Ref)
+	if err != nil {
+		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
+		return
+	}
+
+	resp.Diagnostics.Append(data.Set(pipeline)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+}
+
+func pollForPipelineActive(ctx context.Context, client *coreweave.Client, ref *typesv1beta1.ForwardingPipelineRef) (*typesv1beta1.ForwardingPipeline, error) {
 	pollConf := retry.StateChangeConf{
 		Pending: []string{
 			typesv1beta1.ForwardingPipelineState_FORWARDING_PIPELINE_STATE_PENDING.String(),
@@ -396,32 +304,26 @@ func (r *ResourceForwardingPipeline) Update(ctx context.Context, req resource.Up
 			typesv1beta1.ForwardingPipelineState_FORWARDING_PIPELINE_STATE_ACTIVE.String(),
 		},
 		Refresh: func() (result any, state string, err error) {
-			getResp, err := r.Client.GetPipeline(ctx, connect.NewRequest(&clusterv1beta1.GetPipelineRequest{
-				Ref: pipelineMsg.Ref,
+			getResp, err := client.GetPipeline(ctx, connect.NewRequest(&clusterv1beta1.GetPipelineRequest{
+				Ref: ref,
 			}))
 			if err != nil {
 				return nil, typesv1beta1.ForwardingPipelineState_FORWARDING_PIPELINE_STATE_UNSPECIFIED.String(), err
 			}
 			return getResp.Msg.Pipeline, getResp.Msg.Pipeline.Status.State.String(), nil
 		},
-		Timeout: 10 * time.Minute,
+		Timeout: pipelineTimeout,
 	}
 
-	finalPipelineRaw, err := pollConf.WaitForStateContext(ctx)
+	rawPipeline, err := pollConf.WaitForStateContext(ctx)
 	if err != nil {
-		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
-		return
-	} else if finalPipeline, ok := finalPipelineRaw.(*typesv1beta1.ForwardingPipeline); !ok {
-		resp.Diagnostics.AddError(
-			"Telecaster Pipeline Type Assertion Error",
-			fmt.Sprintf("Expected Pipeline type but got %T instead. This is a bug in the provider.", finalPipelineRaw),
-		)
-	} else {
-		resp.Diagnostics.Append(data.Set(ctx, finalPipeline)...)
+		return nil, err
 	}
 
-	if resp.Diagnostics.HasError() {
-		return
+	pipeline, ok := rawPipeline.(*typesv1beta1.ForwardingPipeline)
+	if !ok {
+		return nil, fmt.Errorf("unexpected type %T when waiting for forwarding pipeline", rawPipeline)
 	}
-	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+
+	return pipeline, nil
 }
