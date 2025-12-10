@@ -1,4 +1,4 @@
-package telecaster
+package observability
 
 import (
 	"context"
@@ -6,7 +6,7 @@ import (
 	clusterv1beta1 "bsr.core-services.ingress.coreweave.com/gen/go/coreweave/o11y-mgmt/protocolbuffers/go/coreweave/telecaster/svc/cluster/v1beta1"
 	typesv1beta1 "bsr.core-services.ingress.coreweave.com/gen/go/coreweave/o11y-mgmt/protocolbuffers/go/coreweave/telecaster/types/v1beta1"
 	"buf.build/go/protovalidate"
-	"github.com/coreweave/terraform-provider-coreweave/coreweave/telecaster/internal/model"
+	"github.com/coreweave/terraform-provider-coreweave/coreweave/observability/internal/model"
 	"github.com/coreweave/terraform-provider-coreweave/internal/coretf"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -54,7 +54,7 @@ func (r *HTTPSForwardingEndpointResource) Schema(ctx context.Context, req resour
 	}
 
 	resp.Schema = schema.Schema{
-		MarkdownDescription: "CoreWeave Telecaster HTTPS forwarding endpoint. Forwards telemetry data to an HTTPS endpoint.",
+		MarkdownDescription: "CoreWeave Telemetry Relay HTTPS forwarding endpoint. Forwards telemetry data to an HTTPS endpoint.",
 		Attributes:          attributes,
 	}
 }
@@ -157,7 +157,7 @@ func (r *HTTPSForwardingEndpointResource) Read(ctx context.Context, req resource
 		return
 	}
 
-	tflog.Debug(ctx, "Reading Telecaster HTTPS Forwarding Endpoint", map[string]any{
+	tflog.Debug(ctx, "Reading Telemetry Relay HTTPS Forwarding Endpoint", map[string]any{
 		"slug":         data.Slug.ValueString(),
 		"display_name": data.DisplayName.ValueString(),
 		"endpoint":     data.Endpoint.ValueString(),

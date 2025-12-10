@@ -53,7 +53,7 @@ fmt:
 test:
 	go test -v -cover -timeout=120s -parallel=10 ./...
 
-SUITES?=cks networking telecaster
+SUITES?=cks networking observability
 
 testacc-sweep:
 	@for suite in $(SUITES); do \

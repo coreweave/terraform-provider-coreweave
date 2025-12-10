@@ -12,7 +12,7 @@ import (
 	"github.com/coreweave/terraform-provider-coreweave/coreweave/cks"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave/networking"
 	objectstorage "github.com/coreweave/terraform-provider-coreweave/coreweave/object_storage"
-	"github.com/coreweave/terraform-provider-coreweave/coreweave/telecaster"
+	"github.com/coreweave/terraform-provider-coreweave/coreweave/observability"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/function"
 	"github.com/hashicorp/terraform-plugin-framework/provider"
@@ -212,10 +212,10 @@ func (p *CoreweaveProvider) Resources(ctx context.Context) []func() resource.Res
 		objectstorage.NewBucketVersioningResource,
 		objectstorage.NewBucketPolicyResource,
 		objectstorage.NewBucketSettingsResource,
-		telecaster.NewForwardingEndpointHTTPSResource,
-		telecaster.NewForwardingEndpointS3Resource,
-		telecaster.NewForwardingEndpointPrometheusResource,
-		telecaster.NewForwardingPipelineResource,
+		observability.NewForwardingEndpointHTTPSResource,
+		observability.NewForwardingEndpointS3Resource,
+		observability.NewForwardingEndpointPrometheusResource,
+		observability.NewForwardingPipelineResource,
 	}
 }
 
@@ -224,7 +224,7 @@ func (p *CoreweaveProvider) DataSources(ctx context.Context) []func() datasource
 		networking.NewVpcDataSource,
 		cks.NewClusterDataSource,
 		objectstorage.NewBucketPolicyDocumentDataSource,
-		telecaster.NewTelemetryStreamDataSource,
+		observability.NewTelemetryStreamDataSource,
 	}
 }
 

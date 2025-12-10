@@ -1,4 +1,4 @@
-package telecaster
+package observability
 
 import (
 	"context"
@@ -164,7 +164,7 @@ func deleteEndpoint(ctx context.Context, client *coreweave.Client, data interfac
 	}
 
 	if err := deleteEndpointAndWait(ctx, client, endpointMsg.GetRef()); err != nil {
-		diagnostics.AddError("Error deleting Telecaster endpoint", err.Error())
+		diagnostics.AddError("Error deleting Telemetry Relay endpoint", err.Error())
 		return
 	}
 

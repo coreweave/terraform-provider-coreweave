@@ -3,12 +3,12 @@
 page_title: "coreweave_observability_telemetry_relay_stream Data Source - coreweave"
 subcategory: ""
 description: |-
-  CoreWeave Telecaster stream data source. Read telemetry stream configuration and status.
+  CoreWeave Telemetry Relay stream data source. Read telemetry stream configuration and status.
 ---
 
 # coreweave_observability_telemetry_relay_stream (Data Source)
 
-CoreWeave Telecaster stream data source. Read telemetry stream configuration and status.
+CoreWeave Telemetry Relay stream data source. Read telemetry stream configuration and status.
 
 
 

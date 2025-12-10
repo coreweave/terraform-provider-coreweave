@@ -1,4 +1,4 @@
-package telecaster_test
+package observability_test
 
 import (
 	"context"
@@ -12,7 +12,7 @@ import (
 	typesv1beta1 "bsr.core-services.ingress.coreweave.com/gen/go/coreweave/o11y-mgmt/protocolbuffers/go/coreweave/telecaster/types/v1beta1"
 	"connectrpc.com/connect"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
-	"github.com/coreweave/terraform-provider-coreweave/coreweave/telecaster"
+	"github.com/coreweave/terraform-provider-coreweave/coreweave/observability"
 	"github.com/coreweave/terraform-provider-coreweave/internal/provider"
 	"github.com/coreweave/terraform-provider-coreweave/internal/testutil"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
@@ -44,7 +44,7 @@ func sweepEndpoint(ctx context.Context, client *coreweave.Client, endpoint *type
 	}
 
 	logger.InfoContext(ctx, "sweeping endpoint")
-	if err := telecaster.DeleteEndpointAndWait(ctx, client, ref); err != nil {
+	if err := observability.DeleteEndpointAndWait(ctx, client, ref); err != nil {
 		return err
 	}
 

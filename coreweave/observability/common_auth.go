@@ -1,4 +1,4 @@
-package telecaster
+package observability
 
 import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"

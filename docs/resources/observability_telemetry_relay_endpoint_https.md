@@ -3,12 +3,12 @@
 page_title: "coreweave_observability_telemetry_relay_endpoint_https Resource - coreweave"
 subcategory: ""
 description: |-
-  CoreWeave Telecaster HTTPS forwarding endpoint. Forwards telemetry data to an HTTPS endpoint.
+  CoreWeave Telemetry Relay HTTPS forwarding endpoint. Forwards telemetry data to an HTTPS endpoint.
 ---
 
 # coreweave_observability_telemetry_relay_endpoint_https (Resource)
 
-CoreWeave Telecaster HTTPS forwarding endpoint. Forwards telemetry data to an HTTPS endpoint.
+CoreWeave Telemetry Relay HTTPS forwarding endpoint. Forwards telemetry data to an HTTPS endpoint.
 
 
 

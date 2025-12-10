@@ -1,4 +1,4 @@
-package telecaster_test
+package observability_test
 
 import (
 	"embed"
@@ -8,8 +8,8 @@ import (
 	"testing"
 
 	typesv1beta1 "bsr.core-services.ingress.coreweave.com/gen/go/coreweave/o11y-mgmt/protocolbuffers/go/coreweave/telecaster/types/v1beta1"
-	"github.com/coreweave/terraform-provider-coreweave/coreweave/telecaster"
-	"github.com/coreweave/terraform-provider-coreweave/coreweave/telecaster/internal/model"
+	"github.com/coreweave/terraform-provider-coreweave/coreweave/observability"
+	"github.com/coreweave/terraform-provider-coreweave/coreweave/observability/internal/model"
 	"github.com/coreweave/terraform-provider-coreweave/internal/provider"
 	"github.com/coreweave/terraform-provider-coreweave/internal/testutil"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -26,7 +26,7 @@ var (
 	//go:embed testdata
 	streamTestdata embed.FS
 
-	telemetryStreamDataSourceName string = datasourceName(telecaster.NewTelemetryStreamDataSource())
+	telemetryStreamDataSourceName string = datasourceName(observability.NewTelemetryStreamDataSource())
 )
 
 // TestTelemetryStreamDataSourceSchema validates the datasource schema implementation
@@ -37,7 +37,7 @@ func TestTelemetryStreamDataSourceSchema(t *testing.T) {
 	schemaRequest := datasource.SchemaRequest{}
 	schemaResponse := &datasource.SchemaResponse{}
 
-	telecaster.NewTelemetryStreamDataSource().Schema(ctx, schemaRequest, schemaResponse)
+	observability.NewTelemetryStreamDataSource().Schema(ctx, schemaRequest, schemaResponse)
 	assert.False(t, schemaResponse.Diagnostics.HasError(), "Schema request returned errors: %v", schemaResponse.Diagnostics)
 
 	diagnostics := schemaResponse.Schema.ValidateImplementation(ctx)
