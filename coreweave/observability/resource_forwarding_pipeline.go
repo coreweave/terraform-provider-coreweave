@@ -173,12 +173,8 @@ func (r *ResourceForwardingPipeline) Create(ctx context.Context, req resource.Cr
 		return
 	}
 
-	resp.Diagnostics.Append(data.Set(pipeline)...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
-
-	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+	data.Set(pipeline)
+	resp.State.Set(ctx, &data)
 }
 
 func (r *ResourceForwardingPipeline) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
@@ -252,12 +248,8 @@ func (r *ResourceForwardingPipeline) Read(ctx context.Context, req resource.Read
 		return
 	}
 
-	resp.Diagnostics.Append(data.Set(getResp.Msg.Pipeline)...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
-
-	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+	data.Set(getResp.Msg.Pipeline)
+	resp.State.Set(ctx, &data)
 }
 
 func (r *ResourceForwardingPipeline) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
@@ -287,12 +279,8 @@ func (r *ResourceForwardingPipeline) Update(ctx context.Context, req resource.Up
 		return
 	}
 
-	resp.Diagnostics.Append(data.Set(pipeline)...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
-
-	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+	data.Set(pipeline)
+	resp.State.Set(ctx, &data)
 }
 
 func pollForPipelineActive(ctx context.Context, client *coreweave.Client, ref *typesv1beta1.ForwardingPipelineRef) (*typesv1beta1.ForwardingPipeline, error) {
