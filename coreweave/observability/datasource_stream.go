@@ -1,4 +1,4 @@
-package telecaster
+package observability
 
 import (
 	"context"
@@ -11,7 +11,7 @@ import (
 	"connectrpc.com/connect"
 
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
-	"github.com/coreweave/terraform-provider-coreweave/coreweave/telecaster/internal/model"
+	"github.com/coreweave/terraform-provider-coreweave/coreweave/observability/internal/model"
 	"github.com/coreweave/terraform-provider-coreweave/internal/coretf"
 	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -60,7 +60,7 @@ func (s *TelemetryStreamDataSource) Metadata(ctx context.Context, req datasource
 
 func (s *TelemetryStreamDataSource) Schema(ctx context.Context, req datasource.SchemaRequest, resp *datasource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		MarkdownDescription: "CoreWeave Telecaster stream data source. Read telemetry stream configuration and status.",
+		MarkdownDescription: "CoreWeave Telemetry Relay stream data source. Read telemetry stream configuration and status.",
 		Attributes: map[string]schema.Attribute{
 			// Ref fields
 			"slug": schema.StringAttribute{

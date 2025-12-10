@@ -1,4 +1,4 @@
-package telecaster_test
+package observability_test
 
 import (
 	"context"

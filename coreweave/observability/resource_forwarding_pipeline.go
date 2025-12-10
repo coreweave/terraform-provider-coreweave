@@ -1,4 +1,4 @@
-package telecaster
+package observability
 
 import (
 	"context"
@@ -10,7 +10,7 @@ import (
 	"buf.build/go/protovalidate"
 	"connectrpc.com/connect"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
-	"github.com/coreweave/terraform-provider-coreweave/coreweave/telecaster/internal/model"
+	"github.com/coreweave/terraform-provider-coreweave/coreweave/observability/internal/model"
 	"github.com/coreweave/terraform-provider-coreweave/internal/coretf"
 	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -74,7 +74,7 @@ func (r *ResourceForwardingPipeline) Metadata(ctx context.Context, req resource.
 
 func (r *ResourceForwardingPipeline) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		MarkdownDescription: "CoreWeave Telecaster forwarding pipeline. Connects a telemetry stream to a forwarding endpoint.",
+		MarkdownDescription: "CoreWeave Telemetry Relay forwarding pipeline. Connects a telemetry stream to a forwarding endpoint.",
 		Attributes: map[string]schema.Attribute{
 			// Ref fields
 			"slug": schema.StringAttribute{
@@ -198,7 +198,7 @@ func (r *ResourceForwardingPipeline) Delete(ctx context.Context, req resource.De
 			resp.State.RemoveResource(ctx)
 			return
 		}
-		resp.Diagnostics.AddError("Error deleting Telecaster forwarding pipeline", fmt.Sprintf("failed to delete pipeline %q: %v", ref.Slug, err))
+		resp.Diagnostics.AddError("Error deleting Telemetry Relay forwarding pipeline", fmt.Sprintf("failed to delete pipeline %q: %v", ref.Slug, err))
 		return
 	}
 

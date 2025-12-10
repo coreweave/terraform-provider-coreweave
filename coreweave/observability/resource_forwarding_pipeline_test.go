@@ -1,4 +1,4 @@
-package telecaster_test
+package observability_test
 
 import (
 	"context"
@@ -15,8 +15,8 @@ import (
 	typesv1beta1 "bsr.core-services.ingress.coreweave.com/gen/go/coreweave/o11y-mgmt/protocolbuffers/go/coreweave/telecaster/types/v1beta1"
 	"buf.build/go/protovalidate"
 	"connectrpc.com/connect"
-	"github.com/coreweave/terraform-provider-coreweave/coreweave/telecaster"
-	"github.com/coreweave/terraform-provider-coreweave/coreweave/telecaster/internal/model"
+	"github.com/coreweave/terraform-provider-coreweave/coreweave/observability"
+	"github.com/coreweave/terraform-provider-coreweave/coreweave/observability/internal/model"
 	"github.com/coreweave/terraform-provider-coreweave/internal/provider"
 	"github.com/coreweave/terraform-provider-coreweave/internal/testutil"
 	fwresource "github.com/hashicorp/terraform-plugin-framework/resource"
@@ -38,7 +38,7 @@ var (
 	//go:embed testdata
 	testdata embed.FS
 
-	pipelineResourceName string = resourceName(telecaster.NewForwardingPipelineResource())
+	pipelineResourceName string = resourceName(observability.NewForwardingPipelineResource())
 )
 
 func init() {
@@ -273,7 +273,7 @@ func TestForwardingPipelineResourceSchema(t *testing.T) {
 	ctx := t.Context()
 
 	schemaResponse := new(fwresource.SchemaResponse)
-	telecaster.NewForwardingPipelineResource().Schema(ctx, fwresource.SchemaRequest{}, schemaResponse)
+	observability.NewForwardingPipelineResource().Schema(ctx, fwresource.SchemaRequest{}, schemaResponse)
 	assert.False(t, schemaResponse.Diagnostics.HasError(), "Schema request returned errors: %v", schemaResponse.Diagnostics)
 
 	diagnostics := schemaResponse.Schema.ValidateImplementation(ctx)

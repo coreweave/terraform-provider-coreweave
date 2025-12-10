@@ -3,12 +3,12 @@
 page_title: "coreweave_observability_telemetry_relay_endpoint_prometheus Resource - coreweave"
 subcategory: ""
 description: |-
-  CoreWeave Telecaster Prometheus Remote Write forwarding endpoint. Forwards metrics data to a Prometheus-compatible endpoint.
+  CoreWeave Telemetry Relay Prometheus Remote Write forwarding endpoint. Forwards metrics data to a Prometheus-compatible endpoint.
 ---
 
 # coreweave_observability_telemetry_relay_endpoint_prometheus (Resource)
 
-CoreWeave Telecaster Prometheus Remote Write forwarding endpoint. Forwards metrics data to a Prometheus-compatible endpoint.
+CoreWeave Telemetry Relay Prometheus Remote Write forwarding endpoint. Forwards metrics data to a Prometheus-compatible endpoint.
 
 
 

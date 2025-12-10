@@ -1,4 +1,4 @@
-package telecaster_test
+package observability_test
 
 import (
 	"bytes"
@@ -8,8 +8,8 @@ import (
 	"testing"
 
 	typesv1beta1 "bsr.core-services.ingress.coreweave.com/gen/go/coreweave/o11y-mgmt/protocolbuffers/go/coreweave/telecaster/types/v1beta1"
-	"github.com/coreweave/terraform-provider-coreweave/coreweave/telecaster"
-	"github.com/coreweave/terraform-provider-coreweave/coreweave/telecaster/internal/model"
+	"github.com/coreweave/terraform-provider-coreweave/coreweave/observability"
+	"github.com/coreweave/terraform-provider-coreweave/coreweave/observability/internal/model"
 	"github.com/coreweave/terraform-provider-coreweave/internal/provider"
 	"github.com/coreweave/terraform-provider-coreweave/internal/testutil"
 	"github.com/hashicorp/hcl/v2/hclwrite"
@@ -29,7 +29,7 @@ var (
 	//go:embed testdata
 	s3EndpointTestdata embed.FS
 
-	s3EndpointResourceName string = resourceName(telecaster.NewForwardingEndpointS3Resource())
+	s3EndpointResourceName string = resourceName(observability.NewForwardingEndpointS3Resource())
 )
 
 func init() {
@@ -79,7 +79,7 @@ func TestS3ForwardingEndpointSchema(t *testing.T) {
 	schemaRequest := fwresource.SchemaRequest{}
 	schemaResponse := &fwresource.SchemaResponse{}
 
-	telecaster.NewForwardingEndpointS3Resource().Schema(ctx, schemaRequest, schemaResponse)
+	observability.NewForwardingEndpointS3Resource().Schema(ctx, schemaRequest, schemaResponse)
 	assert.False(t, schemaResponse.Diagnostics.HasError(), "Schema request returned errors: %v", schemaResponse.Diagnostics)
 
 	diagnostics := schemaResponse.Schema.ValidateImplementation(ctx)
