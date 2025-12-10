@@ -3,11 +3,9 @@ package telecaster_test
 import (
 	"context"
 	"fmt"
-	"testing"
 
 	"github.com/coreweave/terraform-provider-coreweave/internal/provider"
 	fwdatasource "github.com/hashicorp/terraform-plugin-framework/datasource"
-	"github.com/hashicorp/terraform-plugin-framework/diag"
 	fwprovider "github.com/hashicorp/terraform-plugin-framework/provider"
 	fwresource "github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
@@ -26,13 +24,6 @@ func with[T any](value *T, fn func(*T)) *T {
 // slugify creates a test resource slug with the acceptance test prefix and random suffix
 func slugify(name string, randomInt int) string {
 	return fmt.Sprintf("%s%s-%d", AcceptanceTestPrefix, name, randomInt)
-}
-
-func dieIfDiagnostics(t *testing.T, diagnostics diag.Diagnostics) {
-	t.Helper()
-	if diagnostics.HasError() {
-		t.Fatalf("diagnostics: %v", diagnostics)
-	}
 }
 
 type testStepOption func(*resource.TestStep)
