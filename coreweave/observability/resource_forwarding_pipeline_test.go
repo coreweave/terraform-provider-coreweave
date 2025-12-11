@@ -147,7 +147,7 @@ type EndpointType string
 const (
 	EndpointTypeHTTPS      EndpointType = "https"
 	EndpointTypeS3         EndpointType = "s3"
-	EndpointTypePrometheus EndpointType = "prometheus"
+	EndpointTypePrometheus EndpointType = "prom"
 )
 
 // StreamType represents the type of telemetry stream
@@ -157,46 +157,6 @@ const (
 	StreamTypeMetrics StreamType = "metrics"
 	StreamTypeLogs    StreamType = "logs"
 )
-
-// CompatibilityRule defines which endpoint types are compatible with which stream types
-type CompatibilityRule struct {
-	StreamType   StreamType
-	EndpointType EndpointType
-	Compatible   bool
-	Skip         bool
-}
-
-var streamEndpointCompatibility = []CompatibilityRule{
-	{StreamType: StreamTypeMetrics, EndpointType: EndpointTypeHTTPS, Compatible: false},
-	{StreamType: StreamTypeMetrics, EndpointType: EndpointTypePrometheus, Compatible: true},
-	{StreamType: StreamTypeMetrics, EndpointType: EndpointTypeS3, Compatible: false},
-
-	{StreamType: StreamTypeLogs, EndpointType: EndpointTypeHTTPS, Compatible: true},
-	{StreamType: StreamTypeLogs, EndpointType: EndpointTypePrometheus, Compatible: false},
-	{StreamType: StreamTypeLogs, EndpointType: EndpointTypeS3, Compatible: true},
-}
-
-// getCompatibleEndpointTypes returns the list of compatible endpoint types for a given stream type
-func getCompatibleEndpointTypes(streamType StreamType) []EndpointType {
-	var compatible []EndpointType
-	for _, rule := range streamEndpointCompatibility {
-		if rule.StreamType == streamType && rule.Compatible {
-			compatible = append(compatible, rule.EndpointType)
-		}
-	}
-	return compatible
-}
-
-// getIncompatibleEndpointTypes returns the list of incompatible endpoint types for a given stream type
-func getIncompatibleEndpointTypes(streamType StreamType) []EndpointType {
-	var incompatible []EndpointType
-	for _, rule := range streamEndpointCompatibility {
-		if rule.StreamType == streamType && !rule.Compatible {
-			incompatible = append(incompatible, rule.EndpointType)
-		}
-	}
-	return incompatible
-}
 
 func shorten(name string) string {
 	if len(name) < 4 {
@@ -217,11 +177,28 @@ func createHTTPSEndpoint(t *testing.T, slug string) *model.ForwardingEndpointHTT
 	}
 }
 
-// TODO: Implement createS3Endpoint when S3 endpoint resource is available
-// func createS3Endpoint(t *testing.T, slug string) *S3EndpointTestModel
+func createS3Endpoint(t *testing.T, slug string) *model.ForwardingEndpointS3 {
+	t.Helper()
+	return &model.ForwardingEndpointS3{
+		ForwardingEndpointCore: model.ForwardingEndpointCore{
+			Slug: types.StringValue(slug),
+			DisplayName: types.StringValue(fmt.Sprintf("Test S3 Endpoint - %s", slug)),
+		},
+		Bucket: types.StringValue("test-bucket"),
+		Region: types.StringValue("us-east-1"),
+	}
+}
 
-// TODO: Implement createPrometheusEndpoint when Prometheus endpoint resource is available
-// func createPrometheusEndpoint(t *testing.T, slug string) *PrometheusEndpointTestModel
+func createPrometheusEndpoint(t *testing.T, slug string) *model.ForwardingEndpointPrometheus {
+	t.Helper()
+	return &model.ForwardingEndpointPrometheus{
+		ForwardingEndpointCore: model.ForwardingEndpointCore{
+			Slug: types.StringValue(slug),
+			DisplayName: types.StringValue(fmt.Sprintf("Test Prometheus Endpoint - %s", slug)),
+		},
+		Endpoint: types.StringValue("http://telecaster-console.us-east-03-core-services.int.coreweave.com:9000/"),
+	}
+}
 
 func skipUnimplementedEndpointTypes(t *testing.T, endpointType EndpointType) {
 	t.Helper()
@@ -238,11 +215,21 @@ func skipUnimplementedEndpointTypes(t *testing.T, endpointType EndpointType) {
 }
 
 // renderForwardingPipelineResource renders HCL for a forwarding pipeline with optional endpoint dependency
-func renderForwardingPipelineResource(resourceName string, pipeline *model.ForwardingPipeline, endpoint *model.ForwardingEndpointHTTPS) string {
+func renderForwardingPipelineResource(t *testing.T, resourceName string, pipeline *model.ForwardingPipeline, endpoint any) string {
+	t.Helper()
 	var parts []string
 
 	if endpoint != nil {
-		parts = append(parts, renderHTTPSEndpointResource(resourceName, endpoint))
+		switch endpoint := endpoint.(type) {
+		case *model.ForwardingEndpointHTTPS:
+			parts = append(parts, renderHTTPSEndpointResource(resourceName, endpoint))
+		case *model.ForwardingEndpointS3:
+			parts = append(parts, renderS3EndpointResource(resourceName, endpoint))
+		case *model.ForwardingEndpointPrometheus:
+			parts = append(parts, renderPrometheusEndpointResource(resourceName, endpoint))
+		default:
+			t.Fatalf("Unknown endpoint type: %T", endpoint)
+		}
 	}
 
 	var hcl strings.Builder
@@ -262,7 +249,6 @@ func renderForwardingPipelineResource(resourceName string, pipeline *model.Forwa
 
 	parts = append(parts, hcl.String())
 
-	// Join endpoint and pipeline with newline (like CKS VPC + Cluster)
 	return strings.Join(parts, "\n")
 }
 
@@ -363,7 +349,7 @@ func TestRenderForwardingPipelineResource(t *testing.T) {
 		exampleHCLPipelineUsesLiterals, err := testdata.ReadFile("testdata/hcl_pipeline_uses_literals.tf")
 		require.NoError(t, err)
 
-		hcl := renderForwardingPipelineResource("test", pipeline, nil)
+		hcl := renderForwardingPipelineResource(t, "test", pipeline, nil)
 		assert.Equal(t, string(exampleHCLPipelineUsesLiterals), hcl)
 	})
 
@@ -381,7 +367,7 @@ func TestRenderForwardingPipelineResource(t *testing.T) {
 		exampleHCLEndpointUsesReferences, err := testdata.ReadFile("testdata/hcl_pipeline_uses_references.tf")
 		require.NoError(t, err)
 
-		hcl := renderForwardingPipelineResource("test", pipeline, endpoint)
+		hcl := renderForwardingPipelineResource(t, "test", pipeline, endpoint)
 		assert.Equal(t, string(exampleHCLEndpointUsesReferences), hcl)
 	})
 }
@@ -484,344 +470,219 @@ func TestForwardingPipelineResourceSpecModel_ToMsg(t *testing.T) {
 	}
 }
 
-func TestForwardingPipelineResource_CompatibleCombinations(t *testing.T) {
+func TestForwardingPipelineResource(t *testing.T) {
 	t.Parallel()
-
-	for _, streamSlug := range metricsStreams {
-		for _, endpointType := range getCompatibleEndpointTypes(StreamTypeMetrics) {
-			testName := fmt.Sprintf("%s_to_%s", streamSlug, endpointType)
-
-			t.Run(testName, func(t *testing.T) {
-				randomInt := rand.IntN(100)
-				resourceName := fmt.Sprintf("%s_to_%s", streamSlug, endpointType)
-				fullResourceName := fmt.Sprintf("%s.%s", pipelineResourceName, resourceName)
-
-				skipUnimplementedEndpointTypes(t, endpointType)
-
-				// We end up creating many slugs that are illegally long, so we need to shorten them
-				endpointSlug := slugify(fmt.Sprintf("p-%s-%s", streamSlug, endpointType), randomInt)
-				if len(endpointSlug) > 32 {
-					endpointSlug = slugify(fmt.Sprintf("p-%s-%s", shorten(streamSlug), string(endpointType)), randomInt)
-				}
-				if len(endpointSlug) > 32 {
-					endpointSlug = slugify(fmt.Sprintf("p-%s-%s", shorten(streamSlug), shorten(string(endpointType))), randomInt)
-				}
-				endpoint := createHTTPSEndpoint(t, endpointSlug)
-
-				pipelineSlug := slugify(fmt.Sprintf("pipe-%s-%s", streamSlug, endpointType), randomInt)
-				if len(pipelineSlug) > 32 {
-					pipelineSlug = slugify(fmt.Sprintf("pipe-%s-%s", shorten(streamSlug), string(endpointType)), randomInt)
-				}
-
-				pipeline := &model.ForwardingPipeline{
-					Slug:            types.StringValue(pipelineSlug),
-					SourceSlug:      types.StringValue(streamSlug),
-					DestinationSlug: types.StringValue(endpoint.Slug.ValueString()),
-					Enabled:         types.BoolValue(true),
-				}
-
-				resource.ParallelTest(t, resource.TestCase{
-					ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
-					PreCheck: func() {
-						testutil.SetEnvDefaults()
-					},
-					Steps: []resource.TestStep{
-						{
-							PreConfig: func() {
-								t.Logf("Creating pipeline: %s -> %s, endpoint: %s", streamSlug, endpointType, endpointSlug)
-							},
-							Config: renderForwardingPipelineResource(resourceName, pipeline, endpoint),
-							ConfigPlanChecks: resource.ConfigPlanChecks{
-								PreApply: []plancheck.PlanCheck{
-									plancheck.ExpectResourceAction(fullResourceName, plancheck.ResourceActionCreate),
-								},
-							},
-							ConfigStateChecks: []statecheck.StateCheck{
-								statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("slug"), knownvalue.StringExact(pipelineSlug)),
-								statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("source_slug"), knownvalue.StringExact(streamSlug)),
-								statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("enabled"), knownvalue.Bool(true)),
-								statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("state"), knownvalue.StringExact(typesv1beta1.ForwardingPipelineState_FORWARDING_PIPELINE_STATE_ACTIVE.String())),
-							},
-						},
-					},
-				})
-			})
-		}
-	}
-
-	for _, streamSlug := range logsStreams {
-		for _, endpointType := range getCompatibleEndpointTypes(StreamTypeLogs) {
-			testName := fmt.Sprintf("%s_to_%s", streamSlug, endpointType)
-
-			t.Run(testName, func(t *testing.T) {
-				randomInt := rand.IntN(100)
-				resourceName := testName
-				fullResourceName := fmt.Sprintf("%s.%s", pipelineResourceName, resourceName)
-
-				// We end up creating many slugs that are illegally long, so we need to shorten them
-				endpointSlug := slugify(fmt.Sprintf("p-%s-%s", streamSlug, endpointType), randomInt)
-				if len(endpointSlug) > 32 {
-					endpointSlug = slugify(fmt.Sprintf("p-%s-%s", shorten(streamSlug), string(endpointType)), randomInt)
-				}
-				if len(endpointSlug) > 32 {
-					endpointSlug = slugify(fmt.Sprintf("p-%s-%s", shorten(streamSlug), shorten(string(endpointType))), randomInt)
-				}
-
-				endpoint := createHTTPSEndpoint(t, endpointSlug)
-
-				pipelineSlug := slugify(fmt.Sprintf("pipe-%s-%s", streamSlug, endpointType), randomInt)
-				if len(pipelineSlug) > 32 {
-					pipelineSlug = slugify(fmt.Sprintf("pipe-%s-%s", shorten(streamSlug), string(endpointType)), randomInt)
-				}
-
-				pipeline := &model.ForwardingPipeline{
-					Slug:            types.StringValue(pipelineSlug),
-					SourceSlug:      types.StringValue(streamSlug),
-					DestinationSlug: types.StringValue(endpoint.Slug.ValueString()),
-					Enabled:         types.BoolValue(true),
-				}
-
-				resource.ParallelTest(t, resource.TestCase{
-					ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
-					PreCheck: func() {
-						testutil.SetEnvDefaults()
-					},
-					Steps: []resource.TestStep{
-						{
-							PreConfig: func() {
-								t.Logf("Creating pipeline: %s -> %s, endpoint: %s", streamSlug, endpointType, endpoint.Slug)
-							},
-							Config: renderForwardingPipelineResource(resourceName, pipeline, endpoint),
-							ConfigPlanChecks: resource.ConfigPlanChecks{
-								PreApply: []plancheck.PlanCheck{
-									plancheck.ExpectResourceAction(fullResourceName, plancheck.ResourceActionCreate),
-								},
-							},
-							ConfigStateChecks: []statecheck.StateCheck{
-								statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("slug"), knownvalue.StringExact(pipelineSlug)),
-								statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("source_slug"), knownvalue.StringExact(streamSlug)),
-								statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("enabled"), knownvalue.Bool(true)),
-								statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("state"), knownvalue.StringExact(typesv1beta1.ForwardingPipelineState_FORWARDING_PIPELINE_STATE_ACTIVE.String())),
-							},
-						},
-					},
-				})
-			})
-		}
-	}
-}
-
-func TestForwardingPipelineResource_IncompatibleCombinations(t *testing.T) {
-	t.Parallel()
-
-	for _, streamSlug := range metricsStreams {
-		for _, endpointType := range getIncompatibleEndpointTypes(StreamTypeMetrics) {
-			t.Run(fmt.Sprintf("%s_to_%s_fails", streamSlug, endpointType), func(t *testing.T) {
-				randomInt := rand.IntN(100)
-				resourceName := "incompat"
-
-				slug := slugify(fmt.Sprintf("incompat-%s", endpointType), randomInt)
-				endpoint := createHTTPSEndpoint(t, slug)
-
-				if endpoint.Slug.IsNull() || endpoint.Slug.IsUnknown() {
-					t.Fatalf("endpoint slug is empty: %+v", endpoint)
-				}
-
-				pipelineSlug := slugify(fmt.Sprintf("pipe-%s-%s", streamSlug, endpointType), randomInt)
-				pipeline := &model.ForwardingPipeline{
-					Slug:            types.StringValue(pipelineSlug),
-					SourceSlug:      types.StringValue(streamSlug),
-					DestinationSlug: types.StringValue(endpoint.Slug.ValueString()),
-					Enabled:         types.BoolValue(true),
-				}
-
-				resource.ParallelTest(t, resource.TestCase{
-					ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
-					PreCheck: func() {
-						testutil.SetEnvDefaults()
-					},
-					Steps: []resource.TestStep{
-						{
-							PreConfig: func() {
-								t.Logf("Testing incompatible combination: %s -> %s endpoint (should fail)", streamSlug, endpointType)
-							},
-							Config:      renderForwardingPipelineResource(resourceName, pipeline, endpoint),
-							ExpectError: regexp.MustCompile(`(?i)(incompatible|invalid|not supported|failed)`),
-						},
-					},
-				})
-			})
-		}
-	}
-
-	for _, streamSlug := range logsStreams {
-		for _, endpointType := range getIncompatibleEndpointTypes(StreamTypeLogs) {
-			testName := fmt.Sprintf("%s_to_%s_fails", streamSlug, endpointType)
-
-			t.Run(testName, func(t *testing.T) {
-				randomInt := rand.IntN(100)
-				resourceName := testPipelineResourceName
-
-				// TODO: When S3/Prometheus endpoints are implemented, dispatch based on endpointType
-				endpoint := createHTTPSEndpoint(t, slugify(fmt.Sprintf("incompat-%s", endpointType), randomInt))
-
-				pipelineSlug := slugify(fmt.Sprintf("pipe-%s-%s", streamSlug, endpointType), randomInt)
-				pipeline := &model.ForwardingPipeline{
-					Slug:            types.StringValue(pipelineSlug),
-					SourceSlug:      types.StringValue(streamSlug),
-					DestinationSlug: types.StringValue(endpoint.Slug.ValueString()),
-					Enabled:         types.BoolValue(true),
-				}
-
-				resource.ParallelTest(t, resource.TestCase{
-					ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
-					PreCheck: func() {
-						testutil.SetEnvDefaults()
-					},
-					Steps: []resource.TestStep{
-						{
-							PreConfig: func() {
-								t.Logf("Testing incompatible combination: %s -> %s endpoint (should fail)", streamSlug, endpointType)
-							},
-							Config:      renderForwardingPipelineResource(resourceName, pipeline, endpoint),
-							ExpectError: regexp.MustCompile(`(?i)(incompatible|invalid|not supported|failed)`),
-						},
-					},
-				})
-			})
-		}
-	}
-}
-
-// TestForwardingPipelineResource_Lifecycle tests the full lifecycle of a pipeline
-func TestForwardingPipelineResource_Lifecycle(t *testing.T) {
 	randomInt := rand.IntN(100)
-	resourceName := "test_pipeline"
-	fullResourceName := fmt.Sprintf("%s.%s", pipelineResourceName, resourceName)
 
-	streamSlug := logsStreams[0]
-
-	endpointSlug := slugify("lifecycle-endpoint", randomInt)
-	endpoint := createHTTPSEndpoint(t, endpointSlug)
-
-	pipelineSlug := slugify("lifecycle-pipeline", randomInt)
-	pipeline := &model.ForwardingPipeline{
-		Slug:            types.StringValue(pipelineSlug),
-		SourceSlug:      types.StringValue(streamSlug),
-		DestinationSlug: types.StringValue(endpoint.Slug.ValueString()),
-		Enabled:         types.BoolValue(true),
+	streamsByStreamType := map[StreamType][]string{
+		StreamTypeMetrics: metricsStreams,
+		StreamTypeLogs:    logsStreams,
 	}
 
-	resource.ParallelTest(t, resource.TestCase{
-		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
-		PreCheck: func() {
-			testutil.SetEnvDefaults()
-		},
-		Steps: []resource.TestStep{
-			{
-				PreConfig: func() {
-					t.Log("Step 1: Create pipeline (enabled)")
-				},
-				Config: renderForwardingPipelineResource(resourceName, pipeline, endpoint),
-				ConfigPlanChecks: resource.ConfigPlanChecks{
-					PreApply: []plancheck.PlanCheck{
-						plancheck.ExpectResourceAction(fullResourceName, plancheck.ResourceActionCreate),
+	validEndpointsByStreamType := map[StreamType][]EndpointType{
+		StreamTypeMetrics: {EndpointTypePrometheus},
+		StreamTypeLogs:    {EndpointTypeHTTPS, EndpointTypeS3},
+	}
+
+	for streamType, streamSlugs := range streamsByStreamType {
+		for _, streamSlug := range streamSlugs {
+			for _, endpointType := range validEndpointsByStreamType[streamType] {
+				testName := fmt.Sprintf("%s_to_%s", streamSlug, endpointType)
+
+				t.Run(testName, func(t *testing.T) {
+					resourceName := fmt.Sprintf("%s_to_%s", streamSlug, endpointType)
+					fullResourceName := fmt.Sprintf("%s.%s", pipelineResourceName, resourceName)
+
+					// We end up creating many endpoint slugs that are illegally long, so we need to shorten them
+					endpointSlug := slugify(fmt.Sprintf("p-%s-%s", streamSlug, endpointType), randomInt)
+					if len(endpointSlug) > 32 {
+						endpointSlug = slugify(fmt.Sprintf("p-%s-%s", shorten(streamSlug), string(endpointType)), randomInt)
+					}
+					if len(endpointSlug) > 32 {
+						endpointSlug = slugify(fmt.Sprintf("p-%s-%s", shorten(streamSlug), shorten(string(endpointType))), randomInt)
+					}
+					var endpoint any
+					switch endpointType {
+					case EndpointTypeHTTPS:
+						endpoint = createHTTPSEndpoint(t, endpointSlug)
+					case EndpointTypeS3:
+						endpoint = createS3Endpoint(t, endpointSlug)
+					case EndpointTypePrometheus:
+						endpoint = createPrometheusEndpoint(t, endpointSlug)
+					}
+
+					pipelineSlug := slugify(fmt.Sprintf("pipe-%s-%s", streamSlug, endpointType), randomInt)
+					if len(pipelineSlug) > 32 {
+						pipelineSlug = slugify(fmt.Sprintf("pipe-%s-%s", shorten(streamSlug), string(endpointType)), randomInt)
+					}
+
+					pipeline := &model.ForwardingPipeline{
+						Slug:            types.StringValue(pipelineSlug),
+						SourceSlug:      types.StringValue(streamSlug),
+						DestinationSlug: types.StringValue(endpointSlug),
+						Enabled:         types.BoolValue(true),
+					}
+
+					resource.ParallelTest(t, resource.TestCase{
+						ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+						PreCheck: func() {
+							testutil.SetEnvDefaults()
+						},
+						Steps: []resource.TestStep{
+							{
+								PreConfig: func() {
+									t.Logf("Creating pipeline: %s -> %s, endpoint: %s", streamSlug, endpointType, endpointSlug)
+								},
+								Config: renderForwardingPipelineResource(t, resourceName, pipeline, endpoint),
+								ConfigPlanChecks: resource.ConfigPlanChecks{
+									PreApply: []plancheck.PlanCheck{
+										plancheck.ExpectResourceAction(fullResourceName, plancheck.ResourceActionCreate),
+									},
+								},
+								ConfigStateChecks: []statecheck.StateCheck{
+									statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("slug"), knownvalue.StringExact(pipelineSlug)),
+									statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("source_slug"), knownvalue.StringExact(streamSlug)),
+									statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("destination_slug"), knownvalue.StringExact(endpointSlug)),
+									statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("enabled"), knownvalue.Bool(true)),
+									statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("state"), knownvalue.StringExact(typesv1beta1.ForwardingPipelineState_FORWARDING_PIPELINE_STATE_ACTIVE.String())),
+								},
+							},
+						},
+					})
+				})
+			}
+		}
+	}
+	t.Run("lifecycle", func(t *testing.T) {
+		resourceName := "lifecycle"
+		fullResourceName := fmt.Sprintf("%s.%s", pipelineResourceName, resourceName)
+
+		streamSlug := logsStreams[0]
+
+		endpointSlug := slugify("lifecycle-endpoint", randomInt)
+		endpoint := createHTTPSEndpoint(t, endpointSlug)
+
+		pipelineSlug := slugify("lifecycle-pipeline", randomInt)
+		pipeline := &model.ForwardingPipeline{
+			Slug:            types.StringValue(pipelineSlug),
+			SourceSlug:      types.StringValue(streamSlug),
+			DestinationSlug: types.StringValue(endpoint.Slug.ValueString()),
+			Enabled:         types.BoolValue(true),
+		}
+
+		resource.ParallelTest(t, resource.TestCase{
+			ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+			PreCheck: func() {
+				testutil.SetEnvDefaults()
+			},
+			Steps: []resource.TestStep{
+				{
+					PreConfig: func() {
+						t.Log("Step 1: Create pipeline (enabled)")
+					},
+					Config: renderForwardingPipelineResource(t, resourceName, pipeline, endpoint),
+					ConfigPlanChecks: resource.ConfigPlanChecks{
+						PreApply: []plancheck.PlanCheck{
+							plancheck.ExpectResourceAction(fullResourceName, plancheck.ResourceActionCreate),
+						},
+					},
+					ConfigStateChecks: []statecheck.StateCheck{
+						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("enabled"), knownvalue.Bool(true)),
+						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("state"), knownvalue.StringExact(typesv1beta1.ForwardingPipelineState_FORWARDING_PIPELINE_STATE_ACTIVE.String())),
 					},
 				},
-				ConfigStateChecks: []statecheck.StateCheck{
-					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("enabled"), knownvalue.Bool(true)),
-					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("state"), knownvalue.StringExact(typesv1beta1.ForwardingPipelineState_FORWARDING_PIPELINE_STATE_ACTIVE.String())),
+				{
+					PreConfig: func() {
+						t.Log("Step 2: No-op (verify idempotency)")
+					},
+					Config: renderForwardingPipelineResource(t, resourceName, pipeline, endpoint),
+					ConfigPlanChecks: resource.ConfigPlanChecks{
+						PreApply: []plancheck.PlanCheck{
+							plancheck.ExpectResourceAction(fullResourceName, plancheck.ResourceActionNoop),
+						},
+					},
 				},
-			},
-			{
-				PreConfig: func() {
-					t.Log("Step 2: No-op (verify idempotency)")
+				{
+					PreConfig: func() {
+						t.Log("Step 3: Disable pipeline")
+					},
+					Config: renderForwardingPipelineResource(t, resourceName, &model.ForwardingPipeline{
+						Slug:            types.StringValue(pipelineSlug),
+						SourceSlug:      types.StringValue(streamSlug),
+						DestinationSlug: types.StringValue(endpoint.Slug.ValueString()),
+						Enabled:         types.BoolValue(false),
+					}, endpoint),
+					ConfigPlanChecks: resource.ConfigPlanChecks{
+						PreApply: []plancheck.PlanCheck{
+							plancheck.ExpectResourceAction(fullResourceName, plancheck.ResourceActionUpdate),
+						},
+					},
+					ConfigStateChecks: []statecheck.StateCheck{
+						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("enabled"), knownvalue.Bool(false)),
+					},
 				},
-				Config: renderForwardingPipelineResource(resourceName, pipeline, endpoint),
-				ConfigPlanChecks: resource.ConfigPlanChecks{
-					PreApply: []plancheck.PlanCheck{
-						plancheck.ExpectResourceAction(fullResourceName, plancheck.ResourceActionNoop),
+				{
+					PreConfig: func() {
+						t.Log("Step 4: Re-enable pipeline")
+					},
+					Config: renderForwardingPipelineResource(t, resourceName, pipeline, endpoint),
+					ConfigPlanChecks: resource.ConfigPlanChecks{
+						PreApply: []plancheck.PlanCheck{
+							plancheck.ExpectResourceAction(fullResourceName, plancheck.ResourceActionUpdate),
+						},
+					},
+					ConfigStateChecks: []statecheck.StateCheck{
+						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("spec").AtMapKey("enabled"), knownvalue.Bool(true)),
+					},
+				},
+				{
+					PreConfig: func() {
+						t.Log("Step 5: Change slug (requires replacement)")
+					},
+					Config: renderForwardingPipelineResource(t, resourceName, pipeline, endpoint),
+					ConfigPlanChecks: resource.ConfigPlanChecks{
+						PreApply: []plancheck.PlanCheck{
+							plancheck.ExpectResourceAction(fullResourceName, plancheck.ResourceActionReplace),
+						},
 					},
 				},
 			},
-			{
-				PreConfig: func() {
-					t.Log("Step 3: Disable pipeline")
-				},
-				Config: renderForwardingPipelineResource(resourceName, &model.ForwardingPipeline{
-					Slug:            types.StringValue(pipelineSlug),
-					SourceSlug:      types.StringValue(streamSlug),
-					DestinationSlug: types.StringValue(endpoint.Slug.ValueString()),
-					Enabled:         types.BoolValue(false),
-				}, endpoint),
-				ConfigPlanChecks: resource.ConfigPlanChecks{
-					PreApply: []plancheck.PlanCheck{
-						plancheck.ExpectResourceAction(fullResourceName, plancheck.ResourceActionUpdate),
+		})
+	})
+
+	t.Run("invalid_stream", func(t *testing.T) {
+		randomInt := rand.IntN(100)
+		resourceName := "invalid_stream"
+
+		endpointSlug := slugify("invalid-stream", randomInt)
+		endpoint := createHTTPSEndpoint(t, endpointSlug)
+
+		pipelineSlug := slugify("pipe-invalid-stream", randomInt)
+		pipeline := &model.ForwardingPipeline{
+			Slug:            types.StringValue(pipelineSlug),
+			SourceSlug:      types.StringValue("nonexistent-stream"),
+			DestinationSlug: types.StringValue(endpoint.Slug.ValueString()),
+			Enabled:         types.BoolValue(true),
+		}
+
+		resource.ParallelTest(t, resource.TestCase{
+			ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+			PreCheck: func() {
+				testutil.SetEnvDefaults()
+			},
+			Steps: []resource.TestStep{
+				{
+					PreConfig: func() {
+						t.Log("Testing pipeline creation with invalid stream")
 					},
-				},
-				ConfigStateChecks: []statecheck.StateCheck{
-					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("enabled"), knownvalue.Bool(false)),
+					Config:      renderForwardingPipelineResource(t, resourceName, pipeline, endpoint),
+					ExpectError: regexp.MustCompile(`(?i)(not found|invalid|failed)`),
 				},
 			},
-			{
-				PreConfig: func() {
-					t.Log("Step 4: Re-enable pipeline")
-				},
-				Config: renderForwardingPipelineResource(resourceName, pipeline, endpoint),
-				ConfigPlanChecks: resource.ConfigPlanChecks{
-					PreApply: []plancheck.PlanCheck{
-						plancheck.ExpectResourceAction(fullResourceName, plancheck.ResourceActionUpdate),
-					},
-				},
-				ConfigStateChecks: []statecheck.StateCheck{
-					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("spec").AtMapKey("enabled"), knownvalue.Bool(true)),
-				},
-			},
-			{
-				PreConfig: func() {
-					t.Log("Step 5: Change slug (requires replacement)")
-				},
-				Config: renderForwardingPipelineResource(resourceName, pipeline, endpoint),
-				ConfigPlanChecks: resource.ConfigPlanChecks{
-					PreApply: []plancheck.PlanCheck{
-						plancheck.ExpectResourceAction(fullResourceName, plancheck.ResourceActionReplace),
-					},
-				},
-			},
-		},
+		})
 	})
 }
 
 // TestForwardingPipelineResource_InvalidStream tests error handling with invalid stream
 func TestForwardingPipelineResource_InvalidStream(t *testing.T) {
-	t.Skip()
-	randomInt := rand.IntN(100)
-	resourceName := "test_pipeline"
-
-	endpointSlug := slugify("invalid-stream", randomInt)
-	endpoint := createHTTPSEndpoint(t, endpointSlug)
-
-	pipelineSlug := slugify("pipe-invalid-stream", randomInt)
-	pipeline := &model.ForwardingPipeline{
-		Slug:            types.StringValue(pipelineSlug),
-		SourceSlug:      types.StringValue("nonexistent-stream"),
-		DestinationSlug: types.StringValue(endpoint.Slug.ValueString()),
-		Enabled:         types.BoolValue(true),
-	}
-
-	resource.ParallelTest(t, resource.TestCase{
-		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
-		PreCheck: func() {
-			testutil.SetEnvDefaults()
-		},
-		Steps: []resource.TestStep{
-			{
-				PreConfig: func() {
-					t.Log("Testing pipeline creation with invalid stream")
-				},
-				Config:      renderForwardingPipelineResource(resourceName, pipeline, endpoint),
-				ExpectError: regexp.MustCompile(`(?i)(not found|invalid|failed)`),
-			},
-		},
-	})
 }
