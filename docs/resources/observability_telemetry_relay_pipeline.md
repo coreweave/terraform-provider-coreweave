@@ -3,12 +3,12 @@
 page_title: "coreweave_observability_telemetry_relay_pipeline Resource - coreweave"
 subcategory: ""
 description: |-
-  CoreWeave Telecaster forwarding pipeline. Connects a telemetry stream to a forwarding endpoint.
+  CoreWeave Telemetry Relay forwarding pipeline. Connects a telemetry stream to a forwarding endpoint.
 ---
 
 # coreweave_observability_telemetry_relay_pipeline (Resource)
 
-CoreWeave Telecaster forwarding pipeline. Connects a telemetry stream to a forwarding endpoint.
+CoreWeave Telemetry Relay forwarding pipeline. Connects a telemetry stream to a forwarding endpoint.
 
 
 
