@@ -4,8 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
-	"strconv"
 	"time"
 
 	"buf.build/gen/go/coreweave/cks/connectrpc/go/coreweave/cks/v1beta1/cksv1beta1connect"
@@ -24,12 +22,6 @@ func NewClient(endpoint string, s3Endpoint string, timeout time.Duration, interc
 	rc := retryablehttp.NewClient()
 	rc.HTTPClient.Timeout = timeout
 	rc.RetryMax = 10
-	// TODO: Remove this, or formalize it.
-	if max, found := os.LookupEnv("COREWEAVE_HTTP_RETRY_MAX"); found {
-		if maxInt, err := strconv.Atoi(max); err == nil {
-			rc.RetryMax = maxInt
-		}
-	}
 	rc.RetryWaitMin = 200 * time.Millisecond
 	rc.RetryWaitMax = 5 * time.Second
 	// Jittered exponential back-off (min*2^n) with capping.
