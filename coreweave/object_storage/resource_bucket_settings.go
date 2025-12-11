@@ -1,17 +1,21 @@
 package objectstorage
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 
 	cwobjectv1 "buf.build/gen/go/coreweave/cwobject/protocolbuffers/go/cwobject/v1"
 	"connectrpc.com/connect"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
+	"github.com/hashicorp/hcl/v2/hclsyntax"
+	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/zclconf/go-cty/cty"
 	"google.golang.org/protobuf/types/known/wrapperspb"
 )
 
@@ -33,6 +37,9 @@ type BucketSettingsModel struct {
 	Bucket              types.String `tfsdk:"bucket"`
 	AuditLoggingEnabled types.Bool   `tfsdk:"audit_logging_enabled"`
 }
+
+// BucketSettingsResourceModel is an alias for BucketSettingsModel for consistency with other resources
+type BucketSettingsResourceModel = BucketSettingsModel
 
 func (s *BucketSettingsModel) Set(settings *cwobjectv1.CWObjectBucketSettings) {
 	if settings == nil {
@@ -205,4 +212,27 @@ func (b *BucketSettingsResource) ImportState(ctx context.Context, req resource.I
 	if resp.Diagnostics.HasError() {
 		return
 	}
+}
+
+// MustRenderBucketSettingsResource renders a bucket settings resource to HCL for testing purposes
+func MustRenderBucketSettingsResource(_ context.Context, name string, settings *BucketSettingsResourceModel) string {
+	file := hclwrite.NewEmptyFile()
+	body := file.Body()
+
+	resource := body.AppendNewBlock("resource", []string{"coreweave_object_storage_bucket_settings", name})
+	resourceBody := resource.Body()
+
+	// bucket attribute
+	resourceBody.SetAttributeRaw("bucket", hclwrite.Tokens{{Type: hclsyntax.TokenIdent, Bytes: []byte(settings.Bucket.ValueString())}})
+
+	// audit_logging_enabled attribute
+	if !settings.AuditLoggingEnabled.IsNull() {
+		resourceBody.SetAttributeValue("audit_logging_enabled", cty.BoolVal(settings.AuditLoggingEnabled.ValueBool()))
+	}
+
+	var buf bytes.Buffer
+	if _, err := file.WriteTo(&buf); err != nil {
+		panic(err)
+	}
+	return buf.String()
 }
