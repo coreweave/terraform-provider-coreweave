@@ -240,16 +240,12 @@ func (r *ResourceForwardingPipeline) Read(ctx context.Context, req resource.Read
 		Ref: ref,
 	}))
 	if err != nil {
-		if coreweave.IsNotFoundError(err) {
-			resp.State.RemoveResource(ctx)
-			return
-		}
 		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
 		return
 	}
 
 	data.Set(getResp.Msg.Pipeline)
-	resp.State.Set(ctx, &data)
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
 func (r *ResourceForwardingPipeline) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
