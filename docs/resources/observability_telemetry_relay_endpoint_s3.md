@@ -3,12 +3,12 @@
 page_title: "coreweave_observability_telemetry_relay_endpoint_s3 Resource - coreweave"
 subcategory: ""
 description: |-
-  CoreWeave Telecaster S3 forwarding endpoint. Forwards telemetry data to an S3-compatible bucket.
+  CoreWeave Telemetry Relay S3 forwarding endpoint. Forwards telemetry data to an S3-compatible bucket.
 ---
 
 # coreweave_observability_telemetry_relay_endpoint_s3 (Resource)
 
-CoreWeave Telecaster S3 forwarding endpoint. Forwards telemetry data to an S3-compatible bucket.
+CoreWeave Telemetry Relay S3 forwarding endpoint. Forwards telemetry data to an S3-compatible bucket.
 
 
 

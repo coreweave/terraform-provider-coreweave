@@ -3,8 +3,8 @@ package observability
 import (
 	"context"
 
-	clusterv1beta1 "bsr.core-services.ingress.coreweave.com/gen/go/coreweave/o11y-mgmt/protocolbuffers/go/coreweave/telecaster/svc/cluster/v1beta1"
-	typesv1beta1 "bsr.core-services.ingress.coreweave.com/gen/go/coreweave/o11y-mgmt/protocolbuffers/go/coreweave/telecaster/types/v1beta1"
+	clusterv1beta1 "bsr.core-services.ingress.coreweave.com/gen/go/coreweave/o11y-mgmt/protocolbuffers/go/coreweave/telemetryrelay/svc/cluster/v1beta1"
+	typesv1beta1 "bsr.core-services.ingress.coreweave.com/gen/go/coreweave/o11y-mgmt/protocolbuffers/go/coreweave/telemetryrelay/types/v1beta1"
 	"buf.build/go/protovalidate"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave/observability/internal/model"
 	"github.com/coreweave/terraform-provider-coreweave/internal/coretf"
@@ -12,7 +12,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
-	"github.com/hashicorp/terraform-plugin-log/tflog"
 )
 
 var (
@@ -156,12 +155,6 @@ func (r *HTTPSForwardingEndpointResource) Read(ctx context.Context, req resource
 	if resp.Diagnostics.HasError() {
 		return
 	}
-
-	tflog.Debug(ctx, "Reading Telemetry Relay HTTPS Forwarding Endpoint", map[string]any{
-		"slug":         data.Slug.ValueString(),
-		"display_name": data.DisplayName.ValueString(),
-		"endpoint":     data.Endpoint.ValueString(),
-	})
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }

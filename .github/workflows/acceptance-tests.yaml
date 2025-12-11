@@ -26,7 +26,7 @@ jobs:
         id: changes
         run: |
           # Available test suites - add new suites here
-          ALL_SUITES="cks networking object_storage telecaster"
+          ALL_SUITES="cks networking object_storage observability"
 
           get_suite_dir() {
             echo "coreweave/$1"
