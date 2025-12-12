@@ -12,6 +12,7 @@ import (
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -165,8 +166,9 @@ func (b *BucketSettingsResource) Schema(ctx context.Context, req resource.Schema
 				},
 			},
 			"audit_logging_enabled": schema.BoolAttribute{
-				Description: "Whether audit logging is enabled for the bucket.",
-				Required:    true,
+				Description: "Whether audit logging is enabled for the bucket. Note: please contact support to enable audit logging for your organization before enabling.",
+				Optional:    true,
+				Default:     booldefault.StaticBool(false),
 			},
 		},
 	}
