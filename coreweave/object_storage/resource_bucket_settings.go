@@ -116,7 +116,9 @@ func (b *BucketSettingsResource) Delete(ctx context.Context, req resource.Delete
 
 	deleteReq := cwobjectv1.SetBucketSettingsRequest{
 		BucketName: data.Bucket.ValueString(),
-		Settings:   &cwobjectv1.CWObjectBucketSettings{},
+		Settings: &cwobjectv1.CWObjectBucketSettings{
+			AuditLoggingEnabled: wrapperspb.Bool(false),
+		},
 	}
 
 	_, err := b.client.CWObjectClient.SetBucketSettings(ctx, connect.NewRequest(&deleteReq))
