@@ -95,7 +95,7 @@ func (b *BucketSettingsResource) Create(ctx context.Context, req resource.Create
 		Settings:   data.ToProtoObject(),
 	}
 
-	_, err := b.client.CWObjectClient.SetBucketSettings(ctx, connect.NewRequest(&setReq))
+	_, err := b.client.SetBucketSettings(ctx, connect.NewRequest(&setReq))
 	if err != nil {
 		resp.Diagnostics.AddError("Error creating bucket settings", err.Error())
 		return
@@ -121,7 +121,7 @@ func (b *BucketSettingsResource) Delete(ctx context.Context, req resource.Delete
 		},
 	}
 
-	_, err := b.client.CWObjectClient.SetBucketSettings(ctx, connect.NewRequest(&deleteReq))
+	_, err := b.client.SetBucketSettings(ctx, connect.NewRequest(&deleteReq))
 	if err != nil {
 		resp.Diagnostics.AddError("Error deleting bucket settings", err.Error())
 		return
@@ -138,7 +138,7 @@ func (b *BucketSettingsResource) Read(ctx context.Context, req resource.ReadRequ
 		return
 	}
 
-	getResp, err := b.client.CWObjectClient.GetBucketInfo(ctx, connect.NewRequest(&cwobjectv1.GetBucketInfoRequest{
+	getResp, err := b.client.GetBucketInfo(ctx, connect.NewRequest(&cwobjectv1.GetBucketInfoRequest{
 		BucketName: data.Bucket.ValueString(),
 	}))
 	if err != nil {
@@ -184,7 +184,7 @@ func (b *BucketSettingsResource) Update(ctx context.Context, req resource.Update
 		Settings:   data.ToProtoObject(),
 	}
 
-	_, err := b.client.CWObjectClient.SetBucketSettings(ctx, connect.NewRequest(&setReq))
+	_, err := b.client.SetBucketSettings(ctx, connect.NewRequest(&setReq))
 	if err != nil {
 		resp.Diagnostics.AddError("Error creating bucket settings", err.Error())
 		return
@@ -200,7 +200,7 @@ func (b *BucketSettingsResource) ImportState(ctx context.Context, req resource.I
 	getReq := cwobjectv1.GetBucketInfoRequest{
 		BucketName: req.ID,
 	}
-	getResp, err := b.client.CWObjectClient.GetBucketInfo(ctx, connect.NewRequest(&getReq))
+	getResp, err := b.client.GetBucketInfo(ctx, connect.NewRequest(&getReq))
 	if err != nil {
 		resp.Diagnostics.AddError("Error reading bucket settings", err.Error())
 		return
