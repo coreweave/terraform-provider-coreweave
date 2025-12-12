@@ -116,6 +116,7 @@ func TestBucketSettingsResource(t *testing.T) {
 			ResourceName:      fmt.Sprintf("coreweave_object_storage_bucket_settings.%s", resourceName),
 			ImportState:       true,
 			ImportStateId:     bucket.Name.ValueString(),
+			ImportStateVerifyIdentifierAttribute: "bucket",
 			ImportStateVerify: true,
 		},
 	}
