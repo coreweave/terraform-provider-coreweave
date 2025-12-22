@@ -189,7 +189,7 @@ func (b *BucketSettingsResource) Update(ctx context.Context, req resource.Update
 
 	_, err := b.client.SetBucketSettings(ctx, connect.NewRequest(&setReq))
 	if err != nil {
-		resp.Diagnostics.AddError("Error creating bucket settings", err.Error())
+		resp.Diagnostics.AddError("Error updating bucket settings", err.Error())
 		return
 	}
 
