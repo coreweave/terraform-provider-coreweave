@@ -168,6 +168,7 @@ func (b *BucketSettingsResource) Schema(ctx context.Context, req resource.Schema
 			"audit_logging_enabled": schema.BoolAttribute{
 				Description: "Whether audit logging is enabled for the bucket. Note: please contact support to enable audit logging for your organization before enabling.",
 				Optional:    true,
+				Computed:    true,
 				Default:     booldefault.StaticBool(false),
 			},
 		},

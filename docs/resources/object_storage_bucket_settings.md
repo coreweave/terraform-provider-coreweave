@@ -29,8 +29,11 @@ resource "coreweave_object_storage_bucket_settings" "default" {
 
 ### Required
 
-- `audit_logging_enabled` (Boolean) Whether audit logging is enabled for the bucket.
 - `bucket` (String) The name of the bucket to manage settings for.
+
+### Optional
+
+- `audit_logging_enabled` (Boolean) Whether audit logging is enabled for the bucket. Note: please contact support to enable audit logging for your organization before enabling.
 
 ## Import
 
