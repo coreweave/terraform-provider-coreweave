@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.0](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.7.1...v0.8.0) (2025-12-26)
+
+
+### Features
+
+* **object_storage:** add settings resource, which can configure audit_logging ([#164](https://github.com/coreweave/terraform-provider-coreweave/issues/164)) ([3333933](https://github.com/coreweave/terraform-provider-coreweave/commit/3333933b98323dd40c637473d3312a4a72b77790))
+
 ## [0.7.1](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.7.0...v0.7.1) (2025-11-14)
 
 
