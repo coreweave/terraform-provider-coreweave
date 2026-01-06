@@ -468,7 +468,7 @@ func (r *ClusterResource) Schema(ctx context.Context, req resource.SchemaRequest
 			},
 			"version": schema.StringAttribute{
 				Required:            true,
-				MarkdownDescription: "The version of Kubernetes to run on the cluster, in minor version format (e.g. 'v1.32'). Patch versions are automatically applied by CKS as they are released.",
+				MarkdownDescription: "The version of Kubernetes to run on the cluster, in minor version format (e.g. 'v1.35'). Patch versions are automatically applied by CKS as they are released.",
 			},
 			"pod_cidr_name": schema.StringAttribute{
 				Required:            true,

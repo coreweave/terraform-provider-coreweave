@@ -35,7 +35,7 @@ resource "coreweave_networking_vpc" "default" {
 
 resource "coreweave_cks_cluster" "default" {
   name                   = "default"
-  version                = "v1.32"
+  version                = "v1.35"
   zone                   = "US-EAST-04A"
   vpc_id                 = coreweave_networking_vpc.default.id
   public                 = false
@@ -75,7 +75,7 @@ The prefixes must exist in the cluster's VPC. This field is append-only.
 - `name` (String) The name of the cluster. Must not be longer than 30 characters.
 - `pod_cidr_name` (String) The name of the vpc prefix to use as the pod CIDR range. The prefix must exist in the cluster's VPC.
 - `service_cidr_name` (String) The name of the vpc prefix to use as the service CIDR range. The prefix must exist in the cluster's VPC.
-- `version` (String) The version of Kubernetes to run on the cluster, in minor version format (e.g. 'v1.32'). Patch versions are automatically applied by CKS as they are released.
+- `version` (String) The version of Kubernetes to run on the cluster, in minor version format (e.g. 'v1.35'). Patch versions are automatically applied by CKS as they are released.
 - `vpc_id` (String) The ID of the VPC in which the cluster is located. Must be a VPC in the same Availability Zone as the cluster.
 - `zone` (String) The Availability Zone in which the cluster is located.
 
