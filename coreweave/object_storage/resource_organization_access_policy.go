@@ -161,7 +161,7 @@ func (o *OrganizationAccessPolicyResource) Metadata(ctx context.Context, req res
 
 func (o *OrganizationAccessPolicyResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		MarkdownDescription: "CoreWeave Object Storage Organization Access Policy",
+		MarkdownDescription: "[Organization access policies](https://docs.coreweave.com/docs/products/storage/object-storage/auth-access/organization-policies/about) enforce permissions for AI Object Storage across your entire CoreWeave organization, automatically covering every resource, bucket, and user in your account. At least one organization access policy must be in place before you can create a bucket.",
 		Attributes: map[string]schema.Attribute{
 			"name": schema.StringAttribute{
 				Required:            true,

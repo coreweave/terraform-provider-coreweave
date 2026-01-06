@@ -3,12 +3,12 @@
 page_title: "coreweave_networking_vpc Data Source - coreweave"
 subcategory: ""
 description: |-
-  CoreWeave VPC
+  Query information about an existing VPC by ID. See the CoreWeave VPC API reference https://docs.coreweave.com/docs/products/networking/vpc/vpc-api.
 ---
 
 # coreweave_networking_vpc (Data Source)
 
-CoreWeave VPC
+Query information about an existing VPC by ID. See the [CoreWeave VPC API reference](https://docs.coreweave.com/docs/products/networking/vpc/vpc-api).
 
 ## Example Usage
 

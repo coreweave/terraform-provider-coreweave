@@ -3,12 +3,12 @@
 page_title: "coreweave_object_storage_organization_access_policy Resource - coreweave"
 subcategory: ""
 description: |-
-  CoreWeave Object Storage Organization Access Policy
+  Organization access policies https://docs.coreweave.com/docs/products/storage/object-storage/auth-access/organization-policies/about enforce permissions for AI Object Storage across your entire CoreWeave organization, automatically covering every resource, bucket, and user in your account. At least one organization access policy must be in place before you can create a bucket.
 ---
 
 # coreweave_object_storage_organization_access_policy (Resource)
 
-CoreWeave Object Storage Organization Access Policy
+[Organization access policies](https://docs.coreweave.com/docs/products/storage/object-storage/auth-access/organization-policies/about) enforce permissions for AI Object Storage across your entire CoreWeave organization, automatically covering every resource, bucket, and user in your account. At least one organization access policy must be in place before you can create a bucket.
 
 ## Example Usage
 

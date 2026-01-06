@@ -3,12 +3,12 @@
 page_title: "coreweave_cks_cluster Resource - coreweave"
 subcategory: ""
 description: |-
-  CoreWeave Kubernetes Cluster
+  Create and manage clusters on CoreWeave Kubernetes Service (CKS) https://docs.coreweave.com/docs/products/cks/clusters/introduction.
 ---
 
 # coreweave_cks_cluster (Resource)
 
-CoreWeave Kubernetes Cluster
+Create and manage clusters on [CoreWeave Kubernetes Service (CKS)](https://docs.coreweave.com/docs/products/cks/clusters/introduction).
 
 ## Example Usage
 
