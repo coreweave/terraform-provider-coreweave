@@ -2,5 +2,5 @@ package testutil
 
 const (
 	AcceptanceTestZone        = "US-LAB-01A"
-	AcceptanceTestKubeVersion = "v1.32"
+	AcceptanceTestKubeVersion = "v1.35"
 )
