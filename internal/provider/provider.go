@@ -192,7 +192,7 @@ func BuildClient(ctx context.Context, model CoreweaveProviderModel, tfVersion, p
 		func(next connect.UnaryFunc) connect.UnaryFunc {
 			return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
 				req.Header().Add("Authorization", fmt.Sprintf("Bearer %s", token))
-				req.Header().Add("User-Agent", fmt.Sprintf("Terraform/%s terraform-provider-coreweave/%s (+https://github.com/coreweave/terraform-provider-coreweave)", tfVersion, providerVersion))
+				req.Header().Set("User-Agent", fmt.Sprintf("Terraform/%s terraform-provider-coreweave/%s (+https://github.com/coreweave/terraform-provider-coreweave)", tfVersion, providerVersion))
 				return next(ctx, req)
 			}
 		},
