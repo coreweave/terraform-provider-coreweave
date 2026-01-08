@@ -26,4 +26,4 @@ provider "coreweave" {
 - `endpoint` (String) CoreWeave API Endpoint. This can also be set via the COREWEAVE_API_ENDPOINT environment variable, which takes precedence. Defaults to https://api.coreweave.com/
 - `http_timeout` (String) Timeout duration for the HTTP client to use. This can also be set via the COREWEAVE_HTTP_TIMEOUT environment variable, which takes precedence. If unset, defaults to 10 seconds
 - `s3_endpoint` (String) CoreWeave S3 Endpoint, used for CoreWeave Object Storage. This can also be set via the COREWEAVE_S3_ENDPOINT environment variable, which takes precedence. Defaults to https://cwobject.com
-- `token` (String, Sensitive) CoreWeave API Token. In the form CW-SECRET-<secret>. This can also be set via the COREWEAVE_API_TOKEN environment variable, which takes precedence.
+- `token` (String, Sensitive) CoreWeave API Token in the form `CW-SECRET-<secret>`. This can also be set via the COREWEAVE_API_TOKEN environment variable, which takes precedence.
