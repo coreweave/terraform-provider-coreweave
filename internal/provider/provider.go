@@ -93,7 +93,7 @@ func (p *CoreweaveProvider) Schema(ctx context.Context, req provider.SchemaReque
 				},
 			},
 			"token": schema.StringAttribute{
-				MarkdownDescription: fmt.Sprintf("CoreWeave API Token. In the form CW-SECRET-<secret>. This can also be set via the %s environment variable, which takes precedence.", CoreweaveApiTokenEnvVar),
+				MarkdownDescription: fmt.Sprintf("CoreWeave API Token in the form `CW-SECRET-<secret>`. This can also be set via the %s environment variable, which takes precedence.", CoreweaveApiTokenEnvVar),
 				Optional:            true,
 				Sensitive:           true,
 			},
