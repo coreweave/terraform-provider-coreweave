@@ -197,7 +197,7 @@ func generateResourceNames(clusterNamePrefix string) resourceNames {
 	randomInt := rand.IntN(100)
 
 	clusterName := fmt.Sprintf("%s%s-%x", AcceptanceTestPrefix, clusterNamePrefix, randomInt)
-	resourceName := fmt.Sprintf("test_acc_cks_cluster_%x", randomInt)
+	resourceName := fmt.Sprintf("test_acc_cks_cluster_%s_%x", clusterNamePrefix, randomInt)
 	fullResourceName := fmt.Sprintf("coreweave_cks_cluster.%s", resourceName)
 	fullDataSourceName := fmt.Sprintf("data.coreweave_cks_cluster.%s", resourceName)
 
@@ -796,10 +796,9 @@ func TestEmptyAuditPolicy(t *testing.T) {
 func TestSharedStorage(t *testing.T) {
 	zone := testutil.AcceptanceTestZone
 	kubeVersion := testutil.AcceptanceTestKubeVersion
-	ctx := context.Background()
-
 	// Test 1: create a shared-storage cluster
 	t.Run("create cluster with shared storage", func(t *testing.T) {
+		ctx := t.Context()
 		// Create base (original/source) cluster that is sharing it's storage
 		baseConfig1 := generateResourceNames("shared")
 		baseVpc1 := defaultVpc(baseConfig1.ClusterName, zone)
@@ -830,7 +829,7 @@ func TestSharedStorage(t *testing.T) {
 			SharedStorageClusterId: types.StringValue(fmt.Sprintf("coreweave_cks_cluster.%s.id", baseConfig1.ResourceName)),
 		}
 
-		resource.Test(t, resource.TestCase{
+		resource.ParallelTest(t, resource.TestCase{
 			ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
 			PreCheck: func() {
 				testutil.SetEnvDefaults()
