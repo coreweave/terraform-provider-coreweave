@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.8.1](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.8.0...v0.8.1) (2026-01-09)
+
+
+### Bug Fixes
+
+* Set the user-agent header ([6c63d87](https://github.com/coreweave/terraform-provider-coreweave/commit/6c63d87691112bd024c4e6b2f4739b97e2bfc56c))
+
+
+### Documentation
+
+* Escape special characters ([#169](https://github.com/coreweave/terraform-provider-coreweave/issues/169)) ([1a031f5](https://github.com/coreweave/terraform-provider-coreweave/commit/1a031f533ea2d354da1a8e934b21585e4c5560f4))
+* expand description strings with cross-links for all resources ([#166](https://github.com/coreweave/terraform-provider-coreweave/issues/166)) ([d66b019](https://github.com/coreweave/terraform-provider-coreweave/commit/d66b019b9acffc96c323f9237590572a178ad62b))
+
 ## [0.8.0](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.7.1...v0.8.0) (2025-12-26)
 
 
