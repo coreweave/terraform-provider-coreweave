@@ -10,8 +10,8 @@ buf.build/gen/go/coreweave/cwobject/protocolbuffers/go v1.36.2-20250604181649-b9
 buf.build/gen/go/coreweave/cwobject/protocolbuffers/go v1.36.2-20250604181649-b97f17b05d5b.1/go.mod h1:c1JOkcyAewtxGP7NAK7grdCoJ3z90wSbjid50M+GTFE=
 buf.build/gen/go/coreweave/networking/connectrpc/go v1.18.1-20250310211902-b930cb89bad3.1 h1:20HuK7yHrPUx3NZcaJk+nkbQMvIK2vN2L8QKrz8MnLI=
 buf.build/gen/go/coreweave/networking/connectrpc/go v1.18.1-20250310211902-b930cb89bad3.1/go.mod h1:tkRTy41poTxI8SgRGCbt9goNeRgykFNQ7E2M8gRfrJo=
-buf.build/gen/go/coreweave/networking/protocolbuffers/go v1.36.2-20250310211902-b930cb89bad3.1 h1:z1oMDw7nhqzMmkpa1VRVLHk4G7VYF1UUKH0cEgUUqzQ=
-buf.build/gen/go/coreweave/networking/protocolbuffers/go v1.36.2-20250310211902-b930cb89bad3.1/go.mod h1:18J+C9ULMrXj4CZQ2uXkJjtWkWa/aFPh5PxYrxNNbyY=
+buf.build/gen/go/coreweave/networking/protocolbuffers/go v1.36.10-20251112175914-2bd1efefa63c.1 h1:Vg7bZhO3S3RYvIJno80tbJctbHBfLtvNU2LrTXljOcQ=
+buf.build/gen/go/coreweave/networking/protocolbuffers/go v1.36.10-20251112175914-2bd1efefa63c.1/go.mod h1:i2IJo77keIBMMf1TT65ZYKdTHYpyoF816JiUDHncTjY=
 buf.build/gen/go/grpc-ecosystem/grpc-gateway/protocolbuffers/go v1.36.2-20241220201140-4c5ba75caaf8.1 h1:AjyYh6i8bsmef6OIvSK+7K5ZwkzBQxgVPb4F+zhRSOA=
 buf.build/gen/go/grpc-ecosystem/grpc-gateway/protocolbuffers/go v1.36.2-20241220201140-4c5ba75caaf8.1/go.mod h1:hTOBKINwGHfMDBYzf2rUhU43p7h+ySnNrgEDmT+iOQY=
 connectrpc.com/connect v1.19.1 h1:R5M57z05+90EfEvCY1b7hBxDVOUl45PrtXtAV2fOC14=
