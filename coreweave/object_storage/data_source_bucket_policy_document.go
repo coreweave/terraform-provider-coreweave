@@ -207,7 +207,7 @@ func (d *BucketPolicyDocumentDataSource) Metadata(ctx context.Context, req datas
 
 func (d *BucketPolicyDocumentDataSource) Schema(ctx context.Context, req datasource.SchemaRequest, resp *datasource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		MarkdownDescription: "CoreWeave Bucket Policy Document. This data source provides a type-safe data structure for creating an S3 JSON Bucket Policy.",
+		MarkdownDescription: "[Bucket access policies](https://docs.coreweave.com/docs/products/storage/object-storage/auth-access/bucket-access/bucket-policies) allow you to define precise, S3-compatible access control for one bucket. They are evaluated after organization access policies. See [Manage Bucket Policies](https://docs.coreweave.com/docs/products/storage/object-storage/auth-access/bucket-access/manage-bucket-policies#example-policies) for examples and further information. This data source provides a type-safe data structure for creating an S3-compatible JSON bucket policy.",
 		Attributes: map[string]schema.Attribute{
 			"version": schema.StringAttribute{
 				Optional:            true,

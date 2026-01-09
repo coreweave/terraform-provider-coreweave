@@ -131,7 +131,7 @@ func (r *BucketLifecycleResource) Metadata(ctx context.Context, req resource.Met
 
 func (r *BucketLifecycleResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		MarkdownDescription: "CoreWeave Object Storage Bucket Lifecycle Configuration",
+		MarkdownDescription: "Lifecycle configurations automate object management by defining actions applied to objects over time, such as expiring objects after a specified period or transitioning them to different storage tiers. This helps optimize storage costs and maintain data hygiene. Lifecycle configurations automate object management by defining actions applied to objects over time, such as expiring objects after a specified period or transitioning them to different storage tiers. This helps optimize storage costs and maintain data hygiene. [Learn more about S3-compatible lifecycle bucket configurations](https://docs.coreweave.com/docs/products/storage/object-storage/reference/object-storage-s3#bucket-lifecycles).",
 		Attributes: map[string]schema.Attribute{
 			"bucket": schema.StringAttribute{
 				Required:            true,

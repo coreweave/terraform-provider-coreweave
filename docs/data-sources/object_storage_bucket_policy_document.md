@@ -3,12 +3,12 @@
 page_title: "coreweave_object_storage_bucket_policy_document Data Source - coreweave"
 subcategory: ""
 description: |-
-  CoreWeave Bucket Policy Document. This data source provides a type-safe data structure for creating an S3 JSON Bucket Policy.
+  Bucket access policies https://docs.coreweave.com/docs/products/storage/object-storage/auth-access/bucket-access/bucket-policies allow you to define precise, S3-compatible access control for one bucket. They are evaluated after organization access policies. See Manage Bucket Policies https://docs.coreweave.com/docs/products/storage/object-storage/auth-access/bucket-access/manage-bucket-policies#example-policies for examples and further information. This data source provides a type-safe data structure for creating an S3-compatible JSON bucket policy.
 ---
 
 # coreweave_object_storage_bucket_policy_document (Data Source)
 
-CoreWeave Bucket Policy Document. This data source provides a type-safe data structure for creating an S3 JSON Bucket Policy.
+[Bucket access policies](https://docs.coreweave.com/docs/products/storage/object-storage/auth-access/bucket-access/bucket-policies) allow you to define precise, S3-compatible access control for one bucket. They are evaluated after organization access policies. See [Manage Bucket Policies](https://docs.coreweave.com/docs/products/storage/object-storage/auth-access/bucket-access/manage-bucket-policies#example-policies) for examples and further information. This data source provides a type-safe data structure for creating an S3-compatible JSON bucket policy.
 
 ## Example Usage
 
