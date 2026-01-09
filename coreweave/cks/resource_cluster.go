@@ -391,6 +391,10 @@ func (c *ClusterResourceModel) ToUpdateRequest(ctx context.Context) *cksv1beta1.
 		},
 	}
 
+	if np := c.NodePorts(); np != nil {
+		req.Network.ServiceNodePortRange = np
+	}
+
 	if c.AuthNWebhook != nil {
 		req.AuthnWebhook = &cksv1beta1.AuthWebhookConfig{
 			Server: c.AuthNWebhook.Server.ValueString(),
@@ -425,6 +429,96 @@ func (c *ClusterResourceModel) ToUpdateRequest(ctx context.Context) *cksv1beta1.
 
 func (r *ClusterResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + "_cks_cluster"
+}
+
+func requireReplaceIfInternalLbCidrNames(ctx context.Context, req planmodifier.SetRequest, resp *setplanmodifier.RequiresReplaceIfFuncResponse) {
+	if req.StateValue.IsNull() || req.PlanValue.IsUnknown() || req.ConfigValue.IsUnknown() {
+		return
+	}
+
+	prior := []types.String{}
+	planned := []types.String{}
+
+	if diag := req.StateValue.ElementsAs(ctx, &prior, false); diag.HasError() {
+		resp.Diagnostics = diag
+		return
+	}
+
+	if diag := req.PlanValue.ElementsAs(ctx, &planned, false); diag.HasError() {
+		resp.Diagnostics = diag
+		return
+	}
+
+	priorSet := map[string]struct{}{}
+	for _, p := range prior {
+		priorSet[p.ValueString()] = struct{}{}
+	}
+
+	plannedSet := map[string]struct{}{}
+	for _, p := range planned {
+		plannedSet[p.ValueString()] = struct{}{}
+	}
+
+	for key := range priorSet {
+		if _, ok := plannedSet[key]; !ok {
+			resp.Diagnostics.AddWarning("internal_lb_cidr_names is append-only, removing an existing value will force replacement", fmt.Sprintf("cannot remove existing prefix '%s'", key))
+		}
+	}
+
+	if resp.Diagnostics.WarningsCount() > 0 {
+		resp.RequiresReplace = true
+	}
+}
+
+func requireReplaceIfNodePortRangeShrink(ctx context.Context, req planmodifier.ObjectRequest, resp *objectplanmodifier.RequiresReplaceIfFuncResponse) {
+	if req.StateValue.IsNull() || req.PlanValue.IsUnknown() || req.ConfigValue.IsUnknown() {
+		return
+	}
+
+	stateObj := req.StateValue
+	if stateObj.IsNull() || stateObj.IsUnknown() {
+		return
+	}
+	planObj := req.PlanValue
+	if planObj.IsNull() || planObj.IsUnknown() {
+		return
+	}
+
+	sAttrs := stateObj.Attributes()
+	pAttrs := planObj.Attributes()
+
+	sStart, sStartOK := sAttrs["start"].(types.Int32)
+	sEnd, sEndOK := sAttrs["end"].(types.Int32)
+	pStart, pStartOK := pAttrs["start"].(types.Int32)
+	pEnd, pEndOK := pAttrs["end"].(types.Int32)
+	if !sStartOK || !sEndOK || !pStartOK || !pEndOK {
+		return
+	}
+
+	if sStart.IsUnknown() || sEnd.IsUnknown() || pStart.IsUnknown() || pEnd.IsUnknown() || sStart.IsNull() || sEnd.IsNull() || pStart.IsNull() || pEnd.IsNull() {
+		return
+	}
+
+	oldStart := sStart.ValueInt32()
+	oldEnd := sEnd.ValueInt32()
+	newStart := pStart.ValueInt32()
+	newEnd := pEnd.ValueInt32()
+
+	if newStart > oldStart || newEnd < oldEnd {
+		resp.Diagnostics.AddWarning("Changing node_port_range shrinks the existing range; replacement required", fmt.Sprintf("existing range %d-%d to planned %d-%d requires replacement", oldStart, oldEnd, newStart, newEnd))
+		resp.RequiresReplace = true
+	}
+}
+
+func requireReplaceIfStatusFailed(ctx context.Context, req planmodifier.StringRequest, resp *stringplanmodifier.RequiresReplaceIfFuncResponse) {
+	if req.StateValue.IsNull() || req.PlanValue.IsUnknown() || req.ConfigValue.IsUnknown() {
+		return
+	}
+
+	if req.StateValue.ValueString() == cksv1beta1.Cluster_STATUS_FAILED.String() || req.PlanValue.ValueString() == cksv1beta1.Cluster_STATUS_FAILED.String() {
+		resp.Diagnostics.AddWarning("Failed cluster must be destroyed and re-created", "The cluster is in a failed state. You must destroy and re-create the cluster to retry.")
+		resp.RequiresReplace = true
+	}
 }
 
 func (r *ClusterResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
@@ -489,54 +583,16 @@ func (r *ClusterResource) Schema(ctx context.Context, req resource.SchemaRequest
 				Required:            true,
 				MarkdownDescription: "The names of the vpc prefixes to use as internal load balancer CIDR ranges. Internal load balancers are reachable within the VPC but not accessible from the internet.\nThe prefixes must exist in the cluster's VPC. This field is append-only.",
 				PlanModifiers: []planmodifier.Set{
-					setplanmodifier.RequiresReplaceIf(func(ctx context.Context, req planmodifier.SetRequest, resp *setplanmodifier.RequiresReplaceIfFuncResponse) {
-						// Skip if there's no prior state or if the config is unknown
-						if req.StateValue.IsNull() || req.PlanValue.IsUnknown() || req.ConfigValue.IsUnknown() {
-							return
-						}
-
-						prior := []types.String{}
-						planned := []types.String{}
-
-						if diag := req.StateValue.ElementsAs(ctx, &prior, false); diag.HasError() {
-							resp.Diagnostics = diag
-							return
-						}
-
-						if diag := req.PlanValue.ElementsAs(ctx, &planned, false); diag.HasError() {
-							resp.Diagnostics = diag
-							return
-						}
-
-						priorSet := map[string]struct{}{}
-						for _, p := range prior {
-							priorSet[p.ValueString()] = struct{}{}
-						}
-
-						plannedSet := map[string]struct{}{}
-						for _, p := range planned {
-							plannedSet[p.ValueString()] = struct{}{}
-						}
-
-						for key := range priorSet {
-							if _, ok := plannedSet[key]; !ok {
-								resp.Diagnostics.AddWarning("internal_lb_cidr_names is append-only, removing an existing value will force replacement", fmt.Sprintf("cannot remove existing prefix '%s'", key))
-							}
-						}
-
-						if resp.Diagnostics.WarningsCount() > 0 {
-							resp.RequiresReplace = true
-						}
-					}, "", "Field `internal_lb_cidr_names` is append-only. Removing an existing value will force replacement."),
+					setplanmodifier.RequiresReplaceIf(requireReplaceIfInternalLbCidrNames, "", "Field `internal_lb_cidr_names` is append-only. Removing an existing value will force replacement."),
 				},
 			},
 			"node_port_range": schema.SingleNestedAttribute{
-				Description: "Kubernetes Service NodePort range.",
+				Description: "Kubernetes Service NodePort range. NodePort range can be expanded in existing clusters but not shrunk. Updating the NodePort range to a smaller range will require a replacement of the cluster.",
 				Computed:    true,
 				Optional:    true,
 				PlanModifiers: []planmodifier.Object{
 					objectplanmodifier.UseStateForUnknown(),
-					objectplanmodifier.RequiresReplace(),
+					objectplanmodifier.RequiresReplaceIf(requireReplaceIfNodePortRangeShrink, "", "Field `node_port_range` only requires replacement when the planned range shrinks the existing range."),
 				},
 				Attributes: map[string]schema.Attribute{
 					"start": schema.Int32Attribute{
@@ -641,18 +697,7 @@ func (r *ClusterResource) Schema(ctx context.Context, req resource.SchemaRequest
 				Optional:            false,
 				Required:            false,
 				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown(), stringplanmodifier.RequiresReplaceIf(
-					func(ctx context.Context, req planmodifier.StringRequest, resp *stringplanmodifier.RequiresReplaceIfFuncResponse) {
-						// Skip if there's no prior state or if the config is unknown
-						if req.StateValue.IsNull() || req.PlanValue.IsUnknown() || req.ConfigValue.IsUnknown() {
-							return
-						}
-
-						// If the status is FAILED, the cluster must be destroyed and re-created
-						if req.StateValue.ValueString() == cksv1beta1.Cluster_STATUS_FAILED.String() || req.PlanValue.ValueString() == cksv1beta1.Cluster_STATUS_FAILED.String() {
-							resp.Diagnostics.AddWarning("Failed cluster must be destroyed and re-created", "The cluster is in a failed state. You must destroy and re-create the cluster to retry.")
-							resp.RequiresReplace = true
-						}
-					},
+					requireReplaceIfStatusFailed,
 					"", "Field `status` is read-only. If the status is `FAILED`, the cluster must be destroyed and re-created again.")},
 			},
 			"service_account_oidc_issuer_url": schema.StringAttribute{
