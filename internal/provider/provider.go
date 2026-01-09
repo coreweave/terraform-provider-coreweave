@@ -79,14 +79,14 @@ func (p *CoreweaveProvider) Schema(ctx context.Context, req provider.SchemaReque
 	resp.Schema = schema.Schema{
 		Attributes: map[string]schema.Attribute{
 			"endpoint": schema.StringAttribute{
-				MarkdownDescription: fmt.Sprintf("CoreWeave API Endpoint. This can also be set via the %s environment variable, which takes precedence. Defaults to %s", CoreweaveApiEndpointEnvVar, CoreweaveApiEndpointDefault),
+				MarkdownDescription: fmt.Sprintf("CoreWeave API Endpoint. This can also be set via the %s environment variable, which takes precedence. Defaults to `%s`", CoreweaveApiEndpointEnvVar, CoreweaveApiEndpointDefault),
 				Optional:            true,
 				Validators: []validator.String{
 					uriValidator{},
 				},
 			},
 			"s3_endpoint": schema.StringAttribute{
-				MarkdownDescription: fmt.Sprintf("CoreWeave S3 Endpoint, used for CoreWeave Object Storage. This can also be set via the %s environment variable, which takes precedence. Defaults to %s", CoreWeaveS3EndpointEnvVar, CoreWeaveS3EndpointDefault),
+				MarkdownDescription: fmt.Sprintf("CoreWeave S3 Endpoint, used for CoreWeave Object Storage. This can also be set via the %s environment variable, which takes precedence. Defaults to `%s`", CoreWeaveS3EndpointEnvVar, CoreWeaveS3EndpointDefault),
 				Optional:            true,
 				Validators: []validator.String{
 					uriValidator{},
