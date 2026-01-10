@@ -337,6 +337,17 @@ func createClusterTestStep(ctx context.Context, t *testing.T, config testStepCon
 		statechecks = append(statechecks, statecheck.ExpectKnownValue(config.Resources.FullResourceName, tfjsonpath.New("authz_webhook"), knownvalue.ObjectExact(authz)))
 	}
 
+	// node_port_range
+	if !config.cluster.NodePortRange.IsNull() && !config.cluster.NodePortRange.IsUnknown() {
+		attrs := config.cluster.NodePortRange.Attributes()
+		if s, ok := attrs["start"].(types.Int32); ok && !s.IsNull() && !s.IsUnknown() {
+			statechecks = append(statechecks, statecheck.ExpectKnownValue(config.Resources.FullResourceName, tfjsonpath.New("node_port_range").AtMapKey("start"), knownvalue.Int64Exact(int64(s.ValueInt32()))))
+		}
+		if e, ok := attrs["end"].(types.Int32); ok && !e.IsNull() && !e.IsUnknown() {
+			statechecks = append(statechecks, statecheck.ExpectKnownValue(config.Resources.FullResourceName, tfjsonpath.New("node_port_range").AtMapKey("end"), knownvalue.Int64Exact(int64(e.ValueInt32()))))
+		}
+	}
+
 	return resource.TestStep{
 		PreConfig: func() {
 			t.Logf("Beginning coreweave_cks_cluster %s test", config.TestName)
@@ -364,9 +375,19 @@ func TestClusterResource(t *testing.T) {
 	}
 	npVals := map[string]attr.Value{
 		"start": types.Int32Value(30000),
-		"end":   types.Int32Value(50000),
+		"end":   types.Int32Value(39534),
 	}
 	np, _ := types.ObjectValue(npTypes, npVals)
+	npLargeVals := map[string]attr.Value{
+		"start": types.Int32Value(30000),
+		"end":   types.Int32Value(60000),
+	}
+	npLarge, _ := types.ObjectValue(npTypes, npLargeVals)
+	npSmallVals := map[string]attr.Value{
+		"start": types.Int32Value(30000),
+		"end":   types.Int32Value(34534),
+	}
+	npSmall, _ := types.ObjectValue(npTypes, npSmallVals)
 	initial := &cks.ClusterResourceModel{
 		VpcId:               types.StringValue(fmt.Sprintf("coreweave_networking_vpc.%s.id", config.ResourceName)),
 		Name:                types.StringValue(config.ClusterName),
@@ -393,7 +414,7 @@ func TestClusterResource(t *testing.T) {
 		ServiceCidrName:     types.StringValue("service-cidr"),
 		InternalLBCidrNames: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr"), types.StringValue("internal-lb-cidr-2")}),
 		AuditPolicy:         types.StringValue(AuditPolicyB64),
-		NodePortRange:       np,
+		NodePortRange:       npLarge,
 		Oidc: &cks.OidcResourceModel{
 			IssuerURL:         types.StringValue("https://samples.auth0.com/"),
 			ClientID:          types.StringValue("kbyuFDidLLm280LIwVFiazOqjO3ty8KH"),
@@ -425,6 +446,20 @@ func TestClusterResource(t *testing.T) {
 		PodCidrName:         types.StringValue("pod-cidr"),
 		ServiceCidrName:     types.StringValue("service-cidr"),
 		InternalLBCidrNames: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr")}),
+		NodePortRange:       np,
+	}
+
+	requiresReplaceNodePortShrink := &cks.ClusterResourceModel{
+		VpcId:               types.StringValue(fmt.Sprintf("coreweave_networking_vpc.%s.id", config.ResourceName)),
+		Name:                types.StringValue(config.ClusterName),
+		Zone:                types.StringValue(zone),
+		Version:             types.StringValue(kubeVersion),
+		Public:              types.BoolValue(true),
+		PodCidrName:         types.StringValue("pod-cidr"),
+		ServiceCidrName:     types.StringValue("service-cidr"),
+		InternalLBCidrNames: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr"), types.StringValue("internal-lb-cidr-2")}),
+		AuditPolicy:         types.StringValue(AuditPolicyB64),
+		NodePortRange:       npSmall,
 	}
 
 	ctx := context.Background()
@@ -493,7 +528,18 @@ func TestClusterResource(t *testing.T) {
 			cluster:   *update,
 		}),
 		createClusterTestStep(ctx, t, testStepConfig{
-			TestName: "requires replace",
+			TestName: "requires replace on node_port_range shrink",
+			ConfigPlanChecks: resource.ConfigPlanChecks{
+				PreApply: []plancheck.PlanCheck{
+					plancheck.ExpectResourceAction(config.FullResourceName, plancheck.ResourceActionDestroyBeforeCreate),
+				},
+			},
+			Resources: config,
+			vpc:       *vpc,
+			cluster:   *requiresReplaceNodePortShrink,
+		}),
+		createClusterTestStep(ctx, t, testStepConfig{
+			TestName: "requires replace on internal_lb_cidr_names removal and audit policy removal",
 			ConfigPlanChecks: resource.ConfigPlanChecks{
 				PreApply: []plancheck.PlanCheck{
 					plancheck.ExpectResourceAction(config.FullResourceName, plancheck.ResourceActionDestroyBeforeCreate),
