@@ -210,13 +210,14 @@ func generateResourceNames(clusterNamePrefix string) resourceNames {
 }
 
 type testStepConfig struct {
-	TestName           string
-	Resources          resourceNames
-	ConfigPlanChecks   resource.ConfigPlanChecks
-	vpc                networking.VpcResourceModel
-	cluster            cks.ClusterResourceModel
-	PlanOnly           bool
-	ExpectNonEmptyPlan bool
+	TestName                string
+	Resources               resourceNames
+	ConfigPlanChecks        resource.ConfigPlanChecks
+	vpc                     networking.VpcResourceModel
+	cluster                 cks.ClusterResourceModel
+	PlanOnly                bool
+	ExpectNonEmptyPlan      bool
+	ImportStateVerifyIgnore []string
 }
 
 func stringOrNull(s types.String) knownvalue.Check {
@@ -358,10 +359,11 @@ func createClusterTestStep(ctx context.Context, t *testing.T, config testStepCon
 		PreConfig: func() {
 			t.Logf("Beginning coreweave_cks_cluster %s test", config.TestName)
 		},
-		Config:             networking.MustRenderVpcResource(ctx, config.Resources.ResourceName, &config.vpc) + "\n" + cks.MustRenderClusterResource(ctx, config.Resources.ResourceName, &config.cluster),
-		ConfigPlanChecks:   config.ConfigPlanChecks,
-		PlanOnly:           config.PlanOnly,
-		ExpectNonEmptyPlan: config.ExpectNonEmptyPlan,
+		Config:                  networking.MustRenderVpcResource(ctx, config.Resources.ResourceName, &config.vpc) + "\n" + cks.MustRenderClusterResource(ctx, config.Resources.ResourceName, &config.cluster),
+		ConfigPlanChecks:        config.ConfigPlanChecks,
+		PlanOnly:                config.PlanOnly,
+		ExpectNonEmptyPlan:      config.ExpectNonEmptyPlan,
+		ImportStateVerifyIgnore: config.ImportStateVerifyIgnore,
 	}
 
 	if !config.PlanOnly {
@@ -551,6 +553,14 @@ func TestClusterResource(t *testing.T) {
 			cluster:            *requiresReplaceNodePortShrink,
 			PlanOnly:           true,
 			ExpectNonEmptyPlan: true,
+			ImportStateVerifyIgnore: []string{
+				"authn_webhook.%",
+				"authn_webhook.server",
+				"authn_webhook.ca",
+				"authz_webhook.%",
+				"authz_webhook.server",
+				"authz_webhook.ca",
+			},
 		}),
 		createClusterTestStep(ctx, t, testStepConfig{
 			TestName: "requires replace on internal_lb_cidr_names removal and audit policy removal",
@@ -564,14 +574,6 @@ func TestClusterResource(t *testing.T) {
 			cluster:            *requiresReplace,
 			PlanOnly:           true,
 			ExpectNonEmptyPlan: true,
-		}),
-		{
-			PreConfig: func() {
-				t.Log("Beginning coreweave_cks_cluster import test")
-			},
-			ResourceName:      config.FullResourceName,
-			ImportState:       true,
-			ImportStateVerify: true,
 			ImportStateVerifyIgnore: []string{
 				"authn_webhook.%",
 				"authn_webhook.server",
@@ -580,6 +582,14 @@ func TestClusterResource(t *testing.T) {
 				"authz_webhook.server",
 				"authz_webhook.ca",
 			},
+		}),
+		{
+			PreConfig: func() {
+				t.Log("Beginning coreweave_cks_cluster import test")
+			},
+			ResourceName:      config.FullResourceName,
+			ImportState:       true,
+			ImportStateVerify: true,
 		},
 	}
 
