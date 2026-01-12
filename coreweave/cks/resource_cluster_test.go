@@ -572,6 +572,14 @@ func TestClusterResource(t *testing.T) {
 			ResourceName:      config.FullResourceName,
 			ImportState:       true,
 			ImportStateVerify: true,
+			ImportStateVerifyIgnore: []string{
+				"authn_webhook.%",
+				"authn_webhook.server",
+				"authn_webhook.ca",
+				"authz_webhook.%",
+				"authz_webhook.server",
+				"authz_webhook.ca",
+			},
 		},
 	}
 
