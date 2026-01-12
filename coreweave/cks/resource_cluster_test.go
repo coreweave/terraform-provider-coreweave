@@ -210,11 +210,13 @@ func generateResourceNames(clusterNamePrefix string) resourceNames {
 }
 
 type testStepConfig struct {
-	TestName         string
-	Resources        resourceNames
-	ConfigPlanChecks resource.ConfigPlanChecks
-	vpc              networking.VpcResourceModel
-	cluster          cks.ClusterResourceModel
+	TestName           string
+	Resources          resourceNames
+	ConfigPlanChecks   resource.ConfigPlanChecks
+	vpc                networking.VpcResourceModel
+	cluster            cks.ClusterResourceModel
+	PlanOnly           bool
+	ExpectNonEmptyPlan bool
 }
 
 func stringOrNull(s types.String) knownvalue.Check {
@@ -267,100 +269,110 @@ func (c saOIDCIssuerURLComparer) CompareValues(values ...any) error {
 
 func createClusterTestStep(ctx context.Context, t *testing.T, config testStepConfig) resource.TestStep {
 	t.Helper()
-	statechecks := []statecheck.StateCheck{
+
+	var statechecks []statecheck.StateCheck
+	if !config.PlanOnly {
 		// immutable fields
-		statecheck.ExpectKnownValue(config.Resources.FullResourceName, tfjsonpath.New("id"), knownvalue.NotNull()),
-		statecheck.ExpectKnownValue(config.Resources.FullResourceName, tfjsonpath.New("name"), knownvalue.StringExact(config.cluster.Name.ValueString())),
-		statecheck.ExpectKnownValue(config.Resources.FullResourceName, tfjsonpath.New("zone"), knownvalue.StringExact(config.cluster.Zone.ValueString())),
-		statecheck.ExpectKnownValue(config.Resources.FullResourceName, tfjsonpath.New("api_server_endpoint"), knownvalue.NotNull()),
-		statecheck.ExpectKnownValue(config.Resources.FullResourceName, tfjsonpath.New("status"), knownvalue.NotNull()),
-		statecheck.ExpectKnownValue(config.Resources.FullResourceName, tfjsonpath.New("vpc_id"), knownvalue.NotNull()),
-		statecheck.ExpectKnownValue(config.Resources.FullResourceName, tfjsonpath.New("version"), knownvalue.StringExact(config.cluster.Version.ValueString())),
-		statecheck.ExpectKnownValue(config.Resources.FullResourceName, tfjsonpath.New("public"), knownvalue.Bool(config.cluster.Public.ValueBool())),
-		statecheck.ExpectKnownValue(config.Resources.FullResourceName, tfjsonpath.New("pod_cidr_name"), knownvalue.StringExact(config.cluster.PodCidrName.ValueString())),
-		statecheck.ExpectKnownValue(config.Resources.FullResourceName, tfjsonpath.New("service_cidr_name"), knownvalue.StringExact(config.cluster.ServiceCidrName.ValueString())),
-		statecheck.CompareValuePairs(config.Resources.FullResourceName, tfjsonpath.New("service_account_oidc_issuer_url"), config.Resources.FullResourceName, tfjsonpath.New("id"), saOIDCIssuerURLComparer{}),
-	}
-
-	// internal lb cidrs
-	internalLbCidrs := []knownvalue.Check{}
-	for _, c := range config.cluster.InternalLbCidrNames(ctx) {
-		internalLbCidrs = append(internalLbCidrs, knownvalue.StringExact(c))
-	}
-	statechecks = append(statechecks, statecheck.ExpectKnownValue(config.Resources.FullResourceName, tfjsonpath.New("internal_lb_cidr_names"), knownvalue.SetExact(internalLbCidrs)))
-
-	// oidc
-	if config.cluster.Oidc != nil {
-		oidc := map[string]knownvalue.Check{
-			"issuer_url":          stringOrNull(config.cluster.Oidc.IssuerURL),
-			"client_id":           stringOrNull(config.cluster.Oidc.ClientID),
-			"username_claim":      stringOrNull(config.cluster.Oidc.UsernameClaim),
-			"username_prefix":     stringOrNull(config.cluster.Oidc.UsernamePrefix),
-			"groups_claim":        stringOrNull(config.cluster.Oidc.GroupsClaim),
-			"groups_prefix":       stringOrNull(config.cluster.Oidc.GroupsPrefix),
-			"ca":                  stringOrNull(config.cluster.Oidc.CA),
-			"required_claim":      stringOrNull(config.cluster.Oidc.RequiredClaim),
-			"admin_group_binding": stringOrNull(config.cluster.Oidc.AdminGroupBinding),
+		statechecks = []statecheck.StateCheck{
+			statecheck.ExpectKnownValue(config.Resources.FullResourceName, tfjsonpath.New("id"), knownvalue.NotNull()),
+			statecheck.ExpectKnownValue(config.Resources.FullResourceName, tfjsonpath.New("name"), knownvalue.StringExact(config.cluster.Name.ValueString())),
+			statecheck.ExpectKnownValue(config.Resources.FullResourceName, tfjsonpath.New("zone"), knownvalue.StringExact(config.cluster.Zone.ValueString())),
+			statecheck.ExpectKnownValue(config.Resources.FullResourceName, tfjsonpath.New("api_server_endpoint"), knownvalue.NotNull()),
+			statecheck.ExpectKnownValue(config.Resources.FullResourceName, tfjsonpath.New("status"), knownvalue.NotNull()),
+			statecheck.ExpectKnownValue(config.Resources.FullResourceName, tfjsonpath.New("vpc_id"), knownvalue.NotNull()),
+			statecheck.ExpectKnownValue(config.Resources.FullResourceName, tfjsonpath.New("version"), knownvalue.StringExact(config.cluster.Version.ValueString())),
+			statecheck.ExpectKnownValue(config.Resources.FullResourceName, tfjsonpath.New("public"), knownvalue.Bool(config.cluster.Public.ValueBool())),
+			statecheck.ExpectKnownValue(config.Resources.FullResourceName, tfjsonpath.New("pod_cidr_name"), knownvalue.StringExact(config.cluster.PodCidrName.ValueString())),
+			statecheck.ExpectKnownValue(config.Resources.FullResourceName, tfjsonpath.New("service_cidr_name"), knownvalue.StringExact(config.cluster.ServiceCidrName.ValueString())),
+			statecheck.CompareValuePairs(config.Resources.FullResourceName, tfjsonpath.New("service_account_oidc_issuer_url"), config.Resources.FullResourceName, tfjsonpath.New("id"), saOIDCIssuerURLComparer{}),
 		}
-		if len(config.cluster.Oidc.SigningAlgs.Elements()) == 0 {
-			oidc["signing_algs"] = knownvalue.SetSizeExact(0)
-		} else {
-			algs := []types.String{}
-			if diag := config.cluster.Oidc.SigningAlgs.ElementsAs(ctx, &algs, false); diag.HasError() {
-				t.Logf("failed to cast oidc signing algs to string slice: %v", diag.Errors())
-				t.FailNow()
+
+		// internal lb cidrs
+		internalLbCidrs := []knownvalue.Check{}
+		for _, c := range config.cluster.InternalLbCidrNames(ctx) {
+			internalLbCidrs = append(internalLbCidrs, knownvalue.StringExact(c))
+		}
+		statechecks = append(statechecks, statecheck.ExpectKnownValue(config.Resources.FullResourceName, tfjsonpath.New("internal_lb_cidr_names"), knownvalue.SetExact(internalLbCidrs)))
+
+		// oidc
+		if config.cluster.Oidc != nil {
+			oidc := map[string]knownvalue.Check{
+				"issuer_url":          stringOrNull(config.cluster.Oidc.IssuerURL),
+				"client_id":           stringOrNull(config.cluster.Oidc.ClientID),
+				"username_claim":      stringOrNull(config.cluster.Oidc.UsernameClaim),
+				"username_prefix":     stringOrNull(config.cluster.Oidc.UsernamePrefix),
+				"groups_claim":        stringOrNull(config.cluster.Oidc.GroupsClaim),
+				"groups_prefix":       stringOrNull(config.cluster.Oidc.GroupsPrefix),
+				"ca":                  stringOrNull(config.cluster.Oidc.CA),
+				"required_claim":      stringOrNull(config.cluster.Oidc.RequiredClaim),
+				"admin_group_binding": stringOrNull(config.cluster.Oidc.AdminGroupBinding),
 			}
+			if len(config.cluster.Oidc.SigningAlgs.Elements()) == 0 {
+				oidc["signing_algs"] = knownvalue.SetSizeExact(0)
+			} else {
+				algs := []types.String{}
+				if diag := config.cluster.Oidc.SigningAlgs.ElementsAs(ctx, &algs, false); diag.HasError() {
+					t.Logf("failed to cast oidc signing algs to string slice: %v", diag.Errors())
+					t.FailNow()
+				}
 
-			checks := []knownvalue.Check{}
-			for _, a := range algs {
-				checks = append(checks, knownvalue.StringExact(a.ValueString()))
+				checks := []knownvalue.Check{}
+				for _, a := range algs {
+					checks = append(checks, knownvalue.StringExact(a.ValueString()))
+				}
+				oidc["signing_algs"] = knownvalue.SetExact(checks)
 			}
-			oidc["signing_algs"] = knownvalue.SetExact(checks)
+			statechecks = append(statechecks, statecheck.ExpectKnownValue(config.Resources.FullResourceName, tfjsonpath.New("oidc"), knownvalue.ObjectExact(oidc)))
 		}
-		statechecks = append(statechecks, statecheck.ExpectKnownValue(config.Resources.FullResourceName, tfjsonpath.New("oidc"), knownvalue.ObjectExact(oidc)))
+
+		// webhooks
+		if config.cluster.AuthNWebhook != nil {
+			authn := map[string]knownvalue.Check{
+				"server": knownvalue.StringExact(config.cluster.AuthNWebhook.Server.ValueString()),
+				"ca":     stringOrNull(config.cluster.AuthNWebhook.CA),
+			}
+			statechecks = append(statechecks, statecheck.ExpectKnownValue(config.Resources.FullResourceName, tfjsonpath.New("authn_webhook"), knownvalue.ObjectExact(authn)))
+		}
+
+		if config.cluster.AuthZWebhook != nil {
+			authz := map[string]knownvalue.Check{
+				"server": knownvalue.StringExact(config.cluster.AuthZWebhook.Server.ValueString()),
+				"ca":     stringOrNull(config.cluster.AuthZWebhook.CA),
+			}
+			statechecks = append(statechecks, statecheck.ExpectKnownValue(config.Resources.FullResourceName, tfjsonpath.New("authz_webhook"), knownvalue.ObjectExact(authz)))
+		}
+
+		// node_port_range
+		if !config.cluster.NodePortRange.IsNull() && !config.cluster.NodePortRange.IsUnknown() {
+			attrs := config.cluster.NodePortRange.Attributes()
+			if s, ok := attrs["start"].(types.Int32); ok && !s.IsNull() && !s.IsUnknown() {
+				statechecks = append(statechecks, statecheck.ExpectKnownValue(config.Resources.FullResourceName, tfjsonpath.New("node_port_range").AtMapKey("start"), knownvalue.Int64Exact(int64(s.ValueInt32()))))
+			}
+			if e, ok := attrs["end"].(types.Int32); ok && !e.IsNull() && !e.IsUnknown() {
+				statechecks = append(statechecks, statecheck.ExpectKnownValue(config.Resources.FullResourceName, tfjsonpath.New("node_port_range").AtMapKey("end"), knownvalue.Int64Exact(int64(e.ValueInt32()))))
+			}
+		}
 	}
 
-	// webhooks
-	if config.cluster.AuthNWebhook != nil {
-		authn := map[string]knownvalue.Check{
-			"server": knownvalue.StringExact(config.cluster.AuthNWebhook.Server.ValueString()),
-			"ca":     stringOrNull(config.cluster.AuthNWebhook.CA),
-		}
-		statechecks = append(statechecks, statecheck.ExpectKnownValue(config.Resources.FullResourceName, tfjsonpath.New("authn_webhook"), knownvalue.ObjectExact(authn)))
-	}
-
-	if config.cluster.AuthZWebhook != nil {
-		authz := map[string]knownvalue.Check{
-			"server": knownvalue.StringExact(config.cluster.AuthZWebhook.Server.ValueString()),
-			"ca":     stringOrNull(config.cluster.AuthZWebhook.CA),
-		}
-		statechecks = append(statechecks, statecheck.ExpectKnownValue(config.Resources.FullResourceName, tfjsonpath.New("authz_webhook"), knownvalue.ObjectExact(authz)))
-	}
-
-	// node_port_range
-	if !config.cluster.NodePortRange.IsNull() && !config.cluster.NodePortRange.IsUnknown() {
-		attrs := config.cluster.NodePortRange.Attributes()
-		if s, ok := attrs["start"].(types.Int32); ok && !s.IsNull() && !s.IsUnknown() {
-			statechecks = append(statechecks, statecheck.ExpectKnownValue(config.Resources.FullResourceName, tfjsonpath.New("node_port_range").AtMapKey("start"), knownvalue.Int64Exact(int64(s.ValueInt32()))))
-		}
-		if e, ok := attrs["end"].(types.Int32); ok && !e.IsNull() && !e.IsUnknown() {
-			statechecks = append(statechecks, statecheck.ExpectKnownValue(config.Resources.FullResourceName, tfjsonpath.New("node_port_range").AtMapKey("end"), knownvalue.Int64Exact(int64(e.ValueInt32()))))
-		}
-	}
-
-	return resource.TestStep{
+	step := resource.TestStep{
 		PreConfig: func() {
 			t.Logf("Beginning coreweave_cks_cluster %s test", config.TestName)
 		},
-		// create both the VPC and the cluster, since a cluster must have a VPC
-		Config:           networking.MustRenderVpcResource(ctx, config.Resources.ResourceName, &config.vpc) + "\n" + cks.MustRenderClusterResource(ctx, config.Resources.ResourceName, &config.cluster),
-		ConfigPlanChecks: config.ConfigPlanChecks,
-		Check: resource.ComposeAggregateTestCheckFunc(
+		Config:             networking.MustRenderVpcResource(ctx, config.Resources.ResourceName, &config.vpc) + "\n" + cks.MustRenderClusterResource(ctx, config.Resources.ResourceName, &config.cluster),
+		ConfigPlanChecks:   config.ConfigPlanChecks,
+		PlanOnly:           config.PlanOnly,
+		ExpectNonEmptyPlan: config.ExpectNonEmptyPlan,
+	}
+
+	if !config.PlanOnly {
+		step.Check = resource.ComposeAggregateTestCheckFunc(
 			resource.TestCheckResourceAttr(config.Resources.FullResourceName, "name", config.cluster.Name.ValueString()),
 			resource.TestCheckResourceAttr(config.Resources.FullResourceName, "zone", config.cluster.Zone.ValueString()),
-		),
-		ConfigStateChecks: statechecks,
+		)
+		step.ConfigStateChecks = statechecks
 	}
+
+	return step
 }
 
 func TestClusterResource(t *testing.T) {
@@ -530,24 +542,28 @@ func TestClusterResource(t *testing.T) {
 		createClusterTestStep(ctx, t, testStepConfig{
 			TestName: "requires replace on node_port_range shrink",
 			ConfigPlanChecks: resource.ConfigPlanChecks{
-				PreApply: []plancheck.PlanCheck{
+				PostApplyPostRefresh: []plancheck.PlanCheck{
 					plancheck.ExpectResourceAction(config.FullResourceName, plancheck.ResourceActionDestroyBeforeCreate),
 				},
 			},
-			Resources: config,
-			vpc:       *vpc,
-			cluster:   *requiresReplaceNodePortShrink,
+			Resources:          config,
+			vpc:                *vpc,
+			cluster:            *requiresReplaceNodePortShrink,
+			PlanOnly:           true,
+			ExpectNonEmptyPlan: true,
 		}),
 		createClusterTestStep(ctx, t, testStepConfig{
 			TestName: "requires replace on internal_lb_cidr_names removal and audit policy removal",
 			ConfigPlanChecks: resource.ConfigPlanChecks{
-				PreApply: []plancheck.PlanCheck{
+				PostApplyPostRefresh: []plancheck.PlanCheck{
 					plancheck.ExpectResourceAction(config.FullResourceName, plancheck.ResourceActionDestroyBeforeCreate),
 				},
 			},
-			Resources: config,
-			vpc:       *vpc,
-			cluster:   *requiresReplace,
+			Resources:          config,
+			vpc:                *vpc,
+			cluster:            *requiresReplace,
+			PlanOnly:           true,
+			ExpectNonEmptyPlan: true,
 		}),
 		{
 			PreConfig: func() {
