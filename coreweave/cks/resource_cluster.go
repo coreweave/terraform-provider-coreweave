@@ -344,9 +344,7 @@ func (c *ClusterResourceModel) ToCreateRequest(ctx context.Context) *cksv1beta1.
 		SharedStorageClusterId: c.SharedStorageClusterId.ValueString(),
 	}
 
-	if np := c.NodePorts(); np != nil {
-		req.Network.ServiceNodePortRange = np
-	}
+	req.Network.ServiceNodePortRange = c.NodePorts()
 
 	if c.AuthNWebhook != nil {
 		req.AuthnWebhook = &cksv1beta1.AuthWebhookConfig{
@@ -391,9 +389,7 @@ func (c *ClusterResourceModel) ToUpdateRequest(ctx context.Context) *cksv1beta1.
 		},
 	}
 
-	if np := c.NodePorts(); np != nil {
-		req.Network.ServiceNodePortRange = np
-	}
+	req.Network.ServiceNodePortRange = c.NodePorts()
 
 	if c.AuthNWebhook != nil {
 		req.AuthnWebhook = &cksv1beta1.AuthWebhookConfig{
