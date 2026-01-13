@@ -541,14 +541,6 @@ func TestClusterResource(t *testing.T) {
 			vpc:       *vpc,
 			cluster:   *update,
 		}),
-		{
-			PreConfig: func() {
-				t.Log("Beginning coreweave_cks_cluster import test")
-			},
-			ResourceName:      config.FullResourceName,
-			ImportState:       true,
-			ImportStateVerify: true,
-		},
 		createClusterTestStep(ctx, t, testStepConfig{
 			TestName: "requires replace on node_port_range shrink",
 			ConfigPlanChecks: resource.ConfigPlanChecks{
@@ -561,14 +553,6 @@ func TestClusterResource(t *testing.T) {
 			cluster:            *requiresReplaceNodePortShrink,
 			PlanOnly:           true,
 			ExpectNonEmptyPlan: true,
-			ImportStateVerifyIgnore: []string{
-				"authn_webhook.%",
-				"authn_webhook.server",
-				"authn_webhook.ca",
-				"authz_webhook.%",
-				"authz_webhook.server",
-				"authz_webhook.ca",
-			},
 		}),
 		createClusterTestStep(ctx, t, testStepConfig{
 			TestName: "requires replace on internal_lb_cidr_names removal and audit policy removal",
@@ -577,20 +561,18 @@ func TestClusterResource(t *testing.T) {
 					plancheck.ExpectResourceAction(config.FullResourceName, plancheck.ResourceActionDestroyBeforeCreate),
 				},
 			},
-			Resources:          config,
-			vpc:                *vpc,
-			cluster:            *requiresReplace,
-			PlanOnly:           true,
-			ExpectNonEmptyPlan: true,
-			ImportStateVerifyIgnore: []string{
-				"authn_webhook.%",
-				"authn_webhook.server",
-				"authn_webhook.ca",
-				"authz_webhook.%",
-				"authz_webhook.server",
-				"authz_webhook.ca",
-			},
+			Resources: config,
+			vpc:       *vpc,
+			cluster:   *requiresReplace,
 		}),
+		{
+			PreConfig: func() {
+				t.Log("Beginning coreweave_cks_cluster import test")
+			},
+			ResourceName:      config.FullResourceName,
+			ImportState:       true,
+			ImportStateVerify: true,
+		},
 	}
 
 	resource.ParallelTest(t, resource.TestCase{
