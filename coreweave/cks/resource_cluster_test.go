@@ -541,6 +541,14 @@ func TestClusterResource(t *testing.T) {
 			vpc:       *vpc,
 			cluster:   *update,
 		}),
+		{
+			PreConfig: func() {
+				t.Log("Beginning coreweave_cks_cluster import test")
+			},
+			ResourceName:      config.FullResourceName,
+			ImportState:       true,
+			ImportStateVerify: true,
+		},
 		createClusterTestStep(ctx, t, testStepConfig{
 			TestName: "requires replace on node_port_range shrink",
 			ConfigPlanChecks: resource.ConfigPlanChecks{
@@ -583,14 +591,6 @@ func TestClusterResource(t *testing.T) {
 				"authz_webhook.ca",
 			},
 		}),
-		{
-			PreConfig: func() {
-				t.Log("Beginning coreweave_cks_cluster import test")
-			},
-			ResourceName:      config.FullResourceName,
-			ImportState:       true,
-			ImportStateVerify: true,
-		},
 	}
 
 	resource.ParallelTest(t, resource.TestCase{
