@@ -542,6 +542,17 @@ func TestClusterResource(t *testing.T) {
 			cluster:   *update,
 		}),
 		createClusterTestStep(ctx, t, testStepConfig{
+			TestName: "requires replace on internal_lb_cidr_names removal and audit policy removal",
+			ConfigPlanChecks: resource.ConfigPlanChecks{
+				PostApplyPreRefresh: []plancheck.PlanCheck{
+					plancheck.ExpectResourceAction(config.FullResourceName, plancheck.ResourceActionDestroyBeforeCreate),
+				},
+			},
+			Resources: config,
+			vpc:       *vpc,
+			cluster:   *requiresReplace,
+		}),
+		createClusterTestStep(ctx, t, testStepConfig{
 			TestName: "requires replace on node_port_range shrink",
 			ConfigPlanChecks: resource.ConfigPlanChecks{
 				PostApplyPreRefresh: []plancheck.PlanCheck{
@@ -553,17 +564,6 @@ func TestClusterResource(t *testing.T) {
 			cluster:            *requiresReplaceNodePortShrink,
 			PlanOnly:           true,
 			ExpectNonEmptyPlan: true,
-		}),
-		createClusterTestStep(ctx, t, testStepConfig{
-			TestName: "requires replace on internal_lb_cidr_names removal and audit policy removal",
-			ConfigPlanChecks: resource.ConfigPlanChecks{
-				PostApplyPreRefresh: []plancheck.PlanCheck{
-					plancheck.ExpectResourceAction(config.FullResourceName, plancheck.ResourceActionDestroyBeforeCreate),
-				},
-			},
-			Resources: config,
-			vpc:       *vpc,
-			cluster:   *requiresReplace,
 		}),
 		{
 			PreConfig: func() {
