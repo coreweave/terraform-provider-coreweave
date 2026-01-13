@@ -544,7 +544,7 @@ func TestClusterResource(t *testing.T) {
 		createClusterTestStep(ctx, t, testStepConfig{
 			TestName: "requires replace on internal_lb_cidr_names removal and audit policy removal",
 			ConfigPlanChecks: resource.ConfigPlanChecks{
-				PostApplyPreRefresh: []plancheck.PlanCheck{
+				PreApply: []plancheck.PlanCheck{
 					plancheck.ExpectResourceAction(config.FullResourceName, plancheck.ResourceActionDestroyBeforeCreate),
 				},
 			},
