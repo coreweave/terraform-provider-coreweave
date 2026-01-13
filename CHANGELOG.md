@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.0](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.8.1...v0.9.0) (2026-01-13)
+
+
+### Features
+
+* **ckscluster:** support node_port_range update operations ([#171](https://github.com/coreweave/terraform-provider-coreweave/issues/171)) ([39b2679](https://github.com/coreweave/terraform-provider-coreweave/commit/39b2679d8631ba121886c73a327a72c92a1077bb))
+
 ## [0.8.1](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.8.0...v0.8.1) (2026-01-09)
 
 
