@@ -80,6 +80,18 @@ func (v *VpcDhcpResourceModel) Set(dhcp *networkingv1beta1.DHCP) {
 	}
 }
 
+type HostPrefixResourceModel struct {
+	Name     types.String            `tfsdk:"name"`
+	Type     types.String            `tfsdk:"type"`
+	Prefixes []types.String          `tfsdk:"prefixes"`
+	IPAM     IPAMPolicyResourceModel `tfsdk:"ipam"`
+}
+
+type IPAMPolicyResourceModel struct {
+	PrefixLength         types.Int32  `tfsdk:"prefix_length"`
+	GatewayAddressPolicy types.String `tfsdk:"gateway_address_policy"`
+}
+
 type VpcPrefixResourceModel struct {
 	Name  types.String `tfsdk:"name"`
 	Value types.String `tfsdk:"value"`
@@ -131,14 +143,15 @@ func (v *VpcEgressResourceModel) ToProto() *networkingv1beta1.Egress {
 
 // VpcResourceModel describes the resource data model.
 type VpcResourceModel struct {
-	Id          types.String             `tfsdk:"id"`
-	Zone        types.String             `tfsdk:"zone"`
-	Name        types.String             `tfsdk:"name"`
-	HostPrefix  types.String             `tfsdk:"host_prefix"`
-	VpcPrefixes []VpcPrefixResourceModel `tfsdk:"vpc_prefixes"`
-	Ingress     *VpcIngressResourceModel `tfsdk:"ingress"`
-	Egress      *VpcEgressResourceModel  `tfsdk:"egress"`
-	Dhcp        *VpcDhcpResourceModel    `tfsdk:"dhcp"`
+	Id           types.String              `tfsdk:"id"`
+	Zone         types.String              `tfsdk:"zone"`
+	Name         types.String              `tfsdk:"name"`
+	HostPrefix   types.String              `tfsdk:"host_prefix"`
+	HostPrefixes []HostPrefixResourceModel `tfsdk:"host_prefixes"`
+	VpcPrefixes  []VpcPrefixResourceModel  `tfsdk:"vpc_prefixes"`
+	Ingress      *VpcIngressResourceModel  `tfsdk:"ingress"`
+	Egress       *VpcEgressResourceModel   `tfsdk:"egress"`
+	Dhcp         *VpcDhcpResourceModel     `tfsdk:"dhcp"`
 }
 
 func (v *VpcResourceModel) Set(vpc *networkingv1beta1.VPC) {
