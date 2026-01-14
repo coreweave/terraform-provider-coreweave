@@ -13,6 +13,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 )
 
 var (
@@ -65,7 +66,27 @@ func (d *VpcDataSource) Schema(ctx context.Context, req datasource.SchemaRequest
 			},
 			"host_prefix": schema.StringAttribute{
 				MarkdownDescription: "An IPv4 CIDR range used to allocate host addresses when booting compute into a VPC.",
+				DeprecationMessage:  "Configure host_prefixes instead.",
 				Computed:            true,
+			},
+			"host_prefixes": schema.ListNestedAttribute{
+				MarkdownDescription: "",
+				Computed:            true,
+				NestedObject: schema.NestedAttributeObject{
+					Attributes: map[string]schema.Attribute{
+						"name": schema.StringAttribute{},
+						"type": schema.StringAttribute{},
+						"prefixes": schema.ListAttribute{
+							ElementType: basetypes.StringType{},
+						},
+						"ipam": schema.SingleNestedAttribute{
+							Attributes: map[string]schema.Attribute{
+								"prefix_length":          schema.Int32Attribute{},
+								"gateway_address_policy": schema.StringAttribute{},
+							},
+						},
+					},
+				},
 			},
 			"ingress": schema.SingleNestedAttribute{
 				MarkdownDescription: "Settings affecting traffic entering the VPC.",
