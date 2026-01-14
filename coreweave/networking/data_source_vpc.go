@@ -70,19 +70,29 @@ func (d *VpcDataSource) Schema(ctx context.Context, req datasource.SchemaRequest
 				Computed:            true,
 			},
 			"host_prefixes": schema.ListNestedAttribute{
-				MarkdownDescription: "",
+				MarkdownDescription: "The IPv4 or IPv6 CIDR ranges used to allocate host addresses when booting compute into a VPC.",
 				Computed:            true,
 				NestedObject: schema.NestedAttributeObject{
 					Attributes: map[string]schema.Attribute{
-						"name": schema.StringAttribute{},
-						"type": schema.StringAttribute{},
+						"name": schema.StringAttribute{
+							MarkdownDescription: "The user-specified name of the host prefix.",
+						},
+						"type": schema.StringAttribute{
+							MarkdownDescription: "Controls network connectivity from the prefix to the host.",
+						},
 						"prefixes": schema.ListAttribute{
-							ElementType: basetypes.StringType{},
+							MarkdownDescription: "The VPC-wide aggregates from which host-specific prefixes are allocated. May be IPv4 or IPv6.",
+							ElementType:         basetypes.StringType{},
 						},
 						"ipam": schema.SingleNestedAttribute{
+							MarkdownDescription: "The configuration for a secondary host prefix.",
 							Attributes: map[string]schema.Attribute{
-								"prefix_length":          schema.Int32Attribute{},
-								"gateway_address_policy": schema.StringAttribute{},
+								"prefix_length": schema.Int32Attribute{
+									MarkdownDescription: "The desired length for each Node's allocation from the VPC-wide aggregate prefix.",
+								},
+								"gateway_address_policy": schema.StringAttribute{
+									MarkdownDescription: "Describes which IP address from the prefix is allocated to the network gateway.",
+								},
 							},
 						},
 					},
