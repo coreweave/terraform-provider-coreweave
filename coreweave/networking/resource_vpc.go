@@ -20,6 +20,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/retry"
 	"github.com/zclconf/go-cty/cty"
@@ -299,6 +300,36 @@ func (r *VpcResource) Schema(ctx context.Context, req resource.SchemaRequest, re
 							resp.RequiresReplace = true
 						}
 					}, "", ""),
+				},
+			},
+			"host_prefixes": schema.ListNestedAttribute{
+				MarkdownDescription: "The IPv4 or IPv6 CIDR ranges used to allocate host addresses when booting compute into a VPC.",
+				Optional:            true,
+				Computed:            true,
+				NestedObject: schema.NestedAttributeObject{
+					Attributes: map[string]schema.Attribute{
+						"name": schema.StringAttribute{
+							MarkdownDescription: "The user-specified name of the host prefix.",
+						},
+						"type": schema.StringAttribute{
+							MarkdownDescription: "Controls network connectivity from the prefix to the host.",
+						},
+						"prefixes": schema.ListAttribute{
+							MarkdownDescription: "The VPC-wide aggregates from which host-specific prefixes are allocated. May be IPv4 or IPv6.",
+							ElementType:         basetypes.StringType{},
+						},
+						"ipam": schema.SingleNestedAttribute{
+							MarkdownDescription: "The configuration for a secondary host prefix.",
+							Attributes: map[string]schema.Attribute{
+								"prefix_length": schema.Int32Attribute{
+									MarkdownDescription: "The desired length for each Node's allocation from the VPC-wide aggregate prefix.",
+								},
+								"gateway_address_policy": schema.StringAttribute{
+									MarkdownDescription: "Describes which IP address from the prefix is allocated to the network gateway.",
+								},
+							},
+						},
+					},
 				},
 			},
 			"ingress": schema.SingleNestedAttribute{

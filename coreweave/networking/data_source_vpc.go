@@ -76,22 +76,28 @@ func (d *VpcDataSource) Schema(ctx context.Context, req datasource.SchemaRequest
 					Attributes: map[string]schema.Attribute{
 						"name": schema.StringAttribute{
 							MarkdownDescription: "The user-specified name of the host prefix.",
+							Computed:            true,
 						},
 						"type": schema.StringAttribute{
 							MarkdownDescription: "Controls network connectivity from the prefix to the host.",
+							Computed:            true,
 						},
 						"prefixes": schema.ListAttribute{
 							MarkdownDescription: "The VPC-wide aggregates from which host-specific prefixes are allocated. May be IPv4 or IPv6.",
 							ElementType:         basetypes.StringType{},
+							Computed:            true,
 						},
 						"ipam": schema.SingleNestedAttribute{
 							MarkdownDescription: "The configuration for a secondary host prefix.",
+							Computed:            true,
 							Attributes: map[string]schema.Attribute{
 								"prefix_length": schema.Int32Attribute{
 									MarkdownDescription: "The desired length for each Node's allocation from the VPC-wide aggregate prefix.",
+									Computed:            true,
 								},
 								"gateway_address_policy": schema.StringAttribute{
 									MarkdownDescription: "Describes which IP address from the prefix is allocated to the network gateway.",
+									Computed:            true,
 								},
 							},
 						},
