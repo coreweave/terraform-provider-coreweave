@@ -553,7 +553,7 @@ func (r *ClusterResource) Schema(ctx context.Context, req resource.SchemaRequest
 			"public": schema.BoolAttribute{
 				Optional:            true,
 				Computed:            true,
-				MarkdownDescription: "Whether the cluster's api-server is publicly accessible from the internet.",
+				MarkdownDescription: "Whether the cluster's api-server is publicly accessible from the internet.\n\t> WARNING: Do not set this attribute to `false` at cluster creation. Additional setup is required before a cluster can be made private. Check with your CoreWeave account team for details.",
 				Default:             booldefault.StaticBool(false),
 			},
 			"version": schema.StringAttribute{
