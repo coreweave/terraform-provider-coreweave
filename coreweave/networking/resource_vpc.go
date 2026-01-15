@@ -125,6 +125,39 @@ func (ipam *IPAMPolicyResourceModel) ToProto() *networkingv1beta1.IPAddressManag
 	}
 }
 
+func (hp *HostPrefixResourceModel) Set(prefix *networkingv1beta1.HostPrefix) {
+	if hp == nil {
+		return
+	}
+
+	var hpType types.String
+	hpTypeNum := int32(prefix.Type)
+	if val, ok := networkingv1beta1.HostPrefix_Type_name[hpTypeNum]; ok {
+		hpType = types.StringValue(val)
+	}
+
+	prefixes := []types.String{}
+	for _, p := range prefix.Prefixes {
+		prefixes = append(prefixes, types.StringValue(p))
+	}
+
+	var gwPolicy types.String
+	gwPolicyNum := int32(prefix.Ipam.GetGatewayAddressPolicy())
+	if val, ok := networkingv1beta1.IPAddressManagementPolicy_GatewayAddressPolicy_name[gwPolicyNum]; ok {
+		gwPolicy = types.StringValue(val)
+	}
+
+	ipam := IPAMPolicyResourceModel{
+		PrefixLength:         types.Int32Value(prefix.Ipam.GetPrefixLength()),
+		GatewayAddressPolicy: gwPolicy,
+	}
+
+	hp.Name = types.StringValue(prefix.Name)
+	hp.Prefixes = prefixes
+	hp.Type = hpType
+	hp.IPAM = ipam
+}
+
 type VpcPrefixResourceModel struct {
 	Name  types.String `tfsdk:"name"`
 	Value types.String `tfsdk:"value"`
@@ -210,6 +243,16 @@ func (v *VpcResourceModel) Set(vpc *networkingv1beta1.VPC) {
 		v.Egress = &VpcEgressResourceModel{
 			DisablePublicAccess: types.BoolValue(vpc.Egress.DisablePublicAccess),
 		}
+	}
+
+	if len(vpc.HostPrefixes) > 0 {
+		hostPrefixes := []HostPrefixResourceModel{}
+		for _, p := range vpc.HostPrefixes {
+			hp := HostPrefixResourceModel{}
+			hp.Set(p)
+			hostPrefixes = append(hostPrefixes, hp)
+		}
+		v.HostPrefixes = hostPrefixes
 	}
 
 	if len(vpc.VpcPrefixes) > 0 {
