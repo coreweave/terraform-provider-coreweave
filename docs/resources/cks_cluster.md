@@ -87,7 +87,7 @@ The prefixes must exist in the cluster's VPC. This field is append-only.
 - `node_port_range` (Attributes) Kubernetes Service NodePort range. NodePort range can be expanded in existing clusters but not shrunk. Updating the NodePort range to a smaller range will require a replacement of the cluster. (see [below for nested schema](#nestedatt--node_port_range))
 - `oidc` (Attributes) OpenID Connect (OIDC) configuration for authentication to the api-server. (see [below for nested schema](#nestedatt--oidc))
 - `public` (Boolean) Whether the cluster's api-server is publicly accessible from the internet.
-  > WARNING: Do not set this attribute to `false` at cluster creation. Additional setup is required before a cluster can be made private. Check with your CoreWeave account team for details.
+	> WARNING: Do not set this attribute to `false` at cluster creation. Additional setup is required before a cluster can be made private. Check with your CoreWeave account team for details.
 - `shared_storage_cluster_id` (String) The `cluster_id` of the cluster to share storage with. Must be enabled by CoreWeave suppport. Contact CoreWeave support if you are interested in this feature.
 
 ### Read-Only
