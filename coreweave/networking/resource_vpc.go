@@ -87,9 +87,42 @@ type HostPrefixResourceModel struct {
 	IPAM     IPAMPolicyResourceModel `tfsdk:"ipam"`
 }
 
+func (hp *HostPrefixResourceModel) ToProto() *networkingv1beta1.HostPrefix {
+	var hpType networkingv1beta1.HostPrefix_Type
+	hpTypeVal := hp.Type.ValueString()
+	if val, ok := networkingv1beta1.HostPrefix_Type_value[hpTypeVal]; ok {
+		hpType = networkingv1beta1.HostPrefix_Type(val)
+	}
+
+	prefixes := []string{}
+	for _, prefix := range hp.Prefixes {
+		prefixes = append(prefixes, prefix.ValueString())
+	}
+
+	return &networkingv1beta1.HostPrefix{
+		Name:     hp.Name.ValueString(),
+		Type:     hpType,
+		Prefixes: prefixes,
+		Ipam:     hp.IPAM.ToProto(),
+	}
+}
+
 type IPAMPolicyResourceModel struct {
 	PrefixLength         types.Int32  `tfsdk:"prefix_length"`
 	GatewayAddressPolicy types.String `tfsdk:"gateway_address_policy"`
+}
+
+func (ipam *IPAMPolicyResourceModel) ToProto() *networkingv1beta1.IPAddressManagementPolicy {
+	var gwPolicy networkingv1beta1.IPAddressManagementPolicy_GatewayAddressPolicy
+	gwPolVal := ipam.GatewayAddressPolicy.ValueString()
+	if val, ok := networkingv1beta1.IPAddressManagementPolicy_GatewayAddressPolicy_value[gwPolVal]; ok {
+		gwPolicy = networkingv1beta1.IPAddressManagementPolicy_GatewayAddressPolicy(val)
+	}
+
+	return &networkingv1beta1.IPAddressManagementPolicy{
+		PrefixLength:         ipam.PrefixLength.ValueInt32(),
+		GatewayAddressPolicy: gwPolicy,
+	}
 }
 
 type VpcPrefixResourceModel struct {
@@ -216,6 +249,14 @@ func (v *VpcResourceModel) GetDhcp(ctx context.Context) *networkingv1beta1.DHCP 
 	return dhcp
 }
 
+func (v *VpcResourceModel) hostPrefixes() []*networkingv1beta1.HostPrefix {
+	hp := []*networkingv1beta1.HostPrefix{}
+	for _, p := range v.HostPrefixes {
+		hp = append(hp, p.ToProto())
+	}
+	return hp
+}
+
 func (v *VpcResourceModel) vpcPrefixes() []*networkingv1beta1.Prefix {
 	vp := []*networkingv1beta1.Prefix{}
 	for _, p := range v.VpcPrefixes {
@@ -226,13 +267,14 @@ func (v *VpcResourceModel) vpcPrefixes() []*networkingv1beta1.Prefix {
 
 func (v *VpcResourceModel) ToCreateRequest(ctx context.Context) *networkingv1beta1.CreateVPCRequest {
 	req := &networkingv1beta1.CreateVPCRequest{
-		Name:        v.Name.ValueString(),
-		Zone:        v.Zone.ValueString(),
-		VpcPrefixes: v.vpcPrefixes(),
-		HostPrefix:  v.HostPrefix.ValueString(),
-		Ingress:     v.Ingress.ToProto(),
-		Egress:      v.Egress.ToProto(),
-		Dhcp:        v.GetDhcp(ctx),
+		Name:         v.Name.ValueString(),
+		Zone:         v.Zone.ValueString(),
+		VpcPrefixes:  v.vpcPrefixes(),
+		HostPrefix:   v.HostPrefix.ValueString(),
+		HostPrefixes: v.hostPrefixes(),
+		Ingress:      v.Ingress.ToProto(),
+		Egress:       v.Egress.ToProto(),
+		Dhcp:         v.GetDhcp(ctx),
 	}
 
 	return req
