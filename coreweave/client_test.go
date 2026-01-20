@@ -32,7 +32,7 @@ func TestHandleAPIError(t *testing.T) {
 			err:  connect.NewError(connect.CodeInternal, errors.New("Something went wrong")),
 			want: diag.Diagnostics{diag.NewErrorDiagnostic(
 				"Internal Error",
-				"API returned code 13 (internal): Something went wrong",
+				"internal: Something went wrong",
 			)},
 		},
 		{
