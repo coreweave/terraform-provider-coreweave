@@ -35,7 +35,7 @@ var (
 func init() {
 	resource.AddTestSweepers(httpsEndpointResourceName, &resource.Sweeper{
 		Name:         httpsEndpointResourceName,
-		Dependencies: []string{resourceName(observability.NewForwardingPipelineResource())},
+		Dependencies: []string{pipelineResourceName},
 		F: func(r string) error {
 			testutil.SetEnvDefaults()
 			return typedEndpointSweeper(typesv1beta1.ForwardingEndpointSpec_Https_case.String())(r)

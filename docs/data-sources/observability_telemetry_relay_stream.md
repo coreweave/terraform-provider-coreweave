@@ -40,17 +40,33 @@ data "coreweave_observability_telemetry_relay_stream" "audit_logs" {
 
 - `created_at` (String) The time the stream was created.
 - `display_name` (String) The display name of the stream.
-- `kind` (String) The kind of the stream (one of: not set, metrics, logs)
-- `logs` (Attributes) Logs stream configuration, if it is a logs stream. (see [below for nested schema](#nestedatt--logs))
-- `metrics` (Attributes) Metrics stream configuration, if it is a metrics stream. (see [below for nested schema](#nestedatt--metrics))
+- `filter` (Attributes) The filter of the stream. (see [below for nested schema](#nestedatt--filter))
+- `kind` (String) The kind of the stream (one of: metrics, logs)
 - `state` (String) The string representation of the stream state.
 - `state_code` (Number) The numeric state code of the stream.
 - `state_message` (String) Additional information about the current stream state.
 - `updated_at` (String) The time the stream was last updated.
+- `zones_active` (Attributes Map) The zones active for the stream. (see [below for nested schema](#nestedatt--zones_active))
 
-<a id="nestedatt--logs"></a>
-### Nested Schema for `logs`
+<a id="nestedatt--filter"></a>
+### Nested Schema for `filter`
+
+Read-Only:
+
+- `exclude` (Map of Map of List of String) The exclude filter of the stream.
+- `include` (Map of Map of List of String) The include filter of the stream.
 
 
-<a id="nestedatt--metrics"></a>
-### Nested Schema for `metrics`
+<a id="nestedatt--zones_active"></a>
+### Nested Schema for `zones_active`
+
+Read-Only:
+
+- `clusters` (Attributes List) The clusters active for the zone. (see [below for nested schema](#nestedatt--zones_active--clusters))
+
+<a id="nestedatt--zones_active--clusters"></a>
+### Nested Schema for `zones_active.clusters`
+
+Read-Only:
+
+- `id` (String) The ID of the cluster.

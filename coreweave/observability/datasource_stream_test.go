@@ -61,22 +61,6 @@ type streamDataSourceTestStep struct {
 	ExpectError    *regexp.Regexp
 }
 
-func metricsStreamStateChecks(fullDataSourceName string) []statecheck.StateCheck {
-	return []statecheck.StateCheck{
-		statecheck.ExpectKnownValue(fullDataSourceName, tfjsonpath.New("kind"), knownvalue.StringExact("metrics")),
-		statecheck.ExpectKnownValue(fullDataSourceName, tfjsonpath.New("metrics"), knownvalue.NotNull()),
-		statecheck.ExpectKnownValue(fullDataSourceName, tfjsonpath.New("logs"), knownvalue.Null()),
-	}
-}
-
-func logsStreamStateChecks(fullDataSourceName string) []statecheck.StateCheck {
-	return []statecheck.StateCheck{
-		statecheck.ExpectKnownValue(fullDataSourceName, tfjsonpath.New("kind"), knownvalue.StringExact("logs")),
-		statecheck.ExpectKnownValue(fullDataSourceName, tfjsonpath.New("logs"), knownvalue.NotNull()),
-		statecheck.ExpectKnownValue(fullDataSourceName, tfjsonpath.New("metrics"), knownvalue.Null()),
-	}
-}
-
 func createStreamDataSourceTestStep(t *testing.T, opts streamDataSourceTestStep) resource.TestStep {
 	t.Helper()
 
@@ -92,11 +76,15 @@ func createStreamDataSourceTestStep(t *testing.T, opts streamDataSourceTestStep)
 		stateChecks = []statecheck.StateCheck{
 			statecheck.ExpectKnownValue(fullDataSourceName, tfjsonpath.New("slug"), knownvalue.StringExact(opts.Slug)),
 
+			// statecheck.ExpectKnownValue(fullDataSourceName, tfjsonpath.New("filter"), knownvalue.Null()), <- TODO: not yet clear what desired states should be, if any.
 			statecheck.ExpectKnownValue(fullDataSourceName, tfjsonpath.New("display_name"), knownvalue.NotNull()),
 
 			statecheck.ExpectKnownValue(fullDataSourceName, tfjsonpath.New("created_at"), knownvalue.NotNull()),
 			statecheck.ExpectKnownValue(fullDataSourceName, tfjsonpath.New("updated_at"), knownvalue.NotNull()),
 			statecheck.ExpectKnownValue(fullDataSourceName, tfjsonpath.New("state"), knownvalue.StringExact(typesv1beta1.TelemetryStreamState_TELEMETRY_STREAM_STATE_ACTIVE.String())),
+			statecheck.ExpectKnownValue(fullDataSourceName, tfjsonpath.New("state_code"), knownvalue.Int32Exact(int32(typesv1beta1.TelemetryStreamState_TELEMETRY_STREAM_STATE_ACTIVE.Number()))),
+			// statecheck.ExpectKnownValue(fullDataSourceName, tfjsonpath.New("zones_active"), knownvalue.NotNull()), <- TODO: this needs to be integrated with a cluster resource, with a subscription, for full quality testing.
+			// statecheck.ExpectKnownValue(fullDataSourceName, tfjsonpath.New("zones_active").AtMapKey("us-lab-01a").AtMapKey("clusters"), knownvalue.NotNull()),
 		}
 
 		stateChecks = append(stateChecks, opts.StateChecks...)
@@ -117,62 +105,62 @@ func createStreamDataSourceTestStep(t *testing.T, opts streamDataSourceTestStep)
 // TestTelemetryStreamDataSource consolidates all acceptance tests
 func TestTelemetryStreamDataSource(t *testing.T) {
 	t.Parallel()
-	metricsStreams := []string{
-		"metrics-customer-cluster",
-		"metrics-platform",
+
+	streamTests := []struct {
+		streamType   string
+		expectedKind string
+		slugs        []string
+	}{
+		{
+			streamType:   "metrics",
+			expectedKind: "STREAM_KIND_METRICS",
+			slugs: []string{
+				"metrics-customer-cluster",
+				"metrics-platform",
+			},
+		},
+		{
+			streamType:   "logs",
+			expectedKind: "STREAM_KIND_LOGS",
+			slugs: []string{
+				"logs-audit-caios",
+				"logs-audit-console",
+				"logs-audit-kube-api",
+				"logs-customer-cluster",
+				"logs-events",
+				"logs-journald",
+			},
+		},
 	}
 
-	for _, stream := range metricsStreams {
-		t.Run(fmt.Sprintf("metrics/%s", stream), func(t *testing.T) {
-			dataSourceName := "test_acc_metrics_stream"
-			fullDataSourceName := fmt.Sprintf("data.%s.%s", telemetryStreamDataSourceName, dataSourceName)
+	for _, tt := range streamTests {
+		for _, slug := range tt.slugs {
+			t.Run(fmt.Sprintf("%s/%s", tt.streamType, slug), func(t *testing.T) {
+				dataSourceName := fmt.Sprintf("test_acc_%s_stream", tt.streamType)
+				fullDataSourceName := fmt.Sprintf("data.%s.%s", telemetryStreamDataSourceName, dataSourceName)
 
-			resource.ParallelTest(t, resource.TestCase{
-				ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
-				PreCheck: func() {
-					testutil.SetEnvDefaults()
-				},
-				Steps: []resource.TestStep{
-					createStreamDataSourceTestStep(t, streamDataSourceTestStep{
-						TestName:       fmt.Sprintf("metrics stream: %s", stream),
-						DataSourceName: dataSourceName,
-						Slug:           stream,
-						StateChecks:    metricsStreamStateChecks(fullDataSourceName),
-					}),
-				},
+				resource.ParallelTest(t, resource.TestCase{
+					ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+					PreCheck: func() {
+						testutil.SetEnvDefaults()
+					},
+					Steps: []resource.TestStep{
+						createStreamDataSourceTestStep(t, streamDataSourceTestStep{
+							TestName:       fmt.Sprintf("%s stream: %s", tt.streamType, slug),
+							DataSourceName: dataSourceName,
+							Slug:           slug,
+							StateChecks: []statecheck.StateCheck{
+								statecheck.ExpectKnownValue(fullDataSourceName, tfjsonpath.New("kind"), knownvalue.StringExact(tt.expectedKind)),
+								statecheck.ExpectKnownValue(fullDataSourceName, tfjsonpath.New("filter"), knownvalue.Null()),
+								statecheck.ExpectKnownValue(fullDataSourceName, tfjsonpath.New("created_at"), knownvalue.NotNull()),
+								statecheck.ExpectKnownValue(fullDataSourceName, tfjsonpath.New("updated_at"), knownvalue.NotNull()),
+								statecheck.ExpectKnownValue(fullDataSourceName, tfjsonpath.New("state"), knownvalue.StringExact(typesv1beta1.TelemetryStreamState_TELEMETRY_STREAM_STATE_ACTIVE.String())),
+							},
+						}),
+					},
+				})
 			})
-		})
-	}
-
-	logsStreams := []string{
-		"logs-audit-caios",
-		"logs-audit-console",
-		"logs-audit-kube-api",
-		"logs-customer-cluster",
-		"logs-events",
-		"logs-journald",
-	}
-
-	for _, slug := range logsStreams {
-		t.Run(fmt.Sprintf("logs/%s", slug), func(t *testing.T) {
-			dataSourceName := "test_acc_logs_stream"
-			fullDataSourceName := fmt.Sprintf("data.%s.%s", telemetryStreamDataSourceName, dataSourceName)
-
-			resource.ParallelTest(t, resource.TestCase{
-				ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
-				PreCheck: func() {
-					testutil.SetEnvDefaults()
-				},
-				Steps: []resource.TestStep{
-					createStreamDataSourceTestStep(t, streamDataSourceTestStep{
-						TestName:       fmt.Sprintf("logs stream: %s", slug),
-						DataSourceName: dataSourceName,
-						Slug:           slug,
-						StateChecks:    logsStreamStateChecks(fullDataSourceName),
-					}),
-				},
-			})
-		})
+		}
 	}
 
 	t.Run("not_found", func(t *testing.T) {

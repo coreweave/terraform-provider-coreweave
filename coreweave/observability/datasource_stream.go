@@ -3,10 +3,8 @@ package observability
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	clusterv1beta1 "bsr.core-services.ingress.coreweave.com/gen/go/coreweave/o11y-mgmt/protocolbuffers/go/coreweave/telemetryrelay/svc/cluster/v1beta1"
-	typesv1beta1 "bsr.core-services.ingress.coreweave.com/gen/go/coreweave/o11y-mgmt/protocolbuffers/go/coreweave/telemetryrelay/types/v1beta1"
 	"buf.build/go/protovalidate"
 	"connectrpc.com/connect"
 
@@ -16,17 +14,12 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
 var (
 	_ datasource.DataSourceWithConfigure      = &TelemetryStreamDataSource{}
 	_ datasource.DataSourceWithValidateConfig = &TelemetryStreamDataSource{}
-
-	streamSpecKinds = []string{
-		typesv1beta1.TelemetryStreamSpec_Kind_not_set_case.String(),
-		typesv1beta1.TelemetryStreamSpec_Metrics_case.String(),
-		typesv1beta1.TelemetryStreamSpec_Logs_case.String(),
-	}
 )
 
 func NewTelemetryStreamDataSource() datasource.DataSource {
@@ -73,18 +66,32 @@ func (s *TelemetryStreamDataSource) Schema(ctx context.Context, req datasource.S
 				Computed:            true,
 			},
 			"kind": schema.StringAttribute{
-				MarkdownDescription: fmt.Sprintf("The kind of the stream (one of: %s)", strings.Join(streamSpecKinds, ", ")),
+				MarkdownDescription: "The kind of the stream (one of: metrics, logs)",
 				Computed:            true,
 			},
-			"logs": schema.SingleNestedAttribute{
-				MarkdownDescription: "Logs stream configuration, if it is a logs stream.",
+			"filter": schema.SingleNestedAttribute{
+				MarkdownDescription: "The filter of the stream.",
 				Computed:            true,
-				Attributes:          map[string]schema.Attribute{},
-			},
-			"metrics": schema.SingleNestedAttribute{
-				MarkdownDescription: "Metrics stream configuration, if it is a metrics stream.",
-				Computed:            true,
-				Attributes:          map[string]schema.Attribute{},
+				Attributes: map[string]schema.Attribute{
+					"include": schema.MapAttribute{
+						MarkdownDescription: "The include filter of the stream.",
+						Computed:            true,
+						ElementType: types.MapType{
+							ElemType: types.ListType{
+								ElemType: types.StringType,
+							},
+						},
+					},
+					"exclude": schema.MapAttribute{
+						MarkdownDescription: "The exclude filter of the stream.",
+						Computed:            true,
+						ElementType: types.MapType{
+							ElemType: types.ListType{
+								ElemType: types.StringType,
+							},
+						},
+					},
+				},
 			},
 			// Status fields
 			"created_at": schema.StringAttribute{
@@ -108,6 +115,26 @@ func (s *TelemetryStreamDataSource) Schema(ctx context.Context, req datasource.S
 			"state_message": schema.StringAttribute{
 				MarkdownDescription: "Additional information about the current stream state.",
 				Computed:            true,
+			},
+			"zones_active": schema.MapNestedAttribute{
+				MarkdownDescription: "The zones active for the stream.",
+				Computed:            true,
+				NestedObject: schema.NestedAttributeObject{
+					Attributes: map[string]schema.Attribute{
+						"clusters": schema.ListNestedAttribute{
+							MarkdownDescription: "The clusters active for the zone.",
+							Computed:            true,
+							NestedObject: schema.NestedAttributeObject{
+								Attributes: map[string]schema.Attribute{
+									"id": schema.StringAttribute{
+										MarkdownDescription: "The ID of the cluster.",
+										Computed:            true,
+									},
+								},
+							},
+						},
+					},
+				},
 			},
 		},
 	}

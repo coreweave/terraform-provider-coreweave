@@ -64,7 +64,7 @@ func init() {
 			copy(streamPrefixes, metricsStreams)
 			copy(streamPrefixes[len(metricsStreams):], logsStreams)
 
-			prefixPattern := fmt.Sprintf(`^(%s)-%s`, strings.Join(streamPrefixes, "|"), AcceptanceTestPrefix)
+			prefixPattern := fmt.Sprintf(`^(%s-)?%s`, strings.Join(streamPrefixes, "|"), AcceptanceTestPrefix)
 			prefixMatcher := regexp.MustCompile(prefixPattern)
 
 			for _, pipeline := range listResp.Msg.GetPipelines() {
@@ -197,20 +197,6 @@ func createPrometheusEndpoint(t *testing.T, slug string) *model.ForwardingEndpoi
 			DisplayName: types.StringValue(fmt.Sprintf("Test Prometheus Endpoint - %s", slug)),
 		},
 		Endpoint: types.StringValue("http://telecaster-console.us-east-03-core-services.int.coreweave.com:9000/"),
-	}
-}
-
-func skipUnimplementedEndpointTypes(t *testing.T, endpointType EndpointType) {
-	t.Helper()
-	switch endpointType {
-	case EndpointTypeHTTPS:
-		// HTTPS is implemented, continue
-	case EndpointTypePrometheus:
-		t.Skip("Skipping Prometheus endpoint until it is available")
-	case EndpointTypeS3:
-		t.Skip("Skipping S3 endpoint until it is supported")
-	default:
-		t.Skipf("Unknown endpoint type: %s", endpointType)
 	}
 }
 

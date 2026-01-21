@@ -2,10 +2,14 @@ bsr.core-services.ingress.coreweave.com/gen/go/coreweave/o11y-mgmt/connectrpc/go
 bsr.core-services.ingress.coreweave.com/gen/go/coreweave/o11y-mgmt/connectrpc/go v1.18.1-20251110050257-02cdc61e2538.1/go.mod h1:4NC/+hl9UyTwOX6i/8qlNf9Xr4Yerde01rZURfAefLk=
 bsr.core-services.ingress.coreweave.com/gen/go/coreweave/o11y-mgmt/connectrpc/go v1.18.1-20251211012137-ac4db3e94684.1 h1:4vodpbvP68IHk6vac7abUqZUq1wf0H55u4j5a0ySkEo=
 bsr.core-services.ingress.coreweave.com/gen/go/coreweave/o11y-mgmt/connectrpc/go v1.18.1-20251211012137-ac4db3e94684.1/go.mod h1:j3fHvCPo/UB7EemhidFCTa2A4KPWAkvQk9zZnFldaCo=
+bsr.core-services.ingress.coreweave.com/gen/go/coreweave/o11y-mgmt/connectrpc/go v1.18.1-20251219213442-8f73fde21463.1 h1:rs2Vb5tX0MTRQ7b7rMu+SBjBpqIqcjffoeGX01pQevQ=
+bsr.core-services.ingress.coreweave.com/gen/go/coreweave/o11y-mgmt/connectrpc/go v1.18.1-20251219213442-8f73fde21463.1/go.mod h1:r+4zs2DR6AHFhPnXBv/BRE40KlFbgRGUBxjFHswgfnI=
 bsr.core-services.ingress.coreweave.com/gen/go/coreweave/o11y-mgmt/protocolbuffers/go v1.36.4-20251110050257-02cdc61e2538.1 h1:ZeHuHL5mr7127MM9lwaKND3pbjvAjWsO72SDydvFF84=
 bsr.core-services.ingress.coreweave.com/gen/go/coreweave/o11y-mgmt/protocolbuffers/go v1.36.4-20251110050257-02cdc61e2538.1/go.mod h1:7MQuyXU2RfCE//yDeyGX96KUEoFVAjxuZ3pJC/c4NVA=
 bsr.core-services.ingress.coreweave.com/gen/go/coreweave/o11y-mgmt/protocolbuffers/go v1.36.4-20251211012137-ac4db3e94684.1 h1:oWHUwfU1CebTfemxCO5aA2AdJKDU9WdgNOXuncDJeuM=
 bsr.core-services.ingress.coreweave.com/gen/go/coreweave/o11y-mgmt/protocolbuffers/go v1.36.4-20251211012137-ac4db3e94684.1/go.mod h1:7MQuyXU2RfCE//yDeyGX96KUEoFVAjxuZ3pJC/c4NVA=
+bsr.core-services.ingress.coreweave.com/gen/go/coreweave/o11y-mgmt/protocolbuffers/go v1.36.4-20251219213442-8f73fde21463.1 h1:2gpvfy3UR37GzuMTGZ/gyFU2aJUlPowBM+bzVqzk1lw=
+bsr.core-services.ingress.coreweave.com/gen/go/coreweave/o11y-mgmt/protocolbuffers/go v1.36.4-20251219213442-8f73fde21463.1/go.mod h1:7MQuyXU2RfCE//yDeyGX96KUEoFVAjxuZ3pJC/c4NVA=
 buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.36.10-20250912141014-52f32327d4b0.1 h1:31on4W/yPcV4nZHL4+UCiCvLPsMqe/vJcNg8Rci0scc=
 buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.36.10-20250912141014-52f32327d4b0.1/go.mod h1:fUl8CEN/6ZAMk6bP8ahBJPUJw7rbp+j4x+wCcYi2IG4=
 buf.build/gen/go/coreweave/cks/connectrpc/go v1.19.0-20251007230423-8a2391dbf182.1 h1:8A63lP3sxzU7ldMMun3bHuDXZSqTFvJgcSp0ygYys5U=

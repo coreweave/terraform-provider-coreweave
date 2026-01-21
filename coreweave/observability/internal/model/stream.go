@@ -1,10 +1,11 @@
 package model
 
 import (
-	"fmt"
+	"context"
 
 	typesv1beta1 "bsr.core-services.ingress.coreweave.com/gen/go/coreweave/o11y-mgmt/protocolbuffers/go/coreweave/telemetryrelay/types/v1beta1"
 	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
@@ -30,41 +31,56 @@ func (r *TelemetryStreamRef) ToMsg() (msg *typesv1beta1.TelemetryStreamRef) {
 }
 
 type TelemetryStreamSpec struct {
-	DisplayName types.String       `tfsdk:"display_name"`
-	Logs        *LogsStreamSpec    `tfsdk:"logs"`
-	Metrics     *MetricsStreamSpec `tfsdk:"metrics"`
+	DisplayName types.String           `tfsdk:"display_name"`
+	Kind        types.String           `tfsdk:"kind"`
+	Filter      *TelemetryStreamFilter `tfsdk:"filter"`
+}
+
+type TelemetryStreamFilter struct {
+	Include map[string]StringList `tfsdk:"include"`
+	Exclude map[string]StringList `tfsdk:"exclude"`
+}
+
+type StringList struct {
+	Values types.List `tfsdk:"values"`
+}
+
+func (s *StringList) Set(values []string) (diagnostics diag.Diagnostics) {
+	listValues, diags := types.ListValueFrom(context.Background(), types.StringType, values)
+	diagnostics.Append(diags...)
+	s.Values = listValues
+	return
+}
+
+func (f *TelemetryStreamFilter) Set(filter *typesv1beta1.LabelSelector) (diagnostics diag.Diagnostics) {
+	include := make(map[string]StringList, len(filter.Include))
+	exclude := make(map[string]StringList, len(filter.Exclude))
+
+	for key, values := range filter.Include {
+		sl := new(StringList)
+		diagnostics.Append(sl.Set(values.Values)...)
+		include[key] = *sl
+	}
+	for key, values := range filter.Exclude {
+		sl := new(StringList)
+		diagnostics.Append(sl.Set(values.Values)...)
+		exclude[key] = *sl
+	}
+
+	f.Include = include
+	f.Exclude = exclude
+	return
 }
 
 func (s *TelemetryStreamSpec) Set(spec *typesv1beta1.TelemetryStreamSpec) (diagnostics diag.Diagnostics) {
 	s.DisplayName = types.StringValue(spec.DisplayName)
-
-	switch k := spec.WhichKind(); k {
-	case typesv1beta1.TelemetryStreamSpec_Kind_not_set_case:
-		diagnostics.AddError("Stream kind not set", "A telemetry stream must specify either logs or metrics")
-	case typesv1beta1.TelemetryStreamSpec_Metrics_case:
-		s.Metrics = new(MetricsStreamSpec)
-		diagnostics.Append(s.Metrics.Set(spec.GetMetrics())...)
-	case typesv1beta1.TelemetryStreamSpec_Logs_case:
-		s.Logs = new(LogsStreamSpec)
-		diagnostics.Append(s.Logs.Set(spec.GetLogs())...)
-	default:
-		diagnostics.AddError("Unknown Stream Spec Kind", fmt.Sprintf("spec's kind %q (%d) is not recognized by the provider. This may not be implemented in the provider yet, or may require an update.", k.String(), k))
+	s.Kind = types.StringValue(spec.GetKind().String())
+	if spec.Filter != nil {
+		s.Filter = new(TelemetryStreamFilter)
+		diagnostics.Append(s.Filter.Set(spec.Filter)...)
+	} else {
+		s.Filter = nil
 	}
-
-	return
-}
-
-type LogsStreamSpec struct {
-}
-
-func (s *LogsStreamSpec) Set(msg *typesv1beta1.LogsStreamSpec) (diagnostics diag.Diagnostics) {
-	return
-}
-
-type MetricsStreamSpec struct {
-}
-
-func (s *MetricsStreamSpec) Set(msg *typesv1beta1.MetricsStreamSpec) (diagnostics diag.Diagnostics) {
 	return
 }
 
@@ -74,6 +90,30 @@ type TelemetryStreamStatus struct {
 	StateCode    types.Int32       `tfsdk:"state_code"`
 	StateString  types.String      `tfsdk:"state"`
 	StateMessage types.String      `tfsdk:"state_message"`
+	ZonesActive  map[string]*ActiveZone         `tfsdk:"zones_active"`
+}
+
+type ActiveZone struct {
+	Clusters types.List `tfsdk:"clusters"`
+}
+
+func (a *ActiveZone) Set(zone *typesv1beta1.TelemetryStreamStatus_ZoneClusterStatus) (diagnostics diag.Diagnostics) {
+	clustersRaw := make([]ActiveCluster, len(zone.Clusters))
+	for i, cluster := range zone.Clusters {
+		clustersRaw[i] = ActiveCluster{
+			Id: types.StringValue(cluster.Id),
+		}
+	}
+	a.Clusters, diagnostics = types.ListValueFrom(context.Background(), types.ObjectType{
+		AttrTypes: map[string]attr.Type{
+			"id": types.StringType,
+		},
+	}, clustersRaw)
+	return
+}
+
+type ActiveCluster struct {
+	Id types.String `tfsdk:"id"`
 }
 
 func (s *TelemetryStreamStatus) Set(status *typesv1beta1.TelemetryStreamStatus) {
@@ -89,16 +129,16 @@ func (s *TelemetryStreamStatus) Set(status *typesv1beta1.TelemetryStreamStatus) 
 type TelemetryStreamDataSource struct {
 	Slug types.String `tfsdk:"slug"`
 
-	DisplayName types.String       `tfsdk:"display_name"`
-	Kind        types.String       `tfsdk:"kind"`
-	Logs        *LogsStreamSpec    `tfsdk:"logs"`
-	Metrics     *MetricsStreamSpec `tfsdk:"metrics"`
+	DisplayName types.String           `tfsdk:"display_name"`
+	Kind        types.String           `tfsdk:"kind"`
+	Filter      *TelemetryStreamFilter `tfsdk:"filter"`
 
 	CreatedAt    timetypes.RFC3339 `tfsdk:"created_at"`
 	UpdatedAt    timetypes.RFC3339 `tfsdk:"updated_at"`
 	StateCode    types.Int32       `tfsdk:"state_code"`
 	State        types.String      `tfsdk:"state"`
 	StateMessage types.String      `tfsdk:"state_message"`
+	ZonesActive  map[string]*ActiveZone         `tfsdk:"zones_active"`
 }
 
 func (m *TelemetryStreamDataSource) Set(stream *typesv1beta1.TelemetryStream) (diagnostics diag.Diagnostics) {
@@ -109,19 +149,12 @@ func (m *TelemetryStreamDataSource) Set(stream *typesv1beta1.TelemetryStream) (d
 	m.Slug = types.StringValue(stream.Ref.Slug)
 
 	m.DisplayName = types.StringValue(stream.Spec.DisplayName)
-	m.Kind = types.StringValue(stream.Spec.WhichKind().String())
-
-	switch k := stream.Spec.WhichKind(); k {
-	case typesv1beta1.TelemetryStreamSpec_Kind_not_set_case:
-		// Kind not set - leave both nil
-	case typesv1beta1.TelemetryStreamSpec_Metrics_case:
-		m.Metrics = new(MetricsStreamSpec)
-		diagnostics.Append(m.Metrics.Set(stream.Spec.GetMetrics())...)
-	case typesv1beta1.TelemetryStreamSpec_Logs_case:
-		m.Logs = new(LogsStreamSpec)
-		diagnostics.Append(m.Logs.Set(stream.Spec.GetLogs())...)
-	default:
-		diagnostics.AddError("Unknown Stream Spec Kind", fmt.Sprintf("spec's kind %q (%d) is not recognized by the provider. This may not be implemented in the provider yet, or may require an update.", k.String(), k))
+	m.Kind = types.StringValue(stream.Spec.GetKind().String())
+	if stream.Spec.Filter != nil {
+		m.Filter = new(TelemetryStreamFilter)
+		diagnostics.Append(m.Filter.Set(stream.Spec.Filter)...)
+	} else {
+		m.Filter = nil
 	}
 
 	m.CreatedAt = timestampToTimeValue(stream.Status.CreatedAt)
@@ -129,6 +162,13 @@ func (m *TelemetryStreamDataSource) Set(stream *typesv1beta1.TelemetryStream) (d
 	m.StateCode = types.Int32Value(int32(stream.Status.State.Number()))
 	m.State = types.StringValue(stream.Status.State.String())
 	m.StateMessage = types.StringPointerValue(stream.Status.StateMessage)
+
+	m.ZonesActive = make(map[string]*ActiveZone, len(stream.Status.ZonesActive))
+	for _, zone := range stream.Status.ZonesActive {
+		az := new(ActiveZone)
+		diagnostics.Append(az.Set(zone)...)
+		m.ZonesActive[zone.ZoneSlug] = az
+	}
 
 	return
 }
