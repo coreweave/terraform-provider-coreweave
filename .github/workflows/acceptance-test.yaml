@@ -8,10 +8,6 @@ name: Run Acceptance Test
         description: 'Test suite to run (e.g., cks, networking, object-storage)'
         required: true
         type: string
-      terraform_version:
-        description: 'Terraform version to test with'
-        required: true
-        type: string
 
 concurrency:
   group: acceptance-test-${{ inputs.suite }}
@@ -31,9 +27,6 @@ jobs:
         with:
           go-version-file: 'go.mod'
           cache: false
-      - uses: hashicorp/setup-terraform@v3.1.2
-        with:
-          terraform_wrapper: false
 
       - name: Sweep ${{ inputs.suite }} resources
         run: make testacc-sweep SUITES='${{ inputs.suite }}'
@@ -54,10 +47,6 @@ jobs:
         with:
           go-version-file: 'go.mod'
           cache: false
-      - uses: hashicorp/setup-terraform@v3.1.2
-        with:
-          terraform_version: ${{ inputs.terraform_version }}
-          terraform_wrapper: false
       - run: go mod download
 
       - name: Validate ${{ inputs.suite }} acceptance tests
