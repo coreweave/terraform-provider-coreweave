@@ -112,7 +112,7 @@ func TestVpcSchema(t *testing.T) {
 
 func TestVpcResource(t *testing.T) {
 	randomInt := rand.IntN(100)
-	vpcName := fmt.Sprintf("test-acc-vpc-%x", randomInt)
+	vpcName := fmt.Sprintf("%s%x", AcceptanceTestPrefix, randomInt)
 	resourceName := fmt.Sprintf("test_vpc_%x", randomInt)
 	fullResourceName := fmt.Sprintf("coreweave_networking_vpc.%s", resourceName)
 	fullDataSourceName := fmt.Sprintf("data.coreweave_networking_vpc.%s", resourceName)
@@ -368,7 +368,7 @@ func TestVpcResource(t *testing.T) {
 
 func TestHostPrefixReplace(t *testing.T) {
 	randomInt := rand.IntN(99)
-	vpcName := fmt.Sprintf("test-acc-hostprefix-replace-%x", randomInt)
+	vpcName := fmt.Sprintf("%shostprefix-replace-%x", AcceptanceTestPrefix, randomInt)
 	resourceName := fmt.Sprintf("test_hostprefix_replace_%x", randomInt)
 	fullResourceName := fmt.Sprintf("coreweave_networking_vpc.%s", resourceName)
 	zone := testutil.AcceptanceTestZone
@@ -437,7 +437,7 @@ func TestHostPrefixReplace(t *testing.T) {
 
 func TestHostPrefixDefault(t *testing.T) {
 	randomInt := rand.IntN(99)
-	vpcName := fmt.Sprintf("test-acc-hostprefix-default-%x", randomInt)
+	vpcName := fmt.Sprintf("%shostprefix-default-%x", AcceptanceTestPrefix, randomInt)
 	resourceName := fmt.Sprintf("test_hostprefix_default_%x", randomInt)
 	fullResourceName := fmt.Sprintf("coreweave_networking_vpc.%s", resourceName)
 	zone := testutil.AcceptanceTestZone
