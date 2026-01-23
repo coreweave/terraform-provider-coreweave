@@ -89,10 +89,11 @@ jobs:
           re_types="build|chore|ci|deps|docs|feat|fix|perf|refactor|revert|style|test"
           re_scope="\([[:alnum:]._-]+\)"
           re_message="([[:alnum:]])+([[:space:][:print:]]*)"
-          re_full="^($re_types)($re_scope)?: ($re_message)$"
+          re_emoji="(\p{Emoji}[[:space:]]{1,2})"
+          re_full="^($re_types)($re_scope)?: ($re_emoji)?($re_message)$"
           echo "Checking PR title '${PR_TITLE}' for conventional commits format..."
           set -x
-          grep --color=always -E "$re_full" <<< "${PR_TITLE}" || {
+          grep --color=always -P "$re_full" <<< "${PR_TITLE}" || {
             cat <<EOF
           PR title does not match conventional commits format. Please update the PR title to match the format: '<type>(<scope>): <description>'"
           See https://www.conventionalcommits.org/en/v1.0.0/ for more information.
