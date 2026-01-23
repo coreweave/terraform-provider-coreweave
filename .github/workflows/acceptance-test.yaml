@@ -22,7 +22,7 @@ jobs:
       COREWEAVE_API_ENDPOINT: ${{ inputs.suite == 'object_storage' && secrets.COREWEAVE_OBJS_API_ENDPOINT || vars.COREWEAVE_API_ENDPOINT }}
       COREWEAVE_API_TOKEN: ${{ inputs.suite == 'object_storage' && secrets.COREWEAVE_OBJS_API_TOKEN || secrets.COREWEAVE_API_TOKEN }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
           go-version-file: 'go.mod'
@@ -42,7 +42,7 @@ jobs:
       TEST_ACC_SWEEP_ZONE: ${{ inputs.suite == 'object_storage' && 'US-EAST-04A' || 'US-LAB-01A' }}
       TF_IN_AUTOMATION: '1'
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
           go-version-file: 'go.mod'
