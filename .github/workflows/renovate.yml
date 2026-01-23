@@ -1,0 +1,124 @@
+---
+name: Renovate
+
+on:
+  workflow_dispatch:
+    inputs:
+      runner:
+        type: string
+        description: "runner to use for non-reusable jobs"
+  schedule:
+  - cron: "0 * * * *"  # run hourly
+  push:
+    branches:
+    - main
+    paths:
+    - .github/renovate.json5
+    - .github/renovate/**.json5
+    - .github/workflows/renovate.yaml
+  pull_request:
+    types:
+    - opened
+    - reopened
+    - synchronize
+    paths:
+    - .github/renovate.json5
+    - .github/renovate/**.json5
+    - .github/workflows/renovate.yaml
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CGO_ENABLED: '0'
+  # GOPRIVATE should be appended to GONOSUMDB
+  GOPRIVATE: github.com/coreweave/*
+  GOPROXY: "https://github-actions:${{ secrets.ORG_BUF_TOKEN }}@bsr.core-services.ingress.coreweave.com/gen/go,https://proxy.golang.org,direct"
+  GONOSUMDB: "https://github-actions:${{ secrets.ORG_BUF_TOKEN }}@bsr.core-services.ingress.coreweave.com/gen/go,github.com/coreweave/*"
+
+jobs:
+  coalesce-inputs:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 1
+
+    - id: decide
+      run: |
+        if [[ -z "${{ inputs.runner }}" ]]; then
+          echo "runner=ubuntu-latest" >> "$GITHUB_OUTPUT"
+        else
+          echo "runner=${{ inputs.runner }}" >> "$GITHUB_OUTPUT"
+        fi
+
+    # https://docs.github.com/en/actions/how-tos/writing-workflows/choosing-what-your-workflow-does/passing-information-between-jobs
+    outputs:
+      runner: ${{ steps.decide.outputs.runner }}
+
+  renovate:
+    name: Renovate
+    runs-on: ${{ needs.coalesce-inputs.outputs.runner }}
+    needs:
+    - coalesce-inputs
+    steps:
+    - name: Generate Token
+      uses: actions/create-github-app-token@v1
+      id: app-token
+      with:
+        app-id: ${{ secrets.ORG_RENOVATE_CLIENTID }}
+        private-key: ${{ secrets.ORG_RENOVATE_PRIVATEKEY }}
+        owner: ${{ github.repository_owner }}
+
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        token: ${{ steps.app-token.outputs.token }}
+
+    - name: configure-git
+      shell: bash
+      run: |
+        git config --global --add url."https://cdrender:${ORG_REPO_READ_ONLY}@github.com".insteadOf "https://github.com"
+        git config --global user.email 'bot@renovateapp.com'
+        git config --global user.name 'Renovate Bot'
+
+    - uses: actions/setup-go@v5
+      with:
+        go-version-file: 'go.mod'
+        cache: false  # This job uses a separate cache, because of the multiarch build. This makes it slightly slower the first time, but significantly faster on subsequent runs.
+    - name: Cache Go modules and build cache
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cache/go-build
+          ~/go/pkg/mod
+        key: ${{ runner.os }}-goreleaser-snapshot-go-${{ hashFiles('**/go.sum') }}
+
+    - name: renovate
+      run: |
+        npx renovate --allowed-env '.*'
+      shell: bash
+      env:
+        LOG_LEVEL: debug
+        RENOVATE_CONFIG_FILE: ${{ github.workspace }}/.github/renovate.json5
+        RENOVATE_AUTODISCOVER: true
+        RENOVATE_AUTODISCOVER_FILTER: ${{ github.repository }}
+        RENOVATE_DETECT_HOST_RULES_FROM_ENV: true
+        RENOVATE_PLATFORM: github
+        RENOVATE_PLATFORM_COMMIT: true
+        RENOVATE_DRY_RUN: ${{ github.event_name == 'pull_request' && 'full' || null }}
+        RENOVATE_ALLOWED_COMMANDS: "go mod tidy"
+        RENOVATE_TOKEN: ${{ steps.app-token.outputs.token }}
+
+        DOCKER_DOCKER_CLOUDSMITH_IO_PASSWORD: ${{ secrets.ORG_CLOUDSMITH_REPO_READ_TOKEN }}
+        DOCKER_DOCKER_CLOUDSMITH_IO_USERNAME: "token"
+        DOCKER_DOCKER_ARTIFACTS_COREWEAVE_COM_PASSWORD: ${{ secrets.ORG_CLOUDSMITH_REPO_READ_TOKEN }}
+        DOCKER_DOCKER_ARTIFACTS_COREWEAVE_COM_USERNAME: "token"
+        DOCKER_GHCR_IO_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+        DOCKER_GHCR_IO_USERNAME: "gitops"
+        DOCKER_REGISTRY_GITLAB_COM_PASSWORD: ${{ secrets.ORG_GITLAB_REGISTRY_TOKEN }}
+        DOCKER_REGISTRY_GITLAB_COM_USERNAME: "gitops"
+        HELM_ARTIFACTS_COREWEAVE_COM_USERNAME: "token"
+        HELM_ARTIFACTS_COREWEAVE_COM_PASSWORD: ${{ secrets.ORG_CLOUDSMITH_REPO_READ_TOKEN }}
+        GITHUB_GITHUB_COM_TOKEN: ${{ secrets.ORG_REPO_READ_ONLY }}
