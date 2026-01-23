@@ -8,7 +8,7 @@ require (
 	buf.build/gen/go/coreweave/cwobject/connectrpc/go v1.19.1-20250604181649-b97f17b05d5b.2
 	buf.build/gen/go/coreweave/cwobject/protocolbuffers/go v1.36.10-20250604181649-b97f17b05d5b.1
 	buf.build/gen/go/coreweave/networking/connectrpc/go v1.18.1-20250310211902-b930cb89bad3.1
-	buf.build/gen/go/coreweave/networking/protocolbuffers/go v1.36.2-20250310211902-b930cb89bad3.1
+	buf.build/gen/go/coreweave/networking/protocolbuffers/go v1.36.11-20260121155637-a637e7777165.1
 	connectrpc.com/connect v1.19.1
 	github.com/aws/aws-sdk-go-v2 v1.37.0
 	github.com/aws/aws-sdk-go-v2/config v1.30.1
@@ -28,11 +28,11 @@ require (
 	github.com/stretchr/testify v1.11.1
 	github.com/zclconf/go-cty v1.17.0
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250707201910-8d1bb00bc6a7
-	google.golang.org/protobuf v1.36.10
+	google.golang.org/protobuf v1.36.11
 )
 
 require (
-	buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.36.10-20250912141014-52f32327d4b0.1 // indirect
+	buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.36.11-20250912141014-52f32327d4b0.1 // indirect
 	buf.build/gen/go/grpc-ecosystem/grpc-gateway/protocolbuffers/go v1.36.10-20241220201140-4c5ba75caaf8.1 // indirect
 	github.com/ProtonMail/go-crypto v1.1.6 // indirect
 	github.com/agext/levenshtein v1.2.2 // indirect
