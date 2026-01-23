@@ -91,9 +91,7 @@ jobs:
       fail-fast: true
       matrix:
         suite: ${{ fromJson(needs.detect-changes.outputs.suites) }}
-        terraform: ['1.12.*', '1.13.*']
     uses: ./.github/workflows/acceptance-test.yaml
     with:
       suite: ${{ matrix.suite }}
-      terraform_version: ${{ matrix.terraform }}
     secrets: inherit
