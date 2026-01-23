@@ -155,7 +155,7 @@ func TestClusterSchema(t *testing.T) {
 	}
 }
 
-func defaultVpc(name, zone string) *networking.VpcResourceModel {
+func defaultVpc(name, zone string) *networking.VpcResourceModel { //nolint:unparam
 	if len(name) > 30 {
 		// Bail on the tests as early as possible; this is a test definition failure.
 		panic("Vpc name must be 30 characters or less")
