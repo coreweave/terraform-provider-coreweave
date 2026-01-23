@@ -34,8 +34,8 @@ env:
   CGO_ENABLED: '0'
   # GOPRIVATE should be appended to GONOSUMDB
   GOPRIVATE: github.com/coreweave/*
-  GOPROXY: "https://github-actions:${{ secrets.ORG_BUF_TOKEN }}@bsr.core-services.ingress.coreweave.com/gen/go,https://proxy.golang.org,direct"
-  GONOSUMDB: "https://github-actions:${{ secrets.ORG_BUF_TOKEN }}@bsr.core-services.ingress.coreweave.com/gen/go,github.com/coreweave/*"
+  GOPROXY: "https://proxy.golang.org,direct"
+  GONOSUMDB: "github.com/coreweave/*"
 
 jobs:
   coalesce-inputs:
