@@ -90,61 +90,37 @@ jobs:
           re_scope="\([[:alnum:]._\/-]+\)"
           re_emoji="(\p{Emoji}[[:space:]]{1,2})"
           re_message="([[:alnum:]])([[:space:][:print:]]|→)*"
-          re_full="^($re_types)($re_scope)?: ($re_emoji)?($re_message)$"
+          re_full="^($re_types)($re_scope)?!?: ($re_emoji)?($re_message)$"
           echo "Checking PR title '${PR_TITLE}' for conventional commits format..."
           set -x
           grep --version
           echo "Test regex: $re_full"
-          
+
           tests_failed=0
+
+          function run_test() {
+            readonly input="${1}"
+
+            echo "Input string: "${input}"
           
+            if grep --color=always -P "$re_full" <<< "${input}"; then
+              echo "Test Passed! ✅"
+            else
+              tests_failed=$((tests_failed + 1))
+              echo "Test Failed! 🔻"
+          }
+
           echo "testing a PR title that renovate would make"
-          test_example_renovate_pr_title='fix(deps): update module google.golang.org/protobuf ( v1.36.10 → v1.36.11 )'
-          if grep --color=always -P "$re_full" <<< "${test_example_renovate_pr_title}"; then
-            cat <<EOF
-          Test Passed! ✅
-          Input string: "${test_example_renovate_pr_title}"
-          EOF
-          else
-            tests_failed=$((tests_failed + 1))
-          
-            cat <<EOF
-          Test Failed! 🔻
-          Input string: "${test_example_renovate_pr_title}"
-          EOF
-          fi
-          
+          run_test 'fix(deps): update module google.golang.org/protobuf ( v1.36.10 → v1.36.11 )'
+
           echo "testing a PR title with an emoji..."
-          test_example_emoji_pr_title='ci(test): 👷 debug grep version'
-          if grep --color=always -P "$re_full" <<< "${test_example_emoji_pr_title}"; then
-            cat <<EOF
-          Test Passed! ✅
-          Input string: "${test_example_emoji_pr_title}"
-          EOF
-          else
-            tests_failed=$((tests_failed + 1))
-          
-            cat <<EOF
-          Test Failed! 🔻
-          Input string: "${test_example_emoji_pr_title}"
-          EOF
-          fi
-          
+          run_test 'ci(test): 👷 debug grep version'
+
           echo "testing a PR title without an emoji.."
-          test_example_no_emoji_pr_title='ci(test): debug grep version'
-          if grep --color=always -P "$re_full" <<< "${test_example_no_emoji_pr_title}"; then
-            cat <<EOF
-          Test Passed! ✅
-          Input string: "${test_example_no_emoji_pr_title}"
-          EOF
-          else
-            tests_failed=$((tests_failed + 1))
-          
-            cat <<EOF
-          Test Failed! 🔻
-          Input string: "${test_example_no_emoji_pr_title}"
-          EOF
-          fi
+          run_test 'ci(test): debug grep version'
+
+          echo "testing a PR title with a major version bump change"
+          run_test 'ci(github-action)!: Update actions/cache action ( v4 → v5 )'
           
           if [ $tests_failed -gt 0 ]; then
             echo "One or more tests failed!"
