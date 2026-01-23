@@ -23,7 +23,7 @@ jobs:
           fetch-tags: true
 
       - name: Run Release Please
-        uses: googleapis/release-please-action@v4.1.3
+        uses: googleapis/release-please-action@v4.4.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           skip-github-release: true
