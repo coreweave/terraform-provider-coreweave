@@ -15,7 +15,7 @@ on:
     paths:
     - .github/renovate.json5
     - .github/renovate/**.json5
-    - .github/workflows/renovate.yaml
+    - .github/workflows/renovate.yml
   pull_request:
     types:
     - opened
@@ -24,7 +24,7 @@ on:
     paths:
     - .github/renovate.json5
     - .github/renovate/**.json5
-    - .github/workflows/renovate.yaml
+    - .github/workflows/renovate.yml
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
