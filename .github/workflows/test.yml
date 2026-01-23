@@ -87,12 +87,70 @@ jobs:
           PR_TITLE: ${{ github.event.pull_request.title }}
         run: |
           re_types="build|chore|ci|deps|docs|feat|fix|perf|refactor|revert|style|test"
-          re_scope="\([[:alnum:]._-]+\)"
-          re_message="([[:alnum:]])+([[:space:][:print:]]*)"
+          re_scope="\([[:alnum:]._\/-]+\)"
           re_emoji="(\p{Emoji}[[:space:]]{1,2})"
+          re_message="([[:alnum:]])([[:space:][:print:]]|→)*"
           re_full="^($re_types)($re_scope)?: ($re_emoji)?($re_message)$"
           echo "Checking PR title '${PR_TITLE}' for conventional commits format..."
           set -x
+          grep --version
+          echo "Test regex: $re_full"
+          
+          tests_failed=0
+          
+          echo "testing a PR title that renovate would make"
+          test_example_renovate_pr_title='fix(deps): update module google.golang.org/protobuf ( v1.36.10 → v1.36.11 )'
+          if grep --color=always -P "$re_full" <<< "${test_example_renovate_pr_title}"; then
+            cat <<EOF
+          Test Passed! ✅
+          Input string: "${test_example_renovate_pr_title}"
+          EOF
+          else
+            tests_failed=$((tests_failed + 1))
+          
+            cat <<EOF
+          Test Failed! 🔻
+          Input string: "${test_example_renovate_pr_title}"
+          EOF
+          fi
+          
+          echo "testing a PR title with an emoji..."
+          test_example_emoji_pr_title='ci(test): 👷 debug grep version'
+          if grep --color=always -P "$re_full" <<< "${test_example_emoji_pr_title}"; then
+            cat <<EOF
+          Test Passed! ✅
+          Input string: "${test_example_emoji_pr_title}"
+          EOF
+          else
+            tests_failed=$((tests_failed + 1))
+          
+            cat <<EOF
+          Test Failed! 🔻
+          Input string: "${test_example_emoji_pr_title}"
+          EOF
+          fi
+          
+          echo "testing a PR title without an emoji.."
+          test_example_no_emoji_pr_title='ci(test): debug grep version'
+          if grep --color=always -P "$re_full" <<< "${test_example_no_emoji_pr_title}"; then
+            cat <<EOF
+          Test Passed! ✅
+          Input string: "${test_example_no_emoji_pr_title}"
+          EOF
+          else
+            tests_failed=$((tests_failed + 1))
+          
+            cat <<EOF
+          Test Failed! 🔻
+          Input string: "${test_example_no_emoji_pr_title}"
+          EOF
+          fi
+          
+          if [ $tests_failed -gt 0 ]; then
+            echo "One or more tests failed!"
+            exit 1
+          fi
+          
           grep --color=always -P "$re_full" <<< "${PR_TITLE}" || {
             cat <<EOF
           PR title does not match conventional commits format. Please update the PR title to match the format: '<type>(<scope>): <description>'"
