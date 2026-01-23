@@ -1,0 +1,26 @@
+{
+  "extends": [
+    "config:recommended",
+    "github>coreweave/renovate-config:commit-message",
+    "github>coreweave/renovate-config:pr-labels",
+  ],
+  "enabled": true,
+  "rebaseWhen": "conflicted",
+  "packageRules": [
+    {
+      "matchManagers": ["github-actions"],
+      "matchFileNames": [".github/**/*.yaml", ".github/**/*.yml"],
+      "depType": "github-actions",
+      "groupName": "all workflows/actions",
+      "versioning": "semver"
+    },
+    {
+      "matchUpdateTypes": ["minor", "patch"],
+      "automerge": true
+    }
+  ],
+  "postUpgradeTasks": {
+    "commands": ["go mod tidy"],
+    "executionMode": "update"
+  }
+}
