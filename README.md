@@ -11,7 +11,21 @@ Copyright (c) 2024-2025 CoreWeave, Inc.
 
 ## Development
 
-There are various ways to build and run the provider for development. Building the provider is simple: `make build`.
+### Mise
+
+It is recommended to use [mise](https://mise.jdx.dev/) to manage tool versions 
+associated with local development. After you have [mise installed](https://mise.jdx.dev/installing-mise.html),
+just run:
+
+```shell
+mise install
+```
+
+to install the relevant tools needed for building. After that:
+
+```shell
+make build
+```
 
 ### Dev Builds
 

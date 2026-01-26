@@ -21,12 +21,7 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           fetch-depth: 0
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
-        with:
-          go-version-file: 'go.mod'
-          cache: false
-      - name: Update GitHub CLI
-        run: sudo apt-get install gh -y
+      - uses: ./.github/actions/setup
       - name: Import GPG key
         uses: crazy-max/ghaction-import-gpg@e89d40939c28e39f97cf32126055eeae86ba74ec # v6.3.0
         id: import_gpg

@@ -25,27 +25,15 @@ jobs:
     needs: build
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
-        with:
-          go-version-file: 'go.mod'
-      - name: Run linters
-        uses: golangci/golangci-lint-action@4afd733a84b1f43292c63897423277bb7f4313a9 # v8
-        with:
-          version: v2.4.0
+      - uses: ./.github/actions/setup
+      - run: make lint
 
   generate:
     runs-on: ubuntu-latest
     needs: build
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
-        with:
-          go-version-file: 'go.mod'
-          cache: true
-      # We need the latest version of Terraform for our documentation generation to use
-      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
-        with:
-          terraform_wrapper: false
+      - uses: ./.github/actions/setup
       - run: make generate
       - name: git diff
         run: |
@@ -66,10 +54,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
-        with:
-          go-version-file: 'go.mod'
-          cache: true
+      - uses: ./.github/actions/setup
       - run: go mod download
       - name: Check go mod tidy
         run: go mod tidy -diff
