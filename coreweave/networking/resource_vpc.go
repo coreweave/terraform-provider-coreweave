@@ -12,13 +12,17 @@ import (
 	"connectrpc.com/connect"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
 	"github.com/hashicorp/hcl/v2/hclwrite"
+	"github.com/hashicorp/terraform-plugin-framework-validators/resourcevalidator"
+	"github.com/hashicorp/terraform-plugin-framework-validators/setvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/setplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
@@ -28,8 +32,10 @@ import (
 
 // Ensure provider defined types fully satisfy framework interfaces.
 var (
-	_ resource.Resource                = &VpcResource{}
-	_ resource.ResourceWithImportState = &VpcResource{}
+	_ resource.Resource                     = &VpcResource{}
+	_ resource.ResourceWithImportState      = &VpcResource{}
+	_ resource.ResourceWithConfigure        = &VpcResource{}
+	_ resource.ResourceWithConfigValidators = &VpcResource{}
 )
 
 var hostPrefixObjectType = types.ObjectType{
@@ -55,6 +61,13 @@ func NewVpcResource() resource.Resource {
 // VpcResource defines the resource implementation.
 type VpcResource struct {
 	client *coreweave.Client
+}
+
+// ConfigValidators implements resource.ResourceWithConfigValidators.
+func (r *VpcResource) ConfigValidators(context.Context) []resource.ConfigValidator {
+	return []resource.ConfigValidator{
+		resourcevalidator.ExactlyOneOf(path.MatchRoot("host_prefix"), path.MatchRoot("host_prefixes")),
+	}
 }
 
 type VpcDhcpDnsResourceModel struct {
@@ -423,26 +436,21 @@ func (r *VpcResource) Schema(ctx context.Context, req resource.SchemaRequest, re
 				Computed:            true,
 				MarkdownDescription: "An IPv4 CIDR range used to allocate host addresses when booting compute into a VPC.\nThis CIDR must be have a mask size of /18. If left unspecified, a Zone-specific default value will be applied by the server.\nThis field is immutable once set.",
 				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.RequiresReplaceIf(func(ctx context.Context, req planmodifier.StringRequest, resp *stringplanmodifier.RequiresReplaceIfFuncResponse) {
-						// Skip if there's no prior state or if the config is unknown
-						if req.StateValue.IsNull() || req.PlanValue.IsUnknown() || req.ConfigValue.IsUnknown() {
-							return
-						}
-
-						if req.StateValue.ValueString() != req.PlanValue.ValueString() {
-							resp.Diagnostics.AddWarning("host_prefix is immutable, changing this value will force a replacement", fmt.Sprintf("cannot change existing host_prefix '%s' to '%s'", req.StateValue.ValueString(), req.PlanValue.ValueString()))
-						}
-
-						if resp.Diagnostics.WarningsCount() > 0 {
-							resp.RequiresReplace = true
-						}
-					}, "", ""),
+					stringplanmodifier.RequiresReplaceIfConfigured(),
+					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
 			"host_prefixes": schema.SetNestedAttribute{
 				MarkdownDescription: "The IPv4 or IPv6 CIDR ranges used to allocate host addresses when booting compute into a VPC.",
 				Optional:            true,
 				Computed:            true,
+				Validators: []validator.Set{
+					setvalidator.SizeAtLeast(1),
+				},
+				PlanModifiers: []planmodifier.Set{
+					setplanmodifier.UseStateForUnknown(),
+					setplanmodifier.RequiresReplaceIfConfigured(),
+				},
 				NestedObject: schema.NestedAttributeObject{
 					Attributes: map[string]schema.Attribute{
 						"name": schema.StringAttribute{
@@ -778,7 +786,6 @@ func hostPrefixToCtyValue(hp HostPrefixResourceModel) cty.Value {
 		}
 		hpObj["ipam"] = cty.ObjectVal(ipamObj)
 	}
-
 
 	return cty.ObjectVal(hpObj)
 }

@@ -69,7 +69,7 @@ func (d *VpcDataSource) Schema(ctx context.Context, req datasource.SchemaRequest
 				DeprecationMessage:  "Configure host_prefixes instead.",
 				Computed:            true,
 			},
-			"host_prefixes": schema.ListNestedAttribute{
+			"host_prefixes": schema.SetNestedAttribute{
 				MarkdownDescription: "The IPv4 or IPv6 CIDR ranges used to allocate host addresses when booting compute into a VPC.",
 				Computed:            true,
 				NestedObject: schema.NestedAttributeObject{

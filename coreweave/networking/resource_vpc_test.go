@@ -543,7 +543,7 @@ resource "coreweave_networking_vpc" "test_vpc" {
 				Name:     types.StringValue("primary-prefix"),
 				Type:     types.StringValue("ipv4"),
 				Prefixes: []types.String{types.StringValue("10.0.0.0/13")},
-				IPAM:     networking.IPAMPolicyResourceModel{
+				IPAM: networking.IPAMPolicyResourceModel{
 					PrefixLength:         types.Int32Value(24),
 					GatewayAddressPolicy: types.StringValue("primary"),
 				},
@@ -552,7 +552,7 @@ resource "coreweave_networking_vpc" "test_vpc" {
 				Name:     types.StringValue("secondary-prefix"),
 				Type:     types.StringValue("ipv6"),
 				Prefixes: []types.String{types.StringValue("2001:db8::/48")},
-				IPAM:     networking.IPAMPolicyResourceModel{
+				IPAM: networking.IPAMPolicyResourceModel{
 					PrefixLength:         types.Int32Value(64),
 					GatewayAddressPolicy: types.StringValue("secondary"),
 				},
@@ -563,8 +563,8 @@ resource "coreweave_networking_vpc" "test_vpc" {
 		}
 
 		m := &networking.VpcResourceModel{
-			Name:       types.StringValue("my-vpc"),
-			Zone:       types.StringValue("US-WEST-04A"),
+			Name:         types.StringValue("my-vpc"),
+			Zone:         types.StringValue("US-WEST-04A"),
 			HostPrefixes: hp,
 		}
 		expected := `
