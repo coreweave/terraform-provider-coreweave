@@ -25,13 +25,11 @@ jobs:
     needs: build
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+      - name: Setup mise
+        uses: jdx/mise-action@v3
         with:
-          go-version-file: 'go.mod'
-      - name: Run linters
-        uses: golangci/golangci-lint-action@4afd733a84b1f43292c63897423277bb7f4313a9 # v8
-        with:
-          version: v2.4.0
+          version: v2026.1.7
+      - run: make lint
 
   generate:
     runs-on: ubuntu-latest
