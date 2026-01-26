@@ -32,6 +32,22 @@ var (
 	_ resource.ResourceWithImportState = &VpcResource{}
 )
 
+var hostPrefixObjectType = types.ObjectType{
+	AttrTypes: map[string]attr.Type{
+		"name": types.StringType,
+		"type": types.StringType,
+		"prefixes": types.ListType{
+			ElemType: types.StringType,
+		},
+		"ipam": types.ObjectType{
+			AttrTypes: map[string]attr.Type{
+				"prefix_length":          types.Int32Type,
+				"gateway_address_policy": types.StringType,
+			},
+		},
+	},
+}
+
 func NewVpcResource() resource.Resource {
 	return &VpcResource{}
 }
@@ -209,15 +225,15 @@ func (v *VpcEgressResourceModel) ToProto() *networkingv1beta1.Egress {
 
 // VpcResourceModel describes the resource data model.
 type VpcResourceModel struct {
-	Id           types.String              `tfsdk:"id"`
-	Zone         types.String              `tfsdk:"zone"`
-	Name         types.String              `tfsdk:"name"`
-	HostPrefix   types.String              `tfsdk:"host_prefix"`
-	HostPrefixes []HostPrefixResourceModel `tfsdk:"host_prefixes"`
-	VpcPrefixes  []VpcPrefixResourceModel  `tfsdk:"vpc_prefixes"`
-	Ingress      *VpcIngressResourceModel  `tfsdk:"ingress"`
-	Egress       *VpcEgressResourceModel   `tfsdk:"egress"`
-	Dhcp         *VpcDhcpResourceModel     `tfsdk:"dhcp"`
+	Id           types.String             `tfsdk:"id"`
+	Zone         types.String             `tfsdk:"zone"`
+	Name         types.String             `tfsdk:"name"`
+	HostPrefix   types.String             `tfsdk:"host_prefix"`
+	HostPrefixes types.Set                `tfsdk:"host_prefixes"`
+	VpcPrefixes  []VpcPrefixResourceModel `tfsdk:"vpc_prefixes"`
+	Ingress      *VpcIngressResourceModel `tfsdk:"ingress"`
+	Egress       *VpcEgressResourceModel  `tfsdk:"egress"`
+	Dhcp         *VpcDhcpResourceModel    `tfsdk:"dhcp"`
 }
 
 func (v *VpcResourceModel) Set(vpc *networkingv1beta1.VPC) {
@@ -252,7 +268,19 @@ func (v *VpcResourceModel) Set(vpc *networkingv1beta1.VPC) {
 			hp.Set(p)
 			hostPrefixes = append(hostPrefixes, hp)
 		}
-		v.HostPrefixes = hostPrefixes
+
+		setVal, diags := types.SetValueFrom(
+			context.Background(),
+			hostPrefixObjectType,
+			hostPrefixes,
+		)
+		if diags.HasError() {
+			v.HostPrefixes = types.SetNull(hostPrefixObjectType)
+		} else {
+			v.HostPrefixes = setVal
+		}
+	} else {
+		v.HostPrefixes = types.SetNull(hostPrefixObjectType)
 	}
 
 	if len(vpc.VpcPrefixes) > 0 {
@@ -292,11 +320,22 @@ func (v *VpcResourceModel) GetDhcp(ctx context.Context) *networkingv1beta1.DHCP 
 	return dhcp
 }
 
-func (v *VpcResourceModel) hostPrefixes() []*networkingv1beta1.HostPrefix {
-	hp := []*networkingv1beta1.HostPrefix{}
-	for _, p := range v.HostPrefixes {
-		hp = append(hp, p.ToProto())
+func (v *VpcResourceModel) hostPrefixes(ctx context.Context) []*networkingv1beta1.HostPrefix {
+	if v.HostPrefixes.IsNull() || v.HostPrefixes.IsUnknown() {
+		return nil
 	}
+
+	var models []HostPrefixResourceModel
+	diags := v.HostPrefixes.ElementsAs(ctx, &models, false)
+	if diags.HasError() {
+		return nil
+	}
+
+	var hp []*networkingv1beta1.HostPrefix
+	for _, m := range models {
+		hp = append(hp, m.ToProto())
+	}
+
 	return hp
 }
 
@@ -314,7 +353,7 @@ func (v *VpcResourceModel) ToCreateRequest(ctx context.Context) *networkingv1bet
 		Zone:         v.Zone.ValueString(),
 		VpcPrefixes:  v.vpcPrefixes(),
 		HostPrefix:   v.HostPrefix.ValueString(),
-		HostPrefixes: v.hostPrefixes(),
+		HostPrefixes: v.hostPrefixes(ctx),
 		Ingress:      v.Ingress.ToProto(),
 		Egress:       v.Egress.ToProto(),
 		Dhcp:         v.GetDhcp(ctx),
@@ -400,7 +439,7 @@ func (r *VpcResource) Schema(ctx context.Context, req resource.SchemaRequest, re
 					}, "", ""),
 				},
 			},
-			"host_prefixes": schema.ListNestedAttribute{
+			"host_prefixes": schema.SetNestedAttribute{
 				MarkdownDescription: "The IPv4 or IPv6 CIDR ranges used to allocate host addresses when booting compute into a VPC.",
 				Optional:            true,
 				Computed:            true,
