@@ -23,6 +23,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-testing/plancheck"
 	"github.com/hashicorp/terraform-plugin-testing/statecheck"
 	"github.com/hashicorp/terraform-plugin-testing/tfjsonpath"
+	"github.com/stretchr/testify/assert"
 
 	networkingv1beta1 "buf.build/gen/go/coreweave/networking/protocolbuffers/go/coreweave/networking/v1beta1"
 )
@@ -484,5 +485,112 @@ func TestHostPrefixDefault(t *testing.T) {
 				ImportStateVerify: true,
 			},
 		},
+	})
+}
+
+func TestMustRenderVpcResource(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+	resourceName := "test_vpc"
+
+	t.Run("legacy host prefix", func(t *testing.T) {
+		t.Parallel()
+		m := &networking.VpcResourceModel{
+			Name:       types.StringValue("my-vpc"),
+			Zone:       types.StringValue("US-WEST-04A"),
+			HostPrefix: types.StringValue("10.16.192.0/18"),
+			VpcPrefixes: []networking.VpcPrefixResourceModel{
+				{
+					Name:  types.StringValue("pod-cidr"),
+					Value: types.StringValue("10.0.0.0/13"),
+				},
+				{
+					Name:  types.StringValue("service-cidr"),
+					Value: types.StringValue("10.16.0.0/22"),
+				},
+				{
+					Name:  types.StringValue("internal-lb-cidr"),
+					Value: types.StringValue("10.16.4.0/22"),
+				},
+			},
+		}
+
+		expected := `
+resource "coreweave_networking_vpc" "test_vpc" {
+  name        = "my-vpc"
+  zone        = "US-WEST-04A"
+  host_prefix = "10.16.192.0/18"
+  vpc_prefixes = [{
+    name  = "pod-cidr"
+    value = "10.0.0.0/13"
+    }, {
+    name  = "service-cidr"
+    value = "10.16.0.0/22"
+    }, {
+    name  = "internal-lb-cidr"
+    value = "10.16.4.0/22"
+  }]
+}
+`
+		expected = strings.TrimLeft(expected, "\n")
+		assert.Equal(t, expected, networking.MustRenderVpcResource(ctx, resourceName, m))
+	})
+
+	t.Run("host prefixes", func(t *testing.T) {
+		t.Parallel()
+		hp, diags := types.SetValueFrom(ctx, networking.HostPrefixObjectType, []networking.HostPrefixResourceModel{
+			{
+				Name:     types.StringValue("primary-prefix"),
+				Type:     types.StringValue("ipv4"),
+				Prefixes: []types.String{types.StringValue("10.0.0.0/13")},
+				IPAM:     networking.IPAMPolicyResourceModel{
+					PrefixLength:         types.Int32Value(24),
+					GatewayAddressPolicy: types.StringValue("primary"),
+				},
+			},
+			{
+				Name:     types.StringValue("secondary-prefix"),
+				Type:     types.StringValue("ipv6"),
+				Prefixes: []types.String{types.StringValue("2001:db8::/48")},
+				IPAM:     networking.IPAMPolicyResourceModel{
+					PrefixLength:         types.Int32Value(64),
+					GatewayAddressPolicy: types.StringValue("secondary"),
+				},
+			},
+		})
+		if diags.HasError() {
+			t.Fatalf("failed to create host prefix type: %+v", diags)
+		}
+
+		m := &networking.VpcResourceModel{
+			Name:       types.StringValue("my-vpc"),
+			Zone:       types.StringValue("US-WEST-04A"),
+			HostPrefixes: hp,
+		}
+		expected := `
+resource "coreweave_networking_vpc" "test_vpc" {
+  name = "my-vpc"
+  zone = "US-WEST-04A"
+  host_prefixes = [{
+    ipam = {
+      gateway_address_policy = "primary"
+      prefix_length          = 24
+    }
+    name     = "primary-prefix"
+    prefixes = ["10.0.0.0/13"]
+    type     = "ipv4"
+    }, {
+    ipam = {
+      gateway_address_policy = "secondary"
+      prefix_length          = 64
+    }
+    name     = "secondary-prefix"
+    prefixes = ["2001:db8::/48"]
+    type     = "ipv6"
+  }]
+}
+`
+		expected = strings.TrimLeft(expected, "\n")
+		assert.Equal(t, expected, networking.MustRenderVpcResource(ctx, resourceName, m))
 	})
 }

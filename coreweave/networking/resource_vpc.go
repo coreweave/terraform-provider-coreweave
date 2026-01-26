@@ -755,6 +755,34 @@ func (r *VpcResource) ImportState(ctx context.Context, req resource.ImportStateR
 	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
 }
 
+// hostPrefixToCtyValue converts a HostPrefixResourceModel to a cty.Value for HCL rendering.
+func hostPrefixToCtyValue(hp HostPrefixResourceModel) cty.Value {
+	// Convert prefixes slice to cty values
+	prefixValues := []cty.Value{}
+	for _, p := range hp.Prefixes {
+		prefixValues = append(prefixValues, cty.StringVal(p.ValueString()))
+	}
+
+	// Build the host prefix object
+	hpObj := map[string]cty.Value{
+		"name":     cty.StringVal(hp.Name.ValueString()),
+		"type":     cty.StringVal(hp.Type.ValueString()),
+		"prefixes": cty.ListVal(prefixValues),
+	}
+
+	// Add IPAM if present
+	if !hp.IPAM.PrefixLength.IsNull() || !hp.IPAM.GatewayAddressPolicy.IsNull() {
+		ipamObj := map[string]cty.Value{
+			"prefix_length":          cty.NumberIntVal(int64(hp.IPAM.PrefixLength.ValueInt32())),
+			"gateway_address_policy": cty.StringVal(hp.IPAM.GatewayAddressPolicy.ValueString()),
+		}
+		hpObj["ipam"] = cty.ObjectVal(ipamObj)
+	}
+
+
+	return cty.ObjectVal(hpObj)
+}
+
 // MustRenderVpcResource is a helper to render HCL for use in acceptance testing.
 // It should not be used by clients of this library.
 func MustRenderVpcResource(ctx context.Context, resourceName string, vpc *VpcResourceModel) string {
@@ -781,6 +809,21 @@ func MustRenderVpcResource(ctx context.Context, resourceName string, vpc *VpcRes
 
 	if !vpc.HostPrefix.IsNull() {
 		resourceBody.SetAttributeValue("host_prefix", cty.StringVal(vpc.HostPrefix.ValueString()))
+	}
+
+	// Render host_prefixes if present
+	if !vpc.HostPrefixes.IsNull() && !vpc.HostPrefixes.IsUnknown() {
+		var hostPrefixModels []HostPrefixResourceModel
+		vpc.HostPrefixes.ElementsAs(ctx, &hostPrefixModels, false)
+
+		hostPrefixValues := []cty.Value{}
+		for _, hp := range hostPrefixModels {
+			hostPrefixValues = append(hostPrefixValues, hostPrefixToCtyValue(hp))
+		}
+
+		if len(hostPrefixValues) > 0 {
+			resourceBody.SetAttributeValue("host_prefixes", cty.SetVal(hostPrefixValues))
+		}
 	}
 
 	vpcPrefixes := []cty.Value{}
