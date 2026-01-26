@@ -407,22 +407,28 @@ func (r *VpcResource) Schema(ctx context.Context, req resource.SchemaRequest, re
 				NestedObject: schema.NestedAttributeObject{
 					Attributes: map[string]schema.Attribute{
 						"name": schema.StringAttribute{
+							Required:            true,
 							MarkdownDescription: "The user-specified name of the host prefix.",
 						},
 						"type": schema.StringAttribute{
+							Required:            true,
 							MarkdownDescription: "Controls network connectivity from the prefix to the host.",
 						},
 						"prefixes": schema.ListAttribute{
+							Required:            true,
 							MarkdownDescription: "The VPC-wide aggregates from which host-specific prefixes are allocated. May be IPv4 or IPv6.",
 							ElementType:         basetypes.StringType{},
 						},
 						"ipam": schema.SingleNestedAttribute{
+							Optional:            true,
 							MarkdownDescription: "The configuration for a secondary host prefix.",
 							Attributes: map[string]schema.Attribute{
 								"prefix_length": schema.Int32Attribute{
+									Required:            true,
 									MarkdownDescription: "The desired length for each Node's allocation from the VPC-wide aggregate prefix.",
 								},
 								"gateway_address_policy": schema.StringAttribute{
+									Required:            true,
 									MarkdownDescription: "Describes which IP address from the prefix is allocated to the network gateway.",
 								},
 							},
