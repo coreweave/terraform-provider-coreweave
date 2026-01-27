@@ -20,6 +20,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/retry"
 	"github.com/zclconf/go-cty/cty"
@@ -30,6 +31,22 @@ var (
 	_ resource.Resource                = &VpcResource{}
 	_ resource.ResourceWithImportState = &VpcResource{}
 )
+
+var hostPrefixObjectType = types.ObjectType{
+	AttrTypes: map[string]attr.Type{
+		"name": types.StringType,
+		"type": types.StringType,
+		"prefixes": types.ListType{
+			ElemType: types.StringType,
+		},
+		"ipam": types.ObjectType{
+			AttrTypes: map[string]attr.Type{
+				"prefix_length":          types.Int32Type,
+				"gateway_address_policy": types.StringType,
+			},
+		},
+	},
+}
 
 func NewVpcResource() resource.Resource {
 	return &VpcResource{}
@@ -77,6 +94,84 @@ func (v *VpcDhcpResourceModel) Set(dhcp *networkingv1beta1.DHCP) {
 
 		return
 	}
+}
+
+type HostPrefixResourceModel struct {
+	Name     types.String            `tfsdk:"name"`
+	Type     types.String            `tfsdk:"type"`
+	Prefixes []types.String          `tfsdk:"prefixes"`
+	IPAM     IPAMPolicyResourceModel `tfsdk:"ipam"`
+}
+
+func (hp *HostPrefixResourceModel) ToProto() *networkingv1beta1.HostPrefix {
+	var hpType networkingv1beta1.HostPrefix_Type
+	hpTypeVal := hp.Type.ValueString()
+	if val, ok := networkingv1beta1.HostPrefix_Type_value[hpTypeVal]; ok {
+		hpType = networkingv1beta1.HostPrefix_Type(val)
+	}
+
+	prefixes := []string{}
+	for _, prefix := range hp.Prefixes {
+		prefixes = append(prefixes, prefix.ValueString())
+	}
+
+	return &networkingv1beta1.HostPrefix{
+		Name:     hp.Name.ValueString(),
+		Type:     hpType,
+		Prefixes: prefixes,
+		Ipam:     hp.IPAM.ToProto(),
+	}
+}
+
+type IPAMPolicyResourceModel struct {
+	PrefixLength         types.Int32  `tfsdk:"prefix_length"`
+	GatewayAddressPolicy types.String `tfsdk:"gateway_address_policy"`
+}
+
+func (ipam *IPAMPolicyResourceModel) ToProto() *networkingv1beta1.IPAddressManagementPolicy {
+	var gwPolicy networkingv1beta1.IPAddressManagementPolicy_GatewayAddressPolicy
+	gwPolVal := ipam.GatewayAddressPolicy.ValueString()
+	if val, ok := networkingv1beta1.IPAddressManagementPolicy_GatewayAddressPolicy_value[gwPolVal]; ok {
+		gwPolicy = networkingv1beta1.IPAddressManagementPolicy_GatewayAddressPolicy(val)
+	}
+
+	return &networkingv1beta1.IPAddressManagementPolicy{
+		PrefixLength:         ipam.PrefixLength.ValueInt32(),
+		GatewayAddressPolicy: gwPolicy,
+	}
+}
+
+func (hp *HostPrefixResourceModel) Set(prefix *networkingv1beta1.HostPrefix) {
+	if hp == nil {
+		return
+	}
+
+	var hpType types.String
+	hpTypeNum := int32(prefix.Type)
+	if val, ok := networkingv1beta1.HostPrefix_Type_name[hpTypeNum]; ok {
+		hpType = types.StringValue(val)
+	}
+
+	prefixes := []types.String{}
+	for _, p := range prefix.Prefixes {
+		prefixes = append(prefixes, types.StringValue(p))
+	}
+
+	var gwPolicy types.String
+	gwPolicyNum := int32(prefix.Ipam.GetGatewayAddressPolicy())
+	if val, ok := networkingv1beta1.IPAddressManagementPolicy_GatewayAddressPolicy_name[gwPolicyNum]; ok {
+		gwPolicy = types.StringValue(val)
+	}
+
+	ipam := IPAMPolicyResourceModel{
+		PrefixLength:         types.Int32Value(prefix.Ipam.GetPrefixLength()),
+		GatewayAddressPolicy: gwPolicy,
+	}
+
+	hp.Name = types.StringValue(prefix.Name)
+	hp.Prefixes = prefixes
+	hp.Type = hpType
+	hp.IPAM = ipam
 }
 
 type VpcPrefixResourceModel struct {
@@ -130,14 +225,15 @@ func (v *VpcEgressResourceModel) ToProto() *networkingv1beta1.Egress {
 
 // VpcResourceModel describes the resource data model.
 type VpcResourceModel struct {
-	Id          types.String             `tfsdk:"id"`
-	Zone        types.String             `tfsdk:"zone"`
-	Name        types.String             `tfsdk:"name"`
-	HostPrefix  types.String             `tfsdk:"host_prefix"`
-	VpcPrefixes []VpcPrefixResourceModel `tfsdk:"vpc_prefixes"`
-	Ingress     *VpcIngressResourceModel `tfsdk:"ingress"`
-	Egress      *VpcEgressResourceModel  `tfsdk:"egress"`
-	Dhcp        *VpcDhcpResourceModel    `tfsdk:"dhcp"`
+	Id           types.String             `tfsdk:"id"`
+	Zone         types.String             `tfsdk:"zone"`
+	Name         types.String             `tfsdk:"name"`
+	HostPrefix   types.String             `tfsdk:"host_prefix"`
+	HostPrefixes types.Set                `tfsdk:"host_prefixes"`
+	VpcPrefixes  []VpcPrefixResourceModel `tfsdk:"vpc_prefixes"`
+	Ingress      *VpcIngressResourceModel `tfsdk:"ingress"`
+	Egress       *VpcEgressResourceModel  `tfsdk:"egress"`
+	Dhcp         *VpcDhcpResourceModel    `tfsdk:"dhcp"`
 }
 
 func (v *VpcResourceModel) Set(vpc *networkingv1beta1.VPC) {
@@ -163,6 +259,28 @@ func (v *VpcResourceModel) Set(vpc *networkingv1beta1.VPC) {
 		v.Egress = &VpcEgressResourceModel{
 			DisablePublicAccess: types.BoolValue(vpc.Egress.DisablePublicAccess),
 		}
+	}
+
+	if len(vpc.HostPrefixes) > 0 {
+		hostPrefixes := []HostPrefixResourceModel{}
+		for _, p := range vpc.HostPrefixes {
+			hp := HostPrefixResourceModel{}
+			hp.Set(p)
+			hostPrefixes = append(hostPrefixes, hp)
+		}
+
+		setVal, diags := types.SetValueFrom(
+			context.Background(),
+			hostPrefixObjectType,
+			hostPrefixes,
+		)
+		if diags.HasError() {
+			v.HostPrefixes = types.SetNull(hostPrefixObjectType)
+		} else {
+			v.HostPrefixes = setVal
+		}
+	} else {
+		v.HostPrefixes = types.SetNull(hostPrefixObjectType)
 	}
 
 	if len(vpc.VpcPrefixes) > 0 {
@@ -202,6 +320,25 @@ func (v *VpcResourceModel) GetDhcp(ctx context.Context) *networkingv1beta1.DHCP 
 	return dhcp
 }
 
+func (v *VpcResourceModel) hostPrefixes(ctx context.Context) []*networkingv1beta1.HostPrefix {
+	if v.HostPrefixes.IsNull() || v.HostPrefixes.IsUnknown() {
+		return nil
+	}
+
+	var models []HostPrefixResourceModel
+	diags := v.HostPrefixes.ElementsAs(ctx, &models, false)
+	if diags.HasError() {
+		return nil
+	}
+
+	var hp []*networkingv1beta1.HostPrefix
+	for _, m := range models {
+		hp = append(hp, m.ToProto())
+	}
+
+	return hp
+}
+
 func (v *VpcResourceModel) vpcPrefixes() []*networkingv1beta1.Prefix {
 	vp := []*networkingv1beta1.Prefix{}
 	for _, p := range v.VpcPrefixes {
@@ -212,13 +349,14 @@ func (v *VpcResourceModel) vpcPrefixes() []*networkingv1beta1.Prefix {
 
 func (v *VpcResourceModel) ToCreateRequest(ctx context.Context) *networkingv1beta1.CreateVPCRequest {
 	req := &networkingv1beta1.CreateVPCRequest{
-		Name:        v.Name.ValueString(),
-		Zone:        v.Zone.ValueString(),
-		VpcPrefixes: v.vpcPrefixes(),
-		HostPrefix:  v.HostPrefix.ValueString(),
-		Ingress:     v.Ingress.ToProto(),
-		Egress:      v.Egress.ToProto(),
-		Dhcp:        v.GetDhcp(ctx),
+		Name:         v.Name.ValueString(),
+		Zone:         v.Zone.ValueString(),
+		VpcPrefixes:  v.vpcPrefixes(),
+		HostPrefix:   v.HostPrefix.ValueString(),
+		HostPrefixes: v.hostPrefixes(ctx),
+		Ingress:      v.Ingress.ToProto(),
+		Egress:       v.Egress.ToProto(),
+		Dhcp:         v.GetDhcp(ctx),
 	}
 
 	return req
@@ -299,6 +437,42 @@ func (r *VpcResource) Schema(ctx context.Context, req resource.SchemaRequest, re
 							resp.RequiresReplace = true
 						}
 					}, "", ""),
+				},
+			},
+			"host_prefixes": schema.SetNestedAttribute{
+				MarkdownDescription: "The IPv4 or IPv6 CIDR ranges used to allocate host addresses when booting compute into a VPC.",
+				Optional:            true,
+				Computed:            true,
+				NestedObject: schema.NestedAttributeObject{
+					Attributes: map[string]schema.Attribute{
+						"name": schema.StringAttribute{
+							Required:            true,
+							MarkdownDescription: "The user-specified name of the host prefix.",
+						},
+						"type": schema.StringAttribute{
+							Required:            true,
+							MarkdownDescription: "Controls network connectivity from the prefix to the host.",
+						},
+						"prefixes": schema.ListAttribute{
+							Required:            true,
+							MarkdownDescription: "The VPC-wide aggregates from which host-specific prefixes are allocated. May be IPv4 or IPv6.",
+							ElementType:         basetypes.StringType{},
+						},
+						"ipam": schema.SingleNestedAttribute{
+							Optional:            true,
+							MarkdownDescription: "The configuration for a secondary host prefix.",
+							Attributes: map[string]schema.Attribute{
+								"prefix_length": schema.Int32Attribute{
+									Required:            true,
+									MarkdownDescription: "The desired length for each Node's allocation from the VPC-wide aggregate prefix.",
+								},
+								"gateway_address_policy": schema.StringAttribute{
+									Required:            true,
+									MarkdownDescription: "Describes which IP address from the prefix is allocated to the network gateway.",
+								},
+							},
+						},
+					},
 				},
 			},
 			"ingress": schema.SingleNestedAttribute{
