@@ -6,14 +6,20 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
+	"slices"
+	"strings"
 	"time"
 
 	networkingv1beta1 "buf.build/gen/go/coreweave/networking/protocolbuffers/go/coreweave/networking/v1beta1"
 	"connectrpc.com/connect"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
 	"github.com/hashicorp/hcl/v2/hclwrite"
+	"github.com/hashicorp/terraform-plugin-framework-nettypes/cidrtypes"
+	"github.com/hashicorp/terraform-plugin-framework-nettypes/iptypes"
 	"github.com/hashicorp/terraform-plugin-framework-validators/resourcevalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/setvalidator"
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -21,10 +27,10 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/setplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/retry"
 	"github.com/zclconf/go-cty/cty"
@@ -66,7 +72,7 @@ type VpcResource struct {
 // ConfigValidators implements resource.ResourceWithConfigValidators.
 func (r *VpcResource) ConfigValidators(context.Context) []resource.ConfigValidator {
 	return []resource.ConfigValidator{
-		resourcevalidator.ExactlyOneOf(path.MatchRoot("host_prefix"), path.MatchRoot("host_prefixes")),
+		resourcevalidator.Conflicting(path.MatchRoot("host_prefix"), path.MatchRoot("host_prefixes")),
 	}
 }
 
@@ -123,9 +129,9 @@ func (hp *HostPrefixResourceModel) ToProto() *networkingv1beta1.HostPrefix {
 		hpType = networkingv1beta1.HostPrefix_Type(val)
 	}
 
-	prefixes := []string{}
-	for _, prefix := range hp.Prefixes {
-		prefixes = append(prefixes, prefix.ValueString())
+	prefixes := make([]string, len(hp.Prefixes))
+	for i, prefix := range hp.Prefixes {
+		prefixes[i] = prefix.ValueString()
 	}
 
 	return &networkingv1beta1.HostPrefix{
@@ -344,18 +350,18 @@ func (v *VpcResourceModel) hostPrefixes(ctx context.Context) []*networkingv1beta
 		return nil
 	}
 
-	var hp []*networkingv1beta1.HostPrefix
-	for _, m := range models {
-		hp = append(hp, m.ToProto())
+	hp := make([]*networkingv1beta1.HostPrefix, len(models))
+	for i, m := range models {
+		hp[i] = m.ToProto()
 	}
 
 	return hp
 }
 
 func (v *VpcResourceModel) vpcPrefixes() []*networkingv1beta1.Prefix {
-	vp := []*networkingv1beta1.Prefix{}
-	for _, p := range v.VpcPrefixes {
-		vp = append(vp, p.ToProto())
+	vp := make([]*networkingv1beta1.Prefix, len(v.VpcPrefixes))
+	for i, p := range v.VpcPrefixes {
+		vp[i] = p.ToProto()
 	}
 	return vp
 }
@@ -392,6 +398,9 @@ func (r *VpcResource) Metadata(ctx context.Context, req resource.MetadataRequest
 }
 
 func (r *VpcResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
+	hostPrefixTypes := slices.Collect(maps.Keys(networkingv1beta1.HostPrefix_Type_value))
+	ipamGatewayAddressPolicies := slices.Collect(maps.Keys(networkingv1beta1.IPAddressManagementPolicy_GatewayAddressPolicy_value))
+
 	resp.Schema = schema.Schema{
 		MarkdownDescription: "Create and manage VPCs. Learn more about [CoreWeave VPCs](https://docs.coreweave.com/docs/products/networking/vpc/about-vpcs).",
 
@@ -437,7 +446,7 @@ func (r *VpcResource) Schema(ctx context.Context, req resource.SchemaRequest, re
 				MarkdownDescription: "An IPv4 CIDR range used to allocate host addresses when booting compute into a VPC.\nThis CIDR must be have a mask size of /18. If left unspecified, a Zone-specific default value will be applied by the server.\nThis field is immutable once set.",
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplaceIfConfigured(),
-					stringplanmodifier.UseStateForUnknown(),
+					stringplanmodifier.UseStateForUnknown(), // required for the resource to work as expected when the value is computed instead of specified
 				},
 			},
 			"host_prefixes": schema.SetNestedAttribute{
@@ -448,8 +457,8 @@ func (r *VpcResource) Schema(ctx context.Context, req resource.SchemaRequest, re
 					setvalidator.SizeAtLeast(1),
 				},
 				PlanModifiers: []planmodifier.Set{
-					setplanmodifier.UseStateForUnknown(),
 					setplanmodifier.RequiresReplaceIfConfigured(),
+					setplanmodifier.UseStateForUnknown(), // this comes into play when this is not specified. Instead, we use the state as refreshed for the plan. This has no effect when this is specified.
 				},
 				NestedObject: schema.NestedAttributeObject{
 					Attributes: map[string]schema.Attribute{
@@ -459,15 +468,18 @@ func (r *VpcResource) Schema(ctx context.Context, req resource.SchemaRequest, re
 						},
 						"type": schema.StringAttribute{
 							Required:            true,
-							MarkdownDescription: "Controls network connectivity from the prefix to the host.",
+							MarkdownDescription: fmt.Sprintf("Controls network connectivity from the prefix to the host. Must be one of: %s.", strings.Join(hostPrefixTypes, ", ")),
+							Validators: []validator.String{
+								stringvalidator.OneOf(hostPrefixTypes...),
+							},
 						},
 						"prefixes": schema.ListAttribute{
 							Required:            true,
 							MarkdownDescription: "The VPC-wide aggregates from which host-specific prefixes are allocated. May be IPv4 or IPv6.",
-							ElementType:         basetypes.StringType{},
+							ElementType:         cidrtypes.IPPrefixType{},
 						},
 						"ipam": schema.SingleNestedAttribute{
-							Optional:            true,
+							Required:            true,
 							MarkdownDescription: "The configuration for a secondary host prefix.",
 							Attributes: map[string]schema.Attribute{
 								"prefix_length": schema.Int32Attribute{
@@ -475,8 +487,13 @@ func (r *VpcResource) Schema(ctx context.Context, req resource.SchemaRequest, re
 									MarkdownDescription: "The desired length for each Node's allocation from the VPC-wide aggregate prefix.",
 								},
 								"gateway_address_policy": schema.StringAttribute{
-									Required:            true,
-									MarkdownDescription: "Describes which IP address from the prefix is allocated to the network gateway.",
+									Optional:            true,
+									Computed:            true,
+									MarkdownDescription: fmt.Sprintf("Describes which IP address from the prefix is allocated to the network gateway. Must be one of: %s.", strings.Join(ipamGatewayAddressPolicies, ", ")),
+									Default:             stringdefault.StaticString(networkingv1beta1.IPAddressManagementPolicy_UNSPECIFIED.String()),
+									Validators: []validator.String{
+										stringvalidator.OneOf(ipamGatewayAddressPolicies...),
+									},
 								},
 							},
 						},
@@ -526,7 +543,7 @@ func (r *VpcResource) Schema(ctx context.Context, req resource.SchemaRequest, re
 							"servers": schema.SetAttribute{
 								Optional:            true,
 								MarkdownDescription: "The DNS servers to be used by DHCP clients within the VPC.",
-								ElementType:         types.StringType,
+								ElementType:         iptypes.IPAddressType{},
 							},
 						},
 					},
@@ -766,9 +783,9 @@ func (r *VpcResource) ImportState(ctx context.Context, req resource.ImportStateR
 // hostPrefixToCtyValue converts a HostPrefixResourceModel to a cty.Value for HCL rendering.
 func hostPrefixToCtyValue(hp HostPrefixResourceModel) cty.Value {
 	// Convert prefixes slice to cty values
-	prefixValues := []cty.Value{}
-	for _, p := range hp.Prefixes {
-		prefixValues = append(prefixValues, cty.StringVal(p.ValueString()))
+	prefixValues := make([]cty.Value, len(hp.Prefixes))
+	for i, p := range hp.Prefixes {
+		prefixValues[i] = cty.StringVal(p.ValueString())
 	}
 
 	// Build the host prefix object
@@ -823,9 +840,9 @@ func MustRenderVpcResource(ctx context.Context, resourceName string, vpc *VpcRes
 		var hostPrefixModels []HostPrefixResourceModel
 		vpc.HostPrefixes.ElementsAs(ctx, &hostPrefixModels, false)
 
-		hostPrefixValues := []cty.Value{}
-		for _, hp := range hostPrefixModels {
-			hostPrefixValues = append(hostPrefixValues, hostPrefixToCtyValue(hp))
+		hostPrefixValues := make([]cty.Value, len(hostPrefixModels))
+		for i, hp := range hostPrefixModels {
+			hostPrefixValues[i] = hostPrefixToCtyValue(hp)
 		}
 
 		if len(hostPrefixValues) > 0 {
@@ -833,12 +850,12 @@ func MustRenderVpcResource(ctx context.Context, resourceName string, vpc *VpcRes
 		}
 	}
 
-	vpcPrefixes := []cty.Value{}
-	for _, p := range vpc.VpcPrefixes {
-		vpcPrefixes = append(vpcPrefixes, cty.ObjectVal(map[string]cty.Value{
+	vpcPrefixes := make([]cty.Value, len(vpc.VpcPrefixes))
+	for i, p := range vpc.VpcPrefixes {
+		vpcPrefixes[i] = cty.ObjectVal(map[string]cty.Value{
 			"name":  cty.StringVal(p.Name.ValueString()),
 			"value": cty.StringVal(p.Value.ValueString()),
-		}))
+		})
 	}
 
 	if len(vpcPrefixes) > 0 {
@@ -852,9 +869,9 @@ func MustRenderVpcResource(ctx context.Context, resourceName string, vpc *VpcRes
 			if !vpc.Dhcp.Dns.Servers.IsNull() {
 				servers := []types.String{}
 				vpc.Dhcp.Dns.Servers.ElementsAs(ctx, &servers, false)
-				serverVals := []cty.Value{}
-				for _, s := range servers {
-					serverVals = append(serverVals, cty.StringVal(s.ValueString()))
+				serverVals := make([]cty.Value, len(servers))
+				for i, s := range servers {
+					serverVals[i] = cty.StringVal(s.ValueString())
 				}
 
 				if len(serverVals) > 0 {

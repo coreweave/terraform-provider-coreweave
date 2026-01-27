@@ -6,6 +6,7 @@ import (
 	"log"
 	"math/rand/v2"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -14,6 +15,7 @@ import (
 	"github.com/coreweave/terraform-provider-coreweave/coreweave/networking"
 	"github.com/coreweave/terraform-provider-coreweave/internal/provider"
 	"github.com/coreweave/terraform-provider-coreweave/internal/testutil"
+	"github.com/hashicorp/terraform-plugin-framework-nettypes/iptypes"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	fwresource "github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -111,6 +113,15 @@ func TestVpcSchema(t *testing.T) {
 	}
 }
 
+func hostPrefixesToSet(t *testing.T, hp []networking.HostPrefixResourceModel) types.Set {
+	t.Helper()
+	setVal, diags := types.SetValueFrom(t.Context(), networking.HostPrefixObjectType, hp)
+	if diags.HasError() {
+		t.Fatalf("failed to create host prefix set: %+v", diags)
+	}
+	return setVal
+}
+
 func TestVpcResource(t *testing.T) {
 	randomInt := rand.IntN(100)
 	vpcName := fmt.Sprintf("%s%x", AcceptanceTestPrefix, randomInt)
@@ -157,7 +168,19 @@ func TestVpcResource(t *testing.T) {
 		Egress: &networking.VpcEgressResourceModel{
 			DisablePublicAccess: types.BoolValue(true),
 		},
-		HostPrefix: types.StringValue("10.16.192.0/18"),
+		// Migrate from the legacy host_prefix in the update.
+		// HostPrefix: types.StringValue("10.16.192.0/18"),
+		HostPrefixes: hostPrefixesToSet(t, []networking.HostPrefixResourceModel{
+			{
+				Name:     types.StringValue("host primary"),
+				Type:     types.StringValue("PRIMARY"),
+				Prefixes: []types.String{types.StringValue("10.16.192.0/18")},
+				IPAM: networking.IPAMPolicyResourceModel{
+					PrefixLength:         types.Int32Value(0),
+					GatewayAddressPolicy: types.StringValue("UNSPECIFIED"),
+				},
+			},
+		}),
 		VpcPrefixes: []networking.VpcPrefixResourceModel{
 			{
 				Name:  types.StringValue("pod cidr"),
@@ -178,7 +201,7 @@ func TestVpcResource(t *testing.T) {
 		},
 	}
 
-	ctx := context.Background()
+	ctx := t.Context()
 
 	resource.ParallelTest(t, resource.TestCase{
 		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
@@ -363,12 +386,53 @@ func TestVpcResource(t *testing.T) {
 				ImportState:       true,
 				ImportStateVerify: true,
 			},
+			{
+				PreConfig: func() {
+					t.Log("Beginning coreweave_networking_vpc host prefix requires_replace test")
+				},
+				Config: strings.Join([]string{
+					networking.MustRenderVpcResource(ctx, resourceName, &networking.VpcResourceModel{
+						Name: types.StringValue(vpcName),
+						Zone: types.StringValue(zone),
+						HostPrefixes: hostPrefixesToSet(t, []networking.HostPrefixResourceModel{
+							{
+								Name:     types.StringValue("host primary"),
+								Type:     types.StringValue("PRIMARY"),
+								Prefixes: []types.String{types.StringValue("10.16.64.0/18")}, // changed prefix from the update
+								IPAM: networking.IPAMPolicyResourceModel{
+									PrefixLength:         types.Int32Value(0),
+									GatewayAddressPolicy: types.StringValue("UNSPECIFIED"),
+								},
+							},
+						}),
+						VpcPrefixes: slices.Clone(update.VpcPrefixes),
+						Dhcp: &networking.VpcDhcpResourceModel{
+							Dns: &networking.VpcDhcpDnsResourceModel{
+								Servers: types.SetValueMust(iptypes.IPAddressType{}, []attr.Value{iptypes.NewIPAddressValue("1.1.1.1")}),
+							},
+						},
+						Ingress: &networking.VpcIngressResourceModel{
+							DisablePublicServices: types.BoolValue(true),
+						},
+						Egress: &networking.VpcEgressResourceModel{
+							DisablePublicAccess: types.BoolValue(true),
+						},
+					}),
+				}, "\n"),
+				ConfigPlanChecks: resource.ConfigPlanChecks{
+					PostApplyPreRefresh: []plancheck.PlanCheck{
+						plancheck.ExpectResourceAction(fullResourceName, plancheck.ResourceActionDestroyBeforeCreate),
+					},
+				},
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: true,
+			},
 		},
 	})
 }
 
 func TestHostPrefixReplace(t *testing.T) {
-	randomInt := rand.IntN(99)
+	randomInt := rand.IntN(100)
 	vpcName := fmt.Sprintf("%shprefix-repl-%x", AcceptanceTestPrefix, randomInt)
 	resourceName := fmt.Sprintf("test_hostprefix_replace_%x", randomInt)
 	fullResourceName := fmt.Sprintf("coreweave_networking_vpc.%s", resourceName)
@@ -386,7 +450,7 @@ func TestHostPrefixReplace(t *testing.T) {
 		HostPrefix: types.StringValue("172.0.0.0/18"),
 	}
 
-	ctx := context.Background()
+	ctx := t.Context()
 
 	resource.ParallelTest(t, resource.TestCase{
 		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
@@ -449,7 +513,7 @@ func TestHostPrefixDefault(t *testing.T) {
 		HostPrefix: types.StringNull(),
 	}
 
-	ctx := context.Background()
+	ctx := t.Context()
 
 	resource.ParallelTest(t, resource.TestCase{
 		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
@@ -541,20 +605,20 @@ resource "coreweave_networking_vpc" "test_vpc" {
 		hp, diags := types.SetValueFrom(ctx, networking.HostPrefixObjectType, []networking.HostPrefixResourceModel{
 			{
 				Name:     types.StringValue("primary-prefix"),
-				Type:     types.StringValue("ipv4"),
+				Type:     types.StringValue(networkingv1beta1.HostPrefix_PRIMARY.String()),
 				Prefixes: []types.String{types.StringValue("10.0.0.0/13")},
 				IPAM: networking.IPAMPolicyResourceModel{
 					PrefixLength:         types.Int32Value(24),
-					GatewayAddressPolicy: types.StringValue("primary"),
+					GatewayAddressPolicy: types.StringValue(networkingv1beta1.IPAddressManagementPolicy_UNSPECIFIED.String()),
 				},
 			},
 			{
 				Name:     types.StringValue("secondary-prefix"),
-				Type:     types.StringValue("ipv6"),
+				Type:     types.StringValue(networkingv1beta1.IPAddressManagementPolicy_FIRST_IP.String()),
 				Prefixes: []types.String{types.StringValue("2001:db8::/48")},
 				IPAM: networking.IPAMPolicyResourceModel{
 					PrefixLength:         types.Int32Value(64),
-					GatewayAddressPolicy: types.StringValue("secondary"),
+					GatewayAddressPolicy: types.StringValue(networkingv1beta1.IPAddressManagementPolicy_FIRST_IP.String()),
 				},
 			},
 		})
@@ -567,26 +631,28 @@ resource "coreweave_networking_vpc" "test_vpc" {
 			Zone:         types.StringValue("US-WEST-04A"),
 			HostPrefixes: hp,
 		}
+
+		// note: order of hosts is deterministic, but may change when the values change due to being a set.
 		expected := `
 resource "coreweave_networking_vpc" "test_vpc" {
   name = "my-vpc"
   zone = "US-WEST-04A"
   host_prefixes = [{
     ipam = {
-      gateway_address_policy = "primary"
-      prefix_length          = 24
-    }
-    name     = "primary-prefix"
-    prefixes = ["10.0.0.0/13"]
-    type     = "ipv4"
-    }, {
-    ipam = {
-      gateway_address_policy = "secondary"
+      gateway_address_policy = "FIRST_IP"
       prefix_length          = 64
     }
     name     = "secondary-prefix"
     prefixes = ["2001:db8::/48"]
-    type     = "ipv6"
+    type     = "FIRST_IP"
+    }, {
+    ipam = {
+      gateway_address_policy = "UNSPECIFIED"
+      prefix_length          = 24
+    }
+    name     = "primary-prefix"
+    prefixes = ["10.0.0.0/13"]
+    type     = "PRIMARY"
   }]
 }
 `
