@@ -852,34 +852,29 @@ func (r *VpcResource) ImportState(ctx context.Context, req resource.ImportStateR
 
 // hostPrefixToCtyValue converts a HostPrefixResourceModel to a cty.Value for HCL rendering.
 func hostPrefixToCtyValue(hp HostPrefixResourceModel) cty.Value {
-	// Convert prefixes slice to cty values
 	prefixValues := make([]cty.Value, len(hp.Prefixes))
 	for i, p := range hp.Prefixes {
 		prefixValues[i] = cty.StringVal(p.ValueString())
 	}
 
-	// Build the host prefix object
 	hpObj := map[string]cty.Value{
 		"name":     cty.StringVal(hp.Name.ValueString()),
 		"type":     cty.StringVal(hp.Type.ValueString()),
 		"prefixes": cty.SetVal(prefixValues),
 	}
 
-	// Add IPAM only if present - omit null fields for cleaner HCL rendering
+	// Add IPAM only if present - omit null fields for cleaner HCL rendering, to accept them as "true nils"
 	if hp.IPAM != nil {
 		ipamObj := map[string]cty.Value{
 			"prefix_length": cty.NumberIntVal(int64(hp.IPAM.PrefixLength.ValueInt32())),
 		}
 
-		// Only include gateway_address_policy if it's set (not null/unknown)
 		if !hp.IPAM.GatewayAddressPolicy.IsNull() && !hp.IPAM.GatewayAddressPolicy.IsUnknown() {
 			ipamObj["gateway_address_policy"] = cty.StringVal(hp.IPAM.GatewayAddressPolicy.ValueString())
 		}
-		// Otherwise, omit the field entirely
 
 		hpObj["ipam"] = cty.ObjectVal(ipamObj)
 	}
-	// If IPAM is nil, omit the ipam key entirely from the rendered HCL
 
 	return cty.ObjectVal(hpObj)
 }
@@ -912,7 +907,6 @@ func MustRenderVpcResource(ctx context.Context, resourceName string, vpc *VpcRes
 		resourceBody.SetAttributeValue("host_prefix", cty.StringVal(vpc.HostPrefix.ValueString()))
 	}
 
-	// Render host_prefixes if present
 	if !vpc.HostPrefixes.IsNull() && !vpc.HostPrefixes.IsUnknown() {
 		var hostPrefixModels []HostPrefixResourceModel
 		if diags := vpc.HostPrefixes.ElementsAs(ctx, &hostPrefixModels, false); diags.HasError() {
@@ -926,8 +920,8 @@ func MustRenderVpcResource(ctx context.Context, resourceName string, vpc *VpcRes
 
 		if len(hostPrefixValues) > 0 {
 			// Technically, this is a set value. However, cty sets require homogeneous values, which is not the case here.
-			// We use TupleVal instead of ListVal because tuples allow heterogeneous element types (different IPAM structures).
-			// This still renders as valid HCL list syntax [...] that Terraform accepts.
+			// We use TupleVal instead of ListVal because tuples allow heterogeneous element types, which allows us to omit fields.
+			// The terraform expression still renders in a way that is compatible with the schema.
 			resourceBody.SetAttributeValue("host_prefixes", cty.TupleVal(hostPrefixValues))
 		}
 	}

@@ -151,16 +151,15 @@ func hostPrefixObjectExact(t *testing.T, hp networking.HostPrefixResourceModel) 
 	return knownvalue.ObjectExact(obj)
 }
 
-// defaultExpectedValues returns the expected values for the VPC resource based on the given model. This validates behavior of the given properties, where possible.
-// The model passed in must be the same as the one _specified_, not the returned value.
+// defaultExpectedValues constructs the expected values for the VPC resource based on the given model. This validates behavior of the given properties, where possible.
+// It should behave as an equivalent of "make sure the resource matches this object for all configured fields".
+// Derived fields are calculated where feasible.
 func defaultExpectedValues(t *testing.T, resourceAddress string, m *networking.VpcResourceModel) []statecheck.StateCheck {
 	t.Helper()
 
 	stateChecks := make([]statecheck.StateCheck, 0)
 
-	// These attributes should always be present.
-	// Values not known until runtime are checked for not-null.
-	// Values that are required are checked for their concrete expected value.
+	// These attributes should always be present..
 	stateChecks = append(stateChecks,
 		statecheck.ExpectKnownValue(resourceAddress, tfjsonpath.New("id"), knownvalue.NotNull()),
 		statecheck.ExpectKnownValue(resourceAddress, tfjsonpath.New("zone"), knownvalue.StringExact(m.Zone.ValueString())),
@@ -168,13 +167,25 @@ func defaultExpectedValues(t *testing.T, resourceAddress string, m *networking.V
 	)
 
 	// NOTE: this uses a common pattern that validates attributes based on the definition of the correct behavior.
+	// Code here should be written very carefully, as it will exercise all of the tests. This should be a STRICT definition of the behavior.
+	// Not all checks need to be here, but checks where we can make an authoritative determination about the end state may be present here.
 	// When values are optional, we often want to validate behavior: either default behavior, or else derived behavior.
 	// When values are supplied, they should generally be validated against the supplied value.
 
+	// If you do not specify any host prefix(es), something will be assigned for you in the output.
 	if m.HostPrefix.IsNull() || m.HostPrefix.IsUnknown() {
 		stateChecks = append(stateChecks, statecheck.ExpectKnownValue(resourceAddress, tfjsonpath.New("host_prefix"), knownvalue.NotNull()))
 	} else {
 		stateChecks = append(stateChecks, statecheck.ExpectKnownValue(resourceAddress, tfjsonpath.New("host_prefix"), knownvalue.StringExact(m.HostPrefix.ValueString())))
+
+		// Validate that the host_prefixes attribute contains an element equivalent to the host prefix.
+		stateChecks = append(stateChecks, statecheck.ExpectKnownValue(resourceAddress, tfjsonpath.New("host_prefixes"), knownvalue.SetPartial([]knownvalue.Check{
+			hostPrefixObjectExact(t, networking.HostPrefixResourceModel{
+				Name: types.StringValue(defaultPrimaryHostPrefixName),
+				Type: types.StringValue(networkingv1beta1.HostPrefix_PRIMARY.String()),
+				Prefixes: []cidrtypes.IPPrefix{cidrtypes.NewIPPrefixValue(m.HostPrefix.ValueString())},
+			}),
+		})))
 	}
 
 	if m.HostPrefixes.IsNull() || m.HostPrefixes.IsUnknown() {
@@ -192,6 +203,7 @@ func defaultExpectedValues(t *testing.T, resourceAddress string, m *networking.V
 		stateChecks = append(stateChecks, statecheck.ExpectKnownValue(resourceAddress, tfjsonpath.New("host_prefixes"), knownvalue.SetExact(setChecks)))
 	}
 
+	// We can assert strict identity against the vpc_prefixes attribute.
 	if len(m.VpcPrefixes) == 0 {
 		stateChecks = append(stateChecks, statecheck.ExpectKnownValue(resourceAddress, tfjsonpath.New("vpc_prefixes"), knownvalue.Null()))
 	} else {
@@ -205,54 +217,45 @@ func defaultExpectedValues(t *testing.T, resourceAddress string, m *networking.V
 		stateChecks = append(stateChecks, statecheck.ExpectKnownValue(resourceAddress, tfjsonpath.New("vpc_prefixes"), knownvalue.SetExact(setChecks)))
 	}
 
+	// Full ingress objects are validated for backwards compatibility.
+	expectedIngressObj := make(map[string]knownvalue.Check)
 	if m.Ingress == nil {
-		stateChecks = append(stateChecks, statecheck.ExpectKnownValue(resourceAddress, tfjsonpath.New("ingress"), knownvalue.ObjectExact(map[string]knownvalue.Check{
-			"disable_public_services": knownvalue.Bool(false),
-		})))
+		expectedIngressObj["disable_public_services"] = knownvalue.Bool(false)
 	} else {
-		if m.Ingress.DisablePublicServices.IsNull() || m.Ingress.DisablePublicServices.IsUnknown() {
-			t.Fatalf("ingress.disable_public_services is null or unknown")
-		}
-		stateChecks = append(stateChecks, statecheck.ExpectKnownValue(resourceAddress, tfjsonpath.New("ingress"), knownvalue.ObjectExact(map[string]knownvalue.Check{
-			"disable_public_services": knownvalue.Bool(m.Ingress.DisablePublicServices.ValueBool()),
-		})))
+		expectedIngressObj["disable_public_services"] = knownvalue.Bool(m.Ingress.DisablePublicServices.ValueBool())
 	}
+	stateChecks = append(stateChecks, statecheck.ExpectKnownValue(resourceAddress, tfjsonpath.New("ingress"), knownvalue.ObjectExact(expectedIngressObj)))
 
+	// Full egress objects are validated for backwards compatibility.
+	expectedEgressObj := make(map[string]knownvalue.Check)
 	if m.Egress == nil {
-		stateChecks = append(stateChecks, statecheck.ExpectKnownValue(resourceAddress, tfjsonpath.New("egress"), knownvalue.ObjectExact(map[string]knownvalue.Check{
-			"disable_public_access": knownvalue.Bool(false),
-		})))
+		expectedEgressObj["disable_public_access"] = knownvalue.Bool(false)
 	} else {
-		expectedValue := false
-		if !m.Egress.DisablePublicAccess.IsNull() && !m.Egress.DisablePublicAccess.IsUnknown() {
-			expectedValue = m.Egress.DisablePublicAccess.ValueBool()
-		}
-		stateChecks = append(stateChecks, statecheck.ExpectKnownValue(resourceAddress, tfjsonpath.New("egress"), knownvalue.ObjectExact(map[string]knownvalue.Check{
-			"disable_public_access": knownvalue.Bool(expectedValue),
-		})))
+		expectedEgressObj["disable_public_access"] = knownvalue.Bool(m.Egress.DisablePublicAccess.ValueBool())
 	}
+	stateChecks = append(stateChecks, statecheck.ExpectKnownValue(resourceAddress, tfjsonpath.New("egress"), knownvalue.ObjectExact(expectedEgressObj)))
 
+	// Full DHCP objects are validated for backwards compatibility, but we may want to change this later if the complexity of the object increases.
 	if m.Dhcp == nil || m.Dhcp.IsEmpty() {
 		stateChecks = append(stateChecks, statecheck.ExpectKnownValue(resourceAddress, tfjsonpath.New("dhcp"), knownvalue.Null()))
 	} else {
-		servers := make([]string, 0)
-		if diags := m.Dhcp.Dns.Servers.ElementsAs(t.Context(), &servers, false); diags.HasError() {
-			t.Fatalf("failed to get DHCP servers from model: %+v", diags)
+		dhcpObj := make(map[string]knownvalue.Check)
+		if m.Dhcp.Dns == nil {
+			dhcpObj["dns"] = knownvalue.Null()
+		} else {
+			servers := make([]string, 0)
+			if diags := m.Dhcp.Dns.Servers.ElementsAs(t.Context(), &servers, false); diags.HasError() {
+				t.Fatalf("failed to get DHCP servers from model: %+v", diags)
+			}
+			serverChecks := make([]knownvalue.Check, len(servers))
+			for i, server := range servers {
+				serverChecks[i] = knownvalue.StringExact(server)
+			}
+			dhcpObj["dns"] = knownvalue.ObjectExact(map[string]knownvalue.Check{
+				"servers": knownvalue.SetExact(serverChecks),
+			})
 		}
-		serverChecks := make([]knownvalue.Check, len(servers))
-		for i, server := range servers {
-			serverChecks[i] = knownvalue.StringExact(server)
-		}
-
-		stateChecks = append(stateChecks, statecheck.ExpectKnownValue(resourceAddress, tfjsonpath.New("dhcp"), knownvalue.ObjectExact(
-			map[string]knownvalue.Check{
-				"dns": knownvalue.ObjectExact(
-					map[string]knownvalue.Check{
-						"servers": knownvalue.SetExact(serverChecks),
-					},
-				),
-			},
-		)))
+		stateChecks = append(stateChecks, statecheck.ExpectKnownValue(resourceAddress, tfjsonpath.New("dhcp"), knownvalue.ObjectExact(dhcpObj)))
 	}
 
 	return stateChecks
