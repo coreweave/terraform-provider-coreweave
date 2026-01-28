@@ -329,8 +329,6 @@ func (v *VpcResourceModel) Set(vpc *networkingv1beta1.VPC) (diagnostics diag.Dia
 		v.HostPrefixes = setVal
 	} else {
 		v.HostPrefixes = types.SetNull(hostPrefixObjectType)
-		diagnostics.AddError("Failed to set host prefixes", "Failed to set host prefixes")
-		return diagnostics
 	}
 
 	if len(vpc.VpcPrefixes) > 0 {
@@ -432,7 +430,7 @@ func (v *VpcResourceModel) ToCreateRequest(ctx context.Context) (*networkingv1be
 		Dhcp:         dhcp,
 	}
 
-	return req, diags
+	return req, diagnostics
 }
 
 func (v *VpcResourceModel) ToUpdateRequest(ctx context.Context) (*networkingv1beta1.UpdateVPCRequest, diag.Diagnostics) {
