@@ -16,11 +16,11 @@ import (
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/hashicorp/terraform-plugin-framework-nettypes/cidrtypes"
-	"github.com/hashicorp/terraform-plugin-framework-nettypes/iptypes"
 	"github.com/hashicorp/terraform-plugin-framework-validators/resourcevalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/setvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -49,7 +49,7 @@ var hostPrefixObjectType = types.ObjectType{
 		"name": types.StringType,
 		"type": types.StringType,
 		"prefixes": types.SetType{
-			ElemType: types.StringType,
+			ElemType: cidrtypes.IPPrefixType{},
 		},
 		"ipam": types.ObjectType{
 			AttrTypes: map[string]attr.Type{
@@ -104,9 +104,9 @@ func (v *VpcDhcpResourceModel) Set(dhcp *networkingv1beta1.DHCP) {
 	if dhcp.Dns != nil {
 		v.Dns = &VpcDhcpDnsResourceModel{}
 
-		servers := []attr.Value{}
-		for _, s := range dhcp.Dns.Servers {
-			servers = append(servers, types.StringValue(s))
+		servers := make([]attr.Value, len(dhcp.Dns.Servers))
+		for i, s := range dhcp.Dns.Servers {
+			servers[i] = types.StringValue(s)
 		}
 		ds := types.SetValueMust(types.StringType, servers)
 		v.Dns.Servers = ds
@@ -116,17 +116,21 @@ func (v *VpcDhcpResourceModel) Set(dhcp *networkingv1beta1.DHCP) {
 }
 
 type HostPrefixResourceModel struct {
-	Name     types.String            `tfsdk:"name"`
-	Type     types.String            `tfsdk:"type"`
-	Prefixes []types.String          `tfsdk:"prefixes"`
-	IPAM     IPAMPolicyResourceModel `tfsdk:"ipam"`
+	Name     types.String             `tfsdk:"name"`
+	Type     types.String             `tfsdk:"type"`
+	Prefixes []cidrtypes.IPPrefix     `tfsdk:"prefixes"`
+	IPAM     *IPAMPolicyResourceModel `tfsdk:"ipam"`
 }
 
-func (hp *HostPrefixResourceModel) ToProto() *networkingv1beta1.HostPrefix {
+func (hp *HostPrefixResourceModel) ToProto() (*networkingv1beta1.HostPrefix, diag.Diagnostics) {
+	var diagnostics diag.Diagnostics
+
 	var hpType networkingv1beta1.HostPrefix_Type
 	hpTypeVal := hp.Type.ValueString()
 	if val, ok := networkingv1beta1.HostPrefix_Type_value[hpTypeVal]; ok {
 		hpType = networkingv1beta1.HostPrefix_Type(val)
+	} else {
+		diagnostics.AddError("Invalid host prefix type", fmt.Sprintf("Invalid host prefix type: %s", hpTypeVal))
 	}
 
 	prefixes := make([]string, len(hp.Prefixes))
@@ -134,12 +138,19 @@ func (hp *HostPrefixResourceModel) ToProto() *networkingv1beta1.HostPrefix {
 		prefixes[i] = prefix.ValueString()
 	}
 
+	ipam, diags := hp.IPAM.ToProto()
+	diagnostics.Append(diags...)
+
+	if diagnostics.HasError() {
+		return nil, diagnostics
+	}
+
 	return &networkingv1beta1.HostPrefix{
 		Name:     hp.Name.ValueString(),
 		Type:     hpType,
 		Prefixes: prefixes,
-		Ipam:     hp.IPAM.ToProto(),
-	}
+		Ipam:     ipam,
+	}, diagnostics
 }
 
 type IPAMPolicyResourceModel struct {
@@ -147,17 +158,29 @@ type IPAMPolicyResourceModel struct {
 	GatewayAddressPolicy types.String `tfsdk:"gateway_address_policy"`
 }
 
-func (ipam *IPAMPolicyResourceModel) ToProto() *networkingv1beta1.IPAddressManagementPolicy {
+func (ipam *IPAMPolicyResourceModel) ToProto() (*networkingv1beta1.IPAddressManagementPolicy, diag.Diagnostics) {
+	if ipam == nil {
+		return nil, nil
+	}
+
+	var diagnostics diag.Diagnostics
+
 	var gwPolicy networkingv1beta1.IPAddressManagementPolicy_GatewayAddressPolicy
 	gwPolVal := ipam.GatewayAddressPolicy.ValueString()
 	if val, ok := networkingv1beta1.IPAddressManagementPolicy_GatewayAddressPolicy_value[gwPolVal]; ok {
 		gwPolicy = networkingv1beta1.IPAddressManagementPolicy_GatewayAddressPolicy(val)
+	} else {
+		diagnostics.AddError("Invalid gateway address policy", fmt.Sprintf("Invalid gateway address policy: %s", gwPolVal))
+	}
+
+	if diagnostics.HasError() {
+		return nil, diagnostics
 	}
 
 	return &networkingv1beta1.IPAddressManagementPolicy{
 		PrefixLength:         ipam.PrefixLength.ValueInt32(),
 		GatewayAddressPolicy: gwPolicy,
-	}
+	}, diagnostics
 }
 
 func (hp *HostPrefixResourceModel) Set(prefix *networkingv1beta1.HostPrefix) {
@@ -165,32 +188,22 @@ func (hp *HostPrefixResourceModel) Set(prefix *networkingv1beta1.HostPrefix) {
 		return
 	}
 
-	var hpType types.String
-	hpTypeNum := int32(prefix.Type)
-	if val, ok := networkingv1beta1.HostPrefix_Type_name[hpTypeNum]; ok {
-		hpType = types.StringValue(val)
-	}
-
-	prefixes := []types.String{}
-	for _, p := range prefix.Prefixes {
-		prefixes = append(prefixes, types.StringValue(p))
-	}
-
-	var gwPolicy types.String
-	gwPolicyNum := int32(prefix.Ipam.GetGatewayAddressPolicy())
-	if val, ok := networkingv1beta1.IPAddressManagementPolicy_GatewayAddressPolicy_name[gwPolicyNum]; ok {
-		gwPolicy = types.StringValue(val)
-	}
-
-	ipam := IPAMPolicyResourceModel{
-		PrefixLength:         types.Int32Value(prefix.Ipam.GetPrefixLength()),
-		GatewayAddressPolicy: gwPolicy,
-	}
-
 	hp.Name = types.StringValue(prefix.Name)
-	hp.Prefixes = prefixes
-	hp.Type = hpType
-	hp.IPAM = ipam
+	hp.Type = types.StringValue(prefix.Type.String())
+
+	hp.Prefixes = make([]cidrtypes.IPPrefix, len(prefix.Prefixes))
+	for i, p := range prefix.Prefixes {
+		hp.Prefixes[i] = cidrtypes.NewIPPrefixValue(p)
+	}
+
+	if prefix.Ipam == nil {
+		hp.IPAM = nil
+	} else {
+		hp.IPAM = &IPAMPolicyResourceModel{
+			PrefixLength:         types.Int32Value(prefix.Ipam.GetPrefixLength()),
+			GatewayAddressPolicy: types.StringValue(prefix.Ipam.GatewayAddressPolicy.String()),
+		}
+	}
 }
 
 type VpcPrefixResourceModel struct {
@@ -255,10 +268,11 @@ type VpcResourceModel struct {
 	Dhcp         *VpcDhcpResourceModel    `tfsdk:"dhcp"`
 }
 
-func (v *VpcResourceModel) Set(vpc *networkingv1beta1.VPC) {
+func (v *VpcResourceModel) Set(vpc *networkingv1beta1.VPC) diag.Diagnostics {
 	if vpc == nil {
-		return
+		return nil
 	}
+	var diagnostics diag.Diagnostics
 
 	v.Id = types.StringValue(vpc.Id)
 	v.Name = types.StringValue(vpc.Name)
@@ -293,21 +307,21 @@ func (v *VpcResourceModel) Set(vpc *networkingv1beta1.VPC) {
 			hostPrefixObjectType,
 			hostPrefixes,
 		)
-		if diags.HasError() {
-			v.HostPrefixes = types.SetNull(hostPrefixObjectType)
-		} else {
-			v.HostPrefixes = setVal
+		diagnostics.Append(diags...)
+		if diagnostics.HasError() {
+			return diagnostics
 		}
+		v.HostPrefixes = setVal
 	} else {
 		v.HostPrefixes = types.SetNull(hostPrefixObjectType)
+		diagnostics.AddError("Failed to set host prefixes", "Failed to set host prefixes")
 	}
 
 	if len(vpc.VpcPrefixes) > 0 {
-		vpcPrefixes := []VpcPrefixResourceModel{}
-		for _, p := range vpc.VpcPrefixes {
-			vp := VpcPrefixResourceModel{}
-			vp.Set(p)
-			vpcPrefixes = append(vpcPrefixes, vp)
+		vpcPrefixes := make([]VpcPrefixResourceModel, len(vpc.VpcPrefixes))
+		for i, p := range vpc.VpcPrefixes {
+			vpcPrefixes[i] = VpcPrefixResourceModel{}
+			vpcPrefixes[i].Set(p)
 		}
 		v.VpcPrefixes = vpcPrefixes
 	}
@@ -320,15 +334,18 @@ func (v *VpcResourceModel) Set(vpc *networkingv1beta1.VPC) {
 	} else { // otherwise, remove it
 		v.Dhcp = nil
 	}
+	return diagnostics
 }
 
-func (v *VpcResourceModel) GetDhcp(ctx context.Context) *networkingv1beta1.DHCP {
+func (v *VpcResourceModel) GetDhcp(ctx context.Context) (*networkingv1beta1.DHCP, diag.Diagnostics) {
 	if v.Dhcp == nil {
-		return nil
+		return nil, nil
 	}
 
-	ds := []string{}
-	v.Dhcp.Dns.Servers.ElementsAs(ctx, &ds, true)
+	var diagnostics diag.Diagnostics
+
+	ds := make([]string, 0)
+	diagnostics.Append(v.Dhcp.Dns.Servers.ElementsAs(ctx, &ds, false)...)
 
 	dhcp := &networkingv1beta1.DHCP{
 		Dns: &networkingv1beta1.DHCP_DNS{
@@ -336,26 +353,35 @@ func (v *VpcResourceModel) GetDhcp(ctx context.Context) *networkingv1beta1.DHCP 
 		},
 	}
 
-	return dhcp
+	if diagnostics.HasError() {
+		return nil, diagnostics
+	}
+
+	return dhcp, diagnostics
 }
 
-func (v *VpcResourceModel) hostPrefixes(ctx context.Context) []*networkingv1beta1.HostPrefix {
+func (v *VpcResourceModel) hostPrefixes(ctx context.Context) ([]*networkingv1beta1.HostPrefix, diag.Diagnostics) {
 	if v.HostPrefixes.IsNull() || v.HostPrefixes.IsUnknown() {
-		return nil
+		return nil, nil
 	}
 
+	var diagnostics diag.Diagnostics
+
 	var models []HostPrefixResourceModel
-	diags := v.HostPrefixes.ElementsAs(ctx, &models, false)
-	if diags.HasError() {
-		return nil
-	}
+	diagnostics.Append(v.HostPrefixes.ElementsAs(ctx, &models, false)...)
 
 	hp := make([]*networkingv1beta1.HostPrefix, len(models))
 	for i, m := range models {
-		hp[i] = m.ToProto()
+		prefix, diags := m.ToProto()
+		diagnostics.Append(diags...)
+		hp[i] = prefix
 	}
 
-	return hp
+	if diagnostics.HasError() {
+		return nil, diagnostics
+	}
+
+	return hp, diagnostics
 }
 
 func (v *VpcResourceModel) vpcPrefixes() []*networkingv1beta1.Prefix {
@@ -366,31 +392,52 @@ func (v *VpcResourceModel) vpcPrefixes() []*networkingv1beta1.Prefix {
 	return vp
 }
 
-func (v *VpcResourceModel) ToCreateRequest(ctx context.Context) *networkingv1beta1.CreateVPCRequest {
+func (v *VpcResourceModel) ToCreateRequest(ctx context.Context) (*networkingv1beta1.CreateVPCRequest, diag.Diagnostics) {
+	var diagnostics diag.Diagnostics
+
+	hostPrefixes, diags := v.hostPrefixes(ctx)
+	diagnostics.Append(diags...)
+
+	dhcp, diags := v.GetDhcp(ctx)
+	diagnostics.Append(diags...)
+
+	if diagnostics.HasError() {
+		return nil, diagnostics
+	}
+
 	req := &networkingv1beta1.CreateVPCRequest{
 		Name:         v.Name.ValueString(),
 		Zone:         v.Zone.ValueString(),
 		VpcPrefixes:  v.vpcPrefixes(),
 		HostPrefix:   v.HostPrefix.ValueString(),
-		HostPrefixes: v.hostPrefixes(ctx),
+		HostPrefixes: hostPrefixes,
 		Ingress:      v.Ingress.ToProto(),
 		Egress:       v.Egress.ToProto(),
-		Dhcp:         v.GetDhcp(ctx),
+		Dhcp:         dhcp,
 	}
 
-	return req
+	return req, diags
 }
 
-func (v *VpcResourceModel) ToUpdateRequest(ctx context.Context) *networkingv1beta1.UpdateVPCRequest {
+func (v *VpcResourceModel) ToUpdateRequest(ctx context.Context) (*networkingv1beta1.UpdateVPCRequest, diag.Diagnostics) {
+	var diagnostics diag.Diagnostics
+
+	dhcp, diags := v.GetDhcp(ctx)
+	diagnostics.Append(diags...)
+
+	if diagnostics.HasError() {
+		return nil, diagnostics
+	}
+
 	req := networkingv1beta1.UpdateVPCRequest{
 		Id:          v.Id.ValueString(),
 		VpcPrefixes: v.vpcPrefixes(),
 		Ingress:     v.Ingress.ToProto(),
 		Egress:      v.Egress.ToProto(),
-		Dhcp:        v.GetDhcp(ctx),
+		Dhcp:        dhcp,
 	}
 
-	return &req
+	return &req, diagnostics
 }
 
 func (r *VpcResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -479,7 +526,7 @@ func (r *VpcResource) Schema(ctx context.Context, req resource.SchemaRequest, re
 							ElementType:         cidrtypes.IPPrefixType{},
 						},
 						"ipam": schema.SingleNestedAttribute{
-							Required:            true,
+							Optional:            true,
 							MarkdownDescription: "The configuration for a secondary host prefix.",
 							Attributes: map[string]schema.Attribute{
 								"prefix_length": schema.Int32Attribute{
@@ -543,7 +590,7 @@ func (r *VpcResource) Schema(ctx context.Context, req resource.SchemaRequest, re
 							"servers": schema.SetAttribute{
 								Optional:            true,
 								MarkdownDescription: "The DNS servers to be used by DHCP clients within the VPC.",
-								ElementType:         iptypes.IPAddressType{},
+								ElementType:         types.StringType,
 							},
 						},
 					},
@@ -580,7 +627,13 @@ func (r *VpcResource) Create(ctx context.Context, req resource.CreateRequest, re
 		return
 	}
 
-	createResp, err := r.client.CreateVPC(ctx, connect.NewRequest(data.ToCreateRequest(ctx)))
+	createReq, diags := data.ToCreateRequest(ctx)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	createResp, err := r.client.CreateVPC(ctx, connect.NewRequest(createReq))
 	if err != nil {
 		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
 		return
@@ -671,7 +724,13 @@ func (r *VpcResource) Update(ctx context.Context, req resource.UpdateRequest, re
 		return
 	}
 
-	updateResp, err := r.client.UpdateVPC(ctx, connect.NewRequest(data.ToUpdateRequest(ctx)))
+	updateReq, diags := data.ToUpdateRequest(ctx)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	updateResp, err := r.client.UpdateVPC(ctx, connect.NewRequest(updateReq))
 	if err != nil {
 		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
 		return
@@ -796,12 +855,18 @@ func hostPrefixToCtyValue(hp HostPrefixResourceModel) cty.Value {
 	}
 
 	// Add IPAM if present
-	if !hp.IPAM.PrefixLength.IsNull() || !hp.IPAM.GatewayAddressPolicy.IsNull() {
+	if hp.IPAM != nil {
 		ipamObj := map[string]cty.Value{
 			"prefix_length":          cty.NumberIntVal(int64(hp.IPAM.PrefixLength.ValueInt32())),
 			"gateway_address_policy": cty.StringVal(hp.IPAM.GatewayAddressPolicy.ValueString()),
 		}
 		hpObj["ipam"] = cty.ObjectVal(ipamObj)
+	} else {
+		// IPAM must be appropriately typed and set to null, for set comparison.
+		hpObj["ipam"] = cty.NullVal(cty.Object(map[string]cty.Type{
+			"prefix_length":          cty.Number,
+			"gateway_address_policy": cty.String,
+		}))
 	}
 
 	return cty.ObjectVal(hpObj)
@@ -838,7 +903,9 @@ func MustRenderVpcResource(ctx context.Context, resourceName string, vpc *VpcRes
 	// Render host_prefixes if present
 	if !vpc.HostPrefixes.IsNull() && !vpc.HostPrefixes.IsUnknown() {
 		var hostPrefixModels []HostPrefixResourceModel
-		vpc.HostPrefixes.ElementsAs(ctx, &hostPrefixModels, false)
+		if diags := vpc.HostPrefixes.ElementsAs(ctx, &hostPrefixModels, false); diags.HasError() {
+			panic(fmt.Sprintf("failed to marshal host prefixes: %+v", diags))
+		}
 
 		hostPrefixValues := make([]cty.Value, len(hostPrefixModels))
 		for i, hp := range hostPrefixModels {
@@ -868,7 +935,9 @@ func MustRenderVpcResource(ctx context.Context, resourceName string, vpc *VpcRes
 			dns := map[string]cty.Value{}
 			if !vpc.Dhcp.Dns.Servers.IsNull() {
 				servers := []types.String{}
-				vpc.Dhcp.Dns.Servers.ElementsAs(ctx, &servers, false)
+				if diags := vpc.Dhcp.Dns.Servers.ElementsAs(ctx, &servers, false); diags.HasError() {
+					panic(fmt.Sprintf("failed to marshal DHCP servers: %+v", diags))
+				}
 				serverVals := make([]cty.Value, len(servers))
 				for i, s := range servers {
 					serverVals[i] = cty.StringVal(s.ValueString())

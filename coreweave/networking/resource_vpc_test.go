@@ -15,7 +15,7 @@ import (
 	"github.com/coreweave/terraform-provider-coreweave/coreweave/networking"
 	"github.com/coreweave/terraform-provider-coreweave/internal/provider"
 	"github.com/coreweave/terraform-provider-coreweave/internal/testutil"
-	"github.com/hashicorp/terraform-plugin-framework-nettypes/iptypes"
+	"github.com/hashicorp/terraform-plugin-framework-nettypes/cidrtypes"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	fwresource "github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -95,6 +95,7 @@ func init() {
 }
 
 func TestVpcSchema(t *testing.T) {
+	t.Parallel()
 	ctx := t.Context()
 	schemaRequest := fwresource.SchemaRequest{}
 	schemaResponse := &fwresource.SchemaResponse{}
@@ -130,15 +131,19 @@ func hostPrefixObjectExact(t *testing.T, hp networking.HostPrefixResourceModel) 
 		prefixes[i] = knownvalue.StringExact(prefix.ValueString())
 	}
 
-	return knownvalue.ObjectExact(map[string]knownvalue.Check{
-		"name": knownvalue.StringExact(hp.Name.ValueString()),
-		"type": knownvalue.StringExact(hp.Type.ValueString()),
+	obj := map[string]knownvalue.Check{
+		"name":     knownvalue.StringExact(hp.Name.ValueString()),
+		"type":     knownvalue.StringExact(hp.Type.ValueString()),
 		"prefixes": knownvalue.SetExact(prefixes),
-		"ipam": knownvalue.ObjectExact(map[string]knownvalue.Check{
-			"prefix_length": knownvalue.Int32Exact(hp.IPAM.PrefixLength.ValueInt32()),
+		"ipam":     knownvalue.Null(),
+	}
+	if hp.IPAM != nil {
+		obj["ipam"] = knownvalue.ObjectExact(map[string]knownvalue.Check{
+			"prefix_length":          knownvalue.Int32Exact(hp.IPAM.PrefixLength.ValueInt32()),
 			"gateway_address_policy": knownvalue.StringExact(hp.IPAM.GatewayAddressPolicy.ValueString()),
-		}),
-	})
+		})
+	}
+	return knownvalue.ObjectExact(obj)
 }
 
 // defaultExpectedValues returns the expected values for the VPC resource based on the given model. This validates behavior of the given properties, where possible.
@@ -188,7 +193,7 @@ func defaultExpectedValues(t *testing.T, resourceAddress string, m *networking.V
 		setChecks := make([]knownvalue.Check, len(m.VpcPrefixes))
 		for i, vp := range m.VpcPrefixes {
 			setChecks[i] = knownvalue.ObjectExact(map[string]knownvalue.Check{
-				"name": knownvalue.StringExact(vp.Name.ValueString()),
+				"name":  knownvalue.StringExact(vp.Name.ValueString()),
 				"value": knownvalue.StringExact(vp.Value.ValueString()),
 			})
 		}
@@ -222,7 +227,7 @@ func defaultExpectedValues(t *testing.T, resourceAddress string, m *networking.V
 		})))
 	}
 
-	if m.Dhcp.IsEmpty() {
+	if m.Dhcp == nil || m.Dhcp.IsEmpty() {
 		stateChecks = append(stateChecks, statecheck.ExpectKnownValue(resourceAddress, tfjsonpath.New("dhcp"), knownvalue.Null()))
 	} else {
 		servers := make([]string, 0)
@@ -233,6 +238,7 @@ func defaultExpectedValues(t *testing.T, resourceAddress string, m *networking.V
 		for i, server := range servers {
 			serverChecks[i] = knownvalue.StringExact(server)
 		}
+
 		stateChecks = append(stateChecks, statecheck.ExpectKnownValue(resourceAddress, tfjsonpath.New("dhcp"), knownvalue.ObjectExact(
 			map[string]knownvalue.Check{
 				"dns": knownvalue.ObjectExact(
@@ -302,11 +308,7 @@ func TestVpcResource(t *testing.T) {
 				{
 					Name:     types.StringValue("host primary"),
 					Type:     types.StringValue(networkingv1beta1.HostPrefix_PRIMARY.String()),
-					Prefixes: []types.String{types.StringValue("10.16.192.0/18")},
-					IPAM: networking.IPAMPolicyResourceModel{
-						PrefixLength:         types.Int32Value(0),
-						GatewayAddressPolicy: types.StringValue(networkingv1beta1.IPAddressManagementPolicy_UNSPECIFIED.String()),
-					},
+					Prefixes: []cidrtypes.IPPrefix{cidrtypes.NewIPPrefixValue("10.16.192.0/18")},
 				},
 			}),
 			VpcPrefixes: []networking.VpcPrefixResourceModel{
@@ -456,8 +458,8 @@ func TestVpcResource(t *testing.T) {
 								{
 									Name:     types.StringValue("host primary"),
 									Type:     types.StringValue("PRIMARY"),
-									Prefixes: []types.String{types.StringValue("10.16.64.0/18")}, // changed prefix from the update
-									IPAM: networking.IPAMPolicyResourceModel{
+									Prefixes: []cidrtypes.IPPrefix{cidrtypes.NewIPPrefixValue("10.16.64.0/18")}, // changed prefix from the update
+									IPAM: &networking.IPAMPolicyResourceModel{
 										PrefixLength:         types.Int32Value(0),
 										GatewayAddressPolicy: types.StringValue(networkingv1beta1.IPAddressManagementPolicy_UNSPECIFIED.String()),
 									},
@@ -466,7 +468,7 @@ func TestVpcResource(t *testing.T) {
 							VpcPrefixes: slices.Clone(update.VpcPrefixes),
 							Dhcp: &networking.VpcDhcpResourceModel{
 								Dns: &networking.VpcDhcpDnsResourceModel{
-									Servers: types.SetValueMust(iptypes.IPAddressType{}, []attr.Value{iptypes.NewIPAddressValue("1.1.1.1")}),
+									Servers: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("1.1.1.1")}),
 								},
 							},
 							Ingress: &networking.VpcIngressResourceModel{
@@ -501,24 +503,20 @@ func TestVpcResource(t *testing.T) {
 		cidrUpdate := "10.16.64.0/18"
 
 		initial := &networking.VpcResourceModel{
-			Name: types.StringValue(vpcName),
-			Zone: types.StringValue(zone),
+			Name:       types.StringValue(vpcName),
+			Zone:       types.StringValue(zone),
 			HostPrefix: types.StringValue(cidrInitial),
 		}
 
 		equivalentToInitial := &networking.VpcResourceModel{
-			Name: types.StringValue(vpcName),
-			Zone: types.StringValue(zone),
+			Name:       types.StringValue(vpcName),
+			Zone:       types.StringValue(zone),
 			HostPrefix: types.StringNull(),
 			HostPrefixes: hostPrefixesToSet(t, []networking.HostPrefixResourceModel{
 				{
 					Name:     types.StringValue("host primary"),
 					Type:     types.StringValue(networkingv1beta1.HostPrefix_PRIMARY.String()),
-					Prefixes: []types.String{types.StringValue(cidrInitial)},
-					IPAM: networking.IPAMPolicyResourceModel{
-						PrefixLength:         types.Int32Value(0),
-						GatewayAddressPolicy: types.StringValue(networkingv1beta1.IPAddressManagementPolicy_UNSPECIFIED.String()),
-					},
+					Prefixes: []cidrtypes.IPPrefix{cidrtypes.NewIPPrefixValue(cidrInitial)},
 				},
 			}),
 		}
@@ -530,8 +528,8 @@ func TestVpcResource(t *testing.T) {
 				{
 					Name:     types.StringValue("host primary"),
 					Type:     types.StringValue(networkingv1beta1.HostPrefix_PRIMARY.String()),
-					Prefixes: []types.String{types.StringValue(cidrUpdate)},
-					IPAM: networking.IPAMPolicyResourceModel{
+					Prefixes: []cidrtypes.IPPrefix{cidrtypes.NewIPPrefixValue(cidrUpdate)},
+					IPAM: &networking.IPAMPolicyResourceModel{
 						PrefixLength:         types.Int32Value(0),
 						GatewayAddressPolicy: types.StringValue(networkingv1beta1.IPAddressManagementPolicy_UNSPECIFIED.String()),
 					},
@@ -540,8 +538,8 @@ func TestVpcResource(t *testing.T) {
 		}
 
 		updateReversion := &networking.VpcResourceModel{
-			Name: types.StringValue(vpcName),
-			Zone: types.StringValue(zone),
+			Name:       types.StringValue(vpcName),
+			Zone:       types.StringValue(zone),
 			HostPrefix: types.StringValue(cidrUpdate),
 		}
 
@@ -569,7 +567,7 @@ func TestVpcResource(t *testing.T) {
 						// Make sure that the host prefix is copied to the host_prefixes attribute using expected values.
 						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("host_prefixes"), knownvalue.SetPartial([]knownvalue.Check{
 							knownvalue.ObjectExact(map[string]knownvalue.Check{
-								"ipam": knownvalue.NotNull(),
+								"ipam": knownvalue.Null(),
 								"name": knownvalue.NotNull(),
 								"type": knownvalue.StringExact(networkingv1beta1.HostPrefix_PRIMARY.String()),
 								"prefixes": knownvalue.SetExact([]knownvalue.Check{
@@ -797,17 +795,13 @@ resource "coreweave_networking_vpc" "test_vpc" {
 			{
 				Name:     types.StringValue("primary-prefix"),
 				Type:     types.StringValue(networkingv1beta1.HostPrefix_PRIMARY.String()),
-				Prefixes: []types.String{types.StringValue("10.0.0.0/13")},
-				IPAM: networking.IPAMPolicyResourceModel{
-					PrefixLength:         types.Int32Value(24),
-					GatewayAddressPolicy: types.StringValue(networkingv1beta1.IPAddressManagementPolicy_UNSPECIFIED.String()),
-				},
+				Prefixes: []cidrtypes.IPPrefix{cidrtypes.NewIPPrefixValue("10.0.0.0/13")},
 			},
 			{
 				Name:     types.StringValue("secondary-prefix"),
 				Type:     types.StringValue(networkingv1beta1.IPAddressManagementPolicy_FIRST_IP.String()),
-				Prefixes: []types.String{types.StringValue("2001:db8::/48")},
-				IPAM: networking.IPAMPolicyResourceModel{
+				Prefixes: []cidrtypes.IPPrefix{cidrtypes.NewIPPrefixValue("2001:db8::/48")},
+				IPAM: &networking.IPAMPolicyResourceModel{
 					PrefixLength:         types.Int32Value(64),
 					GatewayAddressPolicy: types.StringValue(networkingv1beta1.IPAddressManagementPolicy_FIRST_IP.String()),
 				},
@@ -837,14 +831,41 @@ resource "coreweave_networking_vpc" "test_vpc" {
     prefixes = ["2001:db8::/48"]
     type     = "FIRST_IP"
     }, {
-    ipam = {
-      gateway_address_policy = "UNSPECIFIED"
-      prefix_length          = 24
-    }
+    ipam     = null
     name     = "primary-prefix"
     prefixes = ["10.0.0.0/13"]
     type     = "PRIMARY"
   }]
+}
+`
+		expected = strings.TrimLeft(expected, "\n")
+		assert.Equal(t, expected, networking.MustRenderVpcResource(ctx, resourceName, m))
+	})
+
+	t.Run("dhcp", func(t *testing.T) {
+		t.Parallel()
+		m := &networking.VpcResourceModel{
+			Name: types.StringValue("my-vpc"),
+			Zone: types.StringValue("US-WEST-04A"),
+			Dhcp: &networking.VpcDhcpResourceModel{
+				Dns: &networking.VpcDhcpDnsResourceModel{
+					Servers: types.SetValueMust(types.StringType, []attr.Value{
+						types.StringValue("1.1.1.1"),
+						types.StringValue("8.8.8.8"),
+					}),
+				},
+			},
+		}
+
+		expected := `
+resource "coreweave_networking_vpc" "test_vpc" {
+  name = "my-vpc"
+  zone = "US-WEST-04A"
+  dhcp = {
+    dns = {
+      servers = ["1.1.1.1", "8.8.8.8"]
+    }
+  }
 }
 `
 		expected = strings.TrimLeft(expected, "\n")

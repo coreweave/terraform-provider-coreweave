@@ -10,10 +10,10 @@ import (
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/hashicorp/hcl/v2/hclwrite"
+	"github.com/hashicorp/terraform-plugin-framework-nettypes/cidrtypes"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 )
 
 var (
@@ -84,7 +84,7 @@ func (d *VpcDataSource) Schema(ctx context.Context, req datasource.SchemaRequest
 						},
 						"prefixes": schema.SetAttribute{
 							MarkdownDescription: "The VPC-wide aggregates from which host-specific prefixes are allocated. May be IPv4 or IPv6.",
-							ElementType:         basetypes.StringType{},
+							ElementType:         cidrtypes.IPPrefixType{},
 							Computed:            true,
 						},
 						"ipam": schema.SingleNestedAttribute{
