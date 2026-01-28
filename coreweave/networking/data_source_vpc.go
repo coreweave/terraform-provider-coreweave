@@ -82,7 +82,7 @@ func (d *VpcDataSource) Schema(ctx context.Context, req datasource.SchemaRequest
 							MarkdownDescription: "Controls network connectivity from the prefix to the host.",
 							Computed:            true,
 						},
-						"prefixes": schema.ListAttribute{
+						"prefixes": schema.SetAttribute{
 							MarkdownDescription: "The VPC-wide aggregates from which host-specific prefixes are allocated. May be IPv4 or IPv6.",
 							ElementType:         basetypes.StringType{},
 							Computed:            true,

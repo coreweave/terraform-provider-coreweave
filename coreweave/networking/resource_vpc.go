@@ -48,7 +48,7 @@ var hostPrefixObjectType = types.ObjectType{
 	AttrTypes: map[string]attr.Type{
 		"name": types.StringType,
 		"type": types.StringType,
-		"prefixes": types.ListType{
+		"prefixes": types.SetType{
 			ElemType: types.StringType,
 		},
 		"ipam": types.ObjectType{
@@ -473,7 +473,7 @@ func (r *VpcResource) Schema(ctx context.Context, req resource.SchemaRequest, re
 								stringvalidator.OneOf(hostPrefixTypes...),
 							},
 						},
-						"prefixes": schema.ListAttribute{
+						"prefixes": schema.SetAttribute{
 							Required:            true,
 							MarkdownDescription: "The VPC-wide aggregates from which host-specific prefixes are allocated. May be IPv4 or IPv6.",
 							ElementType:         cidrtypes.IPPrefixType{},
@@ -792,7 +792,7 @@ func hostPrefixToCtyValue(hp HostPrefixResourceModel) cty.Value {
 	hpObj := map[string]cty.Value{
 		"name":     cty.StringVal(hp.Name.ValueString()),
 		"type":     cty.StringVal(hp.Type.ValueString()),
-		"prefixes": cty.ListVal(prefixValues),
+		"prefixes": cty.SetVal(prefixValues),
 	}
 
 	// Add IPAM if present
