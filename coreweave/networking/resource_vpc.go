@@ -12,13 +12,13 @@ import (
 	"time"
 
 	networkingv1beta1 "buf.build/gen/go/coreweave/networking/protocolbuffers/go/coreweave/networking/v1beta1"
+	"buf.build/go/protovalidate"
 	"connectrpc.com/connect"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/hashicorp/terraform-plugin-framework-nettypes/cidrtypes"
 	"github.com/hashicorp/terraform-plugin-framework-validators/resourcevalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/setvalidator"
-	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -27,7 +27,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/setplanmodifier"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -42,6 +41,7 @@ var (
 	_ resource.ResourceWithImportState      = &VpcResource{}
 	_ resource.ResourceWithConfigure        = &VpcResource{}
 	_ resource.ResourceWithConfigValidators = &VpcResource{}
+	_ resource.ResourceWithValidateConfig   = &VpcResource{}
 )
 
 var hostPrefixObjectType = types.ObjectType{
@@ -69,7 +69,27 @@ type VpcResource struct {
 	client *coreweave.Client
 }
 
-// ConfigValidators implements resource.ResourceWithConfigValidators.
+func (r *VpcResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
+	var data VpcResourceModel
+	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
+
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	createReq, diags := data.ToCreateRequest(ctx)
+	resp.Diagnostics.Append(diags...)
+
+	if diags.HasError() {
+		return
+	}
+
+	if err := protovalidate.Validate(createReq); err != nil {
+		resp.Diagnostics.AddError("Failed to validate VPC", err.Error())
+		return
+	}
+}
+
 func (r *VpcResource) ConfigValidators(context.Context) []resource.ConfigValidator {
 	return []resource.ConfigValidator{
 		resourcevalidator.Conflicting(path.MatchRoot("host_prefix"), path.MatchRoot("host_prefixes")),
@@ -166,11 +186,12 @@ func (ipam *IPAMPolicyResourceModel) ToProto() (*networkingv1beta1.IPAddressMana
 	var diagnostics diag.Diagnostics
 
 	var gwPolicy networkingv1beta1.IPAddressManagementPolicy_GatewayAddressPolicy
-	gwPolVal := ipam.GatewayAddressPolicy.ValueString()
-	if val, ok := networkingv1beta1.IPAddressManagementPolicy_GatewayAddressPolicy_value[gwPolVal]; ok {
+	if ipam.GatewayAddressPolicy.IsNull() || ipam.GatewayAddressPolicy.IsUnknown() {
+		gwPolicy = networkingv1beta1.IPAddressManagementPolicy_UNSPECIFIED
+	} else if val, ok := networkingv1beta1.IPAddressManagementPolicy_GatewayAddressPolicy_value[ipam.GatewayAddressPolicy.ValueString()]; ok {
 		gwPolicy = networkingv1beta1.IPAddressManagementPolicy_GatewayAddressPolicy(val)
 	} else {
-		diagnostics.AddError("Invalid gateway address policy", fmt.Sprintf("Invalid gateway address policy: %s", gwPolVal))
+		diagnostics.AddError("Invalid gateway address policy", fmt.Sprintf("Invalid gateway address policy: %s", ipam.GatewayAddressPolicy.ValueString()))
 	}
 
 	if diagnostics.HasError() {
@@ -268,12 +289,7 @@ type VpcResourceModel struct {
 	Dhcp         *VpcDhcpResourceModel    `tfsdk:"dhcp"`
 }
 
-func (v *VpcResourceModel) Set(vpc *networkingv1beta1.VPC) diag.Diagnostics {
-	if vpc == nil {
-		return nil
-	}
-	var diagnostics diag.Diagnostics
-
+func (v *VpcResourceModel) Set(vpc *networkingv1beta1.VPC) (diagnostics diag.Diagnostics) {
 	v.Id = types.StringValue(vpc.Id)
 	v.Name = types.StringValue(vpc.Name)
 	v.Zone = types.StringValue(vpc.Zone)
@@ -295,11 +311,9 @@ func (v *VpcResourceModel) Set(vpc *networkingv1beta1.VPC) diag.Diagnostics {
 	}
 
 	if len(vpc.HostPrefixes) > 0 {
-		hostPrefixes := []HostPrefixResourceModel{}
-		for _, p := range vpc.HostPrefixes {
-			hp := HostPrefixResourceModel{}
-			hp.Set(p)
-			hostPrefixes = append(hostPrefixes, hp)
+		hostPrefixes := make([]HostPrefixResourceModel, len(vpc.HostPrefixes))
+		for i, p := range vpc.HostPrefixes {
+			hostPrefixes[i].Set(p)
 		}
 
 		setVal, diags := types.SetValueFrom(
@@ -315,6 +329,7 @@ func (v *VpcResourceModel) Set(vpc *networkingv1beta1.VPC) diag.Diagnostics {
 	} else {
 		v.HostPrefixes = types.SetNull(hostPrefixObjectType)
 		diagnostics.AddError("Failed to set host prefixes", "Failed to set host prefixes")
+		return diagnostics
 	}
 
 	if len(vpc.VpcPrefixes) > 0 {
@@ -516,9 +531,6 @@ func (r *VpcResource) Schema(ctx context.Context, req resource.SchemaRequest, re
 						"type": schema.StringAttribute{
 							Required:            true,
 							MarkdownDescription: fmt.Sprintf("Controls network connectivity from the prefix to the host. Must be one of: %s.", strings.Join(hostPrefixTypes, ", ")),
-							Validators: []validator.String{
-								stringvalidator.OneOf(hostPrefixTypes...),
-							},
 						},
 						"prefixes": schema.SetAttribute{
 							Required:            true,
@@ -537,10 +549,6 @@ func (r *VpcResource) Schema(ctx context.Context, req resource.SchemaRequest, re
 									Optional:            true,
 									Computed:            true,
 									MarkdownDescription: fmt.Sprintf("Describes which IP address from the prefix is allocated to the network gateway. Must be one of: %s.", strings.Join(ipamGatewayAddressPolicies, ", ")),
-									Default:             stringdefault.StaticString(networkingv1beta1.IPAddressManagementPolicy_UNSPECIFIED.String()),
-									Validators: []validator.String{
-										stringvalidator.OneOf(ipamGatewayAddressPolicies...),
-									},
 								},
 							},
 						},
@@ -685,7 +693,10 @@ func (r *VpcResource) Create(ctx context.Context, req resource.CreateRequest, re
 		return
 	}
 
-	data.Set(vpc)
+	resp.Diagnostics.Append(data.Set(vpc)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -854,20 +865,21 @@ func hostPrefixToCtyValue(hp HostPrefixResourceModel) cty.Value {
 		"prefixes": cty.SetVal(prefixValues),
 	}
 
-	// Add IPAM if present
+	// Add IPAM only if present - omit null fields for cleaner HCL rendering
 	if hp.IPAM != nil {
 		ipamObj := map[string]cty.Value{
-			"prefix_length":          cty.NumberIntVal(int64(hp.IPAM.PrefixLength.ValueInt32())),
-			"gateway_address_policy": cty.StringVal(hp.IPAM.GatewayAddressPolicy.ValueString()),
+			"prefix_length": cty.NumberIntVal(int64(hp.IPAM.PrefixLength.ValueInt32())),
 		}
+
+		// Only include gateway_address_policy if it's set (not null/unknown)
+		if !hp.IPAM.GatewayAddressPolicy.IsNull() && !hp.IPAM.GatewayAddressPolicy.IsUnknown() {
+			ipamObj["gateway_address_policy"] = cty.StringVal(hp.IPAM.GatewayAddressPolicy.ValueString())
+		}
+		// Otherwise, omit the field entirely
+
 		hpObj["ipam"] = cty.ObjectVal(ipamObj)
-	} else {
-		// IPAM must be appropriately typed and set to null, for set comparison.
-		hpObj["ipam"] = cty.NullVal(cty.Object(map[string]cty.Type{
-			"prefix_length":          cty.Number,
-			"gateway_address_policy": cty.String,
-		}))
 	}
+	// If IPAM is nil, omit the ipam key entirely from the rendered HCL
 
 	return cty.ObjectVal(hpObj)
 }
@@ -913,7 +925,10 @@ func MustRenderVpcResource(ctx context.Context, resourceName string, vpc *VpcRes
 		}
 
 		if len(hostPrefixValues) > 0 {
-			resourceBody.SetAttributeValue("host_prefixes", cty.SetVal(hostPrefixValues))
+			// Technically, this is a set value. However, cty sets require homogeneous values, which is not the case here.
+			// We use TupleVal instead of ListVal because tuples allow heterogeneous element types (different IPAM structures).
+			// This still renders as valid HCL list syntax [...] that Terraform accepts.
+			resourceBody.SetAttributeValue("host_prefixes", cty.TupleVal(hostPrefixValues))
 		}
 	}
 
