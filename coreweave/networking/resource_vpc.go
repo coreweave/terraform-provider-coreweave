@@ -27,6 +27,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/setplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -548,6 +549,7 @@ func (r *VpcResource) Schema(ctx context.Context, req resource.SchemaRequest, re
 								"gateway_address_policy": schema.StringAttribute{
 									Optional:            true,
 									Computed:            true,
+									Default:             stringdefault.StaticString("UNSPECIFIED"),
 									MarkdownDescription: fmt.Sprintf("Describes which IP address from the prefix is allocated to the network gateway. Must be one of: %s.", strings.Join(ipamGatewayAddressPolicies, ", ")),
 								},
 							},
