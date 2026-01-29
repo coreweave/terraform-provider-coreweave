@@ -6,6 +6,7 @@ import (
 	"log"
 	"math/rand/v2"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -14,21 +15,25 @@ import (
 	"github.com/coreweave/terraform-provider-coreweave/coreweave/networking"
 	"github.com/coreweave/terraform-provider-coreweave/internal/provider"
 	"github.com/coreweave/terraform-provider-coreweave/internal/testutil"
+	"github.com/hashicorp/terraform-plugin-framework-nettypes/cidrtypes"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	fwresource "github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"github.com/hashicorp/terraform-plugin-testing/compare"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/knownvalue"
 	"github.com/hashicorp/terraform-plugin-testing/plancheck"
 	"github.com/hashicorp/terraform-plugin-testing/statecheck"
 	"github.com/hashicorp/terraform-plugin-testing/tfjsonpath"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	networkingv1beta1 "buf.build/gen/go/coreweave/networking/protocolbuffers/go/coreweave/networking/v1beta1"
 )
 
 const (
 	AcceptanceTestPrefix = "test-acc-vpc-"
+
+	defaultPrimaryHostPrefixName = "host primary"
 )
 
 func init() {
@@ -91,8 +96,53 @@ func init() {
 	})
 }
 
+// with is a helper function that creates a shallow copy of the given object, passes it to the given function, and returns the modified object.
+func with[T any](t *testing.T, obj T, fn func(t *testing.T, obj *T)) T {
+	t.Helper()
+	fn(t, &obj)
+	return obj
+}
+
+func fixtureHostPrefixPrimary() networking.HostPrefixResourceModel {
+	return networking.HostPrefixResourceModel{
+		Name: types.StringValue("primary-prefix"),
+		Type: types.StringValue(networkingv1beta1.HostPrefix_PRIMARY.String()),
+		Prefixes: []cidrtypes.IPPrefix{
+			cidrtypes.NewIPPrefixValue("172.16.0.0/12"),
+			cidrtypes.NewIPPrefixValue("2601:db8:aaaa::/48"),
+		},
+	}
+}
+
+func fixtureHostPrefixAttached() networking.HostPrefixResourceModel {
+	return networking.HostPrefixResourceModel{
+		Name: types.StringValue("container-network-attached"),
+		Type: types.StringValue(networkingv1beta1.HostPrefix_ATTACHED.String()),
+		Prefixes: []cidrtypes.IPPrefix{
+			cidrtypes.NewIPPrefixValue("2601:db8:cccc::/48"),
+		},
+		IPAM: &networking.IPAMPolicyResourceModel{
+			PrefixLength: types.Int32Value(64),
+		},
+	}
+}
+
+func fixtureHostPrefixRouted() networking.HostPrefixResourceModel {
+	return networking.HostPrefixResourceModel{
+		Name: types.StringValue("container-network"),
+		Type: types.StringValue(networkingv1beta1.HostPrefix_ROUTED.String()),
+		Prefixes: []cidrtypes.IPPrefix{
+			cidrtypes.NewIPPrefixValue("2601:db8:bbbb::/48"),
+		},
+		IPAM: &networking.IPAMPolicyResourceModel{
+			PrefixLength: types.Int32Value(80),
+		},
+	}
+}
+
 func TestVpcSchema(t *testing.T) {
-	ctx := context.Background()
+	t.Parallel()
+	ctx := t.Context()
 	schemaRequest := fwresource.SchemaRequest{}
 	schemaResponse := &fwresource.SchemaResponse{}
 
@@ -110,328 +160,588 @@ func TestVpcSchema(t *testing.T) {
 	}
 }
 
+func hostPrefixesToSet(t *testing.T, hp []networking.HostPrefixResourceModel) types.Set {
+	t.Helper()
+	setVal, diags := types.SetValueFrom(t.Context(), networking.HostPrefixObjectType, hp)
+	if diags.HasError() {
+		t.Fatalf("failed to create host prefix set: %+v", diags)
+	}
+	return setVal
+}
+
+func hostPrefixObjectExact(t *testing.T, hp networking.HostPrefixResourceModel) knownvalue.Check {
+	t.Helper()
+
+	prefixes := make([]knownvalue.Check, len(hp.Prefixes))
+	for i, prefix := range hp.Prefixes {
+		prefixes[i] = knownvalue.StringExact(prefix.ValueString())
+	}
+
+	obj := map[string]knownvalue.Check{
+		"name":     knownvalue.StringExact(hp.Name.ValueString()),
+		"type":     knownvalue.StringExact(hp.Type.ValueString()),
+		"prefixes": knownvalue.ListExact(prefixes),
+		"ipam":     knownvalue.Null(),
+	}
+	if hp.IPAM != nil {
+		policy := networkingv1beta1.IPAddressManagementPolicy_UNSPECIFIED.String()
+		if !hp.IPAM.GatewayAddressPolicy.IsNull() && !hp.IPAM.GatewayAddressPolicy.IsUnknown() {
+			policy = hp.IPAM.GatewayAddressPolicy.ValueString()
+		}
+		obj["ipam"] = knownvalue.ObjectExact(map[string]knownvalue.Check{
+			"prefix_length":          knownvalue.Int32Exact(hp.IPAM.PrefixLength.ValueInt32()),
+			"gateway_address_policy": knownvalue.StringExact(policy),
+		})
+	}
+	return knownvalue.ObjectExact(obj)
+}
+
+// defaultExpectedValues constructs the expected values for the VPC resource based on the given model. This validates behavior of the given properties, where possible.
+// It should behave as an equivalent of "make sure the resource matches this object for all configured fields".
+// Derived fields are calculated where feasible.
+func defaultExpectedValues(t *testing.T, resourceAddress string, m *networking.VpcResourceModel) []statecheck.StateCheck {
+	t.Helper()
+
+	stateChecks := make([]statecheck.StateCheck, 0)
+
+	// These attributes should always be present..
+	stateChecks = append(stateChecks,
+		statecheck.ExpectKnownValue(resourceAddress, tfjsonpath.New("id"), knownvalue.NotNull()),
+		statecheck.ExpectKnownValue(resourceAddress, tfjsonpath.New("zone"), knownvalue.StringExact(m.Zone.ValueString())),
+		statecheck.ExpectKnownValue(resourceAddress, tfjsonpath.New("name"), knownvalue.StringExact(m.Name.ValueString())),
+	)
+
+	// NOTE: this uses a common pattern that validates attributes based on the definition of the correct behavior.
+	// Code here should be written very carefully, as it will exercise all of the tests. This should be a STRICT definition of the behavior.
+	// Not all checks need to be here, but checks where we can make an authoritative determination about the end state may be present here.
+	// When values are optional, we often want to validate behavior: either default behavior, or else derived behavior.
+	// When values are supplied, they should generally be validated against the supplied value.
+
+	// If you do not specify any host prefix(es), something will be assigned for you in the output.
+	if m.HostPrefix.IsNull() || m.HostPrefix.IsUnknown() {
+		stateChecks = append(stateChecks, statecheck.ExpectKnownValue(resourceAddress, tfjsonpath.New("host_prefix"), knownvalue.NotNull()))
+	} else {
+		stateChecks = append(stateChecks, statecheck.ExpectKnownValue(resourceAddress, tfjsonpath.New("host_prefix"), knownvalue.StringExact(m.HostPrefix.ValueString())))
+
+		// Validate that the host_prefixes attribute contains an element equivalent to the host prefix.
+		stateChecks = append(stateChecks, statecheck.ExpectKnownValue(resourceAddress, tfjsonpath.New("host_prefixes"), knownvalue.SetPartial([]knownvalue.Check{
+			hostPrefixObjectExact(t, networking.HostPrefixResourceModel{
+				Name:     types.StringValue(defaultPrimaryHostPrefixName),
+				Type:     types.StringValue(networkingv1beta1.HostPrefix_PRIMARY.String()),
+				Prefixes: []cidrtypes.IPPrefix{cidrtypes.NewIPPrefixValue(m.HostPrefix.ValueString())},
+			}),
+		})))
+	}
+
+	if m.HostPrefixes.IsNull() || m.HostPrefixes.IsUnknown() {
+		stateChecks = append(stateChecks, statecheck.ExpectKnownValue(resourceAddress, tfjsonpath.New("host_prefixes"), knownvalue.NotNull()))
+	} else {
+		hpModels := make([]networking.HostPrefixResourceModel, 0)
+		if diags := m.HostPrefixes.ElementsAs(t.Context(), &hpModels, false); diags.HasError() {
+			t.Fatalf("failed to get host prefixes: %+v", diags)
+		}
+
+		setChecks := make([]knownvalue.Check, len(hpModels))
+		for i, hpModel := range hpModels {
+			setChecks[i] = hostPrefixObjectExact(t, hpModel)
+		}
+		stateChecks = append(stateChecks, statecheck.ExpectKnownValue(resourceAddress, tfjsonpath.New("host_prefixes"), knownvalue.SetExact(setChecks)))
+	}
+
+	// We can assert strict identity against the vpc_prefixes attribute.
+	if len(m.VpcPrefixes) == 0 {
+		stateChecks = append(stateChecks, statecheck.ExpectKnownValue(resourceAddress, tfjsonpath.New("vpc_prefixes"), knownvalue.Null()))
+	} else {
+		setChecks := make([]knownvalue.Check, len(m.VpcPrefixes))
+		for i, vp := range m.VpcPrefixes {
+			setChecks[i] = knownvalue.ObjectExact(map[string]knownvalue.Check{
+				"name":  knownvalue.StringExact(vp.Name.ValueString()),
+				"value": knownvalue.StringExact(vp.Value.ValueString()),
+			})
+		}
+		stateChecks = append(stateChecks, statecheck.ExpectKnownValue(resourceAddress, tfjsonpath.New("vpc_prefixes"), knownvalue.SetExact(setChecks)))
+	}
+
+	// Full ingress objects are validated for backwards compatibility.
+	expectedIngressObj := make(map[string]knownvalue.Check)
+	if m.Ingress == nil {
+		expectedIngressObj["disable_public_services"] = knownvalue.Bool(false)
+	} else {
+		expectedIngressObj["disable_public_services"] = knownvalue.Bool(m.Ingress.DisablePublicServices.ValueBool())
+	}
+	stateChecks = append(stateChecks, statecheck.ExpectKnownValue(resourceAddress, tfjsonpath.New("ingress"), knownvalue.ObjectExact(expectedIngressObj)))
+
+	// Full egress objects are validated for backwards compatibility.
+	expectedEgressObj := make(map[string]knownvalue.Check)
+	if m.Egress == nil {
+		expectedEgressObj["disable_public_access"] = knownvalue.Bool(false)
+	} else {
+		expectedEgressObj["disable_public_access"] = knownvalue.Bool(m.Egress.DisablePublicAccess.ValueBool())
+	}
+	stateChecks = append(stateChecks, statecheck.ExpectKnownValue(resourceAddress, tfjsonpath.New("egress"), knownvalue.ObjectExact(expectedEgressObj)))
+
+	// Full DHCP objects are validated for backwards compatibility, but we may want to change this later if the complexity of the object increases.
+	if m.Dhcp == nil || m.Dhcp.IsEmpty() {
+		stateChecks = append(stateChecks, statecheck.ExpectKnownValue(resourceAddress, tfjsonpath.New("dhcp"), knownvalue.Null()))
+	} else {
+		dhcpObj := make(map[string]knownvalue.Check)
+		if m.Dhcp.Dns == nil {
+			dhcpObj["dns"] = knownvalue.Null()
+		} else {
+			servers := make([]string, 0)
+			if diags := m.Dhcp.Dns.Servers.ElementsAs(t.Context(), &servers, false); diags.HasError() {
+				t.Fatalf("failed to get DHCP servers from model: %+v", diags)
+			}
+			serverChecks := make([]knownvalue.Check, len(servers))
+			for i, server := range servers {
+				serverChecks[i] = knownvalue.StringExact(server)
+			}
+			dhcpObj["dns"] = knownvalue.ObjectExact(map[string]knownvalue.Check{
+				"servers": knownvalue.SetExact(serverChecks),
+			})
+		}
+		stateChecks = append(stateChecks, statecheck.ExpectKnownValue(resourceAddress, tfjsonpath.New("dhcp"), knownvalue.ObjectExact(dhcpObj)))
+	}
+
+	return stateChecks
+}
+
 func TestVpcResource(t *testing.T) {
-	randomInt := rand.IntN(100)
-	vpcName := fmt.Sprintf("%s%x", AcceptanceTestPrefix, randomInt)
-	resourceName := fmt.Sprintf("test_vpc_%x", randomInt)
-	fullResourceName := fmt.Sprintf("coreweave_networking_vpc.%s", resourceName)
-	fullDataSourceName := fmt.Sprintf("data.coreweave_networking_vpc.%s", resourceName)
-	zone := testutil.AcceptanceTestZone
+	t.Parallel()
 
-	initial := &networking.VpcResourceModel{
-		Name:       types.StringValue(vpcName),
-		Zone:       types.StringValue(zone),
-		HostPrefix: types.StringValue("10.16.192.0/18"),
-		VpcPrefixes: []networking.VpcPrefixResourceModel{
-			{
-				Name:  types.StringValue("pod cidr"),
-				Value: types.StringValue("10.0.0.0/13"),
-			},
-			{
-				Name:  types.StringValue("service cidr"),
-				Value: types.StringValue("10.16.0.0/22"),
-			},
-			{
-				Name:  types.StringValue("internal lb cidr"),
-				Value: types.StringValue("10.32.4.0/22"),
-			},
-		},
-		Dhcp: &networking.VpcDhcpResourceModel{
-			Dns: &networking.VpcDhcpDnsResourceModel{
-				Servers: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("1.1.1.1")}),
-			},
-		},
-	}
+	t.Run("lifecycle", func(t *testing.T) {
+		randomInt := rand.IntN(100)
+		vpcName := fmt.Sprintf("%s%x", AcceptanceTestPrefix, randomInt)
+		resourceName := fmt.Sprintf("test_vpc_%x", randomInt)
+		fullResourceName := fmt.Sprintf("coreweave_networking_vpc.%s", resourceName)
+		fullDataSourceName := fmt.Sprintf("data.coreweave_networking_vpc.%s", resourceName)
+		zone := testutil.AcceptanceTestZone
 
-	dataSource := &networking.VpcDataSourceModel{
-		Id: types.StringValue(fmt.Sprintf("%s.id", fullResourceName)),
-	}
-
-	update := &networking.VpcResourceModel{
-		Name: types.StringValue(vpcName),
-		Zone: types.StringValue(zone),
-		Ingress: &networking.VpcIngressResourceModel{
-			DisablePublicServices: types.BoolValue(true),
-		},
-		Egress: &networking.VpcEgressResourceModel{
-			DisablePublicAccess: types.BoolValue(true),
-		},
-		HostPrefix: types.StringValue("10.16.192.0/18"),
-		VpcPrefixes: []networking.VpcPrefixResourceModel{
-			{
-				Name:  types.StringValue("pod cidr"),
-				Value: types.StringValue("10.0.0.0/13"),
-			},
-			{
-				Name:  types.StringValue("service cidr"),
-				Value: types.StringValue("10.16.0.0/22"),
-			},
-			{
-				Name:  types.StringValue("internal lb cidr"),
-				Value: types.StringValue("10.32.4.0/22"),
-			},
-			{
-				Name:  types.StringValue("internal lb cidr 2"),
-				Value: types.StringValue("10.45.4.0/22"),
-			},
-		},
-	}
-
-	ctx := context.Background()
-
-	resource.ParallelTest(t, resource.TestCase{
-		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
-		PreCheck: func() {
-			testutil.SetEnvDefaults()
-		},
-		Steps: []resource.TestStep{
-			{
-				PreConfig: func() {
-					t.Log("Beginning data source not found test")
+		initial := networking.VpcResourceModel{
+			Name: types.StringValue(vpcName),
+			Zone: types.StringValue(zone),
+			HostPrefixes: hostPrefixesToSet(t, []networking.HostPrefixResourceModel{
+				fixtureHostPrefixPrimary(),
+				fixtureHostPrefixRouted(),
+				with(t, fixtureHostPrefixAttached(), func(t *testing.T, obj *networking.HostPrefixResourceModel) {
+					t.Helper()
+					obj.IPAM.GatewayAddressPolicy = types.StringValue(networkingv1beta1.IPAddressManagementPolicy_FIRST_IP.String())
+				}),
+			}),
+			VpcPrefixes: []networking.VpcPrefixResourceModel{
+				{
+					Name:  types.StringValue("pod cidr"),
+					Value: types.StringValue("10.0.0.0/13"),
 				},
-				Config: strings.Join([]string{
-					fmt.Sprintf(`data "%s" "%s" { id = "%s" }`, "coreweave_networking_vpc", resourceName, "1b5274f2-8012-4b68-9010-cc4c51613302"),
-				}, "\n"),
-				ExpectError: regexp.MustCompile(`(?i)VPC .*not found`),
-			},
-			{
-				PreConfig: func() {
-					t.Log("Beginning coreweave_networking_vpc create test")
+				{
+					Name:  types.StringValue("service cidr"),
+					Value: types.StringValue("10.16.0.0/22"),
 				},
-				Config: networking.MustRenderVpcResource(ctx, resourceName, initial),
-				ConfigPlanChecks: resource.ConfigPlanChecks{
-					PreApply: []plancheck.PlanCheck{
-						plancheck.ExpectResourceAction(fullResourceName, plancheck.ResourceActionCreate),
+				{
+					Name:  types.StringValue("internal lb cidr"),
+					Value: types.StringValue("10.32.4.0/22"),
+				},
+			},
+			Dhcp: &networking.VpcDhcpResourceModel{
+				Dns: &networking.VpcDhcpDnsResourceModel{
+					Servers: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("1.1.1.1")}),
+				},
+			},
+		}
+
+		dataSource := &networking.VpcDataSourceModel{
+			Id: types.StringValue(fmt.Sprintf("%s.id", fullResourceName)),
+		}
+
+		update := with(t, initial, func(t *testing.T, obj *networking.VpcResourceModel) {
+			t.Helper()
+			obj.Ingress = &networking.VpcIngressResourceModel{
+				DisablePublicServices: types.BoolValue(true),
+			}
+			obj.Egress = &networking.VpcEgressResourceModel{
+				DisablePublicAccess: types.BoolValue(true),
+			}
+			obj.VpcPrefixes = slices.Concat(initial.VpcPrefixes, []networking.VpcPrefixResourceModel{
+				{
+					Name:  types.StringValue("internal lb cidr 2"),
+					Value: types.StringValue("10.45.4.0/22"),
+				},
+			})
+		})
+
+		updateWithGatewayPolicyChange := with(t, update, func(t *testing.T, obj *networking.VpcResourceModel) {
+			t.Helper()
+			hp := make([]networking.HostPrefixResourceModel, 0)
+			if diags := obj.HostPrefixes.ElementsAs(t.Context(), &hp, false); diags.HasError() {
+				t.Fatalf("failed to get host prefixes: %+v", diags)
+			}
+
+			var changed bool
+			for i, hostPrefix := range hp {
+				if hostPrefix.Type.ValueString() != networkingv1beta1.HostPrefix_ATTACHED.String() {
+					continue
+				}
+				hostPrefix.IPAM.GatewayAddressPolicy = types.StringValue(networkingv1beta1.IPAddressManagementPolicy_EUI64.String())
+				hp[i] = hostPrefix
+				changed = true
+				break
+			}
+			require.True(t, changed, "gateway policy change not detected, the test is invalid")
+			obj.HostPrefixes = hostPrefixesToSet(t, hp)
+		})
+
+		ctx := t.Context()
+
+		resource.ParallelTest(t, resource.TestCase{
+			ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+			PreCheck: func() {
+				testutil.SetEnvDefaults()
+			},
+			Steps: []resource.TestStep{
+				{
+					PreConfig: func() {
+						t.Log("Beginning data source not found test")
+					},
+					Config: strings.Join([]string{
+						fmt.Sprintf(`data "%s" "%s" { id = "%s" }`, "coreweave_networking_vpc", resourceName, "1b5274f2-8012-4b68-9010-cc4c51613302"),
+					}, "\n"),
+					ExpectError: regexp.MustCompile(`(?i)VPC .*not found`),
+				},
+				{
+					PreConfig: func() {
+						t.Log("Beginning coreweave_networking_vpc create test")
+					},
+					Config: networking.MustRenderVpcResource(ctx, resourceName, &initial),
+					ConfigPlanChecks: resource.ConfigPlanChecks{
+						PreApply: []plancheck.PlanCheck{
+							plancheck.ExpectResourceAction(fullResourceName, plancheck.ResourceActionCreate),
+						},
+					},
+					Check: resource.ComposeAggregateTestCheckFunc(
+						resource.TestCheckResourceAttr(fullResourceName, "name", initial.Name.ValueString()),
+						resource.TestCheckResourceAttr(fullResourceName, "zone", initial.Zone.ValueString()),
+					),
+					ConfigStateChecks: slices.Concat(defaultExpectedValues(t, fullResourceName, &initial), []statecheck.StateCheck{
+						// Assert that with() worked for the attached host prefix.
+						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("host_prefixes"), knownvalue.SetPartial([]knownvalue.Check{
+							knownvalue.ObjectExact(map[string]knownvalue.Check{
+								"ipam": knownvalue.ObjectExact(map[string]knownvalue.Check{
+									"prefix_length":          knownvalue.Int32Exact(64),
+									"gateway_address_policy": knownvalue.StringExact(networkingv1beta1.IPAddressManagementPolicy_FIRST_IP.String()),
+								}),
+								"name":     knownvalue.NotNull(),
+								"type":     knownvalue.StringExact(networkingv1beta1.HostPrefix_ATTACHED.String()),
+								"prefixes": knownvalue.NotNull(),
+							}),
+						})),
+						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("vpc_prefixes"), knownvalue.SetSizeExact(3)),
+						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("ingress").AtMapKey("disable_public_services"), knownvalue.Bool(false)),
+						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("egress").AtMapKey("disable_public_access"), knownvalue.Bool(false)),
+					}),
+				},
+				{
+					PreConfig: func() {
+						t.Log("Beginning coreweave_networking_vpc data source test")
+					},
+					Config: strings.Join([]string{
+						networking.MustRenderVpcResource(ctx, resourceName, &initial),
+						networking.MustRenderVpcDataSource(ctx, resourceName, dataSource),
+					}, "\n"),
+					ConfigPlanChecks: resource.ConfigPlanChecks{
+						PreApply: []plancheck.PlanCheck{
+							plancheck.ExpectResourceAction(fullResourceName, plancheck.ResourceActionNoop),
+						},
+					},
+					Check: resource.ComposeAggregateTestCheckFunc(
+						resource.TestCheckResourceAttrPair(fullDataSourceName, "id", fullResourceName, "id"),
+					),
+					ConfigStateChecks: slices.Concat(
+						defaultExpectedValues(t, fullDataSourceName, &initial),
+						defaultExpectedValues(t, fullResourceName, &initial),
+					),
+				},
+				{
+					PreConfig: func() {
+						t.Log("Beginning coreweave_networking_vpc update test")
+					},
+					Config: networking.MustRenderVpcResource(ctx, resourceName, &update),
+					ConfigPlanChecks: resource.ConfigPlanChecks{
+						PreApply: []plancheck.PlanCheck{
+							plancheck.ExpectResourceAction(fullResourceName, plancheck.ResourceActionUpdate),
+						},
+					},
+					Check: resource.ComposeAggregateTestCheckFunc(
+						resource.TestCheckResourceAttr(fullResourceName, "name", update.Name.ValueString()),
+						resource.TestCheckResourceAttr(fullResourceName, "zone", update.Zone.ValueString()),
+					),
+					ConfigStateChecks: slices.Concat(defaultExpectedValues(t, fullResourceName, &update), []statecheck.StateCheck{
+						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("ingress").AtMapKey("disable_public_services"), knownvalue.Bool(true)),
+						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("egress").AtMapKey("disable_public_access"), knownvalue.Bool(true)),
+						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("vpc_prefixes"), knownvalue.SetSizeExact(4)),
+					}),
+				},
+				{
+					PreConfig: func() {
+						t.Log("Beginning coreweave_networking_vpc import test")
+					},
+					ResourceName:      fullResourceName,
+					ImportState:       true,
+					ImportStateVerify: true,
+				},
+				{
+					PreConfig: func() {
+						t.Log("Beginning coreweave_networking_vpc gateway policy replace test")
+					},
+					Config: networking.MustRenderVpcResource(ctx, resourceName, &updateWithGatewayPolicyChange),
+					ConfigPlanChecks: resource.ConfigPlanChecks{
+						PostApplyPreRefresh: []plancheck.PlanCheck{
+							plancheck.ExpectResourceAction(fullResourceName, plancheck.ResourceActionDestroyBeforeCreate),
+						},
+					},
+					PlanOnly:           true,
+					ExpectNonEmptyPlan: true,
+				},
+			},
+		})
+	})
+
+	t.Run("host prefix migration", func(t *testing.T) {
+		t.Parallel()
+		randomInt := rand.IntN(100)
+		resourceName := fmt.Sprintf("test_hostprefix_migrate_%x", randomInt)
+		fullResourceName := fmt.Sprintf("coreweave_networking_vpc.%s", resourceName)
+		zone := testutil.AcceptanceTestZone
+
+		t.Run("mutual exclusivity", func(t *testing.T) {
+			mutuallyExclusive := networking.VpcResourceModel{
+				Name:       types.StringValue(fmt.Sprintf("%shprefix-mig-%x", AcceptanceTestPrefix, randomInt)),
+				Zone:       types.StringValue(zone),
+				HostPrefix: types.StringValue("172.16.0.0/12"),
+				HostPrefixes: hostPrefixesToSet(t, []networking.HostPrefixResourceModel{
+					{
+						Name:     types.StringValue(defaultPrimaryHostPrefixName),
+						Type:     types.StringValue(networkingv1beta1.HostPrefix_PRIMARY.String()),
+						Prefixes: []cidrtypes.IPPrefix{cidrtypes.NewIPPrefixValue("172.16.0.0/12")},
+					},
+				}),
+			}
+
+			resource.ParallelTest(t, resource.TestCase{
+				ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+				PreCheck: func() {
+					testutil.SetEnvDefaults()
+				},
+				Steps: []resource.TestStep{
+					{
+						PreConfig: func() {
+							t.Log("Beginning coreweave_networking_vpc mutual exclusive host_prefix and host_prefixes test")
+						},
+						Config:      networking.MustRenderVpcResource(t.Context(), resourceName, &mutuallyExclusive),
+						ExpectError: regexp.MustCompile(`(?i)These attributes cannot be configured together`),
 					},
 				},
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr(fullResourceName, "name", initial.Name.ValueString()),
-					resource.TestCheckResourceAttr(fullResourceName, "zone", initial.Zone.ValueString()),
-				),
-				ConfigStateChecks: []statecheck.StateCheck{
-					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("id"), knownvalue.NotNull()),
-					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("ingress"), knownvalue.ObjectExact(
-						map[string]knownvalue.Check{
-							"disable_public_services": knownvalue.Bool(false),
+			})
+		})
+
+		t.Run("IPAM illegal with primary", func(t *testing.T) {
+			resource.ParallelTest(t, resource.TestCase{
+				ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+				PreCheck: func() {
+					testutil.SetEnvDefaults()
+				},
+				Steps: []resource.TestStep{
+					{
+						PreConfig: func() {
+							t.Log("Beginning coreweave_networking_vpc IPAM illegal with primary test")
 						},
-					)),
-					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("egress"), knownvalue.ObjectExact(
-						map[string]knownvalue.Check{
-							"disable_public_access": knownvalue.Bool(false),
-						},
-					)),
-					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("host_prefix"), knownvalue.StringExact("10.16.192.0/18")),
-					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("vpc_prefixes"), knownvalue.SetExact([]knownvalue.Check{
-						knownvalue.ObjectExact(map[string]knownvalue.Check{
-							"name":  knownvalue.StringExact("pod cidr"),
-							"value": knownvalue.StringExact("10.0.0.0/13"),
-						}),
-						knownvalue.ObjectExact(map[string]knownvalue.Check{
-							"name":  knownvalue.StringExact("service cidr"),
-							"value": knownvalue.StringExact("10.16.0.0/22"),
-						}),
-						knownvalue.ObjectExact(map[string]knownvalue.Check{
-							"name":  knownvalue.StringExact("internal lb cidr"),
-							"value": knownvalue.StringExact("10.32.4.0/22"),
-						}),
-					})),
-					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("dhcp"), knownvalue.ObjectExact(
-						map[string]knownvalue.Check{
-							"dns": knownvalue.ObjectExact(
-								map[string]knownvalue.Check{
-									"servers": knownvalue.SetExact([]knownvalue.Check{
-										knownvalue.StringExact("1.1.1.1"),
-									}),
+						Config: networking.MustRenderVpcResource(t.Context(), resourceName, &networking.VpcResourceModel{
+							Name: types.StringValue(fmt.Sprintf("%shprefix-mig-%x", AcceptanceTestPrefix, randomInt)),
+							Zone: types.StringValue(zone),
+							HostPrefixes: hostPrefixesToSet(t, []networking.HostPrefixResourceModel{
+								{
+									Name:     types.StringValue(defaultPrimaryHostPrefixName),
+									Type:     types.StringValue(networkingv1beta1.HostPrefix_PRIMARY.String()),
+									Prefixes: []cidrtypes.IPPrefix{cidrtypes.NewIPPrefixValue("2601:db8:aaaa::/48")},
+									IPAM: &networking.IPAMPolicyResourceModel{
+										PrefixLength: types.Int32Value(64),
+									},
 								},
-							),
-						},
-					)),
-				},
-			},
-			{
-				PreConfig: func() {
-					t.Log("Beginning coreweave_networking_vpc data source test")
-				},
-				Config: strings.Join([]string{
-					networking.MustRenderVpcResource(ctx, resourceName, initial),
-					networking.MustRenderVpcDataSource(ctx, resourceName, dataSource),
-				}, "\n"),
-				ConfigPlanChecks: resource.ConfigPlanChecks{
-					PreApply: []plancheck.PlanCheck{
-						plancheck.ExpectResourceAction(fullResourceName, plancheck.ResourceActionNoop),
+							}),
+						}),
+						ExpectError: regexp.MustCompile(`(?i)host prefix ipam must not be set`),
 					},
 				},
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttrPair(fullDataSourceName, "id", fullResourceName, "id"),
-				),
-				ConfigStateChecks: []statecheck.StateCheck{
-					statecheck.ExpectKnownValue(fullDataSourceName, tfjsonpath.New("name"), knownvalue.StringExact(vpcName)),
-					statecheck.CompareValuePairs(fullDataSourceName, tfjsonpath.New("id"), fullResourceName, tfjsonpath.New("id"), compare.ValuesSame()),
-					statecheck.ExpectKnownValue(fullDataSourceName, tfjsonpath.New("zone"), knownvalue.StringExact(zone)),
-					statecheck.ExpectKnownValue(fullDataSourceName, tfjsonpath.New("ingress"), knownvalue.ObjectExact(
-						map[string]knownvalue.Check{
-							"disable_public_services": knownvalue.Bool(false),
-						},
-					)),
-					statecheck.ExpectKnownValue(fullDataSourceName, tfjsonpath.New("egress"), knownvalue.ObjectExact(
-						map[string]knownvalue.Check{
-							"disable_public_access": knownvalue.Bool(false),
-						},
-					)),
-					statecheck.ExpectKnownValue(fullDataSourceName, tfjsonpath.New("host_prefix"), knownvalue.StringExact("10.16.192.0/18")),
-					statecheck.ExpectKnownValue(fullDataSourceName, tfjsonpath.New("vpc_prefixes"), knownvalue.SetExact([]knownvalue.Check{
-						knownvalue.ObjectExact(map[string]knownvalue.Check{
-							"name":  knownvalue.StringExact("pod cidr"),
-							"value": knownvalue.StringExact("10.0.0.0/13"),
-						}),
-						knownvalue.ObjectExact(map[string]knownvalue.Check{
-							"name":  knownvalue.StringExact("service cidr"),
-							"value": knownvalue.StringExact("10.16.0.0/22"),
-						}),
-						knownvalue.ObjectExact(map[string]knownvalue.Check{
-							"name":  knownvalue.StringExact("internal lb cidr"),
-							"value": knownvalue.StringExact("10.32.4.0/22"),
-						}),
-					})),
-					statecheck.ExpectKnownValue(fullDataSourceName, tfjsonpath.New("dhcp"), knownvalue.ObjectExact(
-						map[string]knownvalue.Check{
-							"dns": knownvalue.ObjectExact(
-								map[string]knownvalue.Check{
-									"servers": knownvalue.SetExact([]knownvalue.Check{
-										knownvalue.StringExact("1.1.1.1"),
-									}),
-								},
-							),
-						},
-					)),
+			})
+		})
+
+		t.Run("legacy to updated", func(t *testing.T) {
+			ctx := t.Context()
+			vpcName := fmt.Sprintf("%shprefix-mig-%x", AcceptanceTestPrefix, randomInt)
+			cidrInitial := "10.16.192.0/18"
+			cidrUpdate := "2601:db8:bbbb::/48"
+
+			legacy1 := networking.VpcResourceModel{
+				Name:       types.StringValue(vpcName),
+				Zone:       types.StringValue(zone),
+				HostPrefix: types.StringValue(cidrInitial),
+			}
+
+			updated1 := networking.VpcResourceModel{
+				Name: types.StringValue(vpcName),
+				Zone: types.StringValue(zone),
+				HostPrefixes: hostPrefixesToSet(t, []networking.HostPrefixResourceModel{
+					{
+						Name:     types.StringValue(defaultPrimaryHostPrefixName),
+						Type:     types.StringValue(networkingv1beta1.HostPrefix_PRIMARY.String()),
+						Prefixes: []cidrtypes.IPPrefix{cidrtypes.NewIPPrefixValue(cidrInitial)},
+					},
+				}),
+			}
+
+			legacy2 := networking.VpcResourceModel{
+				Name:       legacy1.Name,
+				Zone:       legacy1.Zone,
+				HostPrefix: types.StringValue(cidrUpdate),
+			}
+			updated2 := networking.VpcResourceModel{
+				Name: legacy1.Name,
+				Zone: legacy1.Zone,
+				HostPrefixes: hostPrefixesToSet(t, []networking.HostPrefixResourceModel{
+					{
+						Name:     types.StringValue(defaultPrimaryHostPrefixName),
+						Type:     types.StringValue(networkingv1beta1.HostPrefix_PRIMARY.String()),
+						Prefixes: []cidrtypes.IPPrefix{cidrtypes.NewIPPrefixValue(cidrUpdate)},
+					},
+				}),
+			}
+			resource.ParallelTest(t, resource.TestCase{
+				ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+				PreCheck: func() {
+					testutil.SetEnvDefaults()
 				},
-			},
-			{
-				PreConfig: func() {
-					t.Log("Beginning coreweave_networking_vpc update test")
-				},
-				Config: networking.MustRenderVpcResource(ctx, resourceName, update),
-				ConfigPlanChecks: resource.ConfigPlanChecks{
-					PreApply: []plancheck.PlanCheck{
-						plancheck.ExpectResourceAction(fullResourceName, plancheck.ResourceActionUpdate),
+				Steps: []resource.TestStep{
+					{
+						PreConfig: func() {
+							t.Log("Beginning coreweave_networking_vpc legacy to updated test create")
+						},
+						Config: networking.MustRenderVpcResource(ctx, resourceName, &legacy1),
+						ConfigPlanChecks: resource.ConfigPlanChecks{
+							PreApply: []plancheck.PlanCheck{
+								plancheck.ExpectResourceAction(fullResourceName, plancheck.ResourceActionCreate),
+							},
+						},
+						ConfigStateChecks: defaultExpectedValues(t, fullResourceName, &legacy1),
+					},
+					{
+						PreConfig: func() {
+							t.Log("Beginning coreweave_networking_vpc legacy to updated test update to equivalent")
+						},
+						Config: networking.MustRenderVpcResource(ctx, resourceName, &updated1),
+						ConfigPlanChecks: resource.ConfigPlanChecks{
+							PreApply: []plancheck.PlanCheck{
+								plancheck.ExpectResourceAction(fullResourceName, plancheck.ResourceActionNoop),
+							},
+						},
+						ConfigStateChecks: defaultExpectedValues(t, fullResourceName, &updated1),
+					},
+					{
+						PreConfig: func() {
+							t.Log("Beginning coreweave_networking_vpc updated to legacy test update to different")
+						},
+						Config: networking.MustRenderVpcResource(ctx, resourceName, &updated2),
+						ConfigPlanChecks: resource.ConfigPlanChecks{
+							PreApply: []plancheck.PlanCheck{
+								plancheck.ExpectResourceAction(fullResourceName, plancheck.ResourceActionDestroyBeforeCreate),
+							},
+						},
+						ConfigStateChecks: defaultExpectedValues(t, fullResourceName, &updated2),
+					},
+					{
+						PreConfig: func() {
+							t.Log("Beginning coreweave_networking_vpc updated to legacy test legacy equivalence")
+						},
+						Config: networking.MustRenderVpcResource(ctx, resourceName, &legacy2),
+						ConfigPlanChecks: resource.ConfigPlanChecks{
+							PreApply: []plancheck.PlanCheck{
+								plancheck.ExpectResourceAction(fullResourceName, plancheck.ResourceActionNoop),
+							},
+						},
+						ConfigStateChecks: defaultExpectedValues(t, fullResourceName, &legacy2),
 					},
 				},
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr(fullResourceName, "name", update.Name.ValueString()),
-					resource.TestCheckResourceAttr(fullResourceName, "zone", update.Zone.ValueString()),
-				),
-				ConfigStateChecks: []statecheck.StateCheck{
-					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("id"), knownvalue.NotNull()),
-					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("ingress"), knownvalue.ObjectExact(
-						map[string]knownvalue.Check{
-							"disable_public_services": knownvalue.Bool(true),
-						},
-					)),
-					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("egress"), knownvalue.ObjectExact(
-						map[string]knownvalue.Check{
-							"disable_public_access": knownvalue.Bool(true),
-						},
-					)),
-					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("host_prefix"), knownvalue.StringExact("10.16.192.0/18")),
-					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("vpc_prefixes"), knownvalue.SetExact([]knownvalue.Check{
-						knownvalue.ObjectExact(map[string]knownvalue.Check{
-							"name":  knownvalue.StringExact("pod cidr"),
-							"value": knownvalue.StringExact("10.0.0.0/13"),
-						}),
-						knownvalue.ObjectExact(map[string]knownvalue.Check{
-							"name":  knownvalue.StringExact("service cidr"),
-							"value": knownvalue.StringExact("10.16.0.0/22"),
-						}),
-						knownvalue.ObjectExact(map[string]knownvalue.Check{
-							"name":  knownvalue.StringExact("internal lb cidr"),
-							"value": knownvalue.StringExact("10.32.4.0/22"),
-						}),
-						knownvalue.ObjectExact(map[string]knownvalue.Check{
-							"name":  knownvalue.StringExact("internal lb cidr 2"),
-							"value": knownvalue.StringExact("10.45.4.0/22"),
-						}),
-					})),
-					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("dhcp"), knownvalue.Null()),
-				},
-			},
-			{
-				PreConfig: func() {
-					t.Log("Beginning coreweave_networking_vpc import test")
-				},
-				ResourceName:      fullResourceName,
-				ImportState:       true,
-				ImportStateVerify: true,
-			},
-		},
+			})
+		})
 	})
 }
 
 func TestHostPrefixReplace(t *testing.T) {
-	randomInt := rand.IntN(99)
-	vpcName := fmt.Sprintf("%shprefix-repl-%x", AcceptanceTestPrefix, randomInt)
-	resourceName := fmt.Sprintf("test_hostprefix_replace_%x", randomInt)
-	fullResourceName := fmt.Sprintf("coreweave_networking_vpc.%s", resourceName)
-	zone := testutil.AcceptanceTestZone
+	t.Parallel()
+	t.Run("legacy host prefix", func(t *testing.T) {
+		randomInt := rand.IntN(100)
+		vpcName := fmt.Sprintf("%shprefix-repl-%x", AcceptanceTestPrefix, randomInt)
+		resourceName := fmt.Sprintf("test_hostprefix_replace_%x", randomInt)
+		fullResourceName := fmt.Sprintf("coreweave_networking_vpc.%s", resourceName)
+		zone := testutil.AcceptanceTestZone
 
-	initial := &networking.VpcResourceModel{
-		Name:       types.StringValue(vpcName),
-		Zone:       types.StringValue(zone),
-		HostPrefix: types.StringNull(),
-	}
+		initial := &networking.VpcResourceModel{
+			Name:       types.StringValue(vpcName),
+			Zone:       types.StringValue(zone),
+			HostPrefix: types.StringNull(),
+		}
 
-	replace := &networking.VpcResourceModel{
-		Name:       types.StringValue(vpcName),
-		Zone:       types.StringValue(zone),
-		HostPrefix: types.StringValue("172.0.0.0/18"),
-	}
+		replace := &networking.VpcResourceModel{
+			Name:       types.StringValue(vpcName),
+			Zone:       types.StringValue(zone),
+			HostPrefix: types.StringValue("172.0.0.0/18"),
+		}
 
-	ctx := context.Background()
+		ctx := t.Context()
 
-	resource.ParallelTest(t, resource.TestCase{
-		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
-		PreCheck: func() {
-			testutil.SetEnvDefaults()
-		},
-		Steps: []resource.TestStep{
-			{
-				PreConfig: func() {
-					t.Log("Setting up coreweave_networking_vpc test for host prefix requires replace")
+		resource.ParallelTest(t, resource.TestCase{
+			ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+			PreCheck: func() {
+				testutil.SetEnvDefaults()
+			},
+			Steps: []resource.TestStep{
+				{
+					PreConfig: func() {
+						t.Log("Setting up coreweave_networking_vpc test for host prefix requires replace")
+					},
+					Config: networking.MustRenderVpcResource(ctx, resourceName, initial),
+					ConfigPlanChecks: resource.ConfigPlanChecks{
+						PreApply: []plancheck.PlanCheck{
+							plancheck.ExpectResourceAction(fullResourceName, plancheck.ResourceActionCreate),
+						},
+					},
+					Check: resource.ComposeAggregateTestCheckFunc(
+						resource.TestCheckResourceAttr(fullResourceName, "name", initial.Name.ValueString()),
+						resource.TestCheckResourceAttr(fullResourceName, "zone", initial.Zone.ValueString()),
+					),
+					ConfigStateChecks: slices.Concat(defaultExpectedValues(t, fullResourceName, initial), []statecheck.StateCheck{
+						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("host_prefix"), knownvalue.NotNull()),
+					}),
 				},
-				Config: networking.MustRenderVpcResource(ctx, resourceName, initial),
-				ConfigPlanChecks: resource.ConfigPlanChecks{
-					PreApply: []plancheck.PlanCheck{
-						plancheck.ExpectResourceAction(fullResourceName, plancheck.ResourceActionCreate),
+				{
+					PreConfig: func() {
+						t.Log("Beginning coreweave_networking_vpc test for host prefix requires replace")
+					},
+					Config: networking.MustRenderVpcResource(ctx, resourceName, replace),
+					ConfigPlanChecks: resource.ConfigPlanChecks{
+						PreApply: []plancheck.PlanCheck{
+							plancheck.ExpectResourceAction(fullResourceName, plancheck.ResourceActionDestroyBeforeCreate),
+						},
+					},
+					Check: resource.ComposeAggregateTestCheckFunc(
+						resource.TestCheckResourceAttr(fullResourceName, "name", replace.Name.ValueString()),
+						resource.TestCheckResourceAttr(fullResourceName, "zone", replace.Zone.ValueString()),
+					),
+					ConfigStateChecks: []statecheck.StateCheck{
+						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("id"), knownvalue.NotNull()),
+						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("host_prefix"), knownvalue.StringExact(replace.HostPrefix.ValueString())),
 					},
 				},
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr(fullResourceName, "name", initial.Name.ValueString()),
-					resource.TestCheckResourceAttr(fullResourceName, "zone", initial.Zone.ValueString()),
-				),
-				ConfigStateChecks: []statecheck.StateCheck{
-					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("id"), knownvalue.NotNull()),
-					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("host_prefix"), knownvalue.NotNull()),
-				},
 			},
-			{
-				PreConfig: func() {
-					t.Log("Beginning coreweave_networking_vpc test for host prefix requires replace")
-				},
-				Config: networking.MustRenderVpcResource(ctx, resourceName, replace),
-				ConfigPlanChecks: resource.ConfigPlanChecks{
-					PreApply: []plancheck.PlanCheck{
-						plancheck.ExpectResourceAction(fullResourceName, plancheck.ResourceActionDestroyBeforeCreate),
-					},
-				},
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr(fullResourceName, "name", replace.Name.ValueString()),
-					resource.TestCheckResourceAttr(fullResourceName, "zone", replace.Zone.ValueString()),
-				),
-				ConfigStateChecks: []statecheck.StateCheck{
-					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("id"), knownvalue.NotNull()),
-					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("host_prefix"), knownvalue.StringExact(replace.HostPrefix.ValueString())),
-				},
-			},
-		},
+		})
 	})
 }
 
@@ -443,12 +753,11 @@ func TestHostPrefixDefault(t *testing.T) {
 	zone := testutil.AcceptanceTestZone
 
 	vpc := &networking.VpcResourceModel{
-		Name:       types.StringValue(vpcName),
-		Zone:       types.StringValue(zone),
-		HostPrefix: types.StringNull(),
+		Name: types.StringValue(vpcName),
+		Zone: types.StringValue(zone),
 	}
 
-	ctx := context.Background()
+	ctx := t.Context()
 
 	resource.ParallelTest(t, resource.TestCase{
 		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
@@ -470,10 +779,19 @@ func TestHostPrefixDefault(t *testing.T) {
 					resource.TestCheckResourceAttr(fullResourceName, "name", vpc.Name.ValueString()),
 					resource.TestCheckResourceAttr(fullResourceName, "zone", vpc.Zone.ValueString()),
 				),
-				ConfigStateChecks: []statecheck.StateCheck{
-					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("id"), knownvalue.NotNull()),
+				ConfigStateChecks: slices.Concat(defaultExpectedValues(t, fullResourceName, vpc), []statecheck.StateCheck{
 					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("host_prefix"), knownvalue.NotNull()),
-				},
+					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("host_prefixes"), knownvalue.SetPartial([]knownvalue.Check{
+						knownvalue.ObjectExact(map[string]knownvalue.Check{
+							"name": knownvalue.StringExact(defaultPrimaryHostPrefixName),
+							"type": knownvalue.StringExact(networkingv1beta1.HostPrefix_PRIMARY.String()),
+							"prefixes": knownvalue.SetPartial([]knownvalue.Check{
+								knownvalue.NotNull(),
+							}),
+							"ipam": knownvalue.Null(),
+						}),
+					})),
+				}),
 			},
 			{
 				PreConfig: func() {
@@ -484,5 +802,151 @@ func TestHostPrefixDefault(t *testing.T) {
 				ImportStateVerify: true,
 			},
 		},
+	})
+}
+
+func TestMustRenderVpcResource(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+	resourceName := "test_vpc"
+
+	t.Run("legacy host prefix", func(t *testing.T) {
+		t.Parallel()
+		m := &networking.VpcResourceModel{
+			Name:       types.StringValue("my-vpc"),
+			Zone:       types.StringValue("US-WEST-04A"),
+			HostPrefix: types.StringValue("10.16.192.0/18"),
+			VpcPrefixes: []networking.VpcPrefixResourceModel{
+				{
+					Name:  types.StringValue("pod-cidr"),
+					Value: types.StringValue("10.0.0.0/13"),
+				},
+				{
+					Name:  types.StringValue("service-cidr"),
+					Value: types.StringValue("10.16.0.0/22"),
+				},
+				{
+					Name:  types.StringValue("internal-lb-cidr"),
+					Value: types.StringValue("10.16.4.0/22"),
+				},
+			},
+		}
+
+		expected := `
+resource "coreweave_networking_vpc" "test_vpc" {
+  name        = "my-vpc"
+  zone        = "US-WEST-04A"
+  host_prefix = "10.16.192.0/18"
+  vpc_prefixes = [{
+    name  = "pod-cidr"
+    value = "10.0.0.0/13"
+    }, {
+    name  = "service-cidr"
+    value = "10.16.0.0/22"
+    }, {
+    name  = "internal-lb-cidr"
+    value = "10.16.4.0/22"
+  }]
+}
+`
+		expected = strings.TrimLeft(expected, "\n")
+		assert.Equal(t, expected, networking.MustRenderVpcResource(ctx, resourceName, m))
+	})
+
+	t.Run("host prefixes", func(t *testing.T) {
+		t.Parallel()
+		hp, diags := types.SetValueFrom(ctx, networking.HostPrefixObjectType, []networking.HostPrefixResourceModel{
+			{
+				Name:     types.StringValue("primary-prefix"),
+				Type:     types.StringValue(networkingv1beta1.HostPrefix_PRIMARY.String()),
+				Prefixes: []cidrtypes.IPPrefix{cidrtypes.NewIPPrefixValue("10.0.0.0/13")},
+			},
+			{
+				Name:     types.StringValue("attached-prefix"),
+				Type:     types.StringValue(networkingv1beta1.HostPrefix_ATTACHED.String()),
+				Prefixes: []cidrtypes.IPPrefix{cidrtypes.NewIPPrefixValue("2001:db8::/48")},
+				IPAM: &networking.IPAMPolicyResourceModel{
+					PrefixLength:         types.Int32Value(64),
+					GatewayAddressPolicy: types.StringValue(networkingv1beta1.IPAddressManagementPolicy_FIRST_IP.String()),
+				},
+			},
+			{
+				Name:     types.StringValue("routed-prefix"),
+				Type:     types.StringValue(networkingv1beta1.HostPrefix_ROUTED.String()),
+				Prefixes: []cidrtypes.IPPrefix{cidrtypes.NewIPPrefixValue("2000::/48")},
+				IPAM: &networking.IPAMPolicyResourceModel{
+					PrefixLength: types.Int32Value(64),
+				},
+			},
+		})
+		if diags.HasError() {
+			t.Fatalf("failed to create host prefix type: %+v", diags)
+		}
+
+		m := &networking.VpcResourceModel{
+			Name:         types.StringValue("my-vpc"),
+			Zone:         types.StringValue("US-WEST-04A"),
+			HostPrefixes: hp,
+		}
+
+		// note: order of hosts is deterministic, but may change when the values change due to being a set.
+		expected := `
+resource "coreweave_networking_vpc" "test_vpc" {
+  name = "my-vpc"
+  zone = "US-WEST-04A"
+  host_prefixes = [{
+    name     = "primary-prefix"
+    prefixes = ["10.0.0.0/13"]
+    type     = "PRIMARY"
+    }, {
+    ipam = {
+      gateway_address_policy = "FIRST_IP"
+      prefix_length          = 64
+    }
+    name     = "attached-prefix"
+    prefixes = ["2001:db8::/48"]
+    type     = "ATTACHED"
+    }, {
+    ipam = {
+      prefix_length = 64
+    }
+    name     = "routed-prefix"
+    prefixes = ["2000::/48"]
+    type     = "ROUTED"
+  }]
+}
+`
+		expected = strings.TrimLeft(expected, "\n")
+		assert.Equal(t, expected, networking.MustRenderVpcResource(ctx, resourceName, m))
+	})
+
+	t.Run("dhcp", func(t *testing.T) {
+		t.Parallel()
+		m := &networking.VpcResourceModel{
+			Name: types.StringValue("my-vpc"),
+			Zone: types.StringValue("US-WEST-04A"),
+			Dhcp: &networking.VpcDhcpResourceModel{
+				Dns: &networking.VpcDhcpDnsResourceModel{
+					Servers: types.SetValueMust(types.StringType, []attr.Value{
+						types.StringValue("1.1.1.1"),
+						types.StringValue("8.8.8.8"),
+					}),
+				},
+			},
+		}
+
+		expected := `
+resource "coreweave_networking_vpc" "test_vpc" {
+  name = "my-vpc"
+  zone = "US-WEST-04A"
+  dhcp = {
+    dns = {
+      servers = ["1.1.1.1", "8.8.8.8"]
+    }
+  }
+}
+`
+		expected = strings.TrimLeft(expected, "\n")
+		assert.Equal(t, expected, networking.MustRenderVpcResource(ctx, resourceName, m))
 	})
 }

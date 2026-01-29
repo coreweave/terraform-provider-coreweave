@@ -63,6 +63,7 @@ resource "coreweave_networking_vpc" "example" {
 - `host_prefix` (String) An IPv4 CIDR range used to allocate host addresses when booting compute into a VPC.
 This CIDR must be have a mask size of /18. If left unspecified, a Zone-specific default value will be applied by the server.
 This field is immutable once set.
+- `host_prefixes` (Attributes Set) The IPv4 or IPv6 CIDR ranges used to allocate host addresses when booting compute into a VPC. (see [below for nested schema](#nestedatt--host_prefixes))
 - `ingress` (Attributes) Settings affecting traffic entering the VPC. (see [below for nested schema](#nestedatt--ingress))
 - `vpc_prefixes` (Attributes Set) A list of additional prefixes associated with the VPC. For example, CKS clusters use these prefixes for Pod and service CIDR ranges. (see [below for nested schema](#nestedatt--vpc_prefixes))
 
@@ -92,6 +93,32 @@ Optional:
 Optional:
 
 - `disable_public_access` (Boolean) Specifies whether the VPC should be blocked from consuming public Internet.
+
+
+<a id="nestedatt--host_prefixes"></a>
+### Nested Schema for `host_prefixes`
+
+Required:
+
+- `name` (String) The user-specified name of the host prefix.
+- `prefixes` (Set of String) The VPC-wide aggregates from which host-specific prefixes are allocated. May be IPv4 or IPv6.
+- `type` (String) Controls network connectivity from the prefix to the host. Must be one of: PRIMARY, ROUTED, ATTACHED, UNSPECIFIED.
+
+Optional:
+
+- `ipam` (Attributes) The configuration for a secondary host prefix. (see [below for nested schema](#nestedatt--host_prefixes--ipam))
+
+<a id="nestedatt--host_prefixes--ipam"></a>
+### Nested Schema for `host_prefixes.ipam`
+
+Required:
+
+- `prefix_length` (Number) The desired length for each Node's allocation from the VPC-wide aggregate prefix.
+
+Optional:
+
+- `gateway_address_policy` (String) Describes which IP address from the prefix is allocated to the network gateway. Must be one of: FIRST_IP, LAST_IP, UNSPECIFIED, EUI64.
+
 
 
 <a id="nestedatt--ingress"></a>
