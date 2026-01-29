@@ -92,7 +92,7 @@ resource "coreweave_networking_vpc" "example" {
 
 - `dhcp` (Attributes) Settings affecting DHCP behavior within the VPC. (see [below for nested schema](#nestedatt--dhcp))
 - `egress` (Attributes) Settings affecting traffic leaving the VPC. (see [below for nested schema](#nestedatt--egress))
-- `host_prefix` (String) An IPv4 CIDR range used to allocate host addresses when booting compute into a VPC.
+- `host_prefix` (String, Deprecated) An IPv4 CIDR range used to allocate host addresses when booting compute into a VPC.
 This CIDR must be have a mask size of /18. If left unspecified, a Zone-specific default value will be applied by the server.
 This field is immutable once set.
 - `host_prefixes` (Attributes Set) The IPv4 or IPv6 CIDR ranges used to allocate host addresses when booting compute into a VPC. (see [below for nested schema](#nestedatt--host_prefixes))

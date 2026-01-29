@@ -519,6 +519,7 @@ func (r *VpcResource) Schema(ctx context.Context, req resource.SchemaRequest, re
 				Optional:            true,
 				Computed:            true,
 				MarkdownDescription: "An IPv4 CIDR range used to allocate host addresses when booting compute into a VPC.\nThis CIDR must be have a mask size of /18. If left unspecified, a Zone-specific default value will be applied by the server.\nThis field is immutable once set.",
+				DeprecationMessage:  "`host_prefix` is deprecated. Use `host_prefixes` instead. The field will be removed in a future version. The equivalent expression for a given resource may be found by refreshing state and running `terraform state show coreweave_networking_vpc.example`.",
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplaceIfConfigured(),
 					stringplanmodifier.UseStateForUnknown(), // required for the resource to work as expected when the value is computed instead of specified
@@ -561,7 +562,7 @@ func (r *VpcResource) Schema(ctx context.Context, req resource.SchemaRequest, re
 								"gateway_address_policy": schema.StringAttribute{
 									Optional:            true,
 									Computed:            true,
-									Default:             stringdefault.StaticString("UNSPECIFIED"),
+									Default:             stringdefault.StaticString(networkingv1beta1.IPAddressManagementPolicy_UNSPECIFIED.String()),
 									MarkdownDescription: fmt.Sprintf("Describes which IP address from the prefix is allocated to the network gateway. Must be one of: %s.", enumMarkdownValues(networkingv1beta1.IPAddressManagementPolicy_GatewayAddressPolicy_name, false)),
 								},
 							},
