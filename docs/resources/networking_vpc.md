@@ -14,9 +14,41 @@ Create and manage VPCs. Learn more about [CoreWeave VPCs](https://docs.coreweave
 
 ```terraform
 resource "coreweave_networking_vpc" "example" {
-  name        = "default"
-  zone        = "US-EAST-04A"
-  host_prefix = "10.16.192.0/18"
+  name = "default"
+  zone = "US-EAST-04A"
+
+  host_prefixes = [
+    {
+      name = "primary"
+      type = "PRIMARY"
+      prefixes = [
+        "10.16.192.0/18",
+        "2601:db8:aaaa::/48",
+      ]
+    },
+    {
+      name = "container-network"
+      type = "ROUTED"
+      prefixes = [
+        "2601:db8:bbbb::/48"
+      ]
+      ipam = {
+        prefix_length          = 80
+        gateway_address_policy = "FIRST_IP" # Other options available, see docs for details
+      }
+    },
+    {
+      name = "attached-network"
+      type = "ATTACHED"
+      prefixes = [
+        "2601:db8:cccc::/48"
+      ]
+      ipam = {
+        prefix_length = 64
+      }
+    },
+  ]
+
   vpc_prefixes = [
     {
       name  = "pod cidr"
@@ -60,9 +92,10 @@ resource "coreweave_networking_vpc" "example" {
 
 - `dhcp` (Attributes) Settings affecting DHCP behavior within the VPC. (see [below for nested schema](#nestedatt--dhcp))
 - `egress` (Attributes) Settings affecting traffic leaving the VPC. (see [below for nested schema](#nestedatt--egress))
-- `host_prefix` (String) An IPv4 CIDR range used to allocate host addresses when booting compute into a VPC.
+- `host_prefix` (String, Deprecated) An IPv4 CIDR range used to allocate host addresses when booting compute into a VPC.
 This CIDR must be have a mask size of /18. If left unspecified, a Zone-specific default value will be applied by the server.
 This field is immutable once set.
+- `host_prefixes` (Attributes Set) The IPv4 or IPv6 CIDR ranges used to allocate host addresses when booting compute into a VPC. (see [below for nested schema](#nestedatt--host_prefixes))
 - `ingress` (Attributes) Settings affecting traffic entering the VPC. (see [below for nested schema](#nestedatt--ingress))
 - `vpc_prefixes` (Attributes Set) A list of additional prefixes associated with the VPC. For example, CKS clusters use these prefixes for Pod and service CIDR ranges. (see [below for nested schema](#nestedatt--vpc_prefixes))
 
@@ -92,6 +125,32 @@ Optional:
 Optional:
 
 - `disable_public_access` (Boolean) Specifies whether the VPC should be blocked from consuming public Internet.
+
+
+<a id="nestedatt--host_prefixes"></a>
+### Nested Schema for `host_prefixes`
+
+Required:
+
+- `name` (String) The user-specified name of the host prefix.
+- `prefixes` (List of String) The VPC-wide aggregates from which host-specific prefixes are allocated. May be IPv4 or IPv6.
+- `type` (String) Controls network connectivity from the prefix to the host. Must be one of: `PRIMARY`, `ROUTED`, `ATTACHED`.
+
+Optional:
+
+- `ipam` (Attributes) The configuration for a secondary host prefix. (see [below for nested schema](#nestedatt--host_prefixes--ipam))
+
+<a id="nestedatt--host_prefixes--ipam"></a>
+### Nested Schema for `host_prefixes.ipam`
+
+Required:
+
+- `prefix_length` (Number) The desired length for each Node's allocation from the VPC-wide aggregate prefix.
+
+Optional:
+
+- `gateway_address_policy` (String) Describes which IP address from the prefix is allocated to the network gateway. Must be one of: `UNSPECIFIED`, `EUI64`, `FIRST_IP`, `LAST_IP`.
+
 
 
 <a id="nestedatt--ingress"></a>

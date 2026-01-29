@@ -29,7 +29,8 @@ data "coreweave_networking_vpc" "default" {
 
 - `dhcp` (Attributes) Settings affecting DHCP behavior within the VPC. (see [below for nested schema](#nestedatt--dhcp))
 - `egress` (Attributes) Settings affecting traffic leaving the VPC. (see [below for nested schema](#nestedatt--egress))
-- `host_prefix` (String) An IPv4 CIDR range used to allocate host addresses when booting compute into a VPC.
+- `host_prefix` (String, Deprecated) An IPv4 CIDR range used to allocate host addresses when booting compute into a VPC.
+- `host_prefixes` (Attributes Set) The IPv4 or IPv6 CIDR ranges used to allocate host addresses when booting compute into a VPC. (see [below for nested schema](#nestedatt--host_prefixes))
 - `ingress` (Attributes) Settings affecting traffic entering the VPC. (see [below for nested schema](#nestedatt--ingress))
 - `name` (String) The name of the VPC.
 - `vpc_prefixes` (Attributes List) A list of additional named IPv4 prefixes for the VPC. (see [below for nested schema](#nestedatt--vpc_prefixes))
@@ -57,6 +58,26 @@ Optional:
 Read-Only:
 
 - `disable_public_access` (Boolean) True if the VPC is blocked from consuming public Internet. False otherwise.
+
+
+<a id="nestedatt--host_prefixes"></a>
+### Nested Schema for `host_prefixes`
+
+Read-Only:
+
+- `ipam` (Attributes) The configuration for a secondary host prefix. (see [below for nested schema](#nestedatt--host_prefixes--ipam))
+- `name` (String) The user-specified name of the host prefix.
+- `prefixes` (List of String) The VPC-wide aggregates from which host-specific prefixes are allocated. May be IPv4 or IPv6.
+- `type` (String) Controls network connectivity from the prefix to the host.
+
+<a id="nestedatt--host_prefixes--ipam"></a>
+### Nested Schema for `host_prefixes.ipam`
+
+Read-Only:
+
+- `gateway_address_policy` (String) Describes which IP address from the prefix is allocated to the network gateway.
+- `prefix_length` (Number) The desired length for each Node's allocation from the VPC-wide aggregate prefix.
+
 
 
 <a id="nestedatt--ingress"></a>
