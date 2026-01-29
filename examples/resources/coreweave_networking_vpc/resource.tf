@@ -1,7 +1,39 @@
 resource "coreweave_networking_vpc" "example" {
-  name        = "default"
-  zone        = "US-EAST-04A"
-  host_prefix = "10.16.192.0/18"
+  name = "default"
+  zone = "US-EAST-04A"
+
+  host_prefixes = [
+    {
+      name = "primary"
+      type = "PRIMARY"
+      prefixes = [
+        "10.16.192.0/18",
+        "2601:db8:aaaa::/48",
+      ]
+    },
+    {
+      name = "container-network"
+      type = "ROUTED"
+      prefixes = [
+        "2601:db8:bbbb::/48"
+      ]
+      ipam = {
+        prefix_length          = 80
+        gateway_address_policy = "FIRST_IP" # Other options available, see docs for details
+      }
+    },
+    {
+      name = "attached-network"
+      type = "ATTACHED"
+      prefixes = [
+        "2601:db8:cccc::/48"
+      ]
+      ipam = {
+        prefix_length = 64
+      }
+    },
+  ]
+
   vpc_prefixes = [
     {
       name  = "pod cidr"
