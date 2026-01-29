@@ -101,8 +101,8 @@ Optional:
 Required:
 
 - `name` (String) The user-specified name of the host prefix.
-- `prefixes` (Set of String) The VPC-wide aggregates from which host-specific prefixes are allocated. May be IPv4 or IPv6.
-- `type` (String) Controls network connectivity from the prefix to the host. Must be one of: PRIMARY, ROUTED, ATTACHED, UNSPECIFIED.
+- `prefixes` (List of String) The VPC-wide aggregates from which host-specific prefixes are allocated. May be IPv4 or IPv6.
+- `type` (String) Controls network connectivity from the prefix to the host. Must be one of: UNSPECIFIED, PRIMARY, ROUTED, ATTACHED.
 
 Optional:
 
@@ -117,7 +117,7 @@ Required:
 
 Optional:
 
-- `gateway_address_policy` (String) Describes which IP address from the prefix is allocated to the network gateway. Must be one of: FIRST_IP, LAST_IP, UNSPECIFIED, EUI64.
+- `gateway_address_policy` (String) Describes which IP address from the prefix is allocated to the network gateway. Must be one of: UNSPECIFIED, EUI64, FIRST_IP, LAST_IP.
 
 
 

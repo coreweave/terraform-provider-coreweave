@@ -122,7 +122,7 @@ func fixtureHostPrefixAttached() networking.HostPrefixResourceModel {
 			cidrtypes.NewIPPrefixValue("2601:db8:cccc::/48"),
 		},
 		IPAM: &networking.IPAMPolicyResourceModel{
-			PrefixLength:         types.Int32Value(64),
+			PrefixLength: types.Int32Value(64),
 		},
 	}
 }
@@ -135,7 +135,7 @@ func fixtureHostPrefixRouted() networking.HostPrefixResourceModel {
 			cidrtypes.NewIPPrefixValue("2601:db8:bbbb::/48"),
 		},
 		IPAM: &networking.IPAMPolicyResourceModel{
-			PrefixLength:         types.Int32Value(80),
+			PrefixLength: types.Int32Value(80),
 		},
 	}
 }
@@ -180,7 +180,7 @@ func hostPrefixObjectExact(t *testing.T, hp networking.HostPrefixResourceModel) 
 	obj := map[string]knownvalue.Check{
 		"name":     knownvalue.StringExact(hp.Name.ValueString()),
 		"type":     knownvalue.StringExact(hp.Type.ValueString()),
-		"prefixes": knownvalue.SetExact(prefixes),
+		"prefixes": knownvalue.ListExact(prefixes),
 		"ipam":     knownvalue.Null(),
 	}
 	if hp.IPAM != nil {
@@ -226,8 +226,8 @@ func defaultExpectedValues(t *testing.T, resourceAddress string, m *networking.V
 		// Validate that the host_prefixes attribute contains an element equivalent to the host prefix.
 		stateChecks = append(stateChecks, statecheck.ExpectKnownValue(resourceAddress, tfjsonpath.New("host_prefixes"), knownvalue.SetPartial([]knownvalue.Check{
 			hostPrefixObjectExact(t, networking.HostPrefixResourceModel{
-				Name: types.StringValue(defaultPrimaryHostPrefixName),
-				Type: types.StringValue(networkingv1beta1.HostPrefix_PRIMARY.String()),
+				Name:     types.StringValue(defaultPrimaryHostPrefixName),
+				Type:     types.StringValue(networkingv1beta1.HostPrefix_PRIMARY.String()),
 				Prefixes: []cidrtypes.IPPrefix{cidrtypes.NewIPPrefixValue(m.HostPrefix.ValueString())},
 			}),
 		})))
@@ -426,11 +426,11 @@ func TestVpcResource(t *testing.T) {
 						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("host_prefixes"), knownvalue.SetPartial([]knownvalue.Check{
 							knownvalue.ObjectExact(map[string]knownvalue.Check{
 								"ipam": knownvalue.ObjectExact(map[string]knownvalue.Check{
-									"prefix_length": knownvalue.Int32Exact(64),
+									"prefix_length":          knownvalue.Int32Exact(64),
 									"gateway_address_policy": knownvalue.StringExact(networkingv1beta1.IPAddressManagementPolicy_FIRST_IP.String()),
 								}),
-								"name": knownvalue.NotNull(),
-								"type": knownvalue.StringExact(networkingv1beta1.HostPrefix_ATTACHED.String()),
+								"name":     knownvalue.NotNull(),
+								"type":     knownvalue.StringExact(networkingv1beta1.HostPrefix_ATTACHED.String()),
 								"prefixes": knownvalue.NotNull(),
 							}),
 						})),
@@ -536,7 +536,7 @@ func TestVpcResource(t *testing.T) {
 						PreConfig: func() {
 							t.Log("Beginning coreweave_networking_vpc mutual exclusive host_prefix and host_prefixes test")
 						},
-						Config: networking.MustRenderVpcResource(t.Context(), resourceName, &mutuallyExclusive),
+						Config:      networking.MustRenderVpcResource(t.Context(), resourceName, &mutuallyExclusive),
 						ExpectError: regexp.MustCompile(`(?i)These attributes cannot be configured together`),
 					},
 				},
@@ -555,15 +555,15 @@ func TestVpcResource(t *testing.T) {
 							t.Log("Beginning coreweave_networking_vpc IPAM illegal with primary test")
 						},
 						Config: networking.MustRenderVpcResource(t.Context(), resourceName, &networking.VpcResourceModel{
-							Name:       types.StringValue(fmt.Sprintf("%shprefix-mig-%x", AcceptanceTestPrefix, randomInt)),
-							Zone:       types.StringValue(zone),
+							Name: types.StringValue(fmt.Sprintf("%shprefix-mig-%x", AcceptanceTestPrefix, randomInt)),
+							Zone: types.StringValue(zone),
 							HostPrefixes: hostPrefixesToSet(t, []networking.HostPrefixResourceModel{
 								{
 									Name:     types.StringValue(defaultPrimaryHostPrefixName),
 									Type:     types.StringValue(networkingv1beta1.HostPrefix_PRIMARY.String()),
 									Prefixes: []cidrtypes.IPPrefix{cidrtypes.NewIPPrefixValue("2601:db8:aaaa::/48")},
 									IPAM: &networking.IPAMPolicyResourceModel{
-										PrefixLength:         types.Int32Value(64),
+										PrefixLength: types.Int32Value(64),
 									},
 								},
 							}),
@@ -587,8 +587,8 @@ func TestVpcResource(t *testing.T) {
 			}
 
 			updated1 := networking.VpcResourceModel{
-				Name:       types.StringValue(vpcName),
-				Zone:       types.StringValue(zone),
+				Name: types.StringValue(vpcName),
+				Zone: types.StringValue(zone),
 				HostPrefixes: hostPrefixesToSet(t, []networking.HostPrefixResourceModel{
 					{
 						Name:     types.StringValue(defaultPrimaryHostPrefixName),
@@ -604,8 +604,8 @@ func TestVpcResource(t *testing.T) {
 				HostPrefix: types.StringValue(cidrUpdate),
 			}
 			updated2 := networking.VpcResourceModel{
-				Name:       legacy1.Name,
-				Zone:       legacy1.Zone,
+				Name: legacy1.Name,
+				Zone: legacy1.Zone,
 				HostPrefixes: hostPrefixesToSet(t, []networking.HostPrefixResourceModel{
 					{
 						Name:     types.StringValue(defaultPrimaryHostPrefixName),
@@ -675,6 +675,7 @@ func TestVpcResource(t *testing.T) {
 }
 
 func TestHostPrefixReplace(t *testing.T) {
+	t.Parallel()
 	t.Run("legacy host prefix", func(t *testing.T) {
 		randomInt := rand.IntN(100)
 		vpcName := fmt.Sprintf("%shprefix-repl-%x", AcceptanceTestPrefix, randomInt)
@@ -741,35 +742,6 @@ func TestHostPrefixReplace(t *testing.T) {
 				},
 			},
 		})
-	})
-
-	t.Run("host prefixes", func(t *testing.T) {
-		randomInt := rand.IntN(100)
-		vpcName := fmt.Sprintf("%shprefix-repl-%x", AcceptanceTestPrefix, randomInt)
-		resourceName := fmt.Sprintf("test_hostprefix_replace_%x", randomInt)
-		fullResourceName := fmt.Sprintf("coreweave_networking_vpc.%s", resourceName)
-		zone := testutil.AcceptanceTestZone
-
-		initial := &networking.VpcResourceModel{
-			Name:       types.StringValue(vpcName),
-			Zone:       types.StringValue(zone),
-			HostPrefixes: hostPrefixesToSet(t, []networking.HostPrefixResourceModel{
-				{
-					Name:     types.StringValue(defaultPrimaryHostPrefixName),
-					Type:     types.StringValue(networkingv1beta1.HostPrefix_PRIMARY.String()),
-					Prefixes: []cidrtypes.IPPrefix{cidrtypes.NewIPPrefixValue("172.0.0.0/18")},
-				},
-				{
-					Name:     types.StringValue("container-network"),
-					Type:     types.StringValue(networkingv1beta1.HostPrefix_ROUTED.String()),
-					Prefixes: []cidrtypes.IPPrefix{cidrtypes.NewIPPrefixValue("2601:db8:bbbb::/48")},
-					IPAM: &networking.IPAMPolicyResourceModel{
-						PrefixLength:         types.Int32Value(80),
-					},
-				},
-			}),
-		}
-		_, _ = initial, fullResourceName
 	})
 }
 
@@ -903,7 +875,7 @@ resource "coreweave_networking_vpc" "test_vpc" {
 				Type:     types.StringValue(networkingv1beta1.HostPrefix_ROUTED.String()),
 				Prefixes: []cidrtypes.IPPrefix{cidrtypes.NewIPPrefixValue("2000::/48")},
 				IPAM: &networking.IPAMPolicyResourceModel{
-					PrefixLength:         types.Int32Value(64),
+					PrefixLength: types.Int32Value(64),
 				},
 			},
 		})

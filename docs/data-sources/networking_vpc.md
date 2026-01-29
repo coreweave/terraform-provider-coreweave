@@ -67,7 +67,7 @@ Read-Only:
 
 - `ipam` (Attributes) The configuration for a secondary host prefix. (see [below for nested schema](#nestedatt--host_prefixes--ipam))
 - `name` (String) The user-specified name of the host prefix.
-- `prefixes` (Set of String) The VPC-wide aggregates from which host-specific prefixes are allocated. May be IPv4 or IPv6.
+- `prefixes` (List of String) The VPC-wide aggregates from which host-specific prefixes are allocated. May be IPv4 or IPv6.
 - `type` (String) Controls network connectivity from the prefix to the host.
 
 <a id="nestedatt--host_prefixes--ipam"></a>

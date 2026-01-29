@@ -49,7 +49,7 @@ var hostPrefixObjectType = types.ObjectType{
 	AttrTypes: map[string]attr.Type{
 		"name": types.StringType,
 		"type": types.StringType,
-		"prefixes": types.SetType{
+		"prefixes": types.ListType{
 			ElemType: cidrtypes.IPPrefixType{},
 		},
 		"ipam": types.ObjectType{
@@ -531,7 +531,7 @@ func (r *VpcResource) Schema(ctx context.Context, req resource.SchemaRequest, re
 							Required:            true,
 							MarkdownDescription: fmt.Sprintf("Controls network connectivity from the prefix to the host. Must be one of: %s.", strings.Join(hostPrefixTypes, ", ")),
 						},
-						"prefixes": schema.SetAttribute{
+						"prefixes": schema.ListAttribute{
 							Required:            true,
 							MarkdownDescription: "The VPC-wide aggregates from which host-specific prefixes are allocated. May be IPv4 or IPv6.",
 							ElementType:         cidrtypes.IPPrefixType{},
