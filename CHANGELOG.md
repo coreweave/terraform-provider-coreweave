@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.10.0](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.9.0...v0.10.0) (2026-01-29)
+
+
+### Features
+
+* **networking:** support new host_prefixes field, deprecate host_prefix field ([#223](https://github.com/coreweave/terraform-provider-coreweave/issues/223)) ([93f6589](https://github.com/coreweave/terraform-provider-coreweave/commit/93f65897e5273d5aa6aa75af626b414d535e05ee))
+
+
+### Bug Fixes
+
+* **deps:** update module buf.build/gen/go/coreweave/networking/protocolbuffers/go ( v1.36.2-20250310211902-b930cb89bad3.1 → v1.36.11-20260121155637-a637e7777165.1 ) ([cf74ac2](https://github.com/coreweave/terraform-provider-coreweave/commit/cf74ac236407312b707930cc0b11decce6cf067c))
+
+
+### Dependency Updates
+
+* bump buf.build/gen/go/coreweave/cwobject/connectrpc/go ([#186](https://github.com/coreweave/terraform-provider-coreweave/issues/186)) ([b4f3683](https://github.com/coreweave/terraform-provider-coreweave/commit/b4f368333d90a0dc26875b773a28377d759eb98f))
+* bump github.com/aws/smithy-go from 1.22.5 to 1.24.0 ([#182](https://github.com/coreweave/terraform-provider-coreweave/issues/182)) ([7dd8ec5](https://github.com/coreweave/terraform-provider-coreweave/commit/7dd8ec5ca126b3bfc9a1ea418ef703e386b1e732))
+* bump github.com/hashicorp/terraform-plugin-sdk/v2 ([#127](https://github.com/coreweave/terraform-provider-coreweave/issues/127)) ([a542ab3](https://github.com/coreweave/terraform-provider-coreweave/commit/a542ab3af5ad7b26e183c65aec34d80e74f9f6a1))
+* bump Go to 1.25.5 ([#163](https://github.com/coreweave/terraform-provider-coreweave/issues/163)) ([c2dd23c](https://github.com/coreweave/terraform-provider-coreweave/commit/c2dd23c77fdffc39f92984537e44b472c42b5f61))
+
 ## [0.9.0](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.8.1...v0.9.0) (2026-01-13)
 
 
