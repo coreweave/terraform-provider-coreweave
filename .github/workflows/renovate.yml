@@ -76,7 +76,6 @@ jobs:
     - name: configure-git
       shell: bash
       run: |
-        git config --global --add url."https://cdrender:${ORG_REPO_READ_ONLY}@github.com".insteadOf "https://github.com"
         git config --global user.email 'bot@renovateapp.com'
         git config --global user.name 'Renovate Bot'
 
@@ -105,14 +104,5 @@ jobs:
         RENOVATE_ALLOWED_COMMANDS: "go mod tidy"
         RENOVATE_TOKEN: ${{ steps.app-token.outputs.token }}
 
-        DOCKER_DOCKER_CLOUDSMITH_IO_PASSWORD: ${{ secrets.ORG_CLOUDSMITH_REPO_READ_TOKEN }}
-        DOCKER_DOCKER_CLOUDSMITH_IO_USERNAME: "token"
-        DOCKER_DOCKER_ARTIFACTS_COREWEAVE_COM_PASSWORD: ${{ secrets.ORG_CLOUDSMITH_REPO_READ_TOKEN }}
-        DOCKER_DOCKER_ARTIFACTS_COREWEAVE_COM_USERNAME: "token"
         DOCKER_GHCR_IO_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
         DOCKER_GHCR_IO_USERNAME: "gitops"
-        DOCKER_REGISTRY_GITLAB_COM_PASSWORD: ${{ secrets.ORG_GITLAB_REGISTRY_TOKEN }}
-        DOCKER_REGISTRY_GITLAB_COM_USERNAME: "gitops"
-        HELM_ARTIFACTS_COREWEAVE_COM_USERNAME: "token"
-        HELM_ARTIFACTS_COREWEAVE_COM_PASSWORD: ${{ secrets.ORG_CLOUDSMITH_REPO_READ_TOKEN }}
-        GITHUB_GITHUB_COM_TOKEN: ${{ secrets.ORG_REPO_READ_ONLY }}
