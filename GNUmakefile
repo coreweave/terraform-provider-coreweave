@@ -53,7 +53,7 @@ fmt:
 test:
 	go test -v -cover -timeout=120s -parallel=10 ./...
 
-SUITES?=cks networking
+SUITES?=cks networking object_storage
 
 testacc-sweep:
 	@for suite in $(SUITES); do \
