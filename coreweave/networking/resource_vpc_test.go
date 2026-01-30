@@ -1,17 +1,13 @@
 package networking_test
 
 import (
-	"context"
 	"fmt"
-	"log"
 	"math/rand/v2"
 	"regexp"
 	"slices"
 	"strings"
 	"testing"
-	"time"
 
-	"connectrpc.com/connect"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave/networking"
 	"github.com/coreweave/terraform-provider-coreweave/internal/provider"
 	"github.com/coreweave/terraform-provider-coreweave/internal/testutil"
@@ -31,70 +27,8 @@ import (
 )
 
 const (
-	AcceptanceTestPrefix = "test-acc-vpc-"
-
 	defaultPrimaryHostPrefixName = "host primary"
 )
-
-func init() {
-	resource.AddTestSweepers("coreweave_vpc", &resource.Sweeper{
-		Name:         "coreweave_networking_vpc",
-		Dependencies: []string{},
-		F: func(r string) error {
-			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
-			defer cancel()
-
-			testutil.SetEnvDefaults()
-			client, err := provider.BuildClient(ctx, provider.CoreweaveProviderModel{}, "", "")
-			if err != nil {
-				return fmt.Errorf("failed to build client: %w", err)
-			}
-
-			listResp, err := client.ListVPCs(ctx, &connect.Request[networkingv1beta1.ListVPCsRequest]{})
-			if err != nil {
-				return fmt.Errorf("failed to list VPCs: %w", err)
-			}
-			for _, vpc := range listResp.Msg.Items {
-				if !strings.HasPrefix(vpc.Name, AcceptanceTestPrefix) {
-					log.Printf("skipping VPC %s because it does not have prefix %s", vpc.Name, AcceptanceTestPrefix)
-					continue
-				}
-
-				if vpc.GetZone() != r {
-					log.Printf("skipping VPC %s in zone %s because it does not match sweep zone %s", vpc.Name, vpc.Zone, r)
-					continue
-				}
-
-				log.Printf("sweeping VPC %s", vpc.Name)
-				if testutil.SweepDryRun() {
-					log.Printf("skipping VPC %s because of dry-run mode", vpc.Name)
-					continue
-				}
-
-				deleteReq := connect.NewRequest(&networkingv1beta1.DeleteVPCRequest{
-					Id: vpc.Id,
-				})
-
-				deleteResp, err := client.DeleteVPC(ctx, deleteReq)
-				if connect.CodeOf(err) == connect.CodeNotFound {
-					log.Printf("VPC %s already deleted", vpc.Name)
-					continue
-				} else if err != nil {
-					return fmt.Errorf("failed to delete VPC %s: %w", vpc.Name, err)
-				}
-				deletedVpc := deleteResp.Msg.Vpc
-
-				if err := testutil.WaitForDelete(ctx, 5*time.Minute, 15*time.Second, client.GetVPC, &networkingv1beta1.GetVPCRequest{
-					Id: deletedVpc.Id,
-				}); err != nil {
-					return fmt.Errorf("failed to wait for VPC %s to be deleted: %w", deletedVpc.Name, err)
-				}
-			}
-
-			return nil
-		},
-	})
-}
 
 // with is a helper function that creates a shallow copy of the given object, passes it to the given function, and returns the modified object.
 func with[T any](t *testing.T, obj T, fn func(t *testing.T, obj *T)) T {
