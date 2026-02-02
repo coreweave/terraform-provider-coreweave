@@ -11,7 +11,6 @@ import (
 	"time"
 
 	networkingv1beta1 "buf.build/gen/go/coreweave/networking/protocolbuffers/go/coreweave/networking/v1beta1"
-	"buf.build/go/protovalidate"
 	"connectrpc.com/connect"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
 	"github.com/hashicorp/hcl/v2/hclwrite"
@@ -41,7 +40,6 @@ var (
 	_ resource.ResourceWithImportState      = &VpcResource{}
 	_ resource.ResourceWithConfigure        = &VpcResource{}
 	_ resource.ResourceWithConfigValidators = &VpcResource{}
-	_ resource.ResourceWithValidateConfig   = &VpcResource{}
 )
 
 var hostPrefixObjectType = types.ObjectType{
@@ -67,27 +65,6 @@ func NewVpcResource() resource.Resource {
 // VpcResource defines the resource implementation.
 type VpcResource struct {
 	client *coreweave.Client
-}
-
-func (r *VpcResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
-	var data VpcResourceModel
-	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
-
-	if resp.Diagnostics.HasError() {
-		return
-	}
-
-	createReq, diags := data.ToCreateRequest(ctx)
-	resp.Diagnostics.Append(diags...)
-
-	if diags.HasError() {
-		return
-	}
-
-	if err := protovalidate.Validate(createReq); err != nil {
-		resp.Diagnostics.AddError("Failed to validate VPC", err.Error())
-		return
-	}
 }
 
 func (r *VpcResource) ConfigValidators(context.Context) []resource.ConfigValidator {
