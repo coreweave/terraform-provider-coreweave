@@ -672,6 +672,121 @@ func TestVpcResource(t *testing.T) {
 			})
 		})
 	})
+
+	// Reproduction test for GitHub issue #232
+	// https://github.com/coreweave/terraform-provider-coreweave/issues/232
+	t.Run("gh-232 variables validation regression", func(t *testing.T) {
+		randomInt := rand.IntN(100)
+		vpcName := fmt.Sprintf("%sgh232-%x", AcceptanceTestPrefix, randomInt)
+		resourceName := fmt.Sprintf("test_vpc_gh232_%x", randomInt)
+		fullResourceName := fmt.Sprintf("coreweave_networking_vpc.%s", resourceName)
+		zone := testutil.AcceptanceTestZone
+
+		// This config uses variables as reported in the issue.
+		// During the plan phase, these variables are "unknown" to the provider.
+		// The bug was that ValidateConfig treated unknown values as empty strings,
+		// causing proto validation to fail incorrectly.
+		configWithVariables := fmt.Sprintf(`
+variable "vpc_name" {
+  type    = string
+  default = %q
+}
+
+variable "pod_cidr" {
+  type    = string
+  default = "10.244.0.0/16"
+}
+
+variable "service_cidr" {
+  type    = string
+  default = "10.96.0.0/16"
+}
+
+variable "lb_cidr" {
+  type    = string
+  default = "10.20.0.0/22"
+}
+
+resource "coreweave_networking_vpc" %q {
+  name = var.vpc_name
+  zone = %q
+
+  vpc_prefixes = [
+    {
+      name  = "pod-cidr"
+      value = var.pod_cidr
+    },
+    {
+      name  = "service-cidr"
+      value = var.service_cidr
+    },
+    {
+      name  = "lb-cidr"
+      value = var.lb_cidr
+    },
+  ]
+
+  egress = {
+    disable_public_access = false
+  }
+
+  ingress = {
+    disable_public_services = false
+  }
+
+  dhcp = {
+    dns = {
+      servers = ["1.1.1.1", "8.8.8.8"]
+    }
+  }
+}
+`, vpcName, resourceName, zone)
+
+		resource.ParallelTest(t, resource.TestCase{
+			ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+			PreCheck: func() {
+				testutil.SetEnvDefaults()
+			},
+			Steps: []resource.TestStep{
+				{
+					PreConfig: func() {
+						t.Log("Beginning GH-232 variables validation test")
+					},
+					Config: configWithVariables,
+					ConfigPlanChecks: resource.ConfigPlanChecks{
+						PreApply: []plancheck.PlanCheck{
+							plancheck.ExpectResourceAction(fullResourceName, plancheck.ResourceActionCreate),
+						},
+					},
+					Check: resource.ComposeAggregateTestCheckFunc(
+						resource.TestCheckResourceAttr(fullResourceName, "name", vpcName),
+						resource.TestCheckResourceAttr(fullResourceName, "zone", zone),
+						resource.TestCheckResourceAttr(fullResourceName, "vpc_prefixes.#", "3"),
+					),
+					ConfigStateChecks: []statecheck.StateCheck{
+						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("id"), knownvalue.NotNull()),
+						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("name"), knownvalue.StringExact(vpcName)),
+						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("zone"), knownvalue.StringExact(zone)),
+						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("vpc_prefixes"), knownvalue.SetSizeExact(3)),
+						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("vpc_prefixes"), knownvalue.SetPartial([]knownvalue.Check{
+							knownvalue.ObjectExact(map[string]knownvalue.Check{
+								"name":  knownvalue.StringExact("pod-cidr"),
+								"value": knownvalue.StringExact("10.244.0.0/16"),
+							}),
+							knownvalue.ObjectExact(map[string]knownvalue.Check{
+								"name":  knownvalue.StringExact("service-cidr"),
+								"value": knownvalue.StringExact("10.96.0.0/16"),
+							}),
+							knownvalue.ObjectExact(map[string]knownvalue.Check{
+								"name":  knownvalue.StringExact("lb-cidr"),
+								"value": knownvalue.StringExact("10.20.0.0/22"),
+							}),
+						})),
+					},
+				},
+			},
+		})
+	})
 }
 
 func TestHostPrefixReplace(t *testing.T) {
