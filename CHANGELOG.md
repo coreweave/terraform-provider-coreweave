@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.1](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.10.0...v0.10.1) (2026-02-02)
+
+
+### Bug Fixes
+
+* **networking:** remove ValidateConfig from VPC resource to allow plans with unknowns at config-time ([#233](https://github.com/coreweave/terraform-provider-coreweave/issues/233)) ([cc98481](https://github.com/coreweave/terraform-provider-coreweave/commit/cc9848125aadc310876c10c4942d4d7de68110ba))
+
 ## [0.10.0](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.9.0...v0.10.0) (2026-01-29)
 
 
