@@ -6,6 +6,7 @@ import (
 	"reflect"
 
 	"buf.build/go/protovalidate"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
@@ -56,17 +57,25 @@ func (v *objectValidator[T]) ValidateObject(ctx context.Context, req validator.O
 		return
 	}
 
-	// Extract the model from the object
-	var model T
-	diags := req.ConfigValue.As(ctx, &model, basetypes.ObjectAsOptions{})
+	// Check if object has any unknown nested values before trying to extract
+	// This prevents "target type cannot handle unknown values" errors when
+	// the model has pointer fields that can't represent unknown state
+	objValue, diags := req.ConfigValue.ToObjectValue(ctx)
 	resp.Diagnostics.Append(diags...)
 	if diags.HasError() {
 		return
 	}
 
-	// Check if the model has any unknown fields
-	if hasUnknownFields(reflect.ValueOf(model)) {
-		// Skip validation if any fields are unknown
+	if hasUnknownInObject(objValue) {
+		// Skip validation for objects with unknown nested values
+		return
+	}
+
+	// Object is fully known - safe to extract to struct
+	var model T
+	diags = objValue.As(ctx, &model, basetypes.ObjectAsOptions{})
+	resp.Diagnostics.Append(diags...)
+	if diags.HasError() {
 		return
 	}
 
@@ -136,13 +145,12 @@ func (v *setValidator[T]) ValidateSet(ctx context.Context, req validator.SetRequ
 		return
 	}
 
-	// Extract elements from the set
-	var models []T
-	diags := req.ConfigValue.ElementsAs(ctx, &models, false)
-	resp.Diagnostics.Append(diags...)
-	if diags.HasError() {
-		return
-	}
+	// Get raw elements to handle unknown nested values
+	// We MUST check for unknowns BEFORE calling ElementsAs() because:
+	// - Pointer fields (*NestedModel) cannot handle unknown values
+	// - ElementsAs() will fail with "target type cannot handle unknown values"
+	// - We need to skip validation for elements with unknowns, not fail
+	elements := req.ConfigValue.Elements()
 
 	// Create protovalidate validator once for all elements
 	validator, err := protovalidate.New()
@@ -156,10 +164,40 @@ func (v *setValidator[T]) ValidateSet(ctx context.Context, req validator.SetRequ
 	}
 
 	// Validate each element independently
-	for i, model := range models {
-		// Check if this element has unknown fields
-		if hasUnknownFields(reflect.ValueOf(model)) {
-			// Skip this element, continue with others
+	for i, elem := range elements {
+		// Check if element is unknown or null
+		if elem.IsNull() {
+			continue
+		}
+		if unknownable, ok := elem.(interface{ IsUnknown() bool }); ok && unknownable.IsUnknown() {
+			continue
+		}
+
+		// Cast element to types.Object (set elements are objects for nested attributes)
+		objVal, ok := elem.(basetypes.ObjectValuable)
+		if !ok {
+			// Element is not an object - might be a simple type
+			// This shouldn't happen for nested attributes but handle gracefully
+			continue
+		}
+
+		objValue, diags := objVal.ToObjectValue(ctx)
+		resp.Diagnostics.Append(diags...)
+		if diags.HasError() {
+			continue
+		}
+
+		// Check if object has any unknown nested values
+		if hasUnknownInObject(objValue) {
+			// Skip validation for this element - has unknown nested values
+			continue
+		}
+
+		// Object is fully known - safe to extract to struct
+		var model T
+		diags = objValue.As(ctx, &model, basetypes.ObjectAsOptions{})
+		if diags.HasError() {
+			resp.Diagnostics.Append(diags...)
 			continue
 		}
 
@@ -178,7 +216,7 @@ func (v *setValidator[T]) ValidateSet(ctx context.Context, req validator.SetRequ
 		// Validate the proto message
 		if err := validator.Validate(protoMsg); err != nil {
 			resp.Diagnostics.AddAttributeError(
-				req.Path.AtSetValue(req.ConfigValue.Elements()[i]),
+				req.Path.AtSetValue(elem),
 				fmt.Sprintf("Validation failed for element %d", i),
 				formatProtoValidateError(err),
 			)
@@ -186,47 +224,92 @@ func (v *setValidator[T]) ValidateSet(ctx context.Context, req validator.SetRequ
 	}
 }
 
-// hasUnknownFields checks if a struct has any fields that are unknown.
-// This handles types.String, types.Bool, types.Int64, etc.
-func hasUnknownFields(v reflect.Value) bool {
-	// Dereference pointers
-	for v.Kind() == reflect.Ptr {
-		if v.IsNil() {
-			return false
-		}
-		v = v.Elem()
+// hasUnknownInObject recursively checks if a types.Object has any unknown values.
+// This works with Terraform Framework types before they're extracted to structs.
+func hasUnknownInObject(obj basetypes.ObjectValue) bool {
+	if obj.IsUnknown() {
+		return true
 	}
 
-	if v.Kind() != reflect.Struct {
+	attrs := obj.Attributes()
+	for _, attrVal := range attrs {
+		if hasUnknownInValue(attrVal) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// hasUnknownInValue checks if an attr.Value (or nested structures) is unknown.
+// This recursively checks all Terraform Framework types (Object, List, Set, Map, etc.)
+func hasUnknownInValue(val attr.Value) bool {
+	// Check if value is null first
+	if val.IsNull() {
 		return false
 	}
 
-	// Check each field
-	for i := 0; i < v.NumField(); i++ {
-		field := v.Field(i)
-
-		// Check if field has IsUnknown method
-		if field.CanInterface() {
-			if unknownable, ok := field.Interface().(interface{ IsUnknown() bool }); ok {
-				if unknownable.IsUnknown() {
-					return true
-				}
-			}
+	// Check if value has IsUnknown method
+	if unknownable, ok := val.(interface{ IsUnknown() bool }); ok {
+		if unknownable.IsUnknown() {
+			return true
 		}
+	}
 
-		// Recursively check nested structs
-		if field.Kind() == reflect.Struct || field.Kind() == reflect.Ptr {
-			if hasUnknownFields(field) {
+	// Recursively check nested objects
+	if objValuable, ok := val.(basetypes.ObjectValuable); ok {
+		objValue, diags := objValuable.ToObjectValue(context.Background())
+		if diags.HasError() {
+			// If we can't convert, assume it might be unknown
+			return true
+		}
+		return hasUnknownInObject(objValue)
+	}
+
+	// Check lists
+	if listValuable, ok := val.(basetypes.ListValuable); ok {
+		listValue, diags := listValuable.ToListValue(context.Background())
+		if diags.HasError() {
+			return true
+		}
+		if listValue.IsUnknown() {
+			return true
+		}
+		for _, elem := range listValue.Elements() {
+			if hasUnknownInValue(elem) {
 				return true
 			}
 		}
+	}
 
-		// Check slices of structs
-		if field.Kind() == reflect.Slice {
-			for j := 0; j < field.Len(); j++ {
-				if hasUnknownFields(field.Index(j)) {
-					return true
-				}
+	// Check sets
+	if setValuable, ok := val.(basetypes.SetValuable); ok {
+		setValue, diags := setValuable.ToSetValue(context.Background())
+		if diags.HasError() {
+			return true
+		}
+		if setValue.IsUnknown() {
+			return true
+		}
+		for _, elem := range setValue.Elements() {
+			if hasUnknownInValue(elem) {
+				return true
+			}
+		}
+	}
+
+	// Check maps
+	if mapValuable, ok := val.(basetypes.MapValuable); ok {
+		mapValue, diags := mapValuable.ToMapValue(context.Background())
+		if diags.HasError() {
+			return true
+		}
+		if mapValue.IsUnknown() {
+			return true
+		}
+		for _, elem := range mapValue.Elements() {
+			if hasUnknownInValue(elem) {
+				return true
 			}
 		}
 	}

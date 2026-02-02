@@ -2,7 +2,6 @@ package coretf
 
 import (
 	"context"
-	"reflect"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
@@ -210,22 +209,48 @@ func TestCallToProto_InvalidValue(t *testing.T) {
 	assert.Nil(t, protoMsg, "Should return nil proto message on error")
 }
 
-// TestHasUnknownFields tests the unknown field detection
-func TestHasUnknownFields(t *testing.T) {
+// TestHasUnknownInObject tests the unknown field detection using Framework types
+func TestHasUnknownInObject(t *testing.T) {
 	t.Parallel()
 
 	t.Run("known fields", func(t *testing.T) {
-		model := TestModel{Value: types.StringValue("test")}
-		assert.False(t, hasUnknownFields(reflect.ValueOf(model)), "Should return false for known fields")
+		obj := types.ObjectValueMust(
+			map[string]attr.Type{"value": types.StringType},
+			map[string]attr.Value{"value": types.StringValue("test")},
+		)
+		assert.False(t, hasUnknownInObject(obj), "Should return false for known fields")
 	})
 
 	t.Run("unknown fields", func(t *testing.T) {
-		model := TestModel{Value: types.StringUnknown()}
-		assert.True(t, hasUnknownFields(reflect.ValueOf(model)), "Should return true for unknown fields")
+		obj := types.ObjectValueMust(
+			map[string]attr.Type{"value": types.StringType},
+			map[string]attr.Value{"value": types.StringUnknown()},
+		)
+		assert.True(t, hasUnknownInObject(obj), "Should return true for unknown fields")
 	})
 
 	t.Run("null fields", func(t *testing.T) {
-		model := TestModel{Value: types.StringNull()}
-		assert.False(t, hasUnknownFields(reflect.ValueOf(model)), "Should return false for null fields")
+		obj := types.ObjectValueMust(
+			map[string]attr.Type{"value": types.StringType},
+			map[string]attr.Value{"value": types.StringNull()},
+		)
+		assert.False(t, hasUnknownInObject(obj), "Should return false for null fields")
+	})
+
+	t.Run("nested unknown fields", func(t *testing.T) {
+		nestedType := types.ObjectType{
+			AttrTypes: map[string]attr.Type{"inner": types.StringType},
+		}
+		obj := types.ObjectValueMust(
+			map[string]attr.Type{
+				"name":   types.StringType,
+				"nested": nestedType,
+			},
+			map[string]attr.Value{
+				"name":   types.StringValue("test"),
+				"nested": types.ObjectUnknown(nestedType.AttrTypes),
+			},
+		)
+		assert.True(t, hasUnknownInObject(obj), "Should return true for nested unknown object")
 	})
 }
