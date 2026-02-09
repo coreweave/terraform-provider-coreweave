@@ -36,7 +36,7 @@ func (d *ClusterDataSource) Metadata(ctx context.Context, req datasource.Metadat
 
 func (d *ClusterDataSource) Schema(ctx context.Context, req datasource.SchemaRequest, resp *datasource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		MarkdownDescription: "Query information about an existing CoreWeave Kubernetes Service (CKS) cluster by ID. See the [CKS API reference](https://docs.coreweave.com/docs/products/cks/reference/cks-api).",
+		MarkdownDescription: "Query information about an existing CoreWeave Kubernetes Service (CKS) cluster by ID. See the [CKS API reference](https://docs.coreweave.com/products/cks/reference/cks-api).",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				MarkdownDescription: "The ID of the cluster.",

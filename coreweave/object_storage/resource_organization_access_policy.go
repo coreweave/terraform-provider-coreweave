@@ -161,7 +161,7 @@ func (o *OrganizationAccessPolicyResource) Metadata(ctx context.Context, req res
 
 func (o *OrganizationAccessPolicyResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		MarkdownDescription: "[Organization access policies](https://docs.coreweave.com/docs/products/storage/object-storage/auth-access/organization-policies/about) enforce permissions for AI Object Storage across your entire CoreWeave organization, automatically covering every resource, bucket, and user in your account. At least one organization access policy must be in place before you can create a bucket.",
+		MarkdownDescription: "[Organization access policies](https://docs.coreweave.com/products/storage/object-storage/auth-access/organization-policies/about) enforce permissions for AI Object Storage across your entire CoreWeave organization, automatically covering every resource, bucket, and user in your account. At least one organization access policy must be in place before you can create a bucket.",
 		Attributes: map[string]schema.Attribute{
 			"name": schema.StringAttribute{
 				Required:            true,
@@ -200,7 +200,7 @@ func (o *OrganizationAccessPolicyResource) Schema(ctx context.Context, req resou
 						"resources": schema.SetAttribute{
 							Required:            true,
 							ElementType:         types.StringType,
-							MarkdownDescription: "Defines which resources the policy applies to. See the [AI Object Storage documentation](https://docs.coreweave.com/docs/products/storage/object-storage/concepts/policies/organization-policies#resources) for guidelines on defining resources.",
+							MarkdownDescription: "Defines which resources the policy applies to. See the [AI Object Storage documentation](https://docs.coreweave.com/products/storage/object-storage/concepts/policies/organization-policies#resources) for guidelines on defining resources.",
 							Validators: []validator.Set{
 								atLeastOneElementSetValidator{},
 							},
@@ -208,7 +208,7 @@ func (o *OrganizationAccessPolicyResource) Schema(ctx context.Context, req resou
 						"principals": schema.SetAttribute{
 							Required:            true,
 							ElementType:         types.StringType,
-							MarkdownDescription: "Defines which users, roles, or groups the policy applies to. Only short-form identifiers are supported. If you use a full ARN, the policy will fail with an error. See the [AI Object Storage documentation](https://docs.coreweave.com/docs/products/storage/object-storage/concepts/policies/organization-policies#resources) for guidelines on defining principals.",
+							MarkdownDescription: "Defines which users, roles, or groups the policy applies to. Only short-form identifiers are supported. If you use a full ARN, the policy will fail with an error. See the [AI Object Storage documentation](https://docs.coreweave.com/products/storage/object-storage/concepts/policies/organization-policies#resources) for guidelines on defining principals.",
 							Validators: []validator.Set{
 								atLeastOneElementSetValidator{},
 							},

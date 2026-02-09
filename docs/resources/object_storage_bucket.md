@@ -3,12 +3,12 @@
 page_title: "coreweave_object_storage_bucket Resource - coreweave"
 subcategory: ""
 description: |-
-  Buckets are the primary organizational containers for your data in CoreWeave AI Object Storage. Bucket names must be globally-unique and not begin with cw- or vip-, which are reserved for internal use. Learn more about creating buckets https://docs.coreweave.com/docs/products/storage/object-storage/buckets/create-bucket.
+  Buckets are the primary organizational containers for your data in CoreWeave AI Object Storage. Bucket names must be globally-unique and not begin with cw- or vip-, which are reserved for internal use. Learn more about creating buckets https://docs.coreweave.com/products/storage/object-storage/buckets/create-bucket.
 ---
 
 # coreweave_object_storage_bucket (Resource)
 
-Buckets are the primary organizational containers for your data in CoreWeave AI Object Storage. Bucket names must be globally-unique and not begin with `cw-` or `vip-`, which are reserved for internal use. Learn more about [creating buckets](https://docs.coreweave.com/docs/products/storage/object-storage/buckets/create-bucket).
+Buckets are the primary organizational containers for your data in CoreWeave AI Object Storage. Bucket names must be globally-unique and not begin with `cw-` or `vip-`, which are reserved for internal use. Learn more about [creating buckets](https://docs.coreweave.com/products/storage/object-storage/buckets/create-bucket).
 
 ## Example Usage
 

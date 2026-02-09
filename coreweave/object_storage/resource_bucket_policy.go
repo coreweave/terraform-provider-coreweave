@@ -65,7 +65,7 @@ func (b *BucketPolicyResource) Metadata(ctx context.Context, req resource.Metada
 
 func (b *BucketPolicyResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		MarkdownDescription: "[Bucket access policies](https://docs.coreweave.com/docs/products/storage/object-storage/auth-access/bucket-access/bucket-policies) allow you to define precise, S3-compatible access control for one bucket. These are optional, and are evaluated after organization access policies. See [Manage Bucket Policies](https://docs.coreweave.com/docs/products/storage/object-storage/auth-access/bucket-access/manage-bucket-policies#example-policies) for examples and further information.",
+		MarkdownDescription: "[Bucket access policies](https://docs.coreweave.com/products/storage/object-storage/auth-access/bucket-access/bucket-policies) allow you to define precise, S3-compatible access control for one bucket. These are optional, and are evaluated after organization access policies. See [Manage Bucket Policies](https://docs.coreweave.com/products/storage/object-storage/auth-access/bucket-access/manage-bucket-policies#example-policies) for examples and further information.",
 		Attributes: map[string]schema.Attribute{
 			"bucket": schema.StringAttribute{
 				Required:            true,

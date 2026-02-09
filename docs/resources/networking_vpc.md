@@ -3,12 +3,12 @@
 page_title: "coreweave_networking_vpc Resource - coreweave"
 subcategory: ""
 description: |-
-  Create and manage VPCs. Learn more about CoreWeave VPCs https://docs.coreweave.com/docs/products/networking/vpc/about-vpcs.
+  Create and manage VPCs. Learn more about CoreWeave VPCs https://docs.coreweave.com/products/networking/vpc/about-vpcs.
 ---
 
 # coreweave_networking_vpc (Resource)
 
-Create and manage VPCs. Learn more about [CoreWeave VPCs](https://docs.coreweave.com/docs/products/networking/vpc/about-vpcs).
+Create and manage VPCs. Learn more about [CoreWeave VPCs](https://docs.coreweave.com/products/networking/vpc/about-vpcs).
 
 ## Example Usage
 

@@ -49,7 +49,7 @@ func (b *BucketVersioningResource) Metadata(ctx context.Context, req resource.Me
 }
 func (b *BucketVersioningResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		MarkdownDescription: "Versioning protects your data by preserving all versions of objects and preventing permanent deletion. When objects are deleted, they are \"soft deleted\" with delete markers, allowing you to restore previous versions and recover data. After creating a versioned bucket with Terraform, [use `rclone` to manage versioned objects and delete markers](https://docs.coreweave.com/docs/products/storage/object-storage/buckets/rclone-versioned-buckets).",
+		MarkdownDescription: "Versioning protects your data by preserving all versions of objects and preventing permanent deletion. When objects are deleted, they are \"soft deleted\" with delete markers, allowing you to restore previous versions and recover data. After creating a versioned bucket with Terraform, [use `rclone` to manage versioned objects and delete markers](https://docs.coreweave.com/products/storage/object-storage/buckets/rclone-versioned-buckets).",
 		Attributes: map[string]schema.Attribute{
 			"bucket": schema.StringAttribute{
 				Required:            true,
