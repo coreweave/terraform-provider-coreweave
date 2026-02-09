@@ -3,12 +3,12 @@
 page_title: "coreweave_cks_cluster Data Source - coreweave"
 subcategory: ""
 description: |-
-  Query information about an existing CoreWeave Kubernetes Service (CKS) cluster by ID. See the CKS API reference https://docs.coreweave.com/docs/products/cks/reference/cks-api.
+  Query information about an existing CoreWeave Kubernetes Service (CKS) cluster by ID. See the CKS API reference https://docs.coreweave.com/products/cks/reference/cks-api.
 ---
 
 # coreweave_cks_cluster (Data Source)
 
-Query information about an existing CoreWeave Kubernetes Service (CKS) cluster by ID. See the [CKS API reference](https://docs.coreweave.com/docs/products/cks/reference/cks-api).
+Query information about an existing CoreWeave Kubernetes Service (CKS) cluster by ID. See the [CKS API reference](https://docs.coreweave.com/products/cks/reference/cks-api).
 
 ## Example Usage
 

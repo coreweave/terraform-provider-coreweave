@@ -519,7 +519,7 @@ func requireReplaceIfStatusFailed(ctx context.Context, req planmodifier.StringRe
 
 func (r *ClusterResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		MarkdownDescription: "Create and manage clusters on [CoreWeave Kubernetes Service (CKS)](https://docs.coreweave.com/docs/products/cks/clusters/introduction).",
+		MarkdownDescription: "Create and manage clusters on [CoreWeave Kubernetes Service (CKS)](https://docs.coreweave.com/products/cks/clusters/introduction).",
 
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{

@@ -36,7 +36,7 @@ func (d *VpcDataSource) Metadata(ctx context.Context, req datasource.MetadataReq
 
 func (d *VpcDataSource) Schema(ctx context.Context, req datasource.SchemaRequest, resp *datasource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		MarkdownDescription: "Query information about an existing VPC by ID. See the [CoreWeave VPC API reference](https://docs.coreweave.com/docs/products/networking/vpc/vpc-api).",
+		MarkdownDescription: "Query information about an existing VPC by ID. See the [CoreWeave VPC API reference](https://docs.coreweave.com/products/networking/vpc/vpc-api).",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				MarkdownDescription: "The ID of the VPC.",
