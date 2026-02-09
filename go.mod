@@ -28,7 +28,7 @@ require (
 	github.com/hashicorp/terraform-plugin-testing v1.11.0
 	github.com/stretchr/testify v1.11.1
 	github.com/zclconf/go-cty v1.17.0
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20260128011058-8636f8732409
+	google.golang.org/genproto/googleapis/rpc 4cfbd4190f57
 	google.golang.org/protobuf v1.36.11
 )
 
