@@ -13,6 +13,7 @@ import (
 	networkingv1beta1 "buf.build/gen/go/coreweave/networking/protocolbuffers/go/coreweave/networking/v1beta1"
 	"connectrpc.com/connect"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
+	"github.com/coreweave/terraform-provider-coreweave/internal/coretf"
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/hashicorp/terraform-plugin-framework-nettypes/cidrtypes"
 	"github.com/hashicorp/terraform-plugin-framework-validators/resourcevalidator"
@@ -481,6 +482,9 @@ func (r *VpcResource) Schema(ctx context.Context, req resource.SchemaRequest, re
 			"vpc_prefixes": schema.SetNestedAttribute{
 				Optional:            true,
 				MarkdownDescription: "A list of additional prefixes associated with the VPC. For example, CKS clusters use these prefixes for Pod and service CIDR ranges.",
+				Validators: []validator.Set{
+					coretf.ProtoSetValidator[VpcPrefixResourceModel](),
+				},
 				NestedObject: schema.NestedAttributeObject{
 					Attributes: map[string]schema.Attribute{
 						"name": schema.StringAttribute{
@@ -508,6 +512,7 @@ func (r *VpcResource) Schema(ctx context.Context, req resource.SchemaRequest, re
 				Computed:            true,
 				Validators: []validator.Set{
 					setvalidator.SizeAtLeast(1),
+					coretf.ProtoSetValidator[HostPrefixResourceModel](),
 				},
 				PlanModifiers: []planmodifier.Set{
 					setplanmodifier.RequiresReplaceIfConfigured(),
@@ -551,6 +556,9 @@ func (r *VpcResource) Schema(ctx context.Context, req resource.SchemaRequest, re
 				Optional:            true,
 				Computed:            true,
 				MarkdownDescription: "Settings affecting traffic entering the VPC.",
+				Validators: []validator.Object{
+					coretf.ProtoValidator[VpcIngressResourceModel](),
+				},
 				Attributes: map[string]schema.Attribute{
 					"disable_public_services": schema.BoolAttribute{
 						Optional:            true,
@@ -567,6 +575,9 @@ func (r *VpcResource) Schema(ctx context.Context, req resource.SchemaRequest, re
 				Optional:            true,
 				Computed:            true,
 				MarkdownDescription: "Settings affecting traffic leaving the VPC.",
+				Validators: []validator.Object{
+					coretf.ProtoValidator[VpcEgressResourceModel](),
+				},
 				Attributes: map[string]schema.Attribute{
 					"disable_public_access": schema.BoolAttribute{
 						Optional:            true,
