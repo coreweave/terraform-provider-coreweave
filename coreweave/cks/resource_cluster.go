@@ -216,27 +216,8 @@ func (c *ClusterResourceModel) Set(cluster *cksv1beta1.Cluster) {
 		}
 		c.InternalLBCidrNames = types.SetValueMust(types.StringType, internalLbCidrs)
 
-		switch cluster.Network.PodCidrNameV6 {
-		case nil:
-			if c.PodCidrNameV6.IsNull() {
-				c.PodCidrNameV6 = types.StringNull()
-			} else {
-				c.PodCidrNameV6 = types.StringValue("")
-			}
-		default:
-			c.PodCidrNameV6 = types.StringValue(cluster.Network.GetPodCidrNameV6())
-		}
-
-		switch cluster.Network.ServiceCidrNameV6 {
-		case nil:
-			if c.ServiceCidrNameV6.IsNull() {
-				c.ServiceCidrNameV6 = types.StringNull()
-			} else {
-				c.ServiceCidrNameV6 = types.StringValue("")
-			}
-		default:
-			c.ServiceCidrNameV6 = types.StringValue(cluster.Network.GetServiceCidrNameV6())
-		}
+		c.PodCidrNameV6 = types.StringPointerValue(cluster.Network.PodCidrNameV6)
+		c.ServiceCidrNameV6 = types.StringValue(*cluster.Network.ServiceCidrNameV6)
 
 		if c.InternalLBCidrNamesV6.IsNull() && len(cluster.Network.InternalLbCidrNamesV6) == 0 {
 			c.InternalLBCidrNamesV6 = types.SetNull(types.StringType)

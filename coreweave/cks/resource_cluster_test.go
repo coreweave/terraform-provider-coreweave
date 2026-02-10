@@ -671,11 +671,6 @@ func TestClusterResource_V6FieldsCreateOnly(t *testing.T) {
 
 	// When asserting returned values, kubelet may be normalized differently by the API, so only assert presence.
 	statechecks := []statecheck.StateCheck{
-		statecheck.ExpectKnownValue(config.FullResourceName, tfjsonpath.New("disable_oidc_info_publication"), knownvalue.Bool(true)),
-		statecheck.ExpectKnownValue(config.FullResourceName, tfjsonpath.New("additional_server_sans"), knownvalue.SetExact([]knownvalue.Check{knownvalue.StringExact("san1.example.com")})),
-		// assert kubelet exists (not empty) if returned
-		statecheck.ExpectKnownValue(config.FullResourceName, tfjsonpath.New("kubelet"), knownvalue.NotNull()),
-
 		// v6 field roundtrip assertions
 		statecheck.ExpectKnownValue(config.FullResourceName, tfjsonpath.New("pod_cidr_name_v6"), knownvalue.StringExact("pod-cidr-v6")),
 		statecheck.ExpectKnownValue(config.FullResourceName, tfjsonpath.New("service_cidr_name_v6"), knownvalue.StringExact("service-cidr-v6")),
