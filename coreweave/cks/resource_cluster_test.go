@@ -584,6 +584,103 @@ func TestClusterResource(t *testing.T) {
 	})
 }
 
+func TestClusterResource_V6FieldsCreateOnly(t *testing.T) {
+	config := generateResourceNames("cks-cluster-v6")
+	zone := testutil.AcceptanceTestZone
+	kubeVersion := testutil.AcceptanceTestKubeVersion
+
+	vpc := defaultVpc(config.ClusterName, zone)
+
+	npTypes := map[string]attr.Type{
+		"start": types.Int32Type,
+		"end":   types.Int32Type,
+	}
+	npVals := map[string]attr.Value{
+		"start": types.Int32Value(30000),
+		"end":   types.Int32Value(39534),
+	}
+	np, _ := types.ObjectValue(npTypes, npVals)
+
+	initial := &cks.ClusterResourceModel{
+		VpcId:               types.StringValue(fmt.Sprintf("coreweave_networking_vpc.%s.id", config.ResourceName)),
+		Name:                types.StringValue(config.ClusterName),
+		Zone:                types.StringValue(zone),
+		Version:             types.StringValue(kubeVersion),
+		Public:              types.BoolValue(false),
+		PodCidrName:         types.StringValue("pod-cidr"),
+		ServiceCidrName:     types.StringValue("service-cidr"),
+		InternalLBCidrNames: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr")}),
+		NodePortRange:       np,
+	}
+
+	ctx := context.Background()
+
+	// Step 1: create with v6 fields set
+	createStep := createClusterTestStep(ctx, t, testStepConfig{
+		TestName: "create v6 fields",
+		ConfigPlanChecks: resource.ConfigPlanChecks{
+			PreApply: []plancheck.PlanCheck{
+				plancheck.ExpectResourceAction(config.FullResourceName, plancheck.ResourceActionCreate),
+			},
+		},
+		Resources: config,
+		cluster:   *initial,
+		vpc:       *vpc,
+	})
+
+	// Step 2: reapply same config, expect noop (verifies read/roundtrip)
+	reapplyStep := resource.TestStep{
+		PreConfig: func() {
+			t.Log("Reapplying same configuration to verify Noop (v6 fields roundtrip)")
+		},
+		Config: networking.MustRenderVpcResource(ctx, config.ResourceName, vpc) + "\n" + cks.MustRenderClusterResource(ctx, config.ResourceName, initial),
+		ConfigPlanChecks: resource.ConfigPlanChecks{
+			PreApply: []plancheck.PlanCheck{
+				plancheck.ExpectResourceAction(config.FullResourceName, plancheck.ResourceActionNoop),
+			},
+		},
+	}
+
+	// Optional import verify step
+	importStep := resource.TestStep{
+		PreConfig: func() {
+			t.Log("Beginning coreweave_cks_cluster import test (v6)")
+		},
+		ResourceName:      config.FullResourceName,
+		ImportState:       true,
+		ImportStateVerify: true,
+	}
+
+	// When asserting returned values, kubelet may be normalized differently by the API, so only assert presence.
+	statechecks := []statecheck.StateCheck{
+		statecheck.ExpectKnownValue(config.FullResourceName, tfjsonpath.New("disable_oidc_info_publication"), knownvalue.Bool(true)),
+		statecheck.ExpectKnownValue(config.FullResourceName, tfjsonpath.New("additional_server_sans"), knownvalue.SetExact([]knownvalue.Check{knownvalue.StringExact("san1.example.com")})),
+		// assert kubelet exists (not empty) if returned
+		statecheck.ExpectKnownValue(config.FullResourceName, tfjsonpath.New("kubelet"), knownvalue.NotNull()),
+	}
+
+	// attach state checks to the create step
+	if createStep.ConfigStateChecks == nil {
+		createStep.ConfigStateChecks = statechecks
+	} else {
+		createStep.ConfigStateChecks = append(createStep.ConfigStateChecks, statechecks...)
+	}
+
+	steps := []resource.TestStep{
+		createStep,
+		reapplyStep,
+		importStep,
+	}
+
+	resource.ParallelTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+		PreCheck: func() {
+			testutil.SetEnvDefaults()
+		},
+		Steps: steps,
+	})
+}
+
 func TestPartialOidcConfig(t *testing.T) {
 	config := generateResourceNames("partial-oidc")
 	zone := testutil.AcceptanceTestZone

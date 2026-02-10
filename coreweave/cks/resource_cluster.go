@@ -139,6 +139,9 @@ type ClusterResourceModel struct {
 	PodCidrName                 types.String              `tfsdk:"pod_cidr_name"`
 	ServiceCidrName             types.String              `tfsdk:"service_cidr_name"`
 	InternalLBCidrNames         types.Set                 `tfsdk:"internal_lb_cidr_names"`
+	PodCidrNameV6               types.String              `tfsdk:"pod_cidr_name_v6"`
+	ServiceCidrNameV6           types.String              `tfsdk:"service_cidr_name_v6"`
+	InternalLBCidrNamesV6       types.Set                 `tfsdk:"internal_lb_cidr_names_v6"`
 	NodePortRange               types.Object              `tfsdk:"node_port_range"`
 	AuditPolicy                 types.String              `tfsdk:"audit_policy"`
 	Oidc                        *OidcResourceModel        `tfsdk:"oidc"`
@@ -206,11 +209,45 @@ func (c *ClusterResourceModel) Set(cluster *cksv1beta1.Cluster) {
 	if cluster.Network != nil {
 		c.PodCidrName = types.StringValue(cluster.Network.PodCidrName)
 		c.ServiceCidrName = types.StringValue(cluster.Network.ServiceCidrName)
+
 		internalLbCidrs := []attr.Value{}
 		for _, c := range cluster.Network.InternalLbCidrNames {
 			internalLbCidrs = append(internalLbCidrs, types.StringValue(c))
 		}
 		c.InternalLBCidrNames = types.SetValueMust(types.StringType, internalLbCidrs)
+
+		switch cluster.Network.PodCidrNameV6 {
+		case nil:
+			if c.PodCidrNameV6.IsNull() {
+				c.PodCidrNameV6 = types.StringNull()
+			} else {
+				c.PodCidrNameV6 = types.StringValue("")
+			}
+		default:
+			c.PodCidrNameV6 = types.StringValue(cluster.Network.GetPodCidrNameV6())
+		}
+
+		switch cluster.Network.ServiceCidrNameV6 {
+		case nil:
+			if c.ServiceCidrNameV6.IsNull() {
+				c.ServiceCidrNameV6 = types.StringNull()
+			} else {
+				c.ServiceCidrNameV6 = types.StringValue("")
+			}
+		default:
+			c.ServiceCidrNameV6 = types.StringValue(cluster.Network.GetServiceCidrNameV6())
+		}
+
+		if c.InternalLBCidrNamesV6.IsNull() && len(cluster.Network.InternalLbCidrNamesV6) == 0 {
+			c.InternalLBCidrNamesV6 = types.SetNull(types.StringType)
+		} else {
+			internalLbCidrsV6 := []attr.Value{}
+			for _, c := range cluster.Network.InternalLbCidrNamesV6 {
+				internalLbCidrsV6 = append(internalLbCidrsV6, types.StringValue(c))
+			}
+			c.InternalLBCidrNamesV6 = types.SetValueMust(types.StringType, internalLbCidrsV6)
+		}
+
 		if !nodePortEmpty(cluster.Network.ServiceNodePortRange) {
 			c.NodePortRange = types.ObjectValueMust(
 				map[string]attr.Type{
@@ -308,6 +345,16 @@ func (c *ClusterResourceModel) InternalLbCidrNames(ctx context.Context) []string
 	return lbs
 }
 
+func (c *ClusterResourceModel) InternalLbCidrNamesV6(ctx context.Context) []string {
+	lbs := []string{}
+	if c.InternalLBCidrNamesV6.IsNull() {
+		return lbs
+	}
+
+	c.InternalLBCidrNamesV6.ElementsAs(ctx, &lbs, true)
+	return lbs
+}
+
 func (c *ClusterResourceModel) NodePorts() *cksv1beta1.PortRange {
 	if c.NodePortRange.IsNull() || c.NodePortRange.IsUnknown() {
 		return nil
@@ -345,6 +392,18 @@ func (c *ClusterResourceModel) ToCreateRequest(ctx context.Context) *cksv1beta1.
 	}
 
 	req.Network.ServiceNodePortRange = c.NodePorts()
+
+	if !c.PodCidrNameV6.IsNull() && !c.PodCidrNameV6.IsUnknown() && c.PodCidrNameV6.ValueString() != "" {
+		v := c.PodCidrNameV6.ValueString()
+		req.Network.PodCidrNameV6 = &v
+	}
+	if !c.ServiceCidrNameV6.IsNull() && !c.ServiceCidrNameV6.IsUnknown() && c.ServiceCidrNameV6.ValueString() != "" {
+		v := c.ServiceCidrNameV6.ValueString()
+		req.Network.ServiceCidrNameV6 = &v
+	}
+	if !c.InternalLBCidrNamesV6.IsNull() && !c.InternalLBCidrNamesV6.IsUnknown() {
+		req.Network.InternalLbCidrNamesV6 = c.InternalLbCidrNamesV6(ctx)
+	}
 
 	if c.AuthNWebhook != nil {
 		req.AuthnWebhook = &cksv1beta1.AuthWebhookConfig{
@@ -580,6 +639,28 @@ func (r *ClusterResource) Schema(ctx context.Context, req resource.SchemaRequest
 				MarkdownDescription: "The names of the vpc prefixes to use as internal load balancer CIDR ranges. Internal load balancers are reachable within the VPC but not accessible from the internet.\nThe prefixes must exist in the cluster's VPC. This field is append-only.",
 				PlanModifiers: []planmodifier.Set{
 					setplanmodifier.RequiresReplaceIf(requireReplaceIfInternalLbCidrNames, "", "Field `internal_lb_cidr_names` is append-only. Removing an existing value will force replacement."),
+				},
+			},
+			"pod_cidr_name_v6": schema.StringAttribute{
+				Optional:            true,
+				MarkdownDescription: "IPv6 Pod CIDR name. If any IPv6 field is set, then ALL IPv6 fields must be set.",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
+			},
+			"service_cidr_name_v6": schema.StringAttribute{
+				Optional:            true,
+				MarkdownDescription: "IPv6 Service CIDR name. If any IPv6 field is set, then ALL IPv6 fields must be set.",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
+			},
+			"internal_lb_cidr_names_v6": schema.SetAttribute{
+				ElementType:         types.StringType,
+				Optional:            true,
+				MarkdownDescription: "IPv6 Internal Load Balancer CIDR names. If any IPv6 field is set, then ALL IPv6 fields must be set.",
+				PlanModifiers: []planmodifier.Set{
+					setplanmodifier.RequiresReplace(),
 				},
 			},
 			"node_port_range": schema.SingleNestedAttribute{
@@ -970,6 +1051,24 @@ func MustRenderClusterResource(ctx context.Context, resourceName string, cluster
 	resourceBody.SetAttributeValue("internal_lb_cidr_names", cty.SetVal(internalLbCidrSetVals))
 	if !cluster.AuditPolicy.IsNull() {
 		resourceBody.SetAttributeValue("audit_policy", cty.StringVal(cluster.AuditPolicy.ValueString()))
+	}
+
+	if !cluster.PodCidrNameV6.IsNull() && !cluster.PodCidrNameV6.IsUnknown() {
+		resourceBody.SetAttributeValue("pod_cidr_name_v6", cty.StringVal(cluster.PodCidrNameV6.ValueString()))
+	}
+
+	if !cluster.ServiceCidrNameV6.IsNull() && !cluster.ServiceCidrNameV6.IsUnknown() {
+		resourceBody.SetAttributeValue("service_cidr_name_v6", cty.StringVal(cluster.ServiceCidrNameV6.ValueString()))
+	}
+
+	if !cluster.InternalLBCidrNamesV6.IsNull() && !cluster.InternalLBCidrNamesV6.IsUnknown() {
+		internalLbCidrsV6 := []types.String{}
+		cluster.InternalLBCidrNamesV6.ElementsAs(ctx, &internalLbCidrsV6, false)
+		internalLbCidrSetValsV6 := []cty.Value{}
+		for _, lb := range internalLbCidrsV6 {
+			internalLbCidrSetValsV6 = append(internalLbCidrSetValsV6, cty.StringVal(lb.ValueString()))
+		}
+		resourceBody.SetAttributeValue("internal_lb_cidr_names_v6", cty.SetVal(internalLbCidrSetValsV6))
 	}
 
 	if !cluster.SharedStorageClusterId.IsNull() && !cluster.SharedStorageClusterId.IsUnknown() {

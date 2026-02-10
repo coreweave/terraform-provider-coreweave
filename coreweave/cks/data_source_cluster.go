@@ -75,6 +75,20 @@ func (d *ClusterDataSource) Schema(ctx context.Context, req datasource.SchemaReq
 				Computed:            true,
 				ElementType:         types.StringType,
 			},
+			// v6 fields
+			"pod_cidr_name_v6": schema.StringAttribute{
+				MarkdownDescription: "The IPv6 pod CIDR name of the cluster.",
+				Computed:            true,
+			},
+			"service_cidr_name_v6": schema.StringAttribute{
+				MarkdownDescription: "The IPv6 service CIDR name of the cluster.",
+				Computed:            true,
+			},
+			"internal_lb_cidr_names_v6": schema.SetAttribute{
+				MarkdownDescription: "The IPv6 internal load balancer CIDR names of the cluster.",
+				Computed:            true,
+				ElementType:         types.StringType,
+			},
 			"node_port_range": schema.SingleNestedAttribute{
 				MarkdownDescription: "The Kubernetes Service NodePort range.",
 				Computed:            true,
