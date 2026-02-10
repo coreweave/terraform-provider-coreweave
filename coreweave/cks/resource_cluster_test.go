@@ -590,7 +590,20 @@ func TestClusterResource_V6FieldsCreateOnly(t *testing.T) {
 	kubeVersion := testutil.AcceptanceTestKubeVersion
 
 	vpc := defaultVpc(config.ClusterName, zone)
-
+	vpc.VpcPrefixes = append(vpc.VpcPrefixes,
+		networking.VpcPrefixResourceModel{
+			Name:  types.StringValue("pod-cidr-v6"),
+			Value: types.StringValue("fd00:10::/48"),
+		},
+		networking.VpcPrefixResourceModel{
+			Name:  types.StringValue("service-cidr-v6"),
+			Value: types.StringValue("fd00:11::/108"),
+		},
+		networking.VpcPrefixResourceModel{
+			Name:  types.StringValue("internal-lb-cidr-v6"),
+			Value: types.StringValue("fd00:12::/108"),
+		},
+	)
 	npTypes := map[string]attr.Type{
 		"start": types.Int32Type,
 		"end":   types.Int32Type,
@@ -611,6 +624,11 @@ func TestClusterResource_V6FieldsCreateOnly(t *testing.T) {
 		ServiceCidrName:     types.StringValue("service-cidr"),
 		InternalLBCidrNames: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr")}),
 		NodePortRange:       np,
+
+		// v6 prefix fields (all 3 required together)
+		PodCidrNameV6:         types.StringValue("pod-cidr-v6"),
+		ServiceCidrNameV6:     types.StringValue("service-cidr-v6"),
+		InternalLBCidrNamesV6: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr-v6")}),
 	}
 
 	ctx := context.Background()
@@ -657,6 +675,15 @@ func TestClusterResource_V6FieldsCreateOnly(t *testing.T) {
 		statecheck.ExpectKnownValue(config.FullResourceName, tfjsonpath.New("additional_server_sans"), knownvalue.SetExact([]knownvalue.Check{knownvalue.StringExact("san1.example.com")})),
 		// assert kubelet exists (not empty) if returned
 		statecheck.ExpectKnownValue(config.FullResourceName, tfjsonpath.New("kubelet"), knownvalue.NotNull()),
+
+		// v6 field roundtrip assertions
+		statecheck.ExpectKnownValue(config.FullResourceName, tfjsonpath.New("pod_cidr_name_v6"), knownvalue.StringExact("pod-cidr-v6")),
+		statecheck.ExpectKnownValue(config.FullResourceName, tfjsonpath.New("service_cidr_name_v6"), knownvalue.StringExact("service-cidr-v6")),
+		statecheck.ExpectKnownValue(
+			config.FullResourceName,
+			tfjsonpath.New("internal_lb_cidr_names_v6"),
+			knownvalue.SetExact([]knownvalue.Check{knownvalue.StringExact("internal-lb-cidr-v6")}),
+		),
 	}
 
 	// attach state checks to the create step
