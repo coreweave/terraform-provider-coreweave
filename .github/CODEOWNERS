@@ -1,0 +1,15 @@
+# CODEOWNERS file
+# This file defines code owners for the repository. Code owners are responsible for reviewing and approving pull requests that modify files they own.
+#
+# Format:
+# Each line consists of a file pattern followed by one or more GitHub usernames or teams (e.g., @org/team or @username).
+# Example:  docs/ @docs-team
+#
+# The pattern '*' means all files in the repository.
+# To override ownership for a specific directory or file, add a more specific pattern below the global rule.
+# Example:
+#   * @global-team
+#   docs/ @docs-team
+#   docs/special.md @specialist
+#
+* @coreweave/cloud-platform-api-iam
