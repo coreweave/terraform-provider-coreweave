@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
 	"time"
 
 	cksv1beta1 "buf.build/gen/go/coreweave/cks/protocolbuffers/go/coreweave/cks/v1beta1"
@@ -12,6 +13,8 @@ import (
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/hashicorp/hcl/v2/hclwrite"
+	"github.com/hashicorp/terraform-plugin-framework-validators/setvalidator"
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -21,6 +24,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/setplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/retry"
@@ -36,6 +40,7 @@ var (
 	_                        resource.Resource                = &ClusterResource{}
 	_                        resource.ResourceWithImportState = &ClusterResource{}
 	errClusterCreationFailed error                            = errors.New("cluster creation failed")
+	nonWhitespace                                             = regexp.MustCompile(`\S`)
 )
 
 func NewClusterResource() resource.Resource {
@@ -217,7 +222,7 @@ func (c *ClusterResourceModel) Set(cluster *cksv1beta1.Cluster) {
 		c.InternalLBCidrNames = types.SetValueMust(types.StringType, internalLbCidrs)
 
 		c.PodCidrNameV6 = types.StringPointerValue(cluster.Network.PodCidrNameV6)
-		c.ServiceCidrNameV6 = types.StringValue(*cluster.Network.ServiceCidrNameV6)
+		c.ServiceCidrNameV6 = types.StringPointerValue(cluster.Network.ServiceCidrNameV6)
 
 		if c.InternalLBCidrNamesV6.IsNull() && len(cluster.Network.InternalLbCidrNamesV6) == 0 {
 			c.InternalLBCidrNamesV6 = types.SetNull(types.StringType)
@@ -628,12 +633,26 @@ func (r *ClusterResource) Schema(ctx context.Context, req resource.SchemaRequest
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
 				},
+				Validators: []validator.String{
+					stringvalidator.RegexMatches(nonWhitespace, "must not be empty"),
+					stringvalidator.AlsoRequires(
+						path.MatchRoot("service_cidr_name_v6"),
+						path.MatchRoot("internal_lb_cidr_names_v6"),
+					),
+				},
 			},
 			"service_cidr_name_v6": schema.StringAttribute{
 				Optional:            true,
 				MarkdownDescription: "IPv6 Service CIDR name. If any IPv6 field is set, then ALL IPv6 fields must be set.",
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
+				},
+				Validators: []validator.String{
+					stringvalidator.RegexMatches(nonWhitespace, "must not be empty"),
+					stringvalidator.AlsoRequires(
+						path.MatchRoot("pod_cidr_name_v6"),
+						path.MatchRoot("internal_lb_cidr_names_v6"),
+					),
 				},
 			},
 			"internal_lb_cidr_names_v6": schema.SetAttribute{
@@ -642,6 +661,16 @@ func (r *ClusterResource) Schema(ctx context.Context, req resource.SchemaRequest
 				MarkdownDescription: "IPv6 Internal Load Balancer CIDR names. If any IPv6 field is set, then ALL IPv6 fields must be set.",
 				PlanModifiers: []planmodifier.Set{
 					setplanmodifier.RequiresReplace(),
+				},
+				Validators: []validator.Set{
+					setvalidator.SizeAtLeast(1),
+					setvalidator.AlsoRequires(
+						path.MatchRoot("pod_cidr_name_v6"),
+						path.MatchRoot("service_cidr_name_v6"),
+					),
+					setvalidator.ValueStringsAre(
+						stringvalidator.RegexMatches(nonWhitespace, "must not be empty"),
+					),
 				},
 			},
 			"node_port_range": schema.SingleNestedAttribute{

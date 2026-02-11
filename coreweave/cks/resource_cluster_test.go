@@ -659,7 +659,7 @@ func TestClusterResource_V6FieldsCreateOnly(t *testing.T) {
 		},
 	}
 
-	// Optional import verify step
+	// Import verify step
 	importStep := resource.TestStep{
 		PreConfig: func() {
 			t.Log("Beginning coreweave_cks_cluster import test (v6)")
@@ -669,7 +669,6 @@ func TestClusterResource_V6FieldsCreateOnly(t *testing.T) {
 		ImportStateVerify: true,
 	}
 
-	// When asserting returned values, kubelet may be normalized differently by the API, so only assert presence.
 	statechecks := []statecheck.StateCheck{
 		// v6 field roundtrip assertions
 		statecheck.ExpectKnownValue(config.FullResourceName, tfjsonpath.New("pod_cidr_name_v6"), knownvalue.StringExact("pod-cidr-v6")),
