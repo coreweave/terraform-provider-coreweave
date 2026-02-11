@@ -14,7 +14,7 @@ shellcheck = "0.11.0"
 shfmt = "3.12.0"
 typos = "1.38.1"
 yamlfmt = "0.20.0"
-terraform = "v1.14.4"
+terraform = "1.14.5"
 gh = "2.86.0"
 
 # go backend is experimental
