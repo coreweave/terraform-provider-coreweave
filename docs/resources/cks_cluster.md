@@ -84,9 +84,12 @@ The prefixes must exist in the cluster's VPC. This field is append-only.
 - `audit_policy` (String) Audit policy for the cluster. Must be provided as a base64-encoded JSON/YAML string.
 - `authn_webhook` (Attributes) Authentication webhook configuration for the cluster. (see [below for nested schema](#nestedatt--authn_webhook))
 - `authz_webhook` (Attributes) Authorization webhook configuration for the cluster. (see [below for nested schema](#nestedatt--authz_webhook))
+- `internal_lb_cidr_names_v6` (Set of String) IPv6 Internal Load Balancer CIDR names. If any IPv6 field is set, then ALL IPv6 fields must be set.
 - `node_port_range` (Attributes) Kubernetes Service NodePort range. NodePort range can be expanded in existing clusters but not shrunk. Updating the NodePort range to a smaller range will require a replacement of the cluster. (see [below for nested schema](#nestedatt--node_port_range))
 - `oidc` (Attributes) OpenID Connect (OIDC) configuration for authentication to the api-server. (see [below for nested schema](#nestedatt--oidc))
+- `pod_cidr_name_v6` (String) IPv6 Pod CIDR name. If any IPv6 field is set, then ALL IPv6 fields must be set.
 - `public` (Boolean) Whether the cluster's api-server is publicly accessible from the internet.
+- `service_cidr_name_v6` (String) IPv6 Service CIDR name. If any IPv6 field is set, then ALL IPv6 fields must be set.
 - `shared_storage_cluster_id` (String) The `cluster_id` of the cluster to share storage with. Must be enabled by CoreWeave suppport. Contact CoreWeave support if you are interested in this feature.
 
 ### Read-Only

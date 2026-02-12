@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
 	"time"
 
 	cksv1beta1 "buf.build/gen/go/coreweave/cks/protocolbuffers/go/coreweave/cks/v1beta1"
@@ -12,6 +13,8 @@ import (
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/hashicorp/hcl/v2/hclwrite"
+	"github.com/hashicorp/terraform-plugin-framework-validators/setvalidator"
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -21,6 +24,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/setplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/retry"
@@ -36,6 +40,7 @@ var (
 	_                        resource.Resource                = &ClusterResource{}
 	_                        resource.ResourceWithImportState = &ClusterResource{}
 	errClusterCreationFailed error                            = errors.New("cluster creation failed")
+	nonWhitespace                                             = regexp.MustCompile(`\S`)
 )
 
 func NewClusterResource() resource.Resource {
@@ -139,6 +144,9 @@ type ClusterResourceModel struct {
 	PodCidrName                 types.String              `tfsdk:"pod_cidr_name"`
 	ServiceCidrName             types.String              `tfsdk:"service_cidr_name"`
 	InternalLBCidrNames         types.Set                 `tfsdk:"internal_lb_cidr_names"`
+	PodCidrNameV6               types.String              `tfsdk:"pod_cidr_name_v6"`
+	ServiceCidrNameV6           types.String              `tfsdk:"service_cidr_name_v6"`
+	InternalLBCidrNamesV6       types.Set                 `tfsdk:"internal_lb_cidr_names_v6"`
 	NodePortRange               types.Object              `tfsdk:"node_port_range"`
 	AuditPolicy                 types.String              `tfsdk:"audit_policy"`
 	Oidc                        *OidcResourceModel        `tfsdk:"oidc"`
@@ -206,11 +214,26 @@ func (c *ClusterResourceModel) Set(cluster *cksv1beta1.Cluster) {
 	if cluster.Network != nil {
 		c.PodCidrName = types.StringValue(cluster.Network.PodCidrName)
 		c.ServiceCidrName = types.StringValue(cluster.Network.ServiceCidrName)
+
 		internalLbCidrs := []attr.Value{}
 		for _, c := range cluster.Network.InternalLbCidrNames {
 			internalLbCidrs = append(internalLbCidrs, types.StringValue(c))
 		}
 		c.InternalLBCidrNames = types.SetValueMust(types.StringType, internalLbCidrs)
+
+		c.PodCidrNameV6 = types.StringPointerValue(cluster.Network.PodCidrNameV6)
+		c.ServiceCidrNameV6 = types.StringPointerValue(cluster.Network.ServiceCidrNameV6)
+
+		if c.InternalLBCidrNamesV6.IsNull() && len(cluster.Network.InternalLbCidrNamesV6) == 0 {
+			c.InternalLBCidrNamesV6 = types.SetNull(types.StringType)
+		} else {
+			internalLbCidrsV6 := []attr.Value{}
+			for _, c := range cluster.Network.InternalLbCidrNamesV6 {
+				internalLbCidrsV6 = append(internalLbCidrsV6, types.StringValue(c))
+			}
+			c.InternalLBCidrNamesV6 = types.SetValueMust(types.StringType, internalLbCidrsV6)
+		}
+
 		if !nodePortEmpty(cluster.Network.ServiceNodePortRange) {
 			c.NodePortRange = types.ObjectValueMust(
 				map[string]attr.Type{
@@ -308,6 +331,16 @@ func (c *ClusterResourceModel) InternalLbCidrNames(ctx context.Context) []string
 	return lbs
 }
 
+func (c *ClusterResourceModel) InternalLbCidrNamesV6(ctx context.Context) []string {
+	lbs := []string{}
+	if c.InternalLBCidrNamesV6.IsNull() {
+		return lbs
+	}
+
+	c.InternalLBCidrNamesV6.ElementsAs(ctx, &lbs, true)
+	return lbs
+}
+
 func (c *ClusterResourceModel) NodePorts() *cksv1beta1.PortRange {
 	if c.NodePortRange.IsNull() || c.NodePortRange.IsUnknown() {
 		return nil
@@ -339,12 +372,18 @@ func (c *ClusterResourceModel) ToCreateRequest(ctx context.Context) *cksv1beta1.
 			PodCidrName:         c.PodCidrName.ValueString(),
 			ServiceCidrName:     c.ServiceCidrName.ValueString(),
 			InternalLbCidrNames: c.InternalLbCidrNames(ctx),
+			PodCidrNameV6:       c.PodCidrNameV6.ValueStringPointer(),
+			ServiceCidrNameV6:   c.ServiceCidrNameV6.ValueStringPointer(),
 		},
 		AuditPolicy:            c.AuditPolicy.ValueString(),
 		SharedStorageClusterId: c.SharedStorageClusterId.ValueString(),
 	}
 
 	req.Network.ServiceNodePortRange = c.NodePorts()
+
+	if !c.InternalLBCidrNamesV6.IsNull() && !c.InternalLBCidrNamesV6.IsUnknown() {
+		req.Network.InternalLbCidrNamesV6 = c.InternalLbCidrNamesV6(ctx)
+	}
 
 	if c.AuthNWebhook != nil {
 		req.AuthnWebhook = &cksv1beta1.AuthWebhookConfig{
@@ -580,6 +619,52 @@ func (r *ClusterResource) Schema(ctx context.Context, req resource.SchemaRequest
 				MarkdownDescription: "The names of the vpc prefixes to use as internal load balancer CIDR ranges. Internal load balancers are reachable within the VPC but not accessible from the internet.\nThe prefixes must exist in the cluster's VPC. This field is append-only.",
 				PlanModifiers: []planmodifier.Set{
 					setplanmodifier.RequiresReplaceIf(requireReplaceIfInternalLbCidrNames, "", "Field `internal_lb_cidr_names` is append-only. Removing an existing value will force replacement."),
+				},
+			},
+			"pod_cidr_name_v6": schema.StringAttribute{
+				Optional:            true,
+				MarkdownDescription: "IPv6 Pod CIDR name. If any IPv6 field is set, then ALL IPv6 fields must be set.",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
+				Validators: []validator.String{
+					stringvalidator.RegexMatches(nonWhitespace, "must not be empty"),
+					stringvalidator.AlsoRequires(
+						path.MatchRoot("service_cidr_name_v6"),
+						path.MatchRoot("internal_lb_cidr_names_v6"),
+					),
+				},
+			},
+			"service_cidr_name_v6": schema.StringAttribute{
+				Optional:            true,
+				MarkdownDescription: "IPv6 Service CIDR name. If any IPv6 field is set, then ALL IPv6 fields must be set.",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
+				Validators: []validator.String{
+					stringvalidator.RegexMatches(nonWhitespace, "must not be empty"),
+					stringvalidator.AlsoRequires(
+						path.MatchRoot("pod_cidr_name_v6"),
+						path.MatchRoot("internal_lb_cidr_names_v6"),
+					),
+				},
+			},
+			"internal_lb_cidr_names_v6": schema.SetAttribute{
+				ElementType:         types.StringType,
+				Optional:            true,
+				MarkdownDescription: "IPv6 Internal Load Balancer CIDR names. If any IPv6 field is set, then ALL IPv6 fields must be set.",
+				PlanModifiers: []planmodifier.Set{
+					setplanmodifier.RequiresReplace(),
+				},
+				Validators: []validator.Set{
+					setvalidator.SizeAtLeast(1),
+					setvalidator.AlsoRequires(
+						path.MatchRoot("pod_cidr_name_v6"),
+						path.MatchRoot("service_cidr_name_v6"),
+					),
+					setvalidator.ValueStringsAre(
+						stringvalidator.RegexMatches(nonWhitespace, "must not be empty"),
+					),
 				},
 			},
 			"node_port_range": schema.SingleNestedAttribute{
@@ -961,19 +1046,31 @@ func MustRenderClusterResource(ctx context.Context, resourceName string, cluster
 	resourceBody.SetAttributeValue("public", cty.BoolVal(cluster.Public.ValueBool()))
 	resourceBody.SetAttributeValue("pod_cidr_name", cty.StringVal(cluster.PodCidrName.ValueString()))
 	resourceBody.SetAttributeValue("service_cidr_name", cty.StringVal(cluster.ServiceCidrName.ValueString()))
-	internalLbCidrs := []types.String{}
-	cluster.InternalLBCidrNames.ElementsAs(ctx, &internalLbCidrs, false)
-	internalLbCidrSetVals := []cty.Value{}
-	for _, lb := range internalLbCidrs {
-		internalLbCidrSetVals = append(internalLbCidrSetVals, cty.StringVal(lb.ValueString()))
-	}
-	resourceBody.SetAttributeValue("internal_lb_cidr_names", cty.SetVal(internalLbCidrSetVals))
+
+	// internal_lb_cidr_names (required)
+	setStringSetAttr(ctx, resourceBody, "internal_lb_cidr_names", cluster.InternalLBCidrNames)
+
 	if !cluster.AuditPolicy.IsNull() {
 		resourceBody.SetAttributeValue("audit_policy", cty.StringVal(cluster.AuditPolicy.ValueString()))
 	}
 
+	if !cluster.PodCidrNameV6.IsNull() && !cluster.PodCidrNameV6.IsUnknown() {
+		resourceBody.SetAttributeValue("pod_cidr_name_v6", cty.StringVal(cluster.PodCidrNameV6.ValueString()))
+	}
+
+	if !cluster.ServiceCidrNameV6.IsNull() && !cluster.ServiceCidrNameV6.IsUnknown() {
+		resourceBody.SetAttributeValue("service_cidr_name_v6", cty.StringVal(cluster.ServiceCidrNameV6.ValueString()))
+	}
+
+	if !cluster.InternalLBCidrNamesV6.IsNull() && !cluster.InternalLBCidrNamesV6.IsUnknown() {
+		setStringSetAttr(ctx, resourceBody, "internal_lb_cidr_names_v6", cluster.InternalLBCidrNamesV6)
+	}
+
 	if !cluster.SharedStorageClusterId.IsNull() && !cluster.SharedStorageClusterId.IsUnknown() {
-		resourceBody.SetAttributeRaw("shared_storage_cluster_id", hclwrite.Tokens{{Type: hclsyntax.TokenIdent, Bytes: []byte(cluster.SharedStorageClusterId.ValueString())}})
+		resourceBody.SetAttributeRaw(
+			"shared_storage_cluster_id",
+			hclwrite.Tokens{{Type: hclsyntax.TokenIdent, Bytes: []byte(cluster.SharedStorageClusterId.ValueString())}},
+		)
 	}
 
 	if !cluster.NodePortRange.IsNull() && !cluster.NodePortRange.IsUnknown() {
@@ -988,45 +1085,10 @@ func MustRenderClusterResource(ctx context.Context, resourceName string, cluster
 		}
 	}
 
-	stringOrNull := func(s types.String) cty.Value {
-		if s.IsNull() || s.IsUnknown() {
-			return cty.NullVal(cty.String)
-		}
+	// oidc
+	setOIDCAttrIfPresent(ctx, resourceBody, cluster.Oidc)
 
-		return cty.StringVal(s.ValueString())
-	}
-
-	if cluster.Oidc != nil {
-		signingAlgVals := []cty.Value{}
-		if !cluster.Oidc.SigningAlgs.IsNull() {
-			signingAlgs := []types.String{}
-			cluster.Oidc.SigningAlgs.ElementsAs(ctx, &signingAlgs, false)
-			for _, s := range signingAlgs {
-				signingAlgVals = append(signingAlgVals, cty.StringVal(s.ValueString()))
-			}
-		}
-
-		var signingAlgs cty.Value
-		if len(signingAlgVals) == 0 {
-			signingAlgs = cty.SetValEmpty(cty.String)
-		} else {
-			signingAlgs = cty.SetVal(signingAlgVals)
-		}
-
-		resourceBody.SetAttributeValue("oidc", cty.ObjectVal(map[string]cty.Value{
-			"issuer_url":          stringOrNull(cluster.Oidc.IssuerURL),
-			"client_id":           stringOrNull(cluster.Oidc.ClientID),
-			"username_claim":      stringOrNull(cluster.Oidc.UsernameClaim),
-			"username_prefix":     stringOrNull(cluster.Oidc.UsernamePrefix),
-			"groups_claim":        stringOrNull(cluster.Oidc.GroupsClaim),
-			"groups_prefix":       stringOrNull(cluster.Oidc.GroupsPrefix),
-			"ca":                  stringOrNull(cluster.Oidc.CA),
-			"required_claim":      stringOrNull(cluster.Oidc.RequiredClaim),
-			"signing_algs":        signingAlgs,
-			"admin_group_binding": stringOrNull(cluster.Oidc.AdminGroupBinding),
-		}))
-	}
-
+	// authn/authz webhooks
 	if cluster.AuthNWebhook != nil {
 		resourceBody.SetAttributeValue("authn_webhook", cty.ObjectVal(map[string]cty.Value{
 			"server": cty.StringVal(cluster.AuthNWebhook.Server.ValueString()),
@@ -1046,4 +1108,62 @@ func MustRenderClusterResource(ctx context.Context, resourceName string, cluster
 		panic(err)
 	}
 	return buf.String()
+}
+
+func stringOrNull(s types.String) cty.Value {
+	if s.IsNull() || s.IsUnknown() {
+		return cty.NullVal(cty.String)
+	}
+	return cty.StringVal(s.ValueString())
+}
+
+func setStringSetAttr(ctx context.Context, b *hclwrite.Body, name string, set types.Set) {
+	vals := []types.String{}
+	diag := set.ElementsAs(ctx, &vals, false)
+	if diag.HasError() {
+		panic(fmt.Sprintf("failed to read %s: %v", name, diag.Errors()))
+	}
+
+	ctyVals := make([]cty.Value, 0, len(vals))
+	for _, v := range vals {
+		ctyVals = append(ctyVals, cty.StringVal(v.ValueString()))
+	}
+
+	b.SetAttributeValue(name, cty.SetVal(ctyVals))
+}
+
+func setOIDCAttrIfPresent(ctx context.Context, b *hclwrite.Body, oidc *OidcResourceModel) {
+	if oidc == nil {
+		return
+	}
+
+	signingAlgVals := []cty.Value{}
+	if !oidc.SigningAlgs.IsNull() {
+		signingAlgs := []types.String{}
+		diag := oidc.SigningAlgs.ElementsAs(ctx, &signingAlgs, false)
+		if diag.HasError() {
+			panic(fmt.Sprintf("failed to read oidc.signing_algs: %v", diag.Errors()))
+		}
+		for _, s := range signingAlgs {
+			signingAlgVals = append(signingAlgVals, cty.StringVal(s.ValueString()))
+		}
+	}
+
+	signingAlgs := cty.SetValEmpty(cty.String)
+	if len(signingAlgVals) > 0 {
+		signingAlgs = cty.SetVal(signingAlgVals)
+	}
+
+	b.SetAttributeValue("oidc", cty.ObjectVal(map[string]cty.Value{
+		"issuer_url":          stringOrNull(oidc.IssuerURL),
+		"client_id":           stringOrNull(oidc.ClientID),
+		"username_claim":      stringOrNull(oidc.UsernameClaim),
+		"username_prefix":     stringOrNull(oidc.UsernamePrefix),
+		"groups_claim":        stringOrNull(oidc.GroupsClaim),
+		"groups_prefix":       stringOrNull(oidc.GroupsPrefix),
+		"ca":                  stringOrNull(oidc.CA),
+		"required_claim":      stringOrNull(oidc.RequiredClaim),
+		"signing_algs":        signingAlgs,
+		"admin_group_binding": stringOrNull(oidc.AdminGroupBinding),
+	}))
 }

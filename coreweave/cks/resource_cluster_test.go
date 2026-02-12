@@ -584,6 +584,124 @@ func TestClusterResource(t *testing.T) {
 	})
 }
 
+func TestClusterResource_V6FieldsCreateOnly(t *testing.T) {
+	config := generateResourceNames("cks-cluster-v6")
+	zone := testutil.AcceptanceTestZone
+	kubeVersion := testutil.AcceptanceTestKubeVersion
+
+	vpc := defaultVpc(config.ClusterName, zone)
+	vpc.VpcPrefixes = append(vpc.VpcPrefixes,
+		networking.VpcPrefixResourceModel{
+			Name:  types.StringValue("pod-cidr-v6"),
+			Value: types.StringValue("fd00:10::/48"),
+		},
+		networking.VpcPrefixResourceModel{
+			Name:  types.StringValue("service-cidr-v6"),
+			Value: types.StringValue("fd00:11::/108"),
+		},
+		networking.VpcPrefixResourceModel{
+			Name:  types.StringValue("internal-lb-cidr-v6"),
+			Value: types.StringValue("fd00:12::/108"),
+		},
+	)
+	npTypes := map[string]attr.Type{
+		"start": types.Int32Type,
+		"end":   types.Int32Type,
+	}
+	npVals := map[string]attr.Value{
+		"start": types.Int32Value(30000),
+		"end":   types.Int32Value(39534),
+	}
+	np, _ := types.ObjectValue(npTypes, npVals)
+
+	initial := &cks.ClusterResourceModel{
+		VpcId:               types.StringValue(fmt.Sprintf("coreweave_networking_vpc.%s.id", config.ResourceName)),
+		Name:                types.StringValue(config.ClusterName),
+		Zone:                types.StringValue(zone),
+		Version:             types.StringValue(kubeVersion),
+		Public:              types.BoolValue(false),
+		PodCidrName:         types.StringValue("pod-cidr"),
+		ServiceCidrName:     types.StringValue("service-cidr"),
+		InternalLBCidrNames: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr")}),
+		NodePortRange:       np,
+
+		// v6 prefix fields (all 3 required together)
+		PodCidrNameV6:         types.StringValue("pod-cidr-v6"),
+		ServiceCidrNameV6:     types.StringValue("service-cidr-v6"),
+		InternalLBCidrNamesV6: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr-v6")}),
+	}
+
+	ctx := context.Background()
+
+	// Step 1: create with v6 fields set
+	createStep := createClusterTestStep(ctx, t, testStepConfig{
+		TestName: "create v6 fields",
+		ConfigPlanChecks: resource.ConfigPlanChecks{
+			PreApply: []plancheck.PlanCheck{
+				plancheck.ExpectResourceAction(config.FullResourceName, plancheck.ResourceActionCreate),
+			},
+		},
+		Resources: config,
+		cluster:   *initial,
+		vpc:       *vpc,
+	})
+
+	// Step 2: reapply same config, expect noop (verifies read/roundtrip)
+	reapplyStep := resource.TestStep{
+		PreConfig: func() {
+			t.Log("Reapplying same configuration to verify Noop (v6 fields roundtrip)")
+		},
+		Config: networking.MustRenderVpcResource(ctx, config.ResourceName, vpc) + "\n" + cks.MustRenderClusterResource(ctx, config.ResourceName, initial),
+		ConfigPlanChecks: resource.ConfigPlanChecks{
+			PreApply: []plancheck.PlanCheck{
+				plancheck.ExpectResourceAction(config.FullResourceName, plancheck.ResourceActionNoop),
+			},
+		},
+	}
+
+	// Import verify step
+	importStep := resource.TestStep{
+		PreConfig: func() {
+			t.Log("Beginning coreweave_cks_cluster import test (v6)")
+		},
+		ResourceName:      config.FullResourceName,
+		ImportState:       true,
+		ImportStateVerify: true,
+	}
+
+	statechecks := []statecheck.StateCheck{
+		// v6 field roundtrip assertions
+		statecheck.ExpectKnownValue(config.FullResourceName, tfjsonpath.New("pod_cidr_name_v6"), knownvalue.StringExact("pod-cidr-v6")),
+		statecheck.ExpectKnownValue(config.FullResourceName, tfjsonpath.New("service_cidr_name_v6"), knownvalue.StringExact("service-cidr-v6")),
+		statecheck.ExpectKnownValue(
+			config.FullResourceName,
+			tfjsonpath.New("internal_lb_cidr_names_v6"),
+			knownvalue.SetExact([]knownvalue.Check{knownvalue.StringExact("internal-lb-cidr-v6")}),
+		),
+	}
+
+	// attach state checks to the create step
+	if createStep.ConfigStateChecks == nil {
+		createStep.ConfigStateChecks = statechecks
+	} else {
+		createStep.ConfigStateChecks = append(createStep.ConfigStateChecks, statechecks...)
+	}
+
+	steps := []resource.TestStep{
+		createStep,
+		reapplyStep,
+		importStep,
+	}
+
+	resource.ParallelTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+		PreCheck: func() {
+			testutil.SetEnvDefaults()
+		},
+		Steps: steps,
+	})
+}
+
 func TestPartialOidcConfig(t *testing.T) {
 	config := generateResourceNames("partial-oidc")
 	zone := testutil.AcceptanceTestZone
