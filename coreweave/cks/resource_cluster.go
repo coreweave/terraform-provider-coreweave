@@ -372,6 +372,8 @@ func (c *ClusterResourceModel) ToCreateRequest(ctx context.Context) *cksv1beta1.
 			PodCidrName:         c.PodCidrName.ValueString(),
 			ServiceCidrName:     c.ServiceCidrName.ValueString(),
 			InternalLbCidrNames: c.InternalLbCidrNames(ctx),
+			PodCidrNameV6:       c.PodCidrNameV6.ValueStringPointer(),
+			ServiceCidrNameV6:   c.ServiceCidrNameV6.ValueStringPointer(),
 		},
 		AuditPolicy:            c.AuditPolicy.ValueString(),
 		SharedStorageClusterId: c.SharedStorageClusterId.ValueString(),
@@ -379,14 +381,6 @@ func (c *ClusterResourceModel) ToCreateRequest(ctx context.Context) *cksv1beta1.
 
 	req.Network.ServiceNodePortRange = c.NodePorts()
 
-	if !c.PodCidrNameV6.IsNull() && !c.PodCidrNameV6.IsUnknown() && c.PodCidrNameV6.ValueString() != "" {
-		v := c.PodCidrNameV6.ValueString()
-		req.Network.PodCidrNameV6 = &v
-	}
-	if !c.ServiceCidrNameV6.IsNull() && !c.ServiceCidrNameV6.IsUnknown() && c.ServiceCidrNameV6.ValueString() != "" {
-		v := c.ServiceCidrNameV6.ValueString()
-		req.Network.ServiceCidrNameV6 = &v
-	}
 	if !c.InternalLBCidrNamesV6.IsNull() && !c.InternalLBCidrNamesV6.IsUnknown() {
 		req.Network.InternalLbCidrNamesV6 = c.InternalLbCidrNamesV6(ctx)
 	}
@@ -1052,13 +1046,10 @@ func MustRenderClusterResource(ctx context.Context, resourceName string, cluster
 	resourceBody.SetAttributeValue("public", cty.BoolVal(cluster.Public.ValueBool()))
 	resourceBody.SetAttributeValue("pod_cidr_name", cty.StringVal(cluster.PodCidrName.ValueString()))
 	resourceBody.SetAttributeValue("service_cidr_name", cty.StringVal(cluster.ServiceCidrName.ValueString()))
-	internalLbCidrs := []types.String{}
-	cluster.InternalLBCidrNames.ElementsAs(ctx, &internalLbCidrs, false)
-	internalLbCidrSetVals := []cty.Value{}
-	for _, lb := range internalLbCidrs {
-		internalLbCidrSetVals = append(internalLbCidrSetVals, cty.StringVal(lb.ValueString()))
-	}
-	resourceBody.SetAttributeValue("internal_lb_cidr_names", cty.SetVal(internalLbCidrSetVals))
+
+	// internal_lb_cidr_names (required)
+	setStringSetAttr(ctx, resourceBody, "internal_lb_cidr_names", cluster.InternalLBCidrNames)
+
 	if !cluster.AuditPolicy.IsNull() {
 		resourceBody.SetAttributeValue("audit_policy", cty.StringVal(cluster.AuditPolicy.ValueString()))
 	}
@@ -1072,17 +1063,14 @@ func MustRenderClusterResource(ctx context.Context, resourceName string, cluster
 	}
 
 	if !cluster.InternalLBCidrNamesV6.IsNull() && !cluster.InternalLBCidrNamesV6.IsUnknown() {
-		internalLbCidrsV6 := []types.String{}
-		cluster.InternalLBCidrNamesV6.ElementsAs(ctx, &internalLbCidrsV6, false)
-		internalLbCidrSetValsV6 := []cty.Value{}
-		for _, lb := range internalLbCidrsV6 {
-			internalLbCidrSetValsV6 = append(internalLbCidrSetValsV6, cty.StringVal(lb.ValueString()))
-		}
-		resourceBody.SetAttributeValue("internal_lb_cidr_names_v6", cty.SetVal(internalLbCidrSetValsV6))
+		setStringSetAttr(ctx, resourceBody, "internal_lb_cidr_names_v6", cluster.InternalLBCidrNamesV6)
 	}
 
 	if !cluster.SharedStorageClusterId.IsNull() && !cluster.SharedStorageClusterId.IsUnknown() {
-		resourceBody.SetAttributeRaw("shared_storage_cluster_id", hclwrite.Tokens{{Type: hclsyntax.TokenIdent, Bytes: []byte(cluster.SharedStorageClusterId.ValueString())}})
+		resourceBody.SetAttributeRaw(
+			"shared_storage_cluster_id",
+			hclwrite.Tokens{{Type: hclsyntax.TokenIdent, Bytes: []byte(cluster.SharedStorageClusterId.ValueString())}},
+		)
 	}
 
 	if !cluster.NodePortRange.IsNull() && !cluster.NodePortRange.IsUnknown() {
@@ -1097,45 +1085,10 @@ func MustRenderClusterResource(ctx context.Context, resourceName string, cluster
 		}
 	}
 
-	stringOrNull := func(s types.String) cty.Value {
-		if s.IsNull() || s.IsUnknown() {
-			return cty.NullVal(cty.String)
-		}
+	// oidc
+	setOIDCAttrIfPresent(ctx, resourceBody, cluster.Oidc)
 
-		return cty.StringVal(s.ValueString())
-	}
-
-	if cluster.Oidc != nil {
-		signingAlgVals := []cty.Value{}
-		if !cluster.Oidc.SigningAlgs.IsNull() {
-			signingAlgs := []types.String{}
-			cluster.Oidc.SigningAlgs.ElementsAs(ctx, &signingAlgs, false)
-			for _, s := range signingAlgs {
-				signingAlgVals = append(signingAlgVals, cty.StringVal(s.ValueString()))
-			}
-		}
-
-		var signingAlgs cty.Value
-		if len(signingAlgVals) == 0 {
-			signingAlgs = cty.SetValEmpty(cty.String)
-		} else {
-			signingAlgs = cty.SetVal(signingAlgVals)
-		}
-
-		resourceBody.SetAttributeValue("oidc", cty.ObjectVal(map[string]cty.Value{
-			"issuer_url":          stringOrNull(cluster.Oidc.IssuerURL),
-			"client_id":           stringOrNull(cluster.Oidc.ClientID),
-			"username_claim":      stringOrNull(cluster.Oidc.UsernameClaim),
-			"username_prefix":     stringOrNull(cluster.Oidc.UsernamePrefix),
-			"groups_claim":        stringOrNull(cluster.Oidc.GroupsClaim),
-			"groups_prefix":       stringOrNull(cluster.Oidc.GroupsPrefix),
-			"ca":                  stringOrNull(cluster.Oidc.CA),
-			"required_claim":      stringOrNull(cluster.Oidc.RequiredClaim),
-			"signing_algs":        signingAlgs,
-			"admin_group_binding": stringOrNull(cluster.Oidc.AdminGroupBinding),
-		}))
-	}
-
+	// authn/authz webhooks
 	if cluster.AuthNWebhook != nil {
 		resourceBody.SetAttributeValue("authn_webhook", cty.ObjectVal(map[string]cty.Value{
 			"server": cty.StringVal(cluster.AuthNWebhook.Server.ValueString()),
@@ -1155,4 +1108,62 @@ func MustRenderClusterResource(ctx context.Context, resourceName string, cluster
 		panic(err)
 	}
 	return buf.String()
+}
+
+func stringOrNull(s types.String) cty.Value {
+	if s.IsNull() || s.IsUnknown() {
+		return cty.NullVal(cty.String)
+	}
+	return cty.StringVal(s.ValueString())
+}
+
+func setStringSetAttr(ctx context.Context, b *hclwrite.Body, name string, set types.Set) {
+	vals := []types.String{}
+	diag := set.ElementsAs(ctx, &vals, false)
+	if diag.HasError() {
+		panic(fmt.Sprintf("failed to read %s: %v", name, diag.Errors()))
+	}
+
+	ctyVals := make([]cty.Value, 0, len(vals))
+	for _, v := range vals {
+		ctyVals = append(ctyVals, cty.StringVal(v.ValueString()))
+	}
+
+	b.SetAttributeValue(name, cty.SetVal(ctyVals))
+}
+
+func setOIDCAttrIfPresent(ctx context.Context, b *hclwrite.Body, oidc *OidcResourceModel) {
+	if oidc == nil {
+		return
+	}
+
+	signingAlgVals := []cty.Value{}
+	if !oidc.SigningAlgs.IsNull() {
+		signingAlgs := []types.String{}
+		diag := oidc.SigningAlgs.ElementsAs(ctx, &signingAlgs, false)
+		if diag.HasError() {
+			panic(fmt.Sprintf("failed to read oidc.signing_algs: %v", diag.Errors()))
+		}
+		for _, s := range signingAlgs {
+			signingAlgVals = append(signingAlgVals, cty.StringVal(s.ValueString()))
+		}
+	}
+
+	signingAlgs := cty.SetValEmpty(cty.String)
+	if len(signingAlgVals) > 0 {
+		signingAlgs = cty.SetVal(signingAlgVals)
+	}
+
+	b.SetAttributeValue("oidc", cty.ObjectVal(map[string]cty.Value{
+		"issuer_url":          stringOrNull(oidc.IssuerURL),
+		"client_id":           stringOrNull(oidc.ClientID),
+		"username_claim":      stringOrNull(oidc.UsernameClaim),
+		"username_prefix":     stringOrNull(oidc.UsernamePrefix),
+		"groups_claim":        stringOrNull(oidc.GroupsClaim),
+		"groups_prefix":       stringOrNull(oidc.GroupsPrefix),
+		"ca":                  stringOrNull(oidc.CA),
+		"required_claim":      stringOrNull(oidc.RequiredClaim),
+		"signing_algs":        signingAlgs,
+		"admin_group_binding": stringOrNull(oidc.AdminGroupBinding),
+	}))
 }
