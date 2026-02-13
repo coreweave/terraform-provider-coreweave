@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.11.0](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.10.1...v0.11.0) (2026-02-12)
+
+
+### Features
+
+* **cks:** ✨  v6 fields for dual stack ([#240](https://github.com/coreweave/terraform-provider-coreweave/issues/240)) ([aba054e](https://github.com/coreweave/terraform-provider-coreweave/commit/aba054e8076757179d2ccd5ad9ce992ec67cedc6))
+
+
+### Bug Fixes
+
+* Update all docs to use new URLs ([#238](https://github.com/coreweave/terraform-provider-coreweave/issues/238)) ([cd42d86](https://github.com/coreweave/terraform-provider-coreweave/commit/cd42d86045664ecca567d4f1a5484c3d7c1f4678))
+
 ## [0.10.1](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.10.0...v0.10.1) (2026-02-02)
 
 
