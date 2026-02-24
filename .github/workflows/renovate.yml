@@ -33,6 +33,7 @@ concurrency:
 env:
   CGO_ENABLED: '0'
   GOPROXY: "https://proxy.golang.org,direct"
+  MISE_TRUSTED_CONFIG_PATHS: "/tmp/renovate/repos/github/${{ github.repository }}/.config/mise.toml"
 
 jobs:
   coalesce-inputs:
@@ -101,7 +102,6 @@ jobs:
         RENOVATE_PLATFORM: github
         RENOVATE_PLATFORM_COMMIT: true
         RENOVATE_DRY_RUN: ${{ github.event_name == 'pull_request' && 'full' || null }}
-        RENOVATE_ALLOWED_COMMANDS: "^(mise trust|go mod tidy)"
         RENOVATE_TOKEN: ${{ steps.app-token.outputs.token }}
 
         DOCKER_GHCR_IO_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
