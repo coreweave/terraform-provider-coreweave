@@ -1,5 +1,25 @@
 {
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
     "github>coreweave/renovate-config"
+  ],
+  "semanticCommitType": "deps",
+  "packageRules": [
+    {
+      "matchManagers": ["github-actions"],
+      "semanticCommitType": "ci",
+      "semanticCommitScope": "github-action"
+    },
+    {
+      "matchManagers": ["mise"],
+      "semanticCommitType": "ci",
+      "semanticCommitScope": "mise"
+    },
+    {
+      "matchManagers": ["mise"],
+      "matchPackageNames": ["go"],
+      "semanticCommitType": "deps",
+      "semanticCommitScope": null
+    }
   ]
 }
