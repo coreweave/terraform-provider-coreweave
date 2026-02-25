@@ -91,7 +91,7 @@ jobs:
 
     - name: renovate
       run: |
-        npx renovate --allowed-env '.*'
+        npx renovate --allowed-env '*'
       shell: bash
       env:
         LOG_LEVEL: debug
