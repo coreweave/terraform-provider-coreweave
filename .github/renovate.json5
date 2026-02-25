@@ -20,6 +20,11 @@
       "matchPackageNames": ["go"],
       "semanticCommitType": "deps",
       "semanticCommitScope": null
+    },
+    {
+      "matchManagers": ["gomod"],
+      "semanticCommitType": "deps",
+      "semanticCommitScope": null
     }
   ]
 }
