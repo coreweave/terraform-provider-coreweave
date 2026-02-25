@@ -1,10 +1,5 @@
 {
   "extends": [
     "github>coreweave/renovate-config"
-  ],
-  "postUpdateOptions": [],
-  "postUpgradeTasks": {
-    "commands": ["mise trust .config/mise.toml", "go mod tidy"],
-    "executionMode": "update"
-  }
+  ]
 }
