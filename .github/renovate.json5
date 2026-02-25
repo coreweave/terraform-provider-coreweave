@@ -25,6 +25,18 @@
       "matchManagers": ["gomod"],
       "semanticCommitType": "deps",
       "semanticCommitScope": null
+    },
+    {
+      "matchPackageNames": ["buf.build/gen/go/coreweave/cks/**"],
+      "semanticCommitScope": "cks"
+    },
+    {
+      "matchPackageNames": ["buf.build/gen/go/coreweave/networking/**"],
+      "semanticCommitScope": "networking"
+    },
+    {
+      "matchPackageNames": ["buf.build/gen/go/coreweave/cwobject/**"],
+      "semanticCommitScope": "object_storage"
     }
   ]
 }
