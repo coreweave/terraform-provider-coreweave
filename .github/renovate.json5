@@ -6,6 +6,12 @@
   "semanticCommitType": "deps",
   "packageRules": [
     {
+      "matchDatasources": ["github-tags"],
+      "matchPackageNames": ["golang/go"],
+      "overrideDatasource": "golang-version",
+      "overridePackageName": "go"
+    },
+    {
       "matchManagers": ["github-actions"],
       "semanticCommitType": "ci",
       "semanticCommitScope": "github-action"
