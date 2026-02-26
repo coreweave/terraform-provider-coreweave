@@ -81,6 +81,18 @@ jobs:
         git config --global user.name 'Renovate Bot'
 
     - uses: ./.github/actions/setup
+
+    - name: Pre-trust renovate mise workspace
+      shell: bash
+      run: |
+        # `trusted_config_paths` in the global mise config bypasses the trust check for
+        # all mise invocations sharing HOME, including the `go get` subprocess that
+        # Renovate spawns in updateArtifacts. Unlike the MISE_TRUSTED_CONFIG_PATHS env
+        # var (which the subprocess never inherits), the global config is always read
+        # from the filesystem.
+        mise settings set trusted_config_paths \
+          "/tmp/renovate/repos/github/${{ github.repository }}/.config/mise.toml"
+
     - name: Cache Go modules and build cache
       uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
       with:
