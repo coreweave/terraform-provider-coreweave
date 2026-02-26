@@ -16,14 +16,22 @@ jobs:
   release-please:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-        with:
-          fetch-depth: 0
-          fetch-tags: true
-
       - name: Run Release Please
         uses: googleapis/release-please-action@16a9c90856f42705d54a6fda1823352bdc62cf38 # v4.4.0
+        id: release
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          # GoReleaser is responsible for creating the GitHub release and uploading artifacts.
           skip-github-release: true
+    outputs:
+      releases: ${{ toJson(steps.release.outputs) }}
+      paths_released: ${{ steps.release.outputs.paths_released }}
+
+  release:
+    needs: release-please
+    if: ${{ contains(needs.release-please.outputs.paths_released, '.') }}
+    permissions:
+      contents: write
+    secrets: inherit
+    uses: ./.github/workflows/release.yml
+    with:
+      git-tag: ${{ fromJson(needs.release-please.outputs.releases).tag_name }}
