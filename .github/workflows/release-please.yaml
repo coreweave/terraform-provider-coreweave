@@ -1,7 +1,7 @@
 name: Release Please
 
 # 1. Run release-please on every push to main
-# 2. Trigger publishing only when a new tag is pushed
+# 2. When release-please creates a release, trigger the release job to publish via GoReleaser
 on:
   push:
     branches:
