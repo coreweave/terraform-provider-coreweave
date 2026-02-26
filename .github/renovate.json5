@@ -16,13 +16,15 @@
       "semanticCommitScope": "mise"
     },
     {
-      "matchManagers": ["mise"],
-      "matchPackageNames": ["go"],
-      "semanticCommitType": "deps",
-      "semanticCommitScope": null
+      // consolidate go.mod updates to use golang-version/go
+      "matchDatasources": ["github-tags"],
+      "matchPackageNames": ["golang/go"],
+      "overrideDatasource": "golang-version",
+      "overridePackageName": "go"
     },
     {
-      "matchManagers": ["gomod"],
+      "matchPackageNames": ["go"],
+      "matchDatasources": ["golang-version"],
       "semanticCommitType": "deps",
       "semanticCommitScope": null
     },
