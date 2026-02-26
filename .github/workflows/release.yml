@@ -1,18 +1,26 @@
 # Terraform Provider release workflow.
 name: Release
 
-# This GitHub action creates a release when a tag that matches the pattern
-# "v*" (e.g. v0.1.0) is created.
+# Builds and publishes a GitHub release for a given git tag using GoReleaser.
+# Called automatically by release-please after merging a release PR, or
+# triggered manually via workflow_dispatch to re-run or recover a release.
 on:
-  push:
-    tags:
-      - 'v*'
+  workflow_call:
+    inputs:
+      git-tag:
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      git-tag:
+        description: 'Git tag to release (e.g. v0.5.1)'
+        required: true
+        type: string
 
 # Releases need permissions to read and write the repository contents.
 # GitHub considers creating releases and uploading assets as writing contents.
 permissions:
   contents: write
-  pull-requests: write
 
 jobs:
   goreleaser:
@@ -21,6 +29,7 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           fetch-depth: 0
+          ref: ${{ inputs.git-tag }}
       - uses: ./.github/actions/setup
       - name: Import GPG key
         uses: crazy-max/ghaction-import-gpg@e89d40939c28e39f97cf32126055eeae86ba74ec # v6.3.0
@@ -28,43 +37,16 @@ jobs:
         with:
           gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY }}
           passphrase: ${{ secrets.PASSPHRASE }}
+      - name: Extract release notes
+        run: |
+          VERSION="${{ inputs.git-tag }}"
+          VERSION="${VERSION#v}"
+          awk -v ver="$VERSION" '/^## \[/ { if (found) exit; if (index($0, "[" ver) > 0) found=1 } found' CHANGELOG.md > /tmp/release-notes.md
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@e435ccd777264be153ace6237001ef4d979d3a7a # v6.4.0
         with:
-          args: release --clean
+          args: release --clean --release-notes /tmp/release-notes.md
         env:
           # GitHub sets the GITHUB_TOKEN secret automatically.
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GPG_FINGERPRINT: ${{ steps.import_gpg.outputs.fingerprint }}
-      - name: Relabel Release Please PR
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          # Get the tag that triggered the workflow
-          CURRENT_TAG=${{ github.ref_name }}
-          echo "Current Tag: $CURRENT_TAG"
-
-          # Find the commit SHA associated with the current tag
-          TAG_COMMIT_SHA=$(git rev-list -n 1 $CURRENT_TAG)
-          echo "Tag Commit SHA: $TAG_COMMIT_SHA"
-
-          # Use the GitHub API to find the PR linked to this commit
-          PR_NUMBER=$(gh api \
-            -H "Accept: application/vnd.github+json" \
-            "/repos/${{ github.repository }}/commits/$TAG_COMMIT_SHA/pulls" \
-            --jq '.[0].number')
-
-          if [ -z "$PR_NUMBER" ]; then
-            echo "No merged PR found for commit $TAG_COMMIT_SHA"
-            exit 0
-          fi
-
-          echo "Found PR: #$PR_NUMBER"
-
-          # Remove 'autorelease:pending' label from the PR
-          gh pr edit $PR_NUMBER --remove-label "autorelease: pending"
-
-          # Add 'autorelease:tagged' label to the PR
-          gh pr edit $PR_NUMBER --add-label "autorelease:tagged"
-
-          echo "Updated labels for PR #$PR_NUMBER"
