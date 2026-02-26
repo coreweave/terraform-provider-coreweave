@@ -26,7 +26,8 @@
       "matchPackageNames": ["go"],
       "matchDatasources": ["golang-version"],
       "semanticCommitType": "deps",
-      "semanticCommitScope": null
+      "semanticCommitScope": null,
+      "sourceUrl": "https://github.com/golang/go"
     },
     {
       "matchPackageNames": ["buf.build/gen/go/coreweave/cks/**"],
