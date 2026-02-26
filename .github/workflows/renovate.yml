@@ -33,7 +33,6 @@ concurrency:
 env:
   CGO_ENABLED: '0'
   GOPROXY: "https://proxy.golang.org,direct"
-  MISE_TRUSTED_CONFIG_PATHS: "/tmp/renovate/repos/github/${{ github.repository }}/.config/mise.toml"
 
 jobs:
   coalesce-inputs:
@@ -89,9 +88,13 @@ jobs:
           ~/go/pkg/mod
         key: ${{ runner.os }}-goreleaser-snapshot-go-${{ hashFiles('**/go.sum') }}
 
+    - name: Mise Trust
+      run: |
+        mise trust --yes "/tmp/renovate/repos/github/${{ github.repository }}/.config/mise.toml"
+
     - name: renovate
       run: |
-        npx renovate --allowed-env '*'
+        npx renovate
       shell: bash
       env:
         LOG_LEVEL: debug
