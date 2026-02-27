@@ -17,6 +17,7 @@ jobs:
       suites: ${{ steps.changes.outputs.suites }}
     env:
       LABELS: ${{ toJson(github.event.pull_request.labels.*.name) }}
+      PR_TITLE: ${{ github.event.pull_request.title }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
@@ -39,8 +40,16 @@ jobs:
           # Get PR labels and changed files
           git fetch origin ${{ github.event.pull_request.base.ref }}
           CHANGED_FILES=$(git diff --name-only origin/${{ github.event.pull_request.base.ref }}...HEAD)
+          COMMIT_SUBJECTS=$(git log --format="%s" origin/${{ github.event.pull_request.base.ref }}...HEAD)
+          SCOPES=$(printf '%s\n%s' "$PR_TITLE" "$COMMIT_SUBJECTS" | sed -nE 's/^[a-z][a-z0-9_-]*\(([^)]+)\)[!]?:.*/\1/p')
 
           ACTIVE_SUITES=()
+
+          # Core files that affect all test suites
+          if echo "$CHANGED_FILES" | grep -qE "^(go\.(mod|sum)|main\.go|coreweave/(client|retry|s3)\.go)$"; then
+            ACTIVE_SUITES=($ALL_SUITES)
+            echo "Running all suites due to core file changes"
+          fi
 
           # Check for run-all label
           if has_label "acceptance-test:all"; then
@@ -55,6 +64,10 @@ jobs:
               if has_label "acceptance-test:$suite"; then
                 ACTIVE_SUITES+=("$suite")
                 echo "✓ $suite: enabled by label"
+              # Check commit scope in PR title and commit messages
+              elif echo "$SCOPES" | grep -qx "$suite"; then
+                ACTIVE_SUITES+=("$suite")
+                echo "✓ $suite: enabled by commit scope"
               # Check internal/provider (affects all suites)
               elif echo "$CHANGED_FILES" | grep -q "^internal/provider/"; then
                 ACTIVE_SUITES+=("$suite")
