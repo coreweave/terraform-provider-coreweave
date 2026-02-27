@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.1](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.11.0...v0.11.1) (2026-02-27)
+
+
+### Documentation
+
+* update docstring for release-please ([e23b2f1](https://github.com/coreweave/terraform-provider-coreweave/commit/e23b2f1604406d4793169909bddcb57b87eed07f))
+
 ## [0.11.0](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.10.1...v0.11.0) (2026-02-12)
 
 
