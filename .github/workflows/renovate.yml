@@ -33,7 +33,6 @@ concurrency:
 env:
   CGO_ENABLED: '0'
   GOPROXY: "https://proxy.golang.org,direct"
-  MISE_TRUSTED_CONFIG_PATHS: "/tmp/renovate/repos/github/${{ github.repository }}/.config/mise.toml"
 
 jobs:
   coalesce-inputs:
