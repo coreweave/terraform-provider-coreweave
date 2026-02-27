@@ -31,14 +31,20 @@
     },
     {
       "matchPackageNames": ["buf.build/gen/go/coreweave/cks/**"],
+      "groupName": "buf.build cks",
+      "semanticCommitType": "deps",
       "semanticCommitScope": "cks"
     },
     {
       "matchPackageNames": ["buf.build/gen/go/coreweave/networking/**"],
+      "groupName": "buf.build networking",
+      "semanticCommitType": "deps",
       "semanticCommitScope": "networking"
     },
     {
       "matchPackageNames": ["buf.build/gen/go/coreweave/cwobject/**"],
+      "groupName": "buf.build cwobject",
+      "semanticCommitType": "deps",
       "semanticCommitScope": "object_storage"
     }
   ]
