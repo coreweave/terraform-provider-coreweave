@@ -6,6 +6,14 @@
   "semanticCommitType": "deps",
   "packageRules": [
     {
+      // The parent preset (coreweave/renovate-config:semantic-commits) hardcodes
+      // commitMessagePrefix with "!" for all major updates. Override that globally:
+      // no external dependency bump should be treated as a provider breaking change.
+      // Intentional provider breaking changes come from developer-authored feat!/fix! commits.
+      "matchUpdateTypes": ["major"],
+      "commitMessagePrefix": "{{semanticCommitType}}{{#if semanticCommitScope}}({{semanticCommitScope}}){{/if}}:"
+    },
+    {
       "matchManagers": ["github-actions"],
       "semanticCommitType": "ci",
       "semanticCommitScope": "github-action"
