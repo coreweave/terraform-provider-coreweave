@@ -1065,3 +1065,285 @@ resource "coreweave_networking_vpc" "test_vpc" {
 		assert.Equal(t, expected, networking.MustRenderVpcResource(ctx, resourceName, m))
 	})
 }
+
+// TestVpcValidation tests validation logic without making actual API calls.
+// These tests use PlanOnly mode to verify validation behavior.
+func TestVpcValidation(t *testing.T) {
+	t.Parallel()
+
+	t.Run("primary host prefix with IPAM should fail", func(t *testing.T) {
+		randomInt := rand.IntN(100)
+		resourceName := fmt.Sprintf("test_validation_primary_ipam_%x", randomInt)
+
+		invalidModel := &networking.VpcResourceModel{
+			Name: types.StringValue(fmt.Sprintf("test-validation-primary-ipam-%x", randomInt)),
+			Zone: types.StringValue("US-LAB-01A"),
+			HostPrefixes: hostPrefixesToSet(t, []networking.HostPrefixResourceModel{
+				{
+					Name:     types.StringValue("primary-with-ipam"),
+					Type:     types.StringValue(networkingv1beta1.HostPrefix_PRIMARY.String()),
+					Prefixes: []cidrtypes.IPPrefix{cidrtypes.NewIPPrefixValue("172.16.0.0/12")},
+					IPAM: &networking.IPAMPolicyResourceModel{
+						PrefixLength: types.Int32Value(64),
+					},
+				},
+			}),
+		}
+
+		resource.ParallelTest(t, resource.TestCase{
+			ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+			Steps: []resource.TestStep{
+				{
+					Config:      networking.MustRenderVpcResource(t.Context(), resourceName, invalidModel),
+					PlanOnly:    true,
+					ExpectError: regexp.MustCompile(`(?i)host prefix ipam must not be set`),
+				},
+			},
+		})
+	})
+
+	t.Run("attached host prefix without IPAM should fail", func(t *testing.T) {
+		randomInt := rand.IntN(100)
+		resourceName := fmt.Sprintf("test_validation_attached_no_ipam_%x", randomInt)
+
+		invalidModel := &networking.VpcResourceModel{
+			Name: types.StringValue(fmt.Sprintf("test-validation-attached-no-ipam-%x", randomInt)),
+			Zone: types.StringValue("US-LAB-01A"),
+			HostPrefixes: hostPrefixesToSet(t, []networking.HostPrefixResourceModel{
+				fixtureHostPrefixPrimary(),
+				{
+					Name:     types.StringValue("attached-no-ipam"),
+					Type:     types.StringValue(networkingv1beta1.HostPrefix_ATTACHED.String()),
+					Prefixes: []cidrtypes.IPPrefix{cidrtypes.NewIPPrefixValue("2601:db8:cccc::/48")},
+					IPAM:     nil, // Missing IPAM
+				},
+			}),
+		}
+
+		resource.ParallelTest(t, resource.TestCase{
+			ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+			Steps: []resource.TestStep{
+				{
+					Config:      networking.MustRenderVpcResource(t.Context(), resourceName, invalidModel),
+					PlanOnly:    true,
+					ExpectError: regexp.MustCompile(`(?i)(ipam.*required|ipam must be set)`),
+				},
+			},
+		})
+	})
+
+	t.Run("routed host prefix without IPAM should fail", func(t *testing.T) {
+		randomInt := rand.IntN(100)
+		resourceName := fmt.Sprintf("test_validation_routed_no_ipam_%x", randomInt)
+
+		invalidModel := &networking.VpcResourceModel{
+			Name: types.StringValue(fmt.Sprintf("test-validation-routed-no-ipam-%x", randomInt)),
+			Zone: types.StringValue("US-LAB-01A"),
+			HostPrefixes: hostPrefixesToSet(t, []networking.HostPrefixResourceModel{
+				fixtureHostPrefixPrimary(),
+				{
+					Name:     types.StringValue("routed-no-ipam"),
+					Type:     types.StringValue(networkingv1beta1.HostPrefix_ROUTED.String()),
+					Prefixes: []cidrtypes.IPPrefix{cidrtypes.NewIPPrefixValue("2601:db8:bbbb::/48")},
+					IPAM:     nil, // Missing IPAM
+				},
+			}),
+		}
+
+		resource.ParallelTest(t, resource.TestCase{
+			ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+			Steps: []resource.TestStep{
+				{
+					Config:      networking.MustRenderVpcResource(t.Context(), resourceName, invalidModel),
+					PlanOnly:    true,
+					ExpectError: regexp.MustCompile(`(?i)(ipam.*required|ipam must be set)`),
+				},
+			},
+		})
+	})
+
+	t.Run("invalid VPC name format should fail", func(t *testing.T) {
+		randomInt := rand.IntN(100)
+		resourceName := fmt.Sprintf("test_validation_invalid_name_%x", randomInt)
+
+		invalidModel := &networking.VpcResourceModel{
+			Name:         types.StringValue("INVALID_NAME_UPPERCASE"), // Invalid format
+			Zone:         types.StringValue("US-LAB-01A"),
+			HostPrefixes: hostPrefixesToSet(t, []networking.HostPrefixResourceModel{fixtureHostPrefixPrimary()}),
+		}
+
+		resource.ParallelTest(t, resource.TestCase{
+			ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+			Steps: []resource.TestStep{
+				{
+					Config:      networking.MustRenderVpcResource(t.Context(), resourceName, invalidModel),
+					PlanOnly:    true,
+					ExpectError: regexp.MustCompile(`(?i)(does not match regex pattern|invalid.*name)`),
+				},
+			},
+		})
+	})
+
+	t.Run("empty vpc_prefix name should fail", func(t *testing.T) {
+		randomInt := rand.IntN(100)
+		resourceName := fmt.Sprintf("test_validation_empty_prefix_name_%x", randomInt)
+
+		invalidModel := &networking.VpcResourceModel{
+			Name:         types.StringValue(fmt.Sprintf("test-validation-prefix-%x", randomInt)),
+			Zone:         types.StringValue("US-LAB-01A"),
+			HostPrefixes: hostPrefixesToSet(t, []networking.HostPrefixResourceModel{fixtureHostPrefixPrimary()}),
+			VpcPrefixes: []networking.VpcPrefixResourceModel{
+				{
+					Name:  types.StringValue(""), // Empty name
+					Value: types.StringValue("10.0.0.0/16"),
+				},
+			},
+		}
+
+		resource.ParallelTest(t, resource.TestCase{
+			ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+			Steps: []resource.TestStep{
+				{
+					Config:      networking.MustRenderVpcResource(t.Context(), resourceName, invalidModel),
+					PlanOnly:    true,
+					ExpectError: regexp.MustCompile(`(?i)(name.*length must be at least 1|value length must be at least 1 characters)`),
+				},
+			},
+		})
+	})
+
+	t.Run("invalid vpc_prefix CIDR should fail", func(t *testing.T) {
+		randomInt := rand.IntN(100)
+		resourceName := fmt.Sprintf("test_validation_invalid_cidr_%x", randomInt)
+
+		invalidModel := &networking.VpcResourceModel{
+			Name:         types.StringValue(fmt.Sprintf("test-validation-cidr-%x", randomInt)),
+			Zone:         types.StringValue("US-LAB-01A"),
+			HostPrefixes: hostPrefixesToSet(t, []networking.HostPrefixResourceModel{fixtureHostPrefixPrimary()}),
+			VpcPrefixes: []networking.VpcPrefixResourceModel{
+				{
+					Name:  types.StringValue("invalid-cidr"),
+					Value: types.StringValue("not-a-valid-cidr"), // Invalid CIDR
+				},
+			},
+		}
+
+		resource.ParallelTest(t, resource.TestCase{
+			ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+			Steps: []resource.TestStep{
+				{
+					Config:      networking.MustRenderVpcResource(t.Context(), resourceName, invalidModel),
+					PlanOnly:    true,
+					ExpectError: regexp.MustCompile(`(?i)(not a valid IP prefix|invalid.*cidr)`),
+				},
+			},
+		})
+	})
+
+	t.Run("empty vpc_prefix value should fail", func(t *testing.T) {
+		randomInt := rand.IntN(100)
+		resourceName := fmt.Sprintf("test_validation_empty_prefix_value_%x", randomInt)
+
+		invalidModel := &networking.VpcResourceModel{
+			Name:         types.StringValue(fmt.Sprintf("test-validation-prefix-val-%x", randomInt)),
+			Zone:         types.StringValue("US-LAB-01A"),
+			HostPrefixes: hostPrefixesToSet(t, []networking.HostPrefixResourceModel{fixtureHostPrefixPrimary()}),
+			VpcPrefixes: []networking.VpcPrefixResourceModel{
+				{
+					Name:  types.StringValue("empty-value"),
+					Value: types.StringValue(""), // Empty value
+				},
+			},
+		}
+
+		resource.ParallelTest(t, resource.TestCase{
+			ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+			Steps: []resource.TestStep{
+				{
+					Config:      networking.MustRenderVpcResource(t.Context(), resourceName, invalidModel),
+					PlanOnly:    true,
+					ExpectError: regexp.MustCompile(`(?i)(value is empty|not a valid IP prefix)`),
+				},
+			},
+		})
+	})
+
+	t.Run("host_prefix and host_prefixes both set should fail", func(t *testing.T) {
+		randomInt := rand.IntN(100)
+		resourceName := fmt.Sprintf("test_validation_both_host_prefix_%x", randomInt)
+
+		invalidModel := &networking.VpcResourceModel{
+			Name:         types.StringValue(fmt.Sprintf("test-validation-both-%x", randomInt)),
+			Zone:         types.StringValue("US-LAB-01A"),
+			HostPrefix:   types.StringValue("172.16.0.0/12"), // Both set
+			HostPrefixes: hostPrefixesToSet(t, []networking.HostPrefixResourceModel{fixtureHostPrefixPrimary()}),
+		}
+
+		resource.ParallelTest(t, resource.TestCase{
+			ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+			Steps: []resource.TestStep{
+				{
+					Config:      networking.MustRenderVpcResource(t.Context(), resourceName, invalidModel),
+					PlanOnly:    true,
+					ExpectError: regexp.MustCompile(`(?i)These attributes cannot be configured together`),
+				},
+			},
+		})
+	})
+
+	t.Run("valid VPC with all fields should pass", func(t *testing.T) {
+		randomInt := rand.IntN(100)
+		resourceName := fmt.Sprintf("test_validation_valid_full_%x", randomInt)
+		fullResourceName := fmt.Sprintf("coreweave_networking_vpc.%s", resourceName)
+
+		validModel := &networking.VpcResourceModel{
+			Name: types.StringValue(fmt.Sprintf("test-validation-valid-%x", randomInt)),
+			Zone: types.StringValue("US-LAB-01A"),
+			HostPrefixes: hostPrefixesToSet(t, []networking.HostPrefixResourceModel{
+				fixtureHostPrefixPrimary(),
+				fixtureHostPrefixAttached(),
+				fixtureHostPrefixRouted(),
+			}),
+			VpcPrefixes: []networking.VpcPrefixResourceModel{
+				{
+					Name:  types.StringValue("pod-cidr"),
+					Value: types.StringValue("10.0.0.0/16"),
+				},
+				{
+					Name:  types.StringValue("service-cidr"),
+					Value: types.StringValue("10.16.0.0/16"),
+				},
+			},
+			Ingress: &networking.VpcIngressResourceModel{
+				DisablePublicServices: types.BoolValue(false),
+			},
+			Egress: &networking.VpcEgressResourceModel{
+				DisablePublicAccess: types.BoolValue(false),
+			},
+			Dhcp: &networking.VpcDhcpResourceModel{
+				Dns: &networking.VpcDhcpDnsResourceModel{
+					Servers: types.SetValueMust(types.StringType, []attr.Value{
+						types.StringValue("1.1.1.1"),
+						types.StringValue("8.8.8.8"),
+					}),
+				},
+			},
+		}
+
+		resource.ParallelTest(t, resource.TestCase{
+			ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+			Steps: []resource.TestStep{
+				{
+					Config:             networking.MustRenderVpcResource(t.Context(), resourceName, validModel),
+					PlanOnly:           true,
+					ExpectNonEmptyPlan: true,
+					ConfigPlanChecks: resource.ConfigPlanChecks{
+						PostApplyPreRefresh: []plancheck.PlanCheck{
+							plancheck.ExpectResourceAction(fullResourceName, plancheck.ResourceActionCreate),
+						},
+					},
+				},
+			},
+		})
+	})
+}
