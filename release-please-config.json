@@ -3,6 +3,7 @@
     "include-component-in-tag": false,
     "include-v-in-tag": true,
     "initial-version": "v0.1.0",
+    "bump-minor-pre-major": true,
     "packages": {
       ".": {
         "release-type": "go",
@@ -16,6 +17,7 @@
        {"type": "perf", "section": "Performance Improvements"},
        {"type": "revert", "section": "Reverts"},
        {"type": "chore", "section": "Miscellaneous Chores", "hidden": true},
+       {"type": "ci", "section": "CI", "hidden": true},
        {"type": "docs", "section": "Documentation"},
        {"type": "deps", "section": "Dependency Updates"},
        {"type": "style", "section": "Styles", "hidden": true},
