@@ -48,6 +48,30 @@
     {
       "matchPackageNames": ["buf.build/gen/go/coreweave/cwobject/**"],
       "semanticCommitScope": "object_storage"
+    },
+    {
+      "matchPackageNames": [
+        "github.com/hashicorp/terraform-plugin-framework",
+        "github.com/hashicorp/terraform-plugin-framework-validators",
+        "github.com/hashicorp/terraform-plugin-framework-nettypes",
+        "github.com/hashicorp/terraform-plugin-go",
+        "github.com/hashicorp/terraform-plugin-log",
+        "github.com/hashicorp/terraform-plugin-testing",
+        "github.com/hashicorp/terraform-plugin-sdk/v2",
+        "github.com/zclconf/go-cty"
+      ],
+      "groupName": "hashicorp-terraform-plugin"
+    },
+    {
+      "matchPackageNames": ["github.com/aws/smithy-go"],
+      "groupName": "aws-sdk-go-v2-monorepo"
+    },
+    {
+      "matchPackageNames": [
+        "github.com/hashicorp/terraform-plugin-docs",
+        "github.com/hashicorp/copywrite"
+      ],
+      "groupName": "hashicorp-tools"
     }
   ]
 }
