@@ -8,6 +8,7 @@ import (
 
 	"buf.build/gen/go/coreweave/cks/connectrpc/go/coreweave/cks/v1beta1/cksv1beta1connect"
 	"buf.build/gen/go/coreweave/cwobject/connectrpc/go/cwobject/v1/cwobjectv1connect"
+	"buf.build/gen/go/coreweave/inference/connectrpc/go/coreweave/inference/v1alpha1/inferencev1alpha1connect"
 	"buf.build/gen/go/coreweave/networking/connectrpc/go/coreweave/networking/v1beta1/networkingv1beta1connect"
 	"connectrpc.com/connect"
 
@@ -31,9 +32,10 @@ func NewClient(endpoint string, s3Endpoint string, timeout time.Duration, interc
 	c := rc.StandardClient()
 
 	return &Client{
-		ClusterServiceClient: cksv1beta1connect.NewClusterServiceClient(c, endpoint, connect.WithInterceptors(interceptors...)),
-		VPCServiceClient:     networkingv1beta1connect.NewVPCServiceClient(c, endpoint, connect.WithInterceptors(interceptors...)),
-		CWObjectClient:       cwobjectv1connect.NewCWObjectClient(c, endpoint, connect.WithInterceptors(interceptors...)),
+		ClusterServiceClient:    cksv1beta1connect.NewClusterServiceClient(c, endpoint, connect.WithInterceptors(interceptors...)),
+		VPCServiceClient:        networkingv1beta1connect.NewVPCServiceClient(c, endpoint, connect.WithInterceptors(interceptors...)),
+		CWObjectClient:          cwobjectv1connect.NewCWObjectClient(c, endpoint, connect.WithInterceptors(interceptors...)),
+		DeploymentServiceClient: inferencev1alpha1connect.NewDeploymentServiceClient(c, endpoint, connect.WithInterceptors(interceptors...)),
 
 		s3Endpoint: s3Endpoint,
 	}
@@ -43,6 +45,7 @@ type Client struct {
 	cksv1beta1connect.ClusterServiceClient
 	networkingv1beta1connect.VPCServiceClient
 	cwobjectv1connect.CWObjectClient
+	inferencev1alpha1connect.DeploymentServiceClient
 
 	s3Endpoint string
 }
