@@ -46,7 +46,7 @@ jobs:
           ACTIVE_SUITES=()
 
           # Core files that affect all test suites
-          if echo "$CHANGED_FILES" | grep -qE "^(go\.(mod|sum)|main\.go|coreweave/(client|retry|s3)\.go)$"; then
+          if echo "$CHANGED_FILES" | grep -qE "^(go\.(mod|sum)|main\.go|coreweave/(client|retry|s3)(_test)?\.go)$"; then
             ACTIVE_SUITES=($ALL_SUITES)
             echo "Running all suites due to core file changes"
           fi
