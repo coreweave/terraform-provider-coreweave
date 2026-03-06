@@ -67,12 +67,14 @@
         "github.com/zclconf/go-cty"
       ],
       "groupName": "hashicorp-terraform-plugin",
-      "semanticCommitType": "deps"
+      "semanticCommitType": "deps",
+      "semanticCommitScope": null
     },
     {
       "matchPackageNames": ["github.com/aws/smithy-go"],
       "groupName": "aws-sdk-go-v2-monorepo",
-      "semanticCommitType": "deps"
+      "semanticCommitType": "deps",
+      "semanticCommitScope": null
     },
     {
       "matchPackageNames": [
@@ -80,7 +82,8 @@
         "github.com/hashicorp/copywrite"
       ],
       "groupName": "hashicorp-tools",
-      "semanticCommitType": "deps"
+      "semanticCommitType": "ci",
+      "semanticCommitScope": "tools"
     }
   ]
 }
