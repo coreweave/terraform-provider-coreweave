@@ -293,7 +293,7 @@ func createClusterTestStep(ctx context.Context, t *testing.T, config testStepCon
 		for _, c := range config.cluster.InternalLbCidrNames(ctx) {
 			internalLbCidrs = append(internalLbCidrs, knownvalue.StringExact(c))
 		}
-		statechecks = append(statechecks, statecheck.ExpectKnownValue(config.Resources.FullResourceName, tfjsonpath.New("internal_lb_cidr_names"), knownvalue.SetExact(internalLbCidrs)))
+		statechecks = append(statechecks, statecheck.ExpectKnownValue(config.Resources.FullResourceName, tfjsonpath.New("internal_lb_cidr_names"), knownvalue.ListExact(internalLbCidrs)))
 
 		// oidc
 		if config.cluster.Oidc != nil {
@@ -424,7 +424,7 @@ func TestClusterResource(t *testing.T) {
 		Public:              types.BoolValue(false),
 		PodCidrName:         types.StringValue("pod-cidr"),
 		ServiceCidrName:     types.StringValue("service-cidr"),
-		InternalLBCidrNames: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr")}),
+		InternalLBCidrNames: types.ListValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr")}),
 		NodePortRange:       np,
 	}
 
@@ -440,7 +440,7 @@ func TestClusterResource(t *testing.T) {
 		Public:              types.BoolValue(true),
 		PodCidrName:         types.StringValue("pod-cidr"),
 		ServiceCidrName:     types.StringValue("service-cidr"),
-		InternalLBCidrNames: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr"), types.StringValue("internal-lb-cidr-2")}),
+		InternalLBCidrNames: types.ListValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr"), types.StringValue("internal-lb-cidr-2")}),
 		AuditPolicy:         types.StringValue(AuditPolicyB64),
 		NodePortRange:       npLarge,
 		Oidc: &cks.OidcResourceModel{
@@ -473,7 +473,7 @@ func TestClusterResource(t *testing.T) {
 		Public:              types.BoolValue(true),
 		PodCidrName:         types.StringValue("pod-cidr"),
 		ServiceCidrName:     types.StringValue("service-cidr"),
-		InternalLBCidrNames: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr")}),
+		InternalLBCidrNames: types.ListValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr")}),
 		NodePortRange:       np,
 	}
 
@@ -485,7 +485,7 @@ func TestClusterResource(t *testing.T) {
 		Public:              types.BoolValue(true),
 		PodCidrName:         types.StringValue("pod-cidr"),
 		ServiceCidrName:     types.StringValue("service-cidr"),
-		InternalLBCidrNames: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr"), types.StringValue("internal-lb-cidr-2")}),
+		InternalLBCidrNames: types.ListValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr"), types.StringValue("internal-lb-cidr-2")}),
 		AuditPolicy:         types.StringValue(AuditPolicyB64),
 		NodePortRange:       npSmall,
 	}
@@ -636,13 +636,13 @@ func TestClusterResource_V6FieldsCreateOnly(t *testing.T) {
 		Public:              types.BoolValue(false),
 		PodCidrName:         types.StringValue("pod-cidr"),
 		ServiceCidrName:     types.StringValue("service-cidr"),
-		InternalLBCidrNames: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr")}),
+		InternalLBCidrNames: types.ListValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr")}),
 		NodePortRange:       np,
 
 		// v6 prefix fields (all 3 required together)
 		PodCidrNameV6:         types.StringValue("pod-cidr-v6"),
 		ServiceCidrNameV6:     types.StringValue("service-cidr-v6"),
-		InternalLBCidrNamesV6: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr-v6")}),
+		InternalLBCidrNamesV6: types.ListValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr-v6")}),
 	}
 
 	ctx := context.Background()
@@ -690,7 +690,7 @@ func TestClusterResource_V6FieldsCreateOnly(t *testing.T) {
 		statecheck.ExpectKnownValue(
 			config.FullResourceName,
 			tfjsonpath.New("internal_lb_cidr_names_v6"),
-			knownvalue.SetExact([]knownvalue.Check{knownvalue.StringExact("internal-lb-cidr-v6")}),
+			knownvalue.ListExact([]knownvalue.Check{knownvalue.StringExact("internal-lb-cidr-v6")}),
 		),
 	}
 
@@ -731,7 +731,7 @@ func TestPartialOidcConfig(t *testing.T) {
 		Public:              types.BoolValue(false),
 		PodCidrName:         types.StringValue("pod-cidr"),
 		ServiceCidrName:     types.StringValue("service-cidr"),
-		InternalLBCidrNames: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr")}),
+		InternalLBCidrNames: types.ListValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr")}),
 		Oidc: &cks.OidcResourceModel{
 			CA:          types.StringNull(),
 			IssuerURL:   types.StringValue("https://samples.auth0.com/"),
@@ -748,7 +748,7 @@ func TestPartialOidcConfig(t *testing.T) {
 		Public:              types.BoolValue(true),
 		PodCidrName:         types.StringValue("pod-cidr"),
 		ServiceCidrName:     types.StringValue("service-cidr"),
-		InternalLBCidrNames: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr"), types.StringValue("internal-lb-cidr-2")}),
+		InternalLBCidrNames: types.ListValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr"), types.StringValue("internal-lb-cidr-2")}),
 		AuditPolicy:         types.StringValue(AuditPolicyB64),
 		Oidc: &cks.OidcResourceModel{
 			IssuerURL:      types.StringValue("https://samples.auth0.com/"),
@@ -771,7 +771,7 @@ func TestPartialOidcConfig(t *testing.T) {
 		Public:              types.BoolValue(true),
 		PodCidrName:         types.StringValue("pod-cidr"),
 		ServiceCidrName:     types.StringValue("service-cidr"),
-		InternalLBCidrNames: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr"), types.StringValue("internal-lb-cidr-2")}),
+		InternalLBCidrNames: types.ListValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr"), types.StringValue("internal-lb-cidr-2")}),
 		AuditPolicy:         types.StringValue(AuditPolicyB64),
 	}
 
@@ -783,7 +783,7 @@ func TestPartialOidcConfig(t *testing.T) {
 		Public:              types.BoolValue(true),
 		PodCidrName:         types.StringValue("pod-cidr"),
 		ServiceCidrName:     types.StringValue("service-cidr"),
-		InternalLBCidrNames: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr"), types.StringValue("internal-lb-cidr-2")}),
+		InternalLBCidrNames: types.ListValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr"), types.StringValue("internal-lb-cidr-2")}),
 		AuditPolicy:         types.StringValue(AuditPolicyB64),
 		Oidc: &cks.OidcResourceModel{
 			IssuerURL:      types.StringValue("https://samples.auth0.com/"),
@@ -866,7 +866,7 @@ func TestPartialWebhookConfig(t *testing.T) {
 		Public:              types.BoolValue(false),
 		PodCidrName:         types.StringValue("pod-cidr"),
 		ServiceCidrName:     types.StringValue("service-cidr"),
-		InternalLBCidrNames: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr")}),
+		InternalLBCidrNames: types.ListValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr")}),
 		AuthNWebhook: &cks.AuthWebhookResourceModel{
 			Server: types.StringValue("https://samples.auth0.com/"),
 			CA:     types.StringValue(ExampleCAB64),
@@ -881,7 +881,7 @@ func TestPartialWebhookConfig(t *testing.T) {
 		Public:              types.BoolValue(true),
 		PodCidrName:         types.StringValue("pod-cidr"),
 		ServiceCidrName:     types.StringValue("service-cidr"),
-		InternalLBCidrNames: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr"), types.StringValue("internal-lb-cidr-2")}),
+		InternalLBCidrNames: types.ListValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr"), types.StringValue("internal-lb-cidr-2")}),
 		AuditPolicy:         types.StringValue(AuditPolicyB64),
 		AuthNWebhook: &cks.AuthWebhookResourceModel{
 			Server: types.StringValue("https://samples.auth0.com/"),
@@ -901,7 +901,7 @@ func TestPartialWebhookConfig(t *testing.T) {
 		Public:              types.BoolValue(true),
 		PodCidrName:         types.StringValue("pod-cidr"),
 		ServiceCidrName:     types.StringValue("service-cidr"),
-		InternalLBCidrNames: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr"), types.StringValue("internal-lb-cidr-2")}),
+		InternalLBCidrNames: types.ListValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr"), types.StringValue("internal-lb-cidr-2")}),
 		AuditPolicy:         types.StringValue(AuditPolicyB64),
 	}
 
@@ -966,7 +966,7 @@ func TestEmptyAuditPolicy(t *testing.T) {
 		Public:              types.BoolValue(false),
 		PodCidrName:         types.StringValue("pod-cidr"),
 		ServiceCidrName:     types.StringValue("service-cidr"),
-		InternalLBCidrNames: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr")}),
+		InternalLBCidrNames: types.ListValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr")}),
 		AuditPolicy:         types.StringValue(""),
 	}
 
@@ -1002,7 +1002,7 @@ func TestSharedStorage(t *testing.T) {
 		Public:              types.BoolValue(false),
 		PodCidrName:         types.StringValue("pod-cidr"),
 		ServiceCidrName:     types.StringValue("service-cidr"),
-		InternalLBCidrNames: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr")}),
+		InternalLBCidrNames: types.ListValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr")}),
 	}
 
 	// Create migrated cluster which is taking over it's storage
@@ -1017,7 +1017,7 @@ func TestSharedStorage(t *testing.T) {
 		Public:                 types.BoolValue(false),
 		PodCidrName:            types.StringValue("pod-cidr"),
 		ServiceCidrName:        types.StringValue("service-cidr"),
-		InternalLBCidrNames:    types.SetValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr")}),
+		InternalLBCidrNames:    types.ListValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr")}),
 		SharedStorageClusterId: types.StringValue(fmt.Sprintf("coreweave_cks_cluster.%s.id", baseConfig1.ResourceName)),
 	}
 
