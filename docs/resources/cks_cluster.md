@@ -81,6 +81,7 @@ The prefixes must exist in the cluster's VPC. This field is append-only.
 
 ### Optional
 
+- `additional_server_sans` (Set of String) Additional Subject Alternative Names (SANs) to include in the Kubernetes API server TLS certificate. Maximum 10 entries.
 - `audit_policy` (String) Audit policy for the cluster. Must be provided as a base64-encoded JSON/YAML string.
 - `authn_webhook` (Attributes) Authentication webhook configuration for the cluster. (see [below for nested schema](#nestedatt--authn_webhook))
 - `authz_webhook` (Attributes) Authorization webhook configuration for the cluster. (see [below for nested schema](#nestedatt--authz_webhook))

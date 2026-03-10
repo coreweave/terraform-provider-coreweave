@@ -165,6 +165,11 @@ func (d *ClusterDataSource) Schema(ctx context.Context, req datasource.SchemaReq
 				MarkdownDescription: "The `cluster_id` of the cluster to share storage with. Must be enabled by CoreWeave suppport. Contact CoreWeave support if you are interested in this feature.",
 				Computed:            true,
 			},
+			"additional_server_sans": schema.SetAttribute{
+				MarkdownDescription: "Additional Subject Alternative Names (SANs) included in the Kubernetes API server TLS certificate.",
+				Computed:            true,
+				ElementType:         types.StringType,
+			},
 		},
 	}
 }
