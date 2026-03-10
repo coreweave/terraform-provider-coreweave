@@ -182,6 +182,10 @@ func defaultVpc(name, zone string) *networking.VpcResourceModel { //nolint:unpar
 				Name:  types.StringValue("internal-lb-cidr-2"),
 				Value: types.StringValue("10.45.4.0/22"),
 			},
+			{
+				Name:  types.StringValue("internal-lb-cidr-0"),
+				Value: types.StringValue("10.46.4.0/22"),
+			},
 		},
 	}
 }
@@ -424,8 +428,14 @@ func TestClusterResource(t *testing.T) {
 		Public:              types.BoolValue(false),
 		PodCidrName:         types.StringValue("pod-cidr"),
 		ServiceCidrName:     types.StringValue("service-cidr"),
-		InternalLBCidrNames: types.ListValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr")}),
-		NodePortRange:       np,
+		// Non-lexicographic order (lex would be: internal-lb-cidr, internal-lb-cidr-0, internal-lb-cidr-2)
+		// to verify the backend preserves insertion order rather than sorting.
+		InternalLBCidrNames: types.ListValueMust(types.StringType, []attr.Value{
+			types.StringValue("internal-lb-cidr-2"),
+			types.StringValue("internal-lb-cidr-0"),
+			types.StringValue("internal-lb-cidr"),
+		}),
+		NodePortRange: np,
 	}
 
 	dataSource := &cks.ClusterDataSourceModel{
@@ -440,9 +450,13 @@ func TestClusterResource(t *testing.T) {
 		Public:              types.BoolValue(true),
 		PodCidrName:         types.StringValue("pod-cidr"),
 		ServiceCidrName:     types.StringValue("service-cidr"),
-		InternalLBCidrNames: types.ListValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr"), types.StringValue("internal-lb-cidr-2")}),
-		AuditPolicy:         types.StringValue(AuditPolicyB64),
-		NodePortRange:       npLarge,
+		InternalLBCidrNames: types.ListValueMust(types.StringType, []attr.Value{
+			types.StringValue("internal-lb-cidr-2"),
+			types.StringValue("internal-lb-cidr-0"),
+			types.StringValue("internal-lb-cidr"),
+		}),
+		AuditPolicy:   types.StringValue(AuditPolicyB64),
+		NodePortRange: npLarge,
 		Oidc: &cks.OidcResourceModel{
 			IssuerURL:         types.StringValue("https://samples.auth0.com/"),
 			ClientID:          types.StringValue("kbyuFDidLLm280LIwVFiazOqjO3ty8KH"),
