@@ -420,6 +420,16 @@ func TestClusterResource(t *testing.T) {
 		"end":   types.Int32Value(34534),
 	}
 	npSmall, _ := types.ObjectValue(npTypes, npSmallVals)
+	// Non-lexicographic order (lex would be: internal-lb-cidr, internal-lb-cidr-0, internal-lb-cidr-2)
+	// to verify the backend preserves insertion order rather than sorting.
+	lbCidrOrder := []string{"internal-lb-cidr-2", "internal-lb-cidr-0", "internal-lb-cidr"}
+	lbCidrAttrValues := make([]attr.Value, len(lbCidrOrder))
+	lbCidrChecks := make([]knownvalue.Check, len(lbCidrOrder))
+	for i, name := range lbCidrOrder {
+		lbCidrAttrValues[i] = types.StringValue(name)
+		lbCidrChecks[i] = knownvalue.StringExact(name)
+	}
+
 	initial := &cks.ClusterResourceModel{
 		VpcId:               types.StringValue(fmt.Sprintf("coreweave_networking_vpc.%s.id", config.ResourceName)),
 		Name:                types.StringValue(config.ClusterName),
@@ -428,14 +438,8 @@ func TestClusterResource(t *testing.T) {
 		Public:              types.BoolValue(false),
 		PodCidrName:         types.StringValue("pod-cidr"),
 		ServiceCidrName:     types.StringValue("service-cidr"),
-		// Non-lexicographic order (lex would be: internal-lb-cidr, internal-lb-cidr-0, internal-lb-cidr-2)
-		// to verify the backend preserves insertion order rather than sorting.
-		InternalLBCidrNames: types.ListValueMust(types.StringType, []attr.Value{
-			types.StringValue("internal-lb-cidr-2"),
-			types.StringValue("internal-lb-cidr-0"),
-			types.StringValue("internal-lb-cidr"),
-		}),
-		NodePortRange: np,
+		InternalLBCidrNames: types.ListValueMust(types.StringType, lbCidrAttrValues),
+		NodePortRange:       np,
 	}
 
 	dataSource := &cks.ClusterDataSourceModel{
@@ -450,13 +454,9 @@ func TestClusterResource(t *testing.T) {
 		Public:              types.BoolValue(true),
 		PodCidrName:         types.StringValue("pod-cidr"),
 		ServiceCidrName:     types.StringValue("service-cidr"),
-		InternalLBCidrNames: types.ListValueMust(types.StringType, []attr.Value{
-			types.StringValue("internal-lb-cidr-2"),
-			types.StringValue("internal-lb-cidr-0"),
-			types.StringValue("internal-lb-cidr"),
-		}),
-		AuditPolicy:   types.StringValue(AuditPolicyB64),
-		NodePortRange: npLarge,
+		InternalLBCidrNames: types.ListValueMust(types.StringType, lbCidrAttrValues),
+		AuditPolicy:         types.StringValue(AuditPolicyB64),
+		NodePortRange:       npLarge,
 		Oidc: &cks.OidcResourceModel{
 			IssuerURL:         types.StringValue("https://samples.auth0.com/"),
 			ClientID:          types.StringValue("kbyuFDidLLm280LIwVFiazOqjO3ty8KH"),
@@ -516,17 +516,25 @@ func TestClusterResource(t *testing.T) {
 			}, "\n"),
 			ExpectError: regexp.MustCompile(`(?i)cluster .*not found`),
 		},
-		createClusterTestStep(ctx, t, testStepConfig{
-			TestName: "create",
-			ConfigPlanChecks: resource.ConfigPlanChecks{
-				PreApply: []plancheck.PlanCheck{
-					plancheck.ExpectResourceAction(config.FullResourceName, plancheck.ResourceActionCreate),
+		func() resource.TestStep {
+			step := createClusterTestStep(ctx, t, testStepConfig{
+				TestName: "create",
+				ConfigPlanChecks: resource.ConfigPlanChecks{
+					PreApply: []plancheck.PlanCheck{
+						plancheck.ExpectResourceAction(config.FullResourceName, plancheck.ResourceActionCreate),
+					},
 				},
-			},
-			Resources: config,
-			cluster:   *initial,
-			vpc:       *vpc,
-		}),
+				Resources: config,
+				cluster:   *initial,
+				vpc:       *vpc,
+			})
+			step.ConfigStateChecks = append(step.ConfigStateChecks,
+				statecheck.ExpectKnownValue(config.FullResourceName,
+					tfjsonpath.New("internal_lb_cidr_names"),
+					knownvalue.ListExact(lbCidrChecks)),
+			)
+			return step
+		}(),
 		{
 			PreConfig: func() {
 				t.Log("Beginning coreweave_cks_cluster data source test")
@@ -1096,7 +1104,7 @@ func TestClusterResource_AdditionalServerSANs(t *testing.T) {
 		Public:              types.BoolValue(false),
 		PodCidrName:         types.StringValue("pod-cidr"),
 		ServiceCidrName:     types.StringValue("service-cidr"),
-		InternalLBCidrNames: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr")}),
+		InternalLBCidrNames: types.ListValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr")}),
 	}
 
 	withOneSAN := base

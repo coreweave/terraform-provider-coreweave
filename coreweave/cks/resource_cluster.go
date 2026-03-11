@@ -14,6 +14,7 @@ import (
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
+	"github.com/hashicorp/terraform-plugin-framework-validators/setvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -1173,7 +1174,26 @@ func setStringListAttr(ctx context.Context, b *hclwrite.Body, name string, list 
 	if len(ctyVals) == 0 {
 		b.SetAttributeValue(name, cty.ListValEmpty(cty.String))
 	} else {
-		b.SetAttributeValue(name, cty.TupleVal(ctyVals))
+		b.SetAttributeValue(name, cty.ListVal(ctyVals))
+	}
+}
+
+func setStringSetAttr(ctx context.Context, b *hclwrite.Body, name string, set types.Set) {
+	vals := []types.String{}
+	diag := set.ElementsAs(ctx, &vals, false)
+	if diag.HasError() {
+		panic(fmt.Sprintf("failed to read %s: %v", name, diag.Errors()))
+	}
+
+	ctyVals := make([]cty.Value, 0, len(vals))
+	for _, v := range vals {
+		ctyVals = append(ctyVals, cty.StringVal(v.ValueString()))
+	}
+
+	if len(ctyVals) == 0 {
+		b.SetAttributeValue(name, cty.SetValEmpty(cty.String))
+	} else {
+		b.SetAttributeValue(name, cty.SetVal(ctyVals))
 	}
 }
 
