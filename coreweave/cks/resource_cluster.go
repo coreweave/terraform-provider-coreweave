@@ -156,6 +156,7 @@ type ClusterResourceModel struct {
 	Status                      types.String              `tfsdk:"status"`
 	ServiceAccountOIDCIssuerURL types.String              `tfsdk:"service_account_oidc_issuer_url"`
 	SharedStorageClusterId      types.String              `tfsdk:"shared_storage_cluster_id"` //nolint:staticcheck
+	AdditionalServerSans        types.Set                 `tfsdk:"additional_server_sans"`
 }
 
 func nodePortEmpty(np *cksv1beta1.PortRange) bool {
@@ -302,6 +303,16 @@ func (c *ClusterResourceModel) Set(cluster *cksv1beta1.Cluster) {
 
 	c.ApiServerEndpoint = types.StringValue(cluster.ApiServerEndpoint)
 
+	if c.AdditionalServerSans.IsNull() && len(cluster.AdditionalServerSans) == 0 {
+		c.AdditionalServerSans = types.SetNull(types.StringType)
+	} else {
+		sans := make([]attr.Value, len(cluster.AdditionalServerSans))
+		for i, s := range cluster.AdditionalServerSans {
+			sans[i] = types.StringValue(s)
+		}
+		c.AdditionalServerSans = types.SetValueMust(types.StringType, sans)
+	}
+
 	// Note: SharedStorageClusterId is not returned by the API, so we preserve it from the plan.
 	// This is intentional since it's marked as RequiresReplace - Terraform will manage this value.
 }
@@ -339,6 +350,15 @@ func (c *ClusterResourceModel) InternalLbCidrNamesV6(ctx context.Context) []stri
 
 	c.InternalLBCidrNamesV6.ElementsAs(ctx, &lbs, true)
 	return lbs
+}
+
+func (c *ClusterResourceModel) additionalServerSans(ctx context.Context) []string {
+	sans := []string{}
+	if c.AdditionalServerSans.IsNull() {
+		return sans
+	}
+	c.AdditionalServerSans.ElementsAs(ctx, &sans, true)
+	return sans
 }
 
 func (c *ClusterResourceModel) NodePorts() *cksv1beta1.PortRange {
@@ -414,6 +434,10 @@ func (c *ClusterResourceModel) ToCreateRequest(ctx context.Context) *cksv1beta1.
 		}
 	}
 
+	if !c.AdditionalServerSans.IsNull() && !c.AdditionalServerSans.IsUnknown() {
+		req.AdditionalServerSans = c.additionalServerSans(ctx)
+	}
+
 	return req
 }
 
@@ -458,6 +482,8 @@ func (c *ClusterResourceModel) ToUpdateRequest(ctx context.Context) *cksv1beta1.
 			AdminGroupBinding: c.Oidc.AdminGroupBinding.ValueString(),
 		}
 	}
+
+	req.AdditionalServerSans = c.additionalServerSans(ctx)
 
 	return &req
 }
@@ -794,6 +820,17 @@ func (r *ClusterResource) Schema(ctx context.Context, req resource.SchemaRequest
 					stringplanmodifier.RequiresReplace(),
 				},
 			},
+			"additional_server_sans": schema.SetAttribute{
+				ElementType:         types.StringType,
+				Optional:            true,
+				MarkdownDescription: "Additional Subject Alternative Names (SANs) to include in the Kubernetes API server TLS certificate. Maximum 10 entries.",
+				Validators: []validator.Set{
+					setvalidator.SizeAtMost(10),
+					setvalidator.ValueStringsAre(
+						stringvalidator.RegexMatches(nonWhitespace, "must not be empty"),
+					),
+				},
+			},
 		},
 	}
 }
@@ -1101,6 +1138,10 @@ func MustRenderClusterResource(ctx context.Context, resourceName string, cluster
 			"server": cty.StringVal(cluster.AuthZWebhook.Server.ValueString()),
 			"ca":     stringOrNull(cluster.AuthZWebhook.CA),
 		}))
+	}
+
+	if !cluster.AdditionalServerSans.IsNull() && !cluster.AdditionalServerSans.IsUnknown() {
+		setStringSetAttr(ctx, resourceBody, "additional_server_sans", cluster.AdditionalServerSans)
 	}
 
 	var buf bytes.Buffer

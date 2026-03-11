@@ -27,6 +27,7 @@ data "coreweave_cks_cluster" "default" {
 
 ### Read-Only
 
+- `additional_server_sans` (Set of String) Additional Subject Alternative Names (SANs) included in the Kubernetes API server TLS certificate.
 - `api_server_endpoint` (String) The API server endpoint of the cluster.
 - `audit_policy` (String) The audit policy of the cluster.
 - `authn_webhook` (Attributes) The authentication webhook configuration of the cluster. (see [below for nested schema](#nestedatt--authn_webhook))

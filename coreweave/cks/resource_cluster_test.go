@@ -353,6 +353,20 @@ func createClusterTestStep(ctx context.Context, t *testing.T, config testStepCon
 				statechecks = append(statechecks, statecheck.ExpectKnownValue(config.Resources.FullResourceName, tfjsonpath.New("node_port_range").AtMapKey("end"), knownvalue.Int64Exact(int64(e.ValueInt32()))))
 			}
 		}
+
+		// additional_server_sans
+		if !config.cluster.AdditionalServerSans.IsNull() && !config.cluster.AdditionalServerSans.IsUnknown() {
+			sans := []types.String{}
+			if diag := config.cluster.AdditionalServerSans.ElementsAs(ctx, &sans, false); diag.HasError() {
+				t.Logf("failed to cast additional_server_sans to string slice: %v", diag.Errors())
+				t.FailNow()
+			}
+			checks := make([]knownvalue.Check, len(sans))
+			for i, s := range sans {
+				checks[i] = knownvalue.StringExact(s.ValueString())
+			}
+			statechecks = append(statechecks, statecheck.ExpectKnownValue(config.Resources.FullResourceName, tfjsonpath.New("additional_server_sans"), knownvalue.SetExact(checks)))
+		}
 	}
 
 	step := resource.TestStep{
@@ -1049,5 +1063,93 @@ func TestSharedStorage(t *testing.T) {
 				),
 			},
 		},
+	})
+}
+
+func TestClusterResource_AdditionalServerSANs(t *testing.T) {
+	config := generateResourceNames("cks-sans")
+	zone := testutil.AcceptanceTestZone
+	kubeVersion := testutil.AcceptanceTestKubeVersion
+
+	vpc := defaultVpc(config.ClusterName, zone)
+	ctx := t.Context()
+
+	base := cks.ClusterResourceModel{
+		VpcId:               types.StringValue(fmt.Sprintf("coreweave_networking_vpc.%s.id", config.ResourceName)),
+		Name:                types.StringValue(config.ClusterName),
+		Zone:                types.StringValue(zone),
+		Version:             types.StringValue(kubeVersion),
+		Public:              types.BoolValue(false),
+		PodCidrName:         types.StringValue("pod-cidr"),
+		ServiceCidrName:     types.StringValue("service-cidr"),
+		InternalLBCidrNames: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr")}),
+	}
+
+	withOneSAN := base
+	withOneSAN.AdditionalServerSans = types.SetValueMust(types.StringType, []attr.Value{
+		types.StringValue("custom-san.example.com"),
+	})
+
+	withMultipleSANs := base
+	withMultipleSANs.AdditionalServerSans = types.SetValueMust(types.StringType, []attr.Value{
+		types.StringValue("san1.example.com"),
+		types.StringValue("san2.example.com"),
+	})
+
+	steps := []resource.TestStep{
+		createClusterTestStep(ctx, t, testStepConfig{
+			TestName: "create with additional_server_sans",
+			ConfigPlanChecks: resource.ConfigPlanChecks{
+				PreApply: []plancheck.PlanCheck{
+					plancheck.ExpectResourceAction(config.FullResourceName, plancheck.ResourceActionCreate),
+				},
+			},
+			Resources: config,
+			vpc:       *vpc,
+			cluster:   withOneSAN,
+		}),
+		{
+			PreConfig: func() { t.Log("Reapplying same config to verify noop roundtrip") },
+			Config:    networking.MustRenderVpcResource(ctx, config.ResourceName, vpc) + "\n" + cks.MustRenderClusterResource(ctx, config.ResourceName, &withOneSAN),
+			ConfigPlanChecks: resource.ConfigPlanChecks{
+				PreApply: []plancheck.PlanCheck{
+					plancheck.ExpectResourceAction(config.FullResourceName, plancheck.ResourceActionNoop),
+				},
+			},
+		},
+		createClusterTestStep(ctx, t, testStepConfig{
+			TestName: "update additional_server_sans in-place",
+			ConfigPlanChecks: resource.ConfigPlanChecks{
+				PreApply: []plancheck.PlanCheck{
+					plancheck.ExpectResourceAction(config.FullResourceName, plancheck.ResourceActionUpdate),
+				},
+			},
+			Resources: config,
+			vpc:       *vpc,
+			cluster:   withMultipleSANs,
+		}),
+		createClusterTestStep(ctx, t, testStepConfig{
+			TestName: "clear additional_server_sans",
+			ConfigPlanChecks: resource.ConfigPlanChecks{
+				PreApply: []plancheck.PlanCheck{
+					plancheck.ExpectResourceAction(config.FullResourceName, plancheck.ResourceActionUpdate),
+				},
+			},
+			Resources: config,
+			vpc:       *vpc,
+			cluster:   base,
+		}),
+		{
+			PreConfig:         func() { t.Log("Importing cluster with no additional_server_sans") },
+			ResourceName:      config.FullResourceName,
+			ImportState:       true,
+			ImportStateVerify: true,
+		},
+	}
+
+	resource.ParallelTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+		PreCheck:                 func() { testutil.SetEnvDefaults() },
+		Steps:                    steps,
 	})
 }
