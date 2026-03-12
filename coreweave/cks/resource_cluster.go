@@ -647,6 +647,9 @@ func (r *ClusterResource) Schema(ctx context.Context, req resource.SchemaRequest
 				PlanModifiers: []planmodifier.List{
 					listplanmodifier.RequiresReplaceIf(requireReplaceIfInternalLbCidrNames, "", "Field `internal_lb_cidr_names` is append-only. Removing an existing value will force replacement."),
 				},
+				Validators: []validator.List{
+					listvalidator.UniqueValues(),
+				},
 			},
 			"pod_cidr_name_v6": schema.StringAttribute{
 				Optional:            true,
@@ -685,6 +688,7 @@ func (r *ClusterResource) Schema(ctx context.Context, req resource.SchemaRequest
 				},
 				Validators: []validator.List{
 					listvalidator.SizeAtLeast(1),
+					listvalidator.UniqueValues(),
 					listvalidator.AlsoRequires(
 						path.MatchRoot("pod_cidr_name_v6"),
 						path.MatchRoot("service_cidr_name_v6"),
