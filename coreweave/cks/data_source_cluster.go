@@ -70,7 +70,7 @@ func (d *ClusterDataSource) Schema(ctx context.Context, req datasource.SchemaReq
 				MarkdownDescription: "The service CIDR name of the cluster.",
 				Computed:            true,
 			},
-			"internal_lb_cidr_names": schema.SetAttribute{
+			"internal_lb_cidr_names": schema.ListAttribute{
 				MarkdownDescription: "The internal load balancer CIDR names of the cluster.",
 				Computed:            true,
 				ElementType:         types.StringType,
@@ -84,7 +84,7 @@ func (d *ClusterDataSource) Schema(ctx context.Context, req datasource.SchemaReq
 				MarkdownDescription: "The IPv6 service CIDR name of the cluster.",
 				Computed:            true,
 			},
-			"internal_lb_cidr_names_v6": schema.SetAttribute{
+			"internal_lb_cidr_names_v6": schema.ListAttribute{
 				MarkdownDescription: "The IPv6 internal load balancer CIDR names of the cluster.",
 				Computed:            true,
 				ElementType:         types.StringType,

@@ -70,7 +70,7 @@ resource "coreweave_cks_cluster" "default" {
 
 ### Required
 
-- `internal_lb_cidr_names` (Set of String) The names of the vpc prefixes to use as internal load balancer CIDR ranges. Internal load balancers are reachable within the VPC but not accessible from the internet.
+- `internal_lb_cidr_names` (List of String) The names of the vpc prefixes to use as internal load balancer CIDR ranges. Internal load balancers are reachable within the VPC but not accessible from the internet.
 The prefixes must exist in the cluster's VPC. This field is append-only.
 - `name` (String) The name of the cluster. Must not be longer than 30 characters.
 - `pod_cidr_name` (String) The name of the vpc prefix to use as the pod CIDR range. The prefix must exist in the cluster's VPC.
@@ -85,7 +85,7 @@ The prefixes must exist in the cluster's VPC. This field is append-only.
 - `audit_policy` (String) Audit policy for the cluster. Must be provided as a base64-encoded JSON/YAML string.
 - `authn_webhook` (Attributes) Authentication webhook configuration for the cluster. (see [below for nested schema](#nestedatt--authn_webhook))
 - `authz_webhook` (Attributes) Authorization webhook configuration for the cluster. (see [below for nested schema](#nestedatt--authz_webhook))
-- `internal_lb_cidr_names_v6` (Set of String) IPv6 Internal Load Balancer CIDR names. If any IPv6 field is set, then ALL IPv6 fields must be set.
+- `internal_lb_cidr_names_v6` (List of String) IPv6 Internal Load Balancer CIDR names. If any IPv6 field is set, then ALL IPv6 fields must be set.
 - `node_port_range` (Attributes) Kubernetes Service NodePort range. NodePort range can be expanded in existing clusters but not shrunk. Updating the NodePort range to a smaller range will require a replacement of the cluster. (see [below for nested schema](#nestedatt--node_port_range))
 - `oidc` (Attributes) OpenID Connect (OIDC) configuration for authentication to the api-server. (see [below for nested schema](#nestedatt--oidc))
 - `pod_cidr_name_v6` (String) IPv6 Pod CIDR name. If any IPv6 field is set, then ALL IPv6 fields must be set.
