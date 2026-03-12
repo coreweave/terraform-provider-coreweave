@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.12.0](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.11.0...v0.12.0) (2026-03-12)
+
+
+### Features
+
+* **cks:** additional server SANs ([#282](https://github.com/coreweave/terraform-provider-coreweave/issues/282)) ([a67d8fe](https://github.com/coreweave/terraform-provider-coreweave/commit/a67d8fe502e5390fc4a14fbf7301fe0dba747a6a))
+* **cks:** order internal LB prefix names ([#283](https://github.com/coreweave/terraform-provider-coreweave/issues/283)) ([4010122](https://github.com/coreweave/terraform-provider-coreweave/commit/4010122e45df3b41138f6e1baab6c834d6d5eb21))
+
 ## [0.11.0](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.10.1...v0.11.0) (2026-02-12)
 
 
