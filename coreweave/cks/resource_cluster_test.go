@@ -197,6 +197,11 @@ type resourceNames struct {
 	FullDataSourceName string
 }
 
+func with[T any](obj T, fn func(*T)) T {
+	fn(&obj)
+	return obj
+}
+
 func generateResourceNames(clusterNamePrefix string) resourceNames {
 	randomInt := rand.IntN(100)
 
@@ -895,37 +900,31 @@ func TestPartialWebhookConfig(t *testing.T) {
 		},
 	}
 
-	updateToFull := &cks.ClusterResourceModel{
-		VpcId:               types.StringValue(fmt.Sprintf("coreweave_networking_vpc.%s.id", config.ResourceName)),
-		Name:                types.StringValue(config.ClusterName),
-		Zone:                types.StringValue(zone),
-		Version:             types.StringValue(kubeVersion),
-		Public:              types.BoolValue(true),
-		PodCidrName:         types.StringValue("pod-cidr"),
-		ServiceCidrName:     types.StringValue("service-cidr"),
-		InternalLBCidrNames: types.ListValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr"), types.StringValue("internal-lb-cidr-2")}),
-		AuditPolicy:         types.StringValue(AuditPolicyB64),
-		AuthNWebhook: &cks.AuthWebhookResourceModel{
+	updateToFull := with(*initial, func(obj *cks.ClusterResourceModel) {
+		obj.Public = types.BoolValue(true)
+		obj.InternalLBCidrNames = types.ListValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr"), types.StringValue("internal-lb-cidr-2")})
+		obj.AuditPolicy = types.StringValue(AuditPolicyB64)
+		obj.AuthZWebhook = &cks.AuthWebhookResourceModel{
 			Server: types.StringValue("https://samples.auth0.com/"),
 			CA:     types.StringValue(ExampleCAB64),
-		},
-		AuthZWebhook: &cks.AuthWebhookResourceModel{
-			Server: types.StringValue("https://samples.auth0.com/"),
-			CA:     types.StringValue(ExampleCAB64),
-		},
-	}
+		}
+	})
 
-	updateToEmpty := &cks.ClusterResourceModel{
-		VpcId:               types.StringValue(fmt.Sprintf("coreweave_networking_vpc.%s.id", config.ResourceName)),
-		Name:                types.StringValue(config.ClusterName),
-		Zone:                types.StringValue(zone),
-		Version:             types.StringValue(kubeVersion),
-		Public:              types.BoolValue(true),
-		PodCidrName:         types.StringValue("pod-cidr"),
-		ServiceCidrName:     types.StringValue("service-cidr"),
-		InternalLBCidrNames: types.ListValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr"), types.StringValue("internal-lb-cidr-2")}),
-		AuditPolicy:         types.StringValue(AuditPolicyB64),
-	}
+	updateToNullCA := with(updateToFull, func(obj *cks.ClusterResourceModel) {
+		obj.AuthNWebhook = &cks.AuthWebhookResourceModel{
+			Server: types.StringValue("https://samples.auth0.com/"),
+			CA:     types.StringNull(),
+		}
+		obj.AuthZWebhook = &cks.AuthWebhookResourceModel{
+			Server: types.StringValue("https://samples.auth0.com/"),
+			CA:     types.StringNull(),
+		}
+	})
+
+	updateToEmpty := with(updateToNullCA, func(obj *cks.ClusterResourceModel) {
+		obj.AuthNWebhook = nil
+		obj.AuthZWebhook = nil
+	})
 
 	ctx := context.Background()
 
@@ -950,7 +949,18 @@ func TestPartialWebhookConfig(t *testing.T) {
 			},
 			Resources: config,
 			vpc:       *vpc,
-			cluster:   *updateToFull,
+			cluster:   updateToFull,
+		}),
+		createClusterTestStep(ctx, t, testStepConfig{
+			TestName: "partial webhook update null ca",
+			ConfigPlanChecks: resource.ConfigPlanChecks{
+				PreApply: []plancheck.PlanCheck{
+					plancheck.ExpectResourceAction(config.FullResourceName, plancheck.ResourceActionUpdate),
+				},
+			},
+			Resources: config,
+			vpc:       *vpc,
+			cluster:   updateToNullCA,
 		}),
 		createClusterTestStep(ctx, t, testStepConfig{
 			TestName: "partial webook update to empty",
@@ -961,7 +971,7 @@ func TestPartialWebhookConfig(t *testing.T) {
 			},
 			Resources: config,
 			vpc:       *vpc,
-			cluster:   *updateToEmpty,
+			cluster:   updateToEmpty,
 		}),
 	}
 
