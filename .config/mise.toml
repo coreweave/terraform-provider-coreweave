@@ -1,3 +1,4 @@
+min_version = '2026.2.21'
 # Please Do Not use "latest" until lock files are implemented
 # https://github.com/jdx/mise/discussions/6578
 # https://github.com/jdx/mise/pull/6231
