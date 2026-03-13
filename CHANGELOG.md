@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.0](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.12.0...v0.13.0) (2026-03-13)
+
+
+### Features
+
+* **deps:** update aws-sdk-go-v2 monorepo ([#204](https://github.com/coreweave/terraform-provider-coreweave/issues/204)) ([56bba7c](https://github.com/coreweave/terraform-provider-coreweave/commit/56bba7c543a6fe18d2c7f066766dfebf94ceb42a))
+
 ## [0.12.0](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.11.0...v0.12.0) (2026-03-12)
 
 
