@@ -20,8 +20,8 @@ jobs:
         uses: googleapis/release-please-action@16a9c90856f42705d54a6fda1823352bdc62cf38 # v4.4.0
         id: release
         with:
-          # GoReleaser is responsible for creating the GitHub release and uploading artifacts.
-          skip-github-release: true
+          # Release Please creates the release, goreleaser populates it with artifacts
+          release-type: go
     outputs:
       releases: ${{ toJson(steps.release.outputs) }}
       paths_released: ${{ steps.release.outputs.paths_released }}
