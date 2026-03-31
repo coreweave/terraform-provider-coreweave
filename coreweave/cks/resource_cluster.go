@@ -30,6 +30,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/retry"
 	"github.com/zclconf/go-cty/cty"
+	"google.golang.org/protobuf/types/known/fieldmaskpb"
 )
 
 const (
@@ -442,51 +443,110 @@ func (c *ClusterResourceModel) ToCreateRequest(ctx context.Context) *cksv1beta1.
 	return req
 }
 
-func (c *ClusterResourceModel) ToUpdateRequest(ctx context.Context) *cksv1beta1.UpdateClusterRequest {
-	req := cksv1beta1.UpdateClusterRequest{
-		Id:          c.Id.ValueString(),
-		Public:      c.Public.ValueBool(),
-		Version:     c.Version.ValueString(),
-		AuditPolicy: c.AuditPolicy.ValueString(),
-		Network: &cksv1beta1.UpdateClusterRequest_Network{
-			InternalLbCidrNames: c.InternalLbCidrNames(ctx),
-		},
+// oidcChanged reports whether the OIDC configuration differs between plan and state.
+func oidcChanged(plan, state *ClusterResourceModel) bool {
+	if (plan.Oidc == nil) != (state.Oidc == nil) {
+		return true
 	}
+	if plan.Oidc == nil {
+		return false
+	}
+	return !plan.Oidc.IssuerURL.Equal(state.Oidc.IssuerURL) ||
+		!plan.Oidc.ClientID.Equal(state.Oidc.ClientID) ||
+		!plan.Oidc.UsernameClaim.Equal(state.Oidc.UsernameClaim) ||
+		!plan.Oidc.UsernamePrefix.Equal(state.Oidc.UsernamePrefix) ||
+		!plan.Oidc.GroupsClaim.Equal(state.Oidc.GroupsClaim) ||
+		!plan.Oidc.GroupsPrefix.Equal(state.Oidc.GroupsPrefix) ||
+		!plan.Oidc.CA.Equal(state.Oidc.CA) ||
+		!plan.Oidc.RequiredClaim.Equal(state.Oidc.RequiredClaim) ||
+		!plan.Oidc.SigningAlgs.Equal(state.Oidc.SigningAlgs) ||
+		!plan.Oidc.AdminGroupBinding.Equal(state.Oidc.AdminGroupBinding)
+}
 
-	req.Network.ServiceNodePortRange = c.NodePorts()
+// authWebhookChanged reports whether an auth webhook block differs between plan and state.
+func authWebhookChanged(plan, state *AuthWebhookResourceModel) bool {
+	if (plan == nil) != (state == nil) {
+		return true
+	}
+	if plan == nil {
+		return false
+	}
+	return !plan.Server.Equal(state.Server) || !plan.CA.Equal(state.CA)
+}
 
-	if c.AuthNWebhook != nil {
-		req.AuthnWebhook = &cksv1beta1.AuthWebhookConfig{
-			Server: c.AuthNWebhook.Server.ValueString(),
-			Ca:     c.AuthNWebhook.CA.ValueString(),
+// buildUpdateRequest constructs an UpdateClusterRequest containing only the fields
+// that differ between plan and state. Fields that haven't changed are left as zero
+// values / nil on the request body. This is necessary because the CKS API validates
+// field presence on the raw request (e.g. rejecting non-nil network config during a
+// version upgrade), ignoring UpdateMask. The mask is still set as a signal to the
+// server for forward compatibility.
+func buildUpdateRequest(ctx context.Context, plan, state *ClusterResourceModel) *cksv1beta1.UpdateClusterRequest {
+	req := &cksv1beta1.UpdateClusterRequest{
+		Id: plan.Id.ValueString(),
+	}
+	var paths []string
+
+	if !plan.Public.Equal(state.Public) {
+		req.Public = plan.Public.ValueBool()
+		paths = append(paths, "public")
+	}
+	if !plan.Version.Equal(state.Version) {
+		req.Version = plan.Version.ValueString()
+		paths = append(paths, "version")
+	}
+	if !plan.AuditPolicy.Equal(state.AuditPolicy) {
+		req.AuditPolicy = plan.AuditPolicy.ValueString()
+		paths = append(paths, "audit_policy")
+	}
+	if !plan.InternalLBCidrNames.Equal(state.InternalLBCidrNames) || !plan.NodePortRange.Equal(state.NodePortRange) {
+		req.Network = &cksv1beta1.UpdateClusterRequest_Network{
+			InternalLbCidrNames:  plan.InternalLbCidrNames(ctx),
+			ServiceNodePortRange: plan.NodePorts(),
 		}
+		paths = append(paths, "network")
 	}
-
-	if c.AuthZWebhook != nil {
-		req.AuthzWebhook = &cksv1beta1.AuthWebhookConfig{
-			Server: c.AuthZWebhook.Server.ValueString(),
-			Ca:     c.AuthZWebhook.CA.ValueString(),
+	if oidcChanged(plan, state) {
+		if plan.Oidc != nil {
+			req.Oidc = &cksv1beta1.OIDCConfig{
+				IssuerUrl:         plan.Oidc.IssuerURL.ValueString(),
+				ClientId:          plan.Oidc.ClientID.ValueString(),
+				UsernameClaim:     plan.Oidc.UsernameClaim.ValueString(),
+				UsernamePrefix:    plan.Oidc.UsernamePrefix.ValueString(),
+				GroupsClaim:       plan.Oidc.GroupsClaim.ValueString(),
+				GroupsPrefix:      plan.Oidc.GroupsPrefix.ValueString(),
+				Ca:                plan.Oidc.CA.ValueString(),
+				RequiredClaim:     plan.Oidc.RequiredClaim.ValueString(),
+				SigningAlgorithms: plan.oidcSigningAlgs(ctx),
+				AdminGroupBinding: plan.Oidc.AdminGroupBinding.ValueString(),
+			}
 		}
+		paths = append(paths, "oidc")
 	}
-
-	if c.Oidc != nil {
-		req.Oidc = &cksv1beta1.OIDCConfig{
-			IssuerUrl:         c.Oidc.IssuerURL.ValueString(),
-			ClientId:          c.Oidc.ClientID.ValueString(),
-			UsernameClaim:     c.Oidc.UsernameClaim.ValueString(),
-			UsernamePrefix:    c.Oidc.UsernamePrefix.ValueString(),
-			GroupsClaim:       c.Oidc.GroupsClaim.ValueString(),
-			GroupsPrefix:      c.Oidc.GroupsPrefix.ValueString(),
-			Ca:                c.Oidc.CA.ValueString(),
-			RequiredClaim:     c.Oidc.RequiredClaim.ValueString(),
-			SigningAlgorithms: c.oidcSigningAlgs(ctx),
-			AdminGroupBinding: c.Oidc.AdminGroupBinding.ValueString(),
+	if authWebhookChanged(plan.AuthNWebhook, state.AuthNWebhook) {
+		if plan.AuthNWebhook != nil {
+			req.AuthnWebhook = &cksv1beta1.AuthWebhookConfig{
+				Server: plan.AuthNWebhook.Server.ValueString(),
+				Ca:     plan.AuthNWebhook.CA.ValueString(),
+			}
 		}
+		paths = append(paths, "authn_webhook")
+	}
+	if authWebhookChanged(plan.AuthZWebhook, state.AuthZWebhook) {
+		if plan.AuthZWebhook != nil {
+			req.AuthzWebhook = &cksv1beta1.AuthWebhookConfig{
+				Server: plan.AuthZWebhook.Server.ValueString(),
+				Ca:     plan.AuthZWebhook.CA.ValueString(),
+			}
+		}
+		paths = append(paths, "authz_webhook")
+	}
+	if !plan.AdditionalServerSans.Equal(state.AdditionalServerSans) {
+		req.AdditionalServerSans = plan.additionalServerSans(ctx)
+		paths = append(paths, "additional_server_sans")
 	}
 
-	req.AdditionalServerSans = c.additionalServerSans(ctx)
-
-	return &req
+	req.UpdateMask = &fieldmaskpb.FieldMask{Paths: paths}
+	return req
 }
 
 func (r *ClusterResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -967,7 +1027,16 @@ func (r *ClusterResource) Update(ctx context.Context, req resource.UpdateRequest
 		return
 	}
 
-	updateResp, err := r.client.UpdateCluster(ctx, connect.NewRequest(data.ToUpdateRequest(ctx)))
+	var state ClusterResourceModel
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	updateReq := buildUpdateRequest(ctx, &data, &state)
+
+	updateResp, err := r.client.UpdateCluster(ctx, connect.NewRequest(updateReq))
 	if err != nil {
 		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
 		return
