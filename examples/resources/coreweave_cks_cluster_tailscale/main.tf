@@ -69,7 +69,6 @@ resource "tailscale_federated_identity" "default" {
   subject     = "system:serviceaccount:cw-tailscale:tailscale"
   scopes = [
     "auth_keys",
-    "devices:core",
     "services",
   ]
   tags = ["tag:coreweave"]
