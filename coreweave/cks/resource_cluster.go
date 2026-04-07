@@ -324,6 +324,9 @@ func (c *ClusterResourceModel) Set(cluster *cksv1beta1.Cluster) {
 		c.Tailscale = &TailscaleResourceModel{
 			ClientID: types.StringValue(cluster.Tailscale.ClientId),
 		}
+	} else if c.Tailscale != nil && c.Tailscale.ClientID.IsNull() {
+		// Preserve the block with a null client_id so state stays consistent
+		// when the user explicitly sets client_id = null to remove Tailscale.
 	} else {
 		c.Tailscale = nil
 	}
@@ -480,6 +483,17 @@ func oidcChanged(plan, state *ClusterResourceModel) bool {
 		!plan.Oidc.AdminGroupBinding.Equal(state.Oidc.AdminGroupBinding)
 }
 
+// tailscaleChanged reports whether the Tailscale configuration differs between plan and state.
+func tailscaleChanged(plan, state *TailscaleResourceModel) bool {
+	if (plan == nil) != (state == nil) {
+		return true
+	}
+	if plan == nil {
+		return false
+	}
+	return !plan.ClientID.Equal(state.ClientID)
+}
+
 // authWebhookChanged reports whether an auth webhook block differs between plan and state.
 func authWebhookChanged(plan, state *AuthWebhookResourceModel) bool {
 	if (plan == nil) != (state == nil) {
@@ -577,8 +591,13 @@ func buildUpdateRequest(ctx context.Context, plan, state *ClusterResourceModel) 
 		paths = append(paths, "additional_server_sans")
 	}
 
-	if plan.Tailscale != nil {
-		req.Tailscale = &cksv1beta1.Tailscale{ClientId: plan.Tailscale.ClientID.ValueString()}
+	if tailscaleChanged(plan.Tailscale, state.Tailscale) {
+		if plan.Tailscale != nil {
+			req.Tailscale = &cksv1beta1.Tailscale{ClientId: plan.Tailscale.ClientID.ValueString()}
+		} else {
+			req.Tailscale = &cksv1beta1.Tailscale{}
+		}
+		paths = append(paths, "tailscale.client_id")
 	}
 
 	req.UpdateMask = &fieldmaskpb.FieldMask{Paths: paths}
@@ -938,7 +957,7 @@ func (r *ClusterResource) Schema(ctx context.Context, req resource.SchemaRequest
 				MarkdownDescription: "Tailscale configuration for the cluster. Enables cluster access over a Tailscale VPN.",
 				Attributes: map[string]schema.Attribute{
 					"client_id": schema.StringAttribute{
-						Required:            true,
+						Optional:            true,
 						MarkdownDescription: "The Tailscale Client ID for the federated identity.",
 						Validators: []validator.String{
 							stringvalidator.LengthAtMost(255),
