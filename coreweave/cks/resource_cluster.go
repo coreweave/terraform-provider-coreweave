@@ -320,19 +320,19 @@ func (c *ClusterResourceModel) Set(cluster *cksv1beta1.Cluster) {
 		c.AdditionalServerSans = types.SetValueMust(types.StringType, sans)
 	}
 
-	if cluster.Tailscale != nil && cluster.Tailscale.ClientId != "" {
-		c.Tailscale = &TailscaleResourceModel{
-			ClientID: types.StringValue(cluster.Tailscale.ClientId),
-		}
-	} else if c.Tailscale != nil && c.Tailscale.ClientID.IsNull() {
+	c.setTailscale(cluster)
+}
+
+func (c *ClusterResourceModel) setTailscale(cluster *cksv1beta1.Cluster) {
+	switch {
+	case cluster.Tailscale != nil && cluster.Tailscale.ClientId != "":
+		c.Tailscale = &TailscaleResourceModel{ClientID: types.StringValue(cluster.Tailscale.ClientId)}
+	case c.Tailscale != nil && c.Tailscale.ClientID.IsNull():
 		// Preserve the block with a null client_id so state stays consistent
 		// when the user explicitly sets client_id = null to remove Tailscale.
-	} else {
+	default:
 		c.Tailscale = nil
 	}
-
-	// Note: SharedStorageClusterId is not returned by the API, so we preserve it from the plan.
-	// This is intentional since it's marked as RequiresReplace - Terraform will manage this value.
 }
 
 func (c *ClusterResourceModel) oidcSigningAlgs(ctx context.Context) []cksv1beta1.SigningAlgorithm {
@@ -602,7 +602,6 @@ func buildUpdateRequest(ctx context.Context, plan, state *ClusterResourceModel) 
 
 	req.UpdateMask = &fieldmaskpb.FieldMask{Paths: paths}
 	return req
-
 }
 
 func (r *ClusterResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
