@@ -953,7 +953,7 @@ func (r *ClusterResource) Schema(ctx context.Context, req resource.SchemaRequest
 			},
 			"tailscale": schema.SingleNestedAttribute{
 				Optional:            true,
-				MarkdownDescription: "Tailscale configuration for the cluster. Enables cluster access over a Tailscale VPN.",
+				MarkdownDescription: "Tailscale configuration for the cluster. Enables cluster access via a Tailscale VPN.",
 				Attributes: map[string]schema.Attribute{
 					"client_id": schema.StringAttribute{
 						Optional:            true,
