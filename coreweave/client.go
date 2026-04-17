@@ -32,20 +32,31 @@ func NewClient(endpoint string, s3Endpoint string, timeout time.Duration, interc
 	c := rc.StandardClient()
 
 	return &Client{
-		ClusterServiceClient:    cksv1beta1connect.NewClusterServiceClient(c, endpoint, connect.WithInterceptors(interceptors...)),
-		VPCServiceClient:        networkingv1beta1connect.NewVPCServiceClient(c, endpoint, connect.WithInterceptors(interceptors...)),
-		CWObjectClient:          cwobjectv1connect.NewCWObjectClient(c, endpoint, connect.WithInterceptors(interceptors...)),
-		DeploymentServiceClient: inferencev1alpha1connect.NewDeploymentServiceClient(c, endpoint, connect.WithInterceptors(interceptors...)),
-
+		ClusterServiceClient: cksv1beta1connect.NewClusterServiceClient(c, endpoint, connect.WithInterceptors(interceptors...)),
+		VPCServiceClient:     networkingv1beta1connect.NewVPCServiceClient(c, endpoint, connect.WithInterceptors(interceptors...)),
+		CWObjectClient:       cwobjectv1connect.NewCWObjectClient(c, endpoint, connect.WithInterceptors(interceptors...)),
+		Inference: &InferenceClient{
+			DeploymentServiceClient:    inferencev1alpha1connect.NewDeploymentServiceClient(c, endpoint, connect.WithInterceptors(interceptors...)),
+			CapacityClaimServiceClient: inferencev1alpha1connect.NewCapacityClaimServiceClient(c, endpoint, connect.WithInterceptors(interceptors...)),
+			GatewayServiceClient:       inferencev1alpha1connect.NewGatewayServiceClient(c, endpoint, connect.WithInterceptors(interceptors...)),
+		},
 		s3Endpoint: s3Endpoint,
 	}
+}
+
+// InferenceClient groups all inference service clients.
+type InferenceClient struct {
+	inferencev1alpha1connect.DeploymentServiceClient
+	inferencev1alpha1connect.CapacityClaimServiceClient
+	inferencev1alpha1connect.GatewayServiceClient
 }
 
 type Client struct {
 	cksv1beta1connect.ClusterServiceClient
 	networkingv1beta1connect.VPCServiceClient
 	cwobjectv1connect.CWObjectClient
-	inferencev1alpha1connect.DeploymentServiceClient
+
+	Inference *InferenceClient
 
 	s3Endpoint string
 }

@@ -70,7 +70,7 @@ func NewInferenceDeploymentResource() resource.Resource {
 }
 
 type InferenceDeploymentResource struct {
-	client *coreweave.Client
+	client *coreweave.InferenceClient
 }
 
 // Nested model types.
@@ -342,7 +342,7 @@ func (r *InferenceDeploymentResource) Configure(_ context.Context, req resource.
 		return
 	}
 
-	r.client = client
+	r.client = client.Inference
 }
 
 func (r *InferenceDeploymentResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
