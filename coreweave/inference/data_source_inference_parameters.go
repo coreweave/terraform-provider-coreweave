@@ -20,7 +20,7 @@ func NewInferenceParametersDataSource() datasource.DataSource {
 }
 
 type InferenceParametersDataSource struct {
-	client *coreweave.Client
+	client *coreweave.InferenceClient
 }
 
 // InferenceParametersDataSourceModel describes the data source data model.
@@ -101,7 +101,7 @@ func (d *InferenceParametersDataSource) Configure(_ context.Context, req datasou
 		return
 	}
 
-	d.client = client
+	d.client = client.Inference
 }
 
 func (d *InferenceParametersDataSource) Read(ctx context.Context, _ datasource.ReadRequest, resp *datasource.ReadResponse) {

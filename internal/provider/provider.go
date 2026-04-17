@@ -213,6 +213,8 @@ func (p *CoreweaveProvider) Resources(ctx context.Context) []func() resource.Res
 		objectstorage.NewBucketPolicyResource,
 		objectstorage.NewBucketSettingsResource,
 		inference.NewInferenceDeploymentResource,
+		inference.NewInferenceCapacityClaimResource,
+		inference.NewInferenceGatewayResource,
 	}
 }
 
@@ -222,6 +224,8 @@ func (p *CoreweaveProvider) DataSources(ctx context.Context) []func() datasource
 		cks.NewClusterDataSource,
 		objectstorage.NewBucketPolicyDocumentDataSource,
 		inference.NewInferenceParametersDataSource,
+		inference.NewCapacityClaimParametersDataSource,
+		inference.NewGatewayParametersDataSource,
 	}
 }
 

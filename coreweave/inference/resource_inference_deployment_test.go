@@ -366,7 +366,7 @@ func getTestGatewayID(t *testing.T) string {
 	t.Helper()
 	client := getTestClient(t)
 
-	resp, err := client.GetDeploymentParameters(context.Background(), connect.NewRequest(&inferencev1.GetDeploymentParametersRequest{}))
+	resp, err := client.Inference.GetDeploymentParameters(context.Background(), connect.NewRequest(&inferencev1.GetDeploymentParametersRequest{}))
 	if err != nil {
 		t.Skipf("skipping: could not get deployment parameters: %v", err)
 	}
@@ -377,7 +377,7 @@ func getTestGatewayID(t *testing.T) string {
 }
 
 func deleteInferenceDeployment(ctx context.Context, client *coreweave.Client, id string) error {
-	_, err := client.DeleteDeployment(ctx, connect.NewRequest(&inferencev1.DeleteDeploymentRequest{Id: id}))
+	_, err := client.Inference.DeleteDeployment(ctx, connect.NewRequest(&inferencev1.DeleteDeploymentRequest{Id: id}))
 	if err != nil {
 		if connect.CodeOf(err) == connect.CodeNotFound {
 			return nil
@@ -386,7 +386,7 @@ func deleteInferenceDeployment(ctx context.Context, client *coreweave.Client, id
 	}
 
 	return testutil.WaitForDelete(ctx, 20*time.Minute, 10*time.Second,
-		client.GetDeployment,
+		client.Inference.GetDeployment,
 		&inferencev1.GetDeploymentRequest{Id: id},
 	)
 }
@@ -482,7 +482,7 @@ func TestAcc_InferenceDeployment_disappeared(t *testing.T) {
 				// Find the deployment by name and delete it out-of-band, then verify plan shows recreation.
 				PreConfig: func() {
 					ctx := context.Background()
-					listResp, err := client.ListDeployments(ctx, connect.NewRequest(&inferencev1.ListDeploymentsRequest{}))
+					listResp, err := client.Inference.ListDeployments(ctx, connect.NewRequest(&inferencev1.ListDeploymentsRequest{}))
 					if err != nil {
 						t.Fatalf("failed to list deployments: %v", err)
 					}
