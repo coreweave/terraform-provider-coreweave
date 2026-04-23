@@ -8,7 +8,7 @@ resource "coreweave_inference_gateway" "example" {
 
   routing = {
     body_based = {
-      api_type = "OPENAI"
+      api_type = "API_TYPE_OPENAI"
     }
   }
 }

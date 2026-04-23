@@ -4,8 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"slices"
-	"strings"
 	"time"
 
 	inferencev1 "buf.build/gen/go/coreweave/inference/protocolbuffers/go/coreweave/inference/v1alpha1"
@@ -33,22 +31,6 @@ var (
 	_ resource.ResourceWithConfigValidators = &InferenceGatewayResource{}
 
 	errGatewayFailed = errors.New("inference gateway entered a failed state")
-
-	// validAPITypes is derived from the proto enum map so it stays in sync with the proto definition.
-	validAPITypes = func() []string {
-		vals := make([]string, 0, len(inferencev1.BodyBasedRouting_APIType_name)-1)
-		for k := range inferencev1.BodyBasedRouting_APIType_name {
-			if k == 0 { // skip UNSPECIFIED
-				continue
-			}
-			s := apiTypeToString(inferencev1.BodyBasedRouting_APIType(k))
-			if s != "" {
-				vals = append(vals, s)
-			}
-		}
-		slices.Sort(vals)
-		return vals
-	}()
 )
 
 func NewInferenceGatewayResource() resource.Resource {
@@ -218,10 +200,7 @@ func (r *InferenceGatewayResource) Schema(_ context.Context, _ resource.SchemaRe
 						Attributes: map[string]schema.Attribute{
 							"api_type": schema.StringAttribute{
 								Required:            true,
-								MarkdownDescription: fmt.Sprintf("The well-known API type for routing. Must be one of: %s.", strings.Join(validAPITypes, ", ")),
-								Validators: []validator.String{
-									stringvalidator.OneOf(validAPITypes...),
-								},
+								MarkdownDescription: fmt.Sprintf("The well-known API type for routing. Must be one of: %s.", coreweave.EnumMarkdownValues(inferencev1.BodyBasedRouting_APIType_name, true)),
 							},
 						},
 					},
@@ -603,9 +582,11 @@ func toCreateGatewayRequest(ctx context.Context, m *InferenceGatewayResourceMode
 	// Routing oneof
 	switch {
 	case m.Routing.BodyBased != nil:
+		apiType, apiDiags := apiTypeFromModel(m.Routing.BodyBased)
+		diags.Append(apiDiags...)
 		req.Routing = &inferencev1.CreateGatewayRequest_BodyBasedRouting{
 			BodyBasedRouting: &inferencev1.BodyBasedRouting{
-				ApiType: apiTypeFromString(m.Routing.BodyBased.APIType.ValueString()),
+				ApiType: apiType,
 			},
 		}
 	case m.Routing.HeaderBased != nil:
@@ -663,9 +644,11 @@ func toUpdateGatewayRequest(ctx context.Context, m *InferenceGatewayResourceMode
 	// Routing oneof
 	switch {
 	case m.Routing.BodyBased != nil:
+		apiType, apiDiags := apiTypeFromModel(m.Routing.BodyBased)
+		diags.Append(apiDiags...)
 		req.Routing = &inferencev1.UpdateGatewayRequest_BodyBasedRouting{
 			BodyBasedRouting: &inferencev1.BodyBasedRouting{
-				ApiType: apiTypeFromString(m.Routing.BodyBased.APIType.ValueString()),
+				ApiType: apiType,
 			},
 		}
 	case m.Routing.HeaderBased != nil:
@@ -769,7 +752,7 @@ func setFromGateway(m *InferenceGatewayResourceModel, gw *inferencev1.Gateway) (
 		bbr := spec.GetBodyBasedRouting()
 		m.Routing = &GatewayRoutingModel{
 			BodyBased: &BodyBasedRoutingModel{
-				APIType: types.StringValue(apiTypeToString(bbr.GetApiType())),
+				APIType: types.StringValue(bbr.GetApiType().String()),
 			},
 			HeaderBased: nil,
 			PathBased:   nil,
@@ -846,17 +829,16 @@ func setFromGateway(m *InferenceGatewayResourceModel, gw *inferencev1.Gateway) (
 	return diagnostics
 }
 
-// apiTypeFromString converts a user-facing API type string (e.g. "OPENAI") to the proto enum value.
-func apiTypeFromString(s string) inferencev1.BodyBasedRouting_APIType {
-	full := "API_TYPE_" + s
-	if val, ok := inferencev1.BodyBasedRouting_APIType_value[full]; ok {
-		return inferencev1.BodyBasedRouting_APIType(val)
+// apiTypeFromModel resolves the configured api_type string against the proto
+// enum value map, returning a diagnostic when the user configured a value that
+// does not correspond to a known enum entry.
+func apiTypeFromModel(m *BodyBasedRoutingModel) (inferencev1.BodyBasedRouting_APIType, diag.Diagnostics) {
+	var diagnostics diag.Diagnostics
+	s := m.APIType.ValueString()
+	val, ok := inferencev1.BodyBasedRouting_APIType_value[s]
+	if !ok {
+		diagnostics.AddError("Invalid api_type", fmt.Sprintf("Invalid api_type: %s. Must be one of: %s.", s, coreweave.EnumMarkdownValues(inferencev1.BodyBasedRouting_APIType_name, true)))
+		return inferencev1.BodyBasedRouting_API_TYPE_UNSPECIFIED, diagnostics
 	}
-	return inferencev1.BodyBasedRouting_API_TYPE_UNSPECIFIED
-}
-
-// apiTypeToString converts a proto API type enum value to the user-facing string (e.g. "OPENAI").
-func apiTypeToString(at inferencev1.BodyBasedRouting_APIType) string {
-	s := at.String()
-	return strings.TrimPrefix(s, "API_TYPE_")
+	return inferencev1.BodyBasedRouting_APIType(val), diagnostics
 }

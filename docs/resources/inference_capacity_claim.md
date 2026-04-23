@@ -19,7 +19,7 @@ resource "coreweave_inference_capacity_claim" "example" {
   resources = {
     instance_id    = "h100-80gb-sxm5"
     instance_count = 2
-    capacity_type  = "SERVERLESS"
+    capacity_type  = "CAPACITY_TYPE_SERVERLESS"
     zones          = ["US-EAST-04A"]
   }
 }
@@ -49,7 +49,7 @@ resource "coreweave_inference_capacity_claim" "example" {
 
 Required:
 
-- `capacity_type` (String) The capacity type for the capacity claim. Must be one of: CUSTOMER, SERVERLESS.
+- `capacity_type` (String) The capacity type for the capacity claim. Must be one of: `CAPACITY_TYPE_SERVERLESS`, `CAPACITY_TYPE_CUSTOMER`.
 - `instance_count` (Number) The number of instances to reserve. Must be at least 1.
 - `instance_id` (String) The instance type to reserve by ID specifier (e.g. `gb200-4x`). Case insensitive.
 - `zones` (Set of String) The availability zones where the capacity claim may use resources from (e.g. `US-WEST-04A`). Case insensitive. At least one is required.
