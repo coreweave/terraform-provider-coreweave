@@ -9,10 +9,13 @@ import (
 
 	inferencev1 "buf.build/gen/go/coreweave/inference/protocolbuffers/go/coreweave/inference/v1alpha1"
 	"connectrpc.com/connect"
+	"github.com/coreweave/terraform-provider-coreweave/coreweave"
 	"github.com/coreweave/terraform-provider-coreweave/internal/provider"
 	"github.com/coreweave/terraform-provider-coreweave/internal/testutil"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 )
+
+const AcceptanceTestPrefix = "test-acc-inf-"
 
 func TestMain(m *testing.M) {
 	resource.TestMain(m)
@@ -20,7 +23,8 @@ func TestMain(m *testing.M) {
 
 func init() {
 	resource.AddTestSweepers("coreweave_inference_deployment", &resource.Sweeper{
-		Name: "coreweave_inference_deployment",
+		Name:         "coreweave_inference_deployment",
+		Dependencies: []string{},
 		F: func(r string) error {
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 			defer cancel()
@@ -33,12 +37,16 @@ func init() {
 
 			listResp, err := client.Inference.ListDeployments(ctx, connect.NewRequest(&inferencev1.ListDeploymentsRequest{}))
 			if err != nil {
+				if coreweave.IsNotFoundError(err) {
+					fmt.Println("no deployments found. skipping sweeper.")
+					return nil
+				}
 				return fmt.Errorf("failed to list deployments: %w", err)
 			}
 
 			for _, d := range listResp.Msg.GetItems() {
 				name := d.GetSpec().GetName()
-				if !strings.HasPrefix(name, accTestPrefix) {
+				if !strings.HasPrefix(name, AcceptanceTestPrefix) {
 					continue
 				}
 				if testutil.SweepDryRun() {
@@ -67,7 +75,8 @@ func init() {
 	})
 
 	resource.AddTestSweepers("coreweave_inference_capacity_claim", &resource.Sweeper{
-		Name: "coreweave_inference_capacity_claim",
+		Name:         "coreweave_inference_capacity_claim",
+		Dependencies: []string{"coreweave_inference_deployment"},
 		F: func(r string) error {
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 			defer cancel()
@@ -85,7 +94,7 @@ func init() {
 
 			for _, d := range listResp.Msg.GetCapacityClaims() {
 				name := d.GetSpec().GetName()
-				if !strings.HasPrefix(name, "test-acc-") {
+				if !strings.HasPrefix(name, AcceptanceTestPrefix) {
 					continue
 				}
 				if testutil.SweepDryRun() {
@@ -114,7 +123,8 @@ func init() {
 	})
 
 	resource.AddTestSweepers("coreweave_inference_gateway", &resource.Sweeper{
-		Name: "coreweave_inference_gateway",
+		Name:         "coreweave_inference_gateway",
+		Dependencies: []string{"coreweave_inference_deployment"},
 		F: func(r string) error {
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 			defer cancel()
@@ -132,7 +142,7 @@ func init() {
 
 			for _, d := range listResp.Msg.GetItems() {
 				name := d.GetSpec().GetName()
-				if !strings.HasPrefix(name, "test-acc-") {
+				if !strings.HasPrefix(name, AcceptanceTestPrefix) {
 					continue
 				}
 				if testutil.SweepDryRun() {

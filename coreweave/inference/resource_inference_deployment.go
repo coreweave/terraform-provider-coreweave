@@ -125,11 +125,11 @@ type InferenceDeploymentResourceModel struct {
 	Name        types.String          `tfsdk:"name"`
 	GatewayIds  types.Set             `tfsdk:"gateway_ids"`
 	Disabled    types.Bool            `tfsdk:"disabled"`
-	Runtime     RuntimeModel          `tfsdk:"runtime"`
-	Resources   ResourcesModel        `tfsdk:"resources"`
-	Model       DeploymentModelConfig `tfsdk:"model"`
-	Autoscaling AutoscalingModel      `tfsdk:"autoscaling"`
-	Traffic     TrafficModel          `tfsdk:"traffic"`
+	Runtime     *RuntimeModel          `tfsdk:"runtime"`
+	Resources   *ResourcesModel        `tfsdk:"resources"`
+	Model       *DeploymentModelConfig `tfsdk:"model"`
+	Autoscaling *AutoscalingModel      `tfsdk:"autoscaling"`
+	Traffic     *TrafficModel          `tfsdk:"traffic"`
 }
 
 func (r *InferenceDeploymentResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -699,9 +699,39 @@ func toUpdateRequest(ctx context.Context, m *InferenceDeploymentResourceModel) (
 // setFromDeployment populates all fields on the model from a proto Deployment response.
 // For Optional (non-Computed) fields, null is preserved when the plan/state was null and the
 // API returns the default (zero/empty) value — matching the CKS pattern for optional fields.
+// ensureDeploymentNested initializes each required nested attribute on the model
+// if it is nil, so the model arriving from an ID-only import state is safe to
+// write into. Each initializer seeds optional inner fields as null so null
+// preservation checks in setFromDeployment behave correctly on first import.
+func ensureDeploymentNested(m *InferenceDeploymentResourceModel) {
+	if m.Runtime == nil {
+		m.Runtime = &RuntimeModel{Version: types.StringNull(), EngineConfig: types.MapNull(types.StringType)}
+	}
+	if m.Resources == nil {
+		m.Resources = &ResourcesModel{}
+	}
+	if m.Model == nil {
+		m.Model = &DeploymentModelConfig{}
+	}
+	if m.Autoscaling == nil {
+		m.Autoscaling = &AutoscalingModel{
+			Priority:        types.Int64Null(),
+			Concurrency:     types.Int64Null(),
+			CapacityClasses: types.ListNull(types.StringType),
+		}
+	}
+	if m.Traffic == nil {
+		m.Traffic = &TrafficModel{Weight: types.Int64Null()}
+	}
+}
+
 func setFromDeployment(m *InferenceDeploymentResourceModel, d *inferencev1.Deployment) (diagnostics diag.Diagnostics) {
 	spec := d.GetSpec()
 	status := d.GetStatus()
+
+	// Initialize required nested attributes so setFromDeployment is safe when the
+	// model arrives with nil pointers (e.g. from ImportStatePassthroughID).
+	ensureDeploymentNested(m)
 
 	m.ID = types.StringValue(spec.GetId())
 	m.OrganizationID = types.StringValue(spec.GetOrganizationId())

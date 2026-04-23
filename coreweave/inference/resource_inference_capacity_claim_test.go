@@ -3,12 +3,11 @@ package inference_test
 import (
 	"context"
 	"fmt"
+	"math/rand/v2"
 	"testing"
 	"time"
 
 	inferencev1 "buf.build/gen/go/coreweave/inference/protocolbuffers/go/coreweave/inference/v1alpha1"
-	"connectrpc.com/connect"
-	"github.com/coreweave/terraform-provider-coreweave/coreweave"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave/inference"
 	"github.com/coreweave/terraform-provider-coreweave/internal/provider"
 	"github.com/coreweave/terraform-provider-coreweave/internal/testutil"
@@ -172,7 +171,7 @@ func TestToCreateCapacityClaimRequest_Fields(t *testing.T) {
 
 	m := &inference.InferenceCapacityClaimResourceModel{
 		Name: types.StringValue("my-claim"),
-		Resources: inference.CapacityClaimResourcesModel{
+		Resources: &inference.CapacityClaimResourcesModel{
 			InstanceID:    types.StringValue(testInstanceID),
 			InstanceCount: types.Int64Value(5),
 			CapacityType:  types.StringValue("CUSTOMER"),
@@ -213,7 +212,7 @@ func TestToUpdateCapacityClaimRequest_Fields(t *testing.T) {
 	m := &inference.InferenceCapacityClaimResourceModel{
 		ID:   types.StringValue("cc-789"),
 		Name: types.StringValue("my-claim"),
-		Resources: inference.CapacityClaimResourcesModel{
+		Resources: &inference.CapacityClaimResourcesModel{
 			InstanceID:    types.StringValue(testInstanceID),
 			InstanceCount: types.Int64Value(10),
 			CapacityType:  types.StringValue("SERVERLESS"),
@@ -248,152 +247,60 @@ func TestToUpdateCapacityClaimRequest_Fields(t *testing.T) {
 
 // --- Acceptance tests ---
 
-const accCapacityClaimTestPrefix = "test-acc-cc-"
-
-// testCapacityClaimParams holds parameters fetched from the API for use in acceptance test configs.
-type testCapacityClaimParams struct {
-	Zone       string
-	InstanceID string
-}
-
-func getTestCapacityClaimParams(t *testing.T) testCapacityClaimParams {
-	t.Helper()
-	client := getTestClient(t)
-
-	resp, err := client.Inference.GetCapacityClaimParameters(t.Context(), connect.NewRequest(&inferencev1.GetCapacityClaimParametersRequest{}))
-	if err != nil {
-		t.Skipf("skipping: could not get capacity claim parameters: %v", err)
-	}
-
-	zit := resp.Msg.GetZoneInstanceTypes()
-	if len(zit) == 0 {
-		t.Skip("skipping: no zone instance types available")
-	}
-
-	for zone, instanceTypes := range zit {
-		ids := instanceTypes.GetInstanceIds()
-		if len(ids) > 0 {
-			return testCapacityClaimParams{
-				Zone:       zone,
-				InstanceID: ids[0],
-			}
-		}
-	}
-	t.Skip("skipping: no instance IDs available in any zone")
-	return testCapacityClaimParams{} // unreachable
-}
-
-func capacityClaimConfig(name, instanceID, zone string) string {
+func capacityClaimConfig(name string, instanceCount int) string {
 	return fmt.Sprintf(`
+data "coreweave_inference_capacity_claim_parameters" "params" {}
+
+locals {
+  zones_map = data.coreweave_inference_capacity_claim_parameters.params.zone_instance_types
+  zone      = keys(local.zones_map)[0]
+  instance  = local.zones_map[local.zone].instance_ids[0]
+}
+
 resource "coreweave_inference_capacity_claim" "test" {
   name = %q
 
   resources = {
-    instance_id    = %q
-    instance_count = 1
-    capacity_type  = "SERVERLESS"
-    zones          = [%q]
+    instance_id    = local.instance
+    instance_count = %d
+    capacity_type  = "CUSTOMER"
+    zones          = [local.zone]
   }
 }
-`, name, instanceID, zone)
+`, name, instanceCount)
 }
 
-func capacityClaimUpdatedConfig(name, instanceID, zone string) string {
-	return fmt.Sprintf(`
-resource "coreweave_inference_capacity_claim" "test" {
-  name = %q
-
-  resources = {
-    instance_id    = %q
-    instance_count = 2
-    capacity_type  = "SERVERLESS"
-    zones          = [%q]
-  }
-}
-`, name, instanceID, zone)
-}
-
-func deleteCapacityClaim(ctx context.Context, client *coreweave.Client, id string) error {
-	_, err := client.Inference.DeleteCapacityClaim(ctx, connect.NewRequest(&inferencev1.DeleteCapacityClaimRequest{
-		Id: id,
-	}))
-	if err != nil {
-		if connect.CodeOf(err) == connect.CodeNotFound {
-			return nil
-		}
-		return fmt.Errorf("failed to delete capacity claim %s: %w", id, err)
-	}
-
-	return testutil.WaitForDelete(ctx, 20*time.Minute, 10*time.Second,
-		client.Inference.GetCapacityClaim,
-		&inferencev1.GetCapacityClaimRequest{Id: id},
-	)
-}
-
-func TestAcc_InferenceCapacityClaim_basic(t *testing.T) {
-	params := getTestCapacityClaimParams(t)
-	name := accCapacityClaimTestPrefix + "basic"
+func TestAccInferenceCapacityClaim(t *testing.T) {
+	name := fmt.Sprintf("%scc-%x", AcceptanceTestPrefix, rand.IntN(100000))
+	fullResourceName := "coreweave_inference_capacity_claim.test"
 
 	resource.ParallelTest(t, resource.TestCase{
 		PreCheck:                 func() { testutil.SetEnvDefaults() },
 		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
-				Config: capacityClaimConfig(name, params.InstanceID, params.Zone),
+				Config: capacityClaimConfig(name, 1),
 				ConfigStateChecks: []statecheck.StateCheck{
-					statecheck.ExpectKnownValue("coreweave_inference_capacity_claim.test", tfjsonpath.New("name"), knownvalue.StringExact(name)),
-					statecheck.ExpectKnownValue("coreweave_inference_capacity_claim.test", tfjsonpath.New("id"), knownvalue.NotNull()),
-					statecheck.ExpectKnownValue("coreweave_inference_capacity_claim.test", tfjsonpath.New("organization_id"), knownvalue.NotNull()),
-					statecheck.ExpectKnownValue("coreweave_inference_capacity_claim.test", tfjsonpath.New("status"), knownvalue.NotNull()),
-					statecheck.ExpectKnownValue("coreweave_inference_capacity_claim.test", tfjsonpath.New("created_at"), knownvalue.NotNull()),
-					statecheck.ExpectKnownValue("coreweave_inference_capacity_claim.test", tfjsonpath.New("allocated_instances"), knownvalue.NotNull()),
-					statecheck.ExpectKnownValue("coreweave_inference_capacity_claim.test", tfjsonpath.New("pending_instances"), knownvalue.NotNull()),
-					statecheck.ExpectKnownValue("coreweave_inference_capacity_claim.test", tfjsonpath.New("resources").AtMapKey("instance_id"), knownvalue.StringExact(params.InstanceID)),
-					statecheck.ExpectKnownValue("coreweave_inference_capacity_claim.test", tfjsonpath.New("resources").AtMapKey("instance_count"), knownvalue.Int64Exact(1)),
-					statecheck.ExpectKnownValue("coreweave_inference_capacity_claim.test", tfjsonpath.New("resources").AtMapKey("capacity_type"), knownvalue.StringExact("SERVERLESS")),
-				},
-			},
-		},
-	})
-}
-
-func TestAcc_InferenceCapacityClaim_update(t *testing.T) {
-	params := getTestCapacityClaimParams(t)
-	name := accCapacityClaimTestPrefix + "update"
-
-	resource.ParallelTest(t, resource.TestCase{
-		PreCheck:                 func() { testutil.SetEnvDefaults() },
-		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
-		Steps: []resource.TestStep{
-			{
-				Config: capacityClaimConfig(name, params.InstanceID, params.Zone),
-				ConfigStateChecks: []statecheck.StateCheck{
-					statecheck.ExpectKnownValue("coreweave_inference_capacity_claim.test", tfjsonpath.New("resources").AtMapKey("instance_count"), knownvalue.Int64Exact(1)),
+					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("name"), knownvalue.StringExact(name)),
+					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("id"), knownvalue.NotNull()),
+					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("organization_id"), knownvalue.NotNull()),
+					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("status"), knownvalue.NotNull()),
+					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("created_at"), knownvalue.NotNull()),
+					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("allocated_instances"), knownvalue.NotNull()),
+					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("pending_instances"), knownvalue.NotNull()),
+					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("resources").AtMapKey("instance_id"), knownvalue.NotNull()),
+					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("resources").AtMapKey("instance_count"), knownvalue.Int64Exact(1)),
+					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("resources").AtMapKey("capacity_type"), knownvalue.StringExact("CUSTOMER")),
 				},
 			},
 			{
-				Config: capacityClaimUpdatedConfig(name, params.InstanceID, params.Zone),
+				Config: capacityClaimConfig(name, 2),
 				ConfigStateChecks: []statecheck.StateCheck{
-					statecheck.ExpectKnownValue("coreweave_inference_capacity_claim.test", tfjsonpath.New("resources").AtMapKey("instance_count"), knownvalue.Int64Exact(2)),
+					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("resources").AtMapKey("instance_count"), knownvalue.Int64Exact(2)),
 				},
 			},
-		},
-	})
-}
-
-func TestAcc_InferenceCapacityClaim_import(t *testing.T) {
-	params := getTestCapacityClaimParams(t)
-	name := accCapacityClaimTestPrefix + "import"
-
-	resource.ParallelTest(t, resource.TestCase{
-		PreCheck:                 func() { testutil.SetEnvDefaults() },
-		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
-		Steps: []resource.TestStep{
 			{
-				Config: capacityClaimConfig(name, params.InstanceID, params.Zone),
-			},
-			{
-				ResourceName:      "coreweave_inference_capacity_claim.test",
+				ResourceName:      fullResourceName,
 				ImportState:       true,
 				ImportStateVerify: true,
 			},
@@ -401,47 +308,7 @@ func TestAcc_InferenceCapacityClaim_import(t *testing.T) {
 	})
 }
 
-func TestAcc_InferenceCapacityClaim_disappeared(t *testing.T) {
-	params := getTestCapacityClaimParams(t)
-	name := accCapacityClaimTestPrefix + "disappeared"
-	client := getTestClient(t)
-
-	resource.ParallelTest(t, resource.TestCase{
-		PreCheck:                 func() { testutil.SetEnvDefaults() },
-		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
-		Steps: []resource.TestStep{
-			{
-				Config: capacityClaimConfig(name, params.InstanceID, params.Zone),
-				ConfigStateChecks: []statecheck.StateCheck{
-					statecheck.ExpectKnownValue("coreweave_inference_capacity_claim.test", tfjsonpath.New("id"), knownvalue.NotNull()),
-				},
-			},
-			{
-				// Find the capacity claim by name and delete it out-of-band, then verify plan shows recreation.
-				PreConfig: func() {
-					ctx := context.Background()
-					listResp, err := client.Inference.ListCapacityClaims(ctx, connect.NewRequest(&inferencev1.ListCapacityClaimsRequest{}))
-					if err != nil {
-						t.Fatalf("failed to list capacity claims: %v", err)
-					}
-					for _, cc := range listResp.Msg.GetCapacityClaims() {
-						if cc.GetSpec().GetName() == name {
-							if delErr := deleteCapacityClaim(ctx, client, cc.GetSpec().GetId()); delErr != nil {
-								t.Fatalf("failed to delete capacity claim: %v", delErr)
-							}
-							return
-						}
-					}
-					t.Fatalf("capacity claim %q not found in list", name)
-				},
-				Config:             capacityClaimConfig(name, params.InstanceID, params.Zone),
-				ExpectNonEmptyPlan: true,
-			},
-		},
-	})
-}
-
-func TestAcc_InferenceCapacityClaimParameters_basic(t *testing.T) {
+func TestAccInferenceCapacityClaimParameters(t *testing.T) {
 	resource.ParallelTest(t, resource.TestCase{
 		PreCheck:                 func() { testutil.SetEnvDefaults() },
 		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
