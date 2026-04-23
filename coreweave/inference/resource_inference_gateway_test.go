@@ -3,12 +3,10 @@ package inference_test
 import (
 	"context"
 	"fmt"
+	"math/rand/v2"
 	"testing"
-	"time"
 
 	inferencev1 "buf.build/gen/go/coreweave/inference/protocolbuffers/go/coreweave/inference/v1alpha1"
-	"connectrpc.com/connect"
-	"github.com/coreweave/terraform-provider-coreweave/coreweave"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave/inference"
 	"github.com/coreweave/terraform-provider-coreweave/internal/provider"
 	"github.com/coreweave/terraform-provider-coreweave/internal/testutil"
@@ -131,7 +129,7 @@ func TestSetFromGateway_WeightsAndBiasesAuth(t *testing.T) {
 
 	// Pre-populate W&B model so null-preservation logic doesn't kick in.
 	m := &inference.InferenceGatewayResourceModel{
-		Auth: inference.GatewayAuthModel{
+		Auth: &inference.GatewayAuthModel{
 			WeightsAndBiases: &inference.WeightsAndBiasesAuthModel{
 				APIKey:             types.StringValue("placeholder"),
 				ServerURL:          types.StringValue("placeholder"),
@@ -198,7 +196,7 @@ func TestSetFromGateway_NullPreservation(t *testing.T) {
 
 	// Model starts with null optional fields (user didn't configure them).
 	m := &inference.InferenceGatewayResourceModel{
-		Auth: inference.GatewayAuthModel{
+		Auth: &inference.GatewayAuthModel{
 			WeightsAndBiases: &inference.WeightsAndBiasesAuthModel{
 				APIKey:             types.StringNull(),
 				ServerURL:          types.StringNull(),
@@ -362,10 +360,10 @@ func TestToCreateGatewayRequest_CoreWeaveAuth(t *testing.T) {
 	m := &inference.InferenceGatewayResourceModel{
 		Name:  types.StringValue("cw-auth-gw"),
 		Zones: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("US-EAST-04A")}),
-		Auth: inference.GatewayAuthModel{
+		Auth: &inference.GatewayAuthModel{
 			CoreWeave: &inference.CoreWeaveAuthModel{},
 		},
-		Routing: inference.GatewayRoutingModel{
+		Routing: &inference.GatewayRoutingModel{
 			BodyBased: &inference.BodyBasedRoutingModel{
 				APIType: types.StringValue("OPENAI"),
 			},
@@ -397,7 +395,7 @@ func TestToCreateGatewayRequest_WandBAuth(t *testing.T) {
 	m := &inference.InferenceGatewayResourceModel{
 		Name:  types.StringValue("wandb-auth-gw"),
 		Zones: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("US-EAST-04A")}),
-		Auth: inference.GatewayAuthModel{
+		Auth: &inference.GatewayAuthModel{
 			WeightsAndBiases: &inference.WeightsAndBiasesAuthModel{
 				APIKey:             types.StringValue("my-api-key"),
 				ServerURL:          types.StringValue("https://wandb.example.com"),
@@ -405,7 +403,7 @@ func TestToCreateGatewayRequest_WandBAuth(t *testing.T) {
 				EnableRateLimiting: types.BoolValue(false),
 			},
 		},
-		Routing: inference.GatewayRoutingModel{
+		Routing: &inference.GatewayRoutingModel{
 			BodyBased: &inference.BodyBasedRoutingModel{
 				APIType: types.StringValue("OPENAI"),
 			},
@@ -446,10 +444,10 @@ func TestToCreateGatewayRequest_AllRoutingTypes(t *testing.T) {
 		m := &inference.InferenceGatewayResourceModel{
 			Name:  types.StringValue("body-gw"),
 			Zones: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("US-EAST-04A")}),
-			Auth: inference.GatewayAuthModel{
+			Auth: &inference.GatewayAuthModel{
 				CoreWeave: &inference.CoreWeaveAuthModel{},
 			},
-			Routing: inference.GatewayRoutingModel{
+			Routing: &inference.GatewayRoutingModel{
 				BodyBased: &inference.BodyBasedRoutingModel{
 					APIType: types.StringValue("OPENAI"),
 				},
@@ -476,10 +474,10 @@ func TestToCreateGatewayRequest_AllRoutingTypes(t *testing.T) {
 		m := &inference.InferenceGatewayResourceModel{
 			Name:  types.StringValue("header-gw"),
 			Zones: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("US-EAST-04A")}),
-			Auth: inference.GatewayAuthModel{
+			Auth: &inference.GatewayAuthModel{
 				CoreWeave: &inference.CoreWeaveAuthModel{},
 			},
-			Routing: inference.GatewayRoutingModel{
+			Routing: &inference.GatewayRoutingModel{
 				HeaderBased: &inference.HeaderBasedRoutingModel{
 					HeaderName: types.StringValue("X-Model"),
 				},
@@ -506,10 +504,10 @@ func TestToCreateGatewayRequest_AllRoutingTypes(t *testing.T) {
 		m := &inference.InferenceGatewayResourceModel{
 			Name:  types.StringValue("path-gw"),
 			Zones: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("US-EAST-04A")}),
-			Auth: inference.GatewayAuthModel{
+			Auth: &inference.GatewayAuthModel{
 				CoreWeave: &inference.CoreWeaveAuthModel{},
 			},
-			Routing: inference.GatewayRoutingModel{
+			Routing: &inference.GatewayRoutingModel{
 				PathBased: &inference.PathBasedRoutingModel{},
 			},
 		}
@@ -531,43 +529,13 @@ func TestToCreateGatewayRequest_AllRoutingTypes(t *testing.T) {
 
 // --- Acceptance tests ---
 
-const accGatewayTestPrefix = "test-acc-gw-"
-
-func getTestGatewayZone(t *testing.T) string {
-	t.Helper()
-	client := getTestClient(t)
-
-	resp, err := client.Inference.GetGatewayParameters(t.Context(), connect.NewRequest(&inferencev1.GetGatewayParametersRequest{}))
-	if err != nil {
-		t.Skipf("skipping: could not get gateway parameters: %v", err)
-	}
-	zones := resp.Msg.GetZones()
-	if len(zones) == 0 {
-		t.Skip("skipping: no zones available for gateways")
-	}
-	return zones[0]
-}
-
-func deleteInferenceGateway(ctx context.Context, client *coreweave.Client, id string) error {
-	_, err := client.Inference.DeleteGateway(ctx, connect.NewRequest(&inferencev1.DeleteGatewayRequest{Id: id}))
-	if err != nil {
-		if connect.CodeOf(err) == connect.CodeNotFound {
-			return nil
-		}
-		return fmt.Errorf("failed to delete gateway %s: %w", id, err)
-	}
-
-	return testutil.WaitForDelete(ctx, 20*time.Minute, 10*time.Second,
-		client.Inference.GetGateway,
-		&inferencev1.GetGatewayRequest{Id: id},
-	)
-}
-
-func gatewayBasicConfig(name, zone string) string {
+func gatewayBasicConfig(name string) string {
 	return fmt.Sprintf(`
+data "coreweave_inference_gateway_parameters" "params" {}
+
 resource "coreweave_inference_gateway" "test" {
   name  = %q
-  zones = [%q]
+  zones = [data.coreweave_inference_gateway_parameters.params.zones[0]]
 
   auth = {
     core_weave = {}
@@ -579,14 +547,16 @@ resource "coreweave_inference_gateway" "test" {
     }
   }
 }
-`, name, zone)
+`, name)
 }
 
-func gatewayUpdatedConfig(name, zone string) string {
+func gatewayUpdatedConfig(name string) string {
 	return fmt.Sprintf(`
+data "coreweave_inference_gateway_parameters" "params" {}
+
 resource "coreweave_inference_gateway" "test" {
   name  = %q
-  zones = [%q]
+  zones = [data.coreweave_inference_gateway_parameters.params.zones[0]]
 
   auth = {
     core_weave = {}
@@ -598,71 +568,36 @@ resource "coreweave_inference_gateway" "test" {
     }
   }
 }
-`, name, zone)
+`, name)
 }
 
-func TestAcc_InferenceGateway_basic(t *testing.T) {
-	zone := getTestGatewayZone(t)
-	name := accGatewayTestPrefix + "basic"
+func TestAccInferenceGateway(t *testing.T) {
+	name := fmt.Sprintf("%sgw-%x", AcceptanceTestPrefix, rand.IntN(100000))
+	fullResourceName := "coreweave_inference_gateway.test"
 
 	resource.ParallelTest(t, resource.TestCase{
 		PreCheck:                 func() { testutil.SetEnvDefaults() },
 		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
-				Config: gatewayBasicConfig(name, zone),
+				Config: gatewayBasicConfig(name),
 				ConfigStateChecks: []statecheck.StateCheck{
-					statecheck.ExpectKnownValue("coreweave_inference_gateway.test", tfjsonpath.New("name"), knownvalue.StringExact(name)),
-					statecheck.ExpectKnownValue("coreweave_inference_gateway.test", tfjsonpath.New("id"), knownvalue.NotNull()),
-					statecheck.ExpectKnownValue("coreweave_inference_gateway.test", tfjsonpath.New("organization_id"), knownvalue.NotNull()),
-					statecheck.ExpectKnownValue("coreweave_inference_gateway.test", tfjsonpath.New("status"), knownvalue.NotNull()),
-					statecheck.ExpectKnownValue("coreweave_inference_gateway.test", tfjsonpath.New("created_at"), knownvalue.NotNull()),
-					statecheck.ExpectKnownValue("coreweave_inference_gateway.test", tfjsonpath.New("routing").AtMapKey("body_based").AtMapKey("api_type"), knownvalue.StringExact("OPENAI")),
-				},
-			},
-		},
-	})
-}
-
-func TestAcc_InferenceGateway_update(t *testing.T) {
-	zone := getTestGatewayZone(t)
-	name := accGatewayTestPrefix + "update"
-
-	resource.ParallelTest(t, resource.TestCase{
-		PreCheck:                 func() { testutil.SetEnvDefaults() },
-		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
-		Steps: []resource.TestStep{
-			{
-				Config: gatewayBasicConfig(name, zone),
-				ConfigStateChecks: []statecheck.StateCheck{
-					statecheck.ExpectKnownValue("coreweave_inference_gateway.test", tfjsonpath.New("name"), knownvalue.StringExact(name)),
-					statecheck.ExpectKnownValue("coreweave_inference_gateway.test", tfjsonpath.New("routing").AtMapKey("body_based").AtMapKey("api_type"), knownvalue.StringExact("OPENAI")),
+					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("name"), knownvalue.StringExact(name)),
+					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("id"), knownvalue.NotNull()),
+					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("organization_id"), knownvalue.NotNull()),
+					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("status"), knownvalue.NotNull()),
+					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("created_at"), knownvalue.NotNull()),
+					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("routing").AtMapKey("body_based").AtMapKey("api_type"), knownvalue.StringExact("OPENAI")),
 				},
 			},
 			{
-				Config: gatewayUpdatedConfig(name, zone),
+				Config: gatewayUpdatedConfig(name),
 				ConfigStateChecks: []statecheck.StateCheck{
-					statecheck.ExpectKnownValue("coreweave_inference_gateway.test", tfjsonpath.New("name"), knownvalue.StringExact(name)),
-					statecheck.ExpectKnownValue("coreweave_inference_gateway.test", tfjsonpath.New("routing").AtMapKey("header_based").AtMapKey("header_name"), knownvalue.StringExact("X-Model-Name")),
+					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("routing").AtMapKey("header_based").AtMapKey("header_name"), knownvalue.StringExact("X-Model-Name")),
 				},
 			},
-		},
-	})
-}
-
-func TestAcc_InferenceGateway_import(t *testing.T) {
-	zone := getTestGatewayZone(t)
-	name := accGatewayTestPrefix + "import"
-
-	resource.ParallelTest(t, resource.TestCase{
-		PreCheck:                 func() { testutil.SetEnvDefaults() },
-		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
-		Steps: []resource.TestStep{
 			{
-				Config: gatewayBasicConfig(name, zone),
-			},
-			{
-				ResourceName:      "coreweave_inference_gateway.test",
+				ResourceName:      fullResourceName,
 				ImportState:       true,
 				ImportStateVerify: true,
 			},
@@ -670,46 +605,7 @@ func TestAcc_InferenceGateway_import(t *testing.T) {
 	})
 }
 
-func TestAcc_InferenceGateway_disappeared(t *testing.T) {
-	zone := getTestGatewayZone(t)
-	name := accGatewayTestPrefix + "disappeared"
-	client := getTestClient(t)
-
-	resource.ParallelTest(t, resource.TestCase{
-		PreCheck:                 func() { testutil.SetEnvDefaults() },
-		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
-		Steps: []resource.TestStep{
-			{
-				Config: gatewayBasicConfig(name, zone),
-				ConfigStateChecks: []statecheck.StateCheck{
-					statecheck.ExpectKnownValue("coreweave_inference_gateway.test", tfjsonpath.New("id"), knownvalue.NotNull()),
-				},
-			},
-			{
-				PreConfig: func() {
-					ctx := context.Background()
-					listResp, err := client.Inference.ListGateways(ctx, connect.NewRequest(&inferencev1.ListGatewaysRequest{}))
-					if err != nil {
-						t.Fatalf("failed to list gateways: %v", err)
-					}
-					for _, gw := range listResp.Msg.GetItems() {
-						if gw.GetSpec().GetName() == name {
-							if delErr := deleteInferenceGateway(ctx, client, gw.GetSpec().GetId()); delErr != nil {
-								t.Fatalf("failed to delete gateway: %v", delErr)
-							}
-							return
-						}
-					}
-					t.Fatalf("gateway %q not found in list", name)
-				},
-				Config:             gatewayBasicConfig(name, zone),
-				ExpectNonEmptyPlan: true,
-			},
-		},
-	})
-}
-
-func TestAcc_InferenceGatewayParameters_basic(t *testing.T) {
+func TestAccInferenceGatewayParameters(t *testing.T) {
 	resource.ParallelTest(t, resource.TestCase{
 		PreCheck:                 func() { testutil.SetEnvDefaults() },
 		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,

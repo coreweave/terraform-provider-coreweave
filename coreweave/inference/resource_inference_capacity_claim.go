@@ -81,7 +81,7 @@ type InferenceCapacityClaimResourceModel struct {
 	PendingInstances   types.Int64  `tfsdk:"pending_instances"`
 	// Required
 	Name      types.String                `tfsdk:"name"`
-	Resources CapacityClaimResourcesModel `tfsdk:"resources"`
+	Resources *CapacityClaimResourcesModel `tfsdk:"resources"`
 }
 
 func (r *InferenceCapacityClaimResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -512,6 +512,9 @@ func setFromCapacityClaim(m *InferenceCapacityClaimResourceModel, cc *inferencev
 
 	// resources
 	if res := spec.GetResources(); res != nil {
+		if m.Resources == nil {
+			m.Resources = &CapacityClaimResourcesModel{}
+		}
 		m.Resources.InstanceID = types.StringValue(res.GetInstanceId())
 		m.Resources.InstanceCount = types.Int64Value(int64(res.GetInstanceCount()))
 		m.Resources.CapacityType = types.StringValue(capacityTypeToString(res.GetCapacityType()))

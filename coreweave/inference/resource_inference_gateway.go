@@ -108,8 +108,8 @@ type InferenceGatewayResourceModel struct {
 	// Required / Optional
 	Name                  types.String                `tfsdk:"name"`
 	Zones                 types.Set                   `tfsdk:"zones"`
-	Auth                  GatewayAuthModel            `tfsdk:"auth"`
-	Routing               GatewayRoutingModel         `tfsdk:"routing"`
+	Auth                  *GatewayAuthModel           `tfsdk:"auth"`
+	Routing               *GatewayRoutingModel        `tfsdk:"routing"`
 	EndpointConfiguration *EndpointConfigurationModel `tfsdk:"endpoint_configuration"`
 }
 
@@ -716,7 +716,7 @@ func setFromGateway(m *InferenceGatewayResourceModel, gw *inferencev1.Gateway) (
 	// auth — type switch on oneof
 	switch spec.GetAuth().(type) {
 	case *inferencev1.GatewaySpec_CoreWeaveAuth:
-		m.Auth = GatewayAuthModel{
+		m.Auth = &GatewayAuthModel{
 			CoreWeave:        &CoreWeaveAuthModel{},
 			WeightsAndBiases: nil,
 		}
@@ -725,44 +725,49 @@ func setFromGateway(m *InferenceGatewayResourceModel, gw *inferencev1.Gateway) (
 		wbModel := &WeightsAndBiasesAuthModel{}
 
 		// Null preservation: if state was null and API returns zero/empty, keep null.
-		if m.Auth.WeightsAndBiases != nil && m.Auth.WeightsAndBiases.APIKey.IsNull() && wb.GetApiKey() == "" {
+		priorWB := (*WeightsAndBiasesAuthModel)(nil)
+		if m.Auth != nil {
+			priorWB = m.Auth.WeightsAndBiases
+		}
+
+		if priorWB != nil && priorWB.APIKey.IsNull() && wb.GetApiKey() == "" {
 			wbModel.APIKey = types.StringNull()
 		} else {
 			wbModel.APIKey = types.StringValue(wb.GetApiKey())
 		}
 
-		if m.Auth.WeightsAndBiases != nil && m.Auth.WeightsAndBiases.ServerURL.IsNull() && wb.GetServerUrl() == "" {
+		if priorWB != nil && priorWB.ServerURL.IsNull() && wb.GetServerUrl() == "" {
 			wbModel.ServerURL = types.StringNull()
 		} else {
 			wbModel.ServerURL = types.StringValue(wb.GetServerUrl())
 		}
 
-		if m.Auth.WeightsAndBiases != nil && m.Auth.WeightsAndBiases.EnableUsageReports.IsNull() && !wb.GetEnableUsageReports() {
+		if priorWB != nil && priorWB.EnableUsageReports.IsNull() && !wb.GetEnableUsageReports() {
 			wbModel.EnableUsageReports = types.BoolNull()
 		} else {
 			wbModel.EnableUsageReports = types.BoolValue(wb.GetEnableUsageReports())
 		}
 
-		if m.Auth.WeightsAndBiases != nil && m.Auth.WeightsAndBiases.EnableRateLimiting.IsNull() && !wb.GetEnableRateLimiting() {
+		if priorWB != nil && priorWB.EnableRateLimiting.IsNull() && !wb.GetEnableRateLimiting() {
 			wbModel.EnableRateLimiting = types.BoolNull()
 		} else {
 			wbModel.EnableRateLimiting = types.BoolValue(wb.GetEnableRateLimiting())
 		}
 
-		m.Auth = GatewayAuthModel{
+		m.Auth = &GatewayAuthModel{
 			CoreWeave:        nil,
 			WeightsAndBiases: wbModel,
 		}
 	default:
-		// If the API returns an unrecognized auth variant, clear both.
-		m.Auth = GatewayAuthModel{}
+		// If the API returns an unrecognized auth variant, clear auth.
+		m.Auth = nil
 	}
 
 	// routing — type switch on oneof
 	switch spec.GetRouting().(type) {
 	case *inferencev1.GatewaySpec_BodyBasedRouting:
 		bbr := spec.GetBodyBasedRouting()
-		m.Routing = GatewayRoutingModel{
+		m.Routing = &GatewayRoutingModel{
 			BodyBased: &BodyBasedRoutingModel{
 				APIType: types.StringValue(apiTypeToString(bbr.GetApiType())),
 			},
@@ -771,7 +776,7 @@ func setFromGateway(m *InferenceGatewayResourceModel, gw *inferencev1.Gateway) (
 		}
 	case *inferencev1.GatewaySpec_HeaderBasedRouting:
 		hbr := spec.GetHeaderBasedRouting()
-		m.Routing = GatewayRoutingModel{
+		m.Routing = &GatewayRoutingModel{
 			BodyBased: nil,
 			HeaderBased: &HeaderBasedRoutingModel{
 				HeaderName: types.StringValue(hbr.GetHeaderName()),
@@ -779,13 +784,13 @@ func setFromGateway(m *InferenceGatewayResourceModel, gw *inferencev1.Gateway) (
 			PathBased: nil,
 		}
 	case *inferencev1.GatewaySpec_PathBasedRouting:
-		m.Routing = GatewayRoutingModel{
+		m.Routing = &GatewayRoutingModel{
 			BodyBased:   nil,
 			HeaderBased: nil,
 			PathBased:   &PathBasedRoutingModel{},
 		}
 	default:
-		m.Routing = GatewayRoutingModel{}
+		m.Routing = nil
 	}
 
 	// endpoint_configuration — null preservation
