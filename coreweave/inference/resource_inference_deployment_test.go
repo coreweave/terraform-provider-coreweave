@@ -283,14 +283,10 @@ func TestToUpdateRequest_Fields(t *testing.T) {
 
 // --- Acceptance tests ---
 
-// instance_type is hardcoded because GetDeploymentParameters currently returns an empty
-// resource_parameters in staging. Swap to data.coreweave_inference_parameters.test.instance_types[0]
-// once the API is populated (see CLDAPI follow-up with the inference team).
-const deploymentTestInstanceType = "H100_80GB_SXM5"
-
 func inferenceDeploymentConfig(name string) string {
 	return fmt.Sprintf(`
 data "coreweave_inference_gateway_parameters" "gw_params" {}
+data "coreweave_inference_parameters" "params" {}
 
 resource "coreweave_inference_gateway" "test" {
   name  = "%s-gw"
@@ -316,7 +312,7 @@ resource "coreweave_inference_deployment" "test" {
   }
 
   resources = {
-    instance_type = %q
+    instance_type = data.coreweave_inference_parameters.params.instance_types[0]
     gpu_count     = 1
   }
 
@@ -333,12 +329,13 @@ resource "coreweave_inference_deployment" "test" {
 
   traffic = {}
 }
-`, name, name, deploymentTestInstanceType)
+`, name, name)
 }
 
 func inferenceDeploymentUpdatedConfig(name string) string {
 	return fmt.Sprintf(`
 data "coreweave_inference_gateway_parameters" "gw_params" {}
+data "coreweave_inference_parameters" "params" {}
 
 resource "coreweave_inference_gateway" "test" {
   name  = "%s-gw"
@@ -365,7 +362,7 @@ resource "coreweave_inference_deployment" "test" {
   }
 
   resources = {
-    instance_type = %q
+    instance_type = data.coreweave_inference_parameters.params.instance_types[0]
     gpu_count     = 1
   }
 
@@ -384,7 +381,7 @@ resource "coreweave_inference_deployment" "test" {
     weight = 50
   }
 }
-`, name, name, deploymentTestInstanceType)
+`, name, name)
 }
 
 func TestAccInferenceDeployment(t *testing.T) {
