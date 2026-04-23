@@ -29,7 +29,7 @@ resource "coreweave_inference_capacity_claim" "test" {
   resources = {
     instance_id    = local.instance
     instance_count = 1
-    capacity_type  = "CUSTOMER"
+    capacity_type  = "CAPACITY_TYPE_CUSTOMER"
     zones          = [local.zone]
   }
 }
@@ -44,7 +44,7 @@ resource "coreweave_inference_gateway" "test" {
 
   routing = {
     body_based = {
-      api_type = "OPENAI"
+      api_type = "API_TYPE_OPENAI"
     }
   }
 }
@@ -72,7 +72,7 @@ resource "coreweave_inference_deployment" "test" {
     min              = 1
     max              = 1
     priority         = 100
-    capacity_classes = ["RESERVED"]
+    capacity_classes = ["CAPACITY_CLASS_RESERVED"]
   }
 
   traffic = {}
@@ -87,7 +87,7 @@ resource "coreweave_inference_deployment" "test" {
 // coreweave_inference_deployment — in a single config. The per-resource acceptance
 // tests cover each resource in isolation; this one verifies they compose correctly:
 // the deployment shares an instance_id with the capacity claim and schedules against
-// it via capacity_classes = ["RESERVED"]. depends_on sequences create and destroy so
+// it via capacity_classes = ["CAPACITY_CLASS_RESERVED"]. depends_on sequences create and destroy so
 // the deployment tears down before the claim it references.
 func TestAccInferenceReservedCapacity(t *testing.T) {
 	name := fmt.Sprintf("%sint-%x", AcceptanceTestPrefix, rand.IntN(100000))
@@ -105,10 +105,10 @@ func TestAccInferenceReservedCapacity(t *testing.T) {
 					statecheck.ExpectKnownValue(ccResource, tfjsonpath.New("id"), knownvalue.NotNull()),
 					statecheck.ExpectKnownValue(ccResource, tfjsonpath.New("status"), knownvalue.NotNull()),
 					statecheck.ExpectKnownValue(ccResource, tfjsonpath.New("allocated_instances"), knownvalue.NotNull()),
-					statecheck.ExpectKnownValue(ccResource, tfjsonpath.New("resources").AtMapKey("capacity_type"), knownvalue.StringExact("CUSTOMER")),
+					statecheck.ExpectKnownValue(ccResource, tfjsonpath.New("resources").AtMapKey("capacity_type"), knownvalue.StringExact("CAPACITY_TYPE_CUSTOMER")),
 					statecheck.ExpectKnownValue(gwResource, tfjsonpath.New("id"), knownvalue.NotNull()),
 					statecheck.ExpectKnownValue(depResource, tfjsonpath.New("status"), knownvalue.StringExact("STATUS_RUNNING")),
-					statecheck.ExpectKnownValue(depResource, tfjsonpath.New("autoscaling").AtMapKey("capacity_classes"), knownvalue.ListExact([]knownvalue.Check{knownvalue.StringExact("RESERVED")})),
+					statecheck.ExpectKnownValue(depResource, tfjsonpath.New("autoscaling").AtMapKey("capacity_classes"), knownvalue.ListExact([]knownvalue.Check{knownvalue.StringExact("CAPACITY_CLASS_RESERVED")})),
 					statecheck.ExpectKnownValue(depResource, tfjsonpath.New("autoscaling").AtMapKey("priority"), knownvalue.Int64Exact(100)),
 				},
 			},

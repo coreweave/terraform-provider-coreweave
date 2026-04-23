@@ -35,31 +35,6 @@ func TestInferenceDeploymentResource_Schema(t *testing.T) {
 	}
 }
 
-func TestCapacityClassRoundTrip(t *testing.T) {
-	t.Parallel()
-
-	cases := []struct {
-		input    string
-		proto    inferencev1.DeploymentAutoscaling_CapacityClass
-		expected string
-	}{
-		{"RESERVED", inferencev1.DeploymentAutoscaling_CAPACITY_CLASS_RESERVED, "RESERVED"},
-		{"ON_DEMAND", inferencev1.DeploymentAutoscaling_CAPACITY_CLASS_ON_DEMAND, "ON_DEMAND"},
-		{"unknown", inferencev1.DeploymentAutoscaling_CAPACITY_CLASS_UNSPECIFIED, ""},
-	}
-
-	for _, tc := range cases {
-		got := inference.CapacityClassFromString(tc.input)
-		if got != tc.proto {
-			t.Errorf("CapacityClassFromString(%q): got %v, want %v", tc.input, got, tc.proto)
-		}
-		str := inference.CapacityClassToString(tc.proto)
-		if str != tc.expected {
-			t.Errorf("CapacityClassToString(%v): got %q, want %q", tc.proto, str, tc.expected)
-		}
-	}
-}
-
 func TestSetFromDeployment_NullPreservation(t *testing.T) {
 	t.Parallel()
 
@@ -208,7 +183,7 @@ func TestToUpdateRequest_Fields(t *testing.T) {
 
 	ctx := context.Background()
 	gwIds := types.SetValueMust(types.StringType, []attr.Value{types.StringValue("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")})
-	ccList, _ := types.ListValueFrom(ctx, types.StringType, []string{"RESERVED"})
+	ccList, _ := types.ListValueFrom(ctx, types.StringType, []string{"CAPACITY_CLASS_RESERVED"})
 
 	m := &inference.InferenceDeploymentResourceModel{
 		ID:         types.StringValue("deploy-123"),
@@ -298,7 +273,7 @@ resource "coreweave_inference_gateway" "test" {
 
   routing = {
     body_based = {
-      api_type = "OPENAI"
+      api_type = "API_TYPE_OPENAI"
     }
   }
 }
@@ -347,7 +322,7 @@ resource "coreweave_inference_gateway" "test" {
 
   routing = {
     body_based = {
-      api_type = "OPENAI"
+      api_type = "API_TYPE_OPENAI"
     }
   }
 }

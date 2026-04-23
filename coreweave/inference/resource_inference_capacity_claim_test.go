@@ -39,31 +39,6 @@ func TestInferenceCapacityClaimResource_Schema(t *testing.T) {
 	}
 }
 
-func TestCapacityTypeRoundTrip(t *testing.T) {
-	t.Parallel()
-
-	cases := []struct {
-		input    string
-		proto    inferencev1.CapacityClaimResources_CapacityType
-		expected string
-	}{
-		{"SERVERLESS", inferencev1.CapacityClaimResources_CAPACITY_TYPE_SERVERLESS, "SERVERLESS"},
-		{"CUSTOMER", inferencev1.CapacityClaimResources_CAPACITY_TYPE_CUSTOMER, "CUSTOMER"},
-		{"unknown", inferencev1.CapacityClaimResources_CAPACITY_TYPE_UNSPECIFIED, ""},
-	}
-
-	for _, tc := range cases {
-		got := inference.CapacityTypeFromString(tc.input)
-		if got != tc.proto {
-			t.Errorf("CapacityTypeFromString(%q): got %v, want %v", tc.input, got, tc.proto)
-		}
-		str := inference.CapacityTypeToString(tc.proto)
-		if str != tc.expected {
-			t.Errorf("CapacityTypeToString(%v): got %q, want %q", tc.proto, str, tc.expected)
-		}
-	}
-}
-
 func TestSetFromCapacityClaim_Fields(t *testing.T) {
 	t.Parallel()
 
@@ -137,8 +112,8 @@ func TestSetFromCapacityClaim_Fields(t *testing.T) {
 	if m.Resources.InstanceCount.ValueInt64() != 3 {
 		t.Errorf("Resources.InstanceCount: got %d, want 3", m.Resources.InstanceCount.ValueInt64())
 	}
-	if m.Resources.CapacityType.ValueString() != "CUSTOMER" {
-		t.Errorf("Resources.CapacityType: got %q, want %q", m.Resources.CapacityType.ValueString(), "CUSTOMER")
+	if m.Resources.CapacityType.ValueString() != "CAPACITY_TYPE_CUSTOMER" {
+		t.Errorf("Resources.CapacityType: got %q, want %q", m.Resources.CapacityType.ValueString(), "CAPACITY_TYPE_CUSTOMER")
 	}
 
 	var zones []string
@@ -174,7 +149,7 @@ func TestToCreateCapacityClaimRequest_Fields(t *testing.T) {
 		Resources: &inference.CapacityClaimResourcesModel{
 			InstanceID:    types.StringValue(testInstanceID),
 			InstanceCount: types.Int64Value(5),
-			CapacityType:  types.StringValue("CUSTOMER"),
+			CapacityType:  types.StringValue("CAPACITY_TYPE_CUSTOMER"),
 			Zones:         zones,
 		},
 	}
@@ -215,7 +190,7 @@ func TestToUpdateCapacityClaimRequest_Fields(t *testing.T) {
 		Resources: &inference.CapacityClaimResourcesModel{
 			InstanceID:    types.StringValue(testInstanceID),
 			InstanceCount: types.Int64Value(10),
-			CapacityType:  types.StringValue("SERVERLESS"),
+			CapacityType:  types.StringValue("CAPACITY_TYPE_SERVERLESS"),
 			Zones:         zones,
 		},
 	}
@@ -263,7 +238,7 @@ resource "coreweave_inference_capacity_claim" "test" {
   resources = {
     instance_id    = local.instance
     instance_count = %d
-    capacity_type  = "CUSTOMER"
+    capacity_type  = "CAPACITY_TYPE_CUSTOMER"
     zones          = [local.zone]
   }
 }
@@ -290,7 +265,7 @@ func TestAccInferenceCapacityClaim(t *testing.T) {
 					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("pending_instances"), knownvalue.NotNull()),
 					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("resources").AtMapKey("instance_id"), knownvalue.NotNull()),
 					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("resources").AtMapKey("instance_count"), knownvalue.Int64Exact(1)),
-					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("resources").AtMapKey("capacity_type"), knownvalue.StringExact("CUSTOMER")),
+					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("resources").AtMapKey("capacity_type"), knownvalue.StringExact("CAPACITY_TYPE_CUSTOMER")),
 				},
 			},
 			{

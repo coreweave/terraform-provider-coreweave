@@ -4,8 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"slices"
-	"strings"
 	"time"
 
 	inferencev1 "buf.build/gen/go/coreweave/inference/protocolbuffers/go/coreweave/inference/v1alpha1"
@@ -33,22 +31,6 @@ var (
 	_ resource.ResourceWithImportState = &InferenceCapacityClaimResource{}
 
 	errCapacityClaimFailed = errors.New("inference capacity claim entered a failed state")
-
-	// validCapacityTypes is derived from the proto enum map so it stays in sync with the proto definition.
-	validCapacityTypes = func() []string {
-		vals := make([]string, 0, len(inferencev1.CapacityClaimResources_CapacityType_name)-1)
-		for k := range inferencev1.CapacityClaimResources_CapacityType_name {
-			if k == 0 { // skip UNSPECIFIED
-				continue
-			}
-			s := capacityTypeToString(inferencev1.CapacityClaimResources_CapacityType(k))
-			if s != "" {
-				vals = append(vals, s)
-			}
-		}
-		slices.Sort(vals)
-		return vals
-	}()
 )
 
 func NewInferenceCapacityClaimResource() resource.Resource {
@@ -163,10 +145,7 @@ func (r *InferenceCapacityClaimResource) Schema(_ context.Context, _ resource.Sc
 					},
 					"capacity_type": schema.StringAttribute{
 						Required:            true,
-						MarkdownDescription: fmt.Sprintf("The capacity type for the capacity claim. Must be one of: %s.", strings.Join(validCapacityTypes, ", ")),
-						Validators: []validator.String{
-							stringvalidator.OneOf(validCapacityTypes...),
-						},
+						MarkdownDescription: fmt.Sprintf("The capacity type for the capacity claim. Must be one of: %s.", coreweave.EnumMarkdownValues(inferencev1.CapacityClaimResources_CapacityType_name, true)),
 					},
 					"zones": schema.SetAttribute{
 						ElementType:         types.StringType,
@@ -456,12 +435,19 @@ func buildCapacityClaimFields(ctx context.Context, m *InferenceCapacityClaimReso
 		return capacityClaimFields{}, diagnostics
 	}
 
+	capacityTypeStr := m.Resources.CapacityType.ValueString()
+	capacityTypeVal, ok := inferencev1.CapacityClaimResources_CapacityType_value[capacityTypeStr]
+	if !ok {
+		diagnostics.AddError("Invalid capacity_type", fmt.Sprintf("Invalid capacity_type: %s. Must be one of: %s.", capacityTypeStr, coreweave.EnumMarkdownValues(inferencev1.CapacityClaimResources_CapacityType_name, true)))
+		return capacityClaimFields{}, diagnostics
+	}
+
 	f := capacityClaimFields{
 		Name: m.Name.ValueString(),
 		Resources: &inferencev1.CapacityClaimResources{
 			InstanceId:    m.Resources.InstanceID.ValueString(),
 			InstanceCount: uint32(m.Resources.InstanceCount.ValueInt64()), //nolint:gosec
-			CapacityType:  capacityTypeFromString(m.Resources.CapacityType.ValueString()),
+			CapacityType:  inferencev1.CapacityClaimResources_CapacityType(capacityTypeVal),
 			Zones:         zones,
 		},
 	}
@@ -517,7 +503,7 @@ func setFromCapacityClaim(m *InferenceCapacityClaimResourceModel, cc *inferencev
 		}
 		m.Resources.InstanceID = types.StringValue(res.GetInstanceId())
 		m.Resources.InstanceCount = types.Int64Value(int64(res.GetInstanceCount()))
-		m.Resources.CapacityType = types.StringValue(capacityTypeToString(res.GetCapacityType()))
+		m.Resources.CapacityType = types.StringValue(res.GetCapacityType().String())
 
 		zoneVals := make([]attr.Value, 0, len(res.GetZones()))
 		for _, z := range res.GetZones() {
@@ -552,23 +538,3 @@ func setFromCapacityClaim(m *InferenceCapacityClaimResourceModel, cc *inferencev
 	return diagnostics
 }
 
-func capacityTypeFromString(s string) inferencev1.CapacityClaimResources_CapacityType {
-	v, ok := inferencev1.CapacityClaimResources_CapacityType_value["CAPACITY_TYPE_"+s]
-	if !ok {
-		return inferencev1.CapacityClaimResources_CAPACITY_TYPE_UNSPECIFIED
-	}
-	return inferencev1.CapacityClaimResources_CapacityType(v)
-}
-
-func capacityTypeToString(ct inferencev1.CapacityClaimResources_CapacityType) string {
-	s := ct.String()
-	const prefix = "CAPACITY_TYPE_"
-	if strings.HasPrefix(s, prefix) {
-		trimmed := strings.TrimPrefix(s, prefix)
-		if trimmed == "UNSPECIFIED" {
-			return ""
-		}
-		return trimmed
-	}
-	return ""
-}

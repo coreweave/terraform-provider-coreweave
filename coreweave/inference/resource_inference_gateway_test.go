@@ -35,30 +35,6 @@ func TestInferenceGatewayResource_Schema(t *testing.T) {
 	}
 }
 
-func TestAPITypeRoundTrip(t *testing.T) {
-	t.Parallel()
-
-	cases := []struct {
-		input    string
-		proto    inferencev1.BodyBasedRouting_APIType
-		expected string
-	}{
-		{"OPENAI", inferencev1.BodyBasedRouting_API_TYPE_OPENAI, "OPENAI"},
-		{"unknown", inferencev1.BodyBasedRouting_API_TYPE_UNSPECIFIED, "UNSPECIFIED"},
-	}
-
-	for _, tc := range cases {
-		got := inference.APITypeFromString(tc.input)
-		if got != tc.proto {
-			t.Errorf("APITypeFromString(%q): got %v, want %v", tc.input, got, tc.proto)
-		}
-		str := inference.APITypeToString(tc.proto)
-		if str != tc.expected {
-			t.Errorf("APITypeToString(%v): got %q, want %q", tc.proto, str, tc.expected)
-		}
-	}
-}
-
 func TestSetFromGateway_CoreWeaveAuth(t *testing.T) {
 	t.Parallel()
 
@@ -263,8 +239,8 @@ func TestSetFromGateway_BodyBasedRouting(t *testing.T) {
 	if m.Routing.BodyBased == nil {
 		t.Fatal("Routing.BodyBased: expected non-nil")
 	}
-	if m.Routing.BodyBased.APIType.ValueString() != "OPENAI" {
-		t.Errorf("Routing.BodyBased.ApiType: got %q, want %q", m.Routing.BodyBased.APIType.ValueString(), "OPENAI")
+	if m.Routing.BodyBased.APIType.ValueString() != "API_TYPE_OPENAI" {
+		t.Errorf("Routing.BodyBased.ApiType: got %q, want %q", m.Routing.BodyBased.APIType.ValueString(), "API_TYPE_OPENAI")
 	}
 	if m.Routing.HeaderBased != nil {
 		t.Error("Routing.HeaderBased: expected nil")
@@ -365,7 +341,7 @@ func TestToCreateGatewayRequest_CoreWeaveAuth(t *testing.T) {
 		},
 		Routing: &inference.GatewayRoutingModel{
 			BodyBased: &inference.BodyBasedRoutingModel{
-				APIType: types.StringValue("OPENAI"),
+				APIType: types.StringValue("API_TYPE_OPENAI"),
 			},
 		},
 	}
@@ -405,7 +381,7 @@ func TestToCreateGatewayRequest_WandBAuth(t *testing.T) {
 		},
 		Routing: &inference.GatewayRoutingModel{
 			BodyBased: &inference.BodyBasedRoutingModel{
-				APIType: types.StringValue("OPENAI"),
+				APIType: types.StringValue("API_TYPE_OPENAI"),
 			},
 		},
 	}
@@ -449,7 +425,7 @@ func TestToCreateGatewayRequest_AllRoutingTypes(t *testing.T) {
 			},
 			Routing: &inference.GatewayRoutingModel{
 				BodyBased: &inference.BodyBasedRoutingModel{
-					APIType: types.StringValue("OPENAI"),
+					APIType: types.StringValue("API_TYPE_OPENAI"),
 				},
 			},
 		}
@@ -543,7 +519,7 @@ resource "coreweave_inference_gateway" "test" {
 
   routing = {
     body_based = {
-      api_type = "OPENAI"
+      api_type = "API_TYPE_OPENAI"
     }
   }
 }
@@ -587,7 +563,7 @@ func TestAccInferenceGateway(t *testing.T) {
 					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("organization_id"), knownvalue.NotNull()),
 					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("status"), knownvalue.NotNull()),
 					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("created_at"), knownvalue.NotNull()),
-					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("routing").AtMapKey("body_based").AtMapKey("api_type"), knownvalue.StringExact("OPENAI")),
+					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("routing").AtMapKey("body_based").AtMapKey("api_type"), knownvalue.StringExact("API_TYPE_OPENAI")),
 				},
 			},
 			{

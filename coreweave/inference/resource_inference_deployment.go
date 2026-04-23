@@ -5,15 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
-	"slices"
-	"strings"
 	"time"
 
 	inferencev1 "buf.build/gen/go/coreweave/inference/protocolbuffers/go/coreweave/inference/v1alpha1"
 	"connectrpc.com/connect"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
-	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/setvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
@@ -47,22 +44,6 @@ var (
 	}
 
 	errDeploymentFailed = errors.New("inference deployment entered a failed state")
-
-	// validCapacityClasses is derived from the proto enum map so it stays in sync with the proto definition.
-	validCapacityClasses = func() []string {
-		vals := make([]string, 0, len(inferencev1.DeploymentAutoscaling_CapacityClass_name)-1)
-		for k := range inferencev1.DeploymentAutoscaling_CapacityClass_name {
-			if k == 0 { // skip UNSPECIFIED
-				continue
-			}
-			s := capacityClassToString(inferencev1.DeploymentAutoscaling_CapacityClass(k))
-			if s != "" {
-				vals = append(vals, s)
-			}
-		}
-		slices.Sort(vals)
-		return vals
-	}()
 )
 
 func NewInferenceDeploymentResource() resource.Resource {
@@ -295,12 +276,7 @@ func (r *InferenceDeploymentResource) Schema(_ context.Context, _ resource.Schem
 					"capacity_classes": schema.ListAttribute{
 						ElementType:         types.StringType,
 						Optional:            true,
-						MarkdownDescription: fmt.Sprintf("Capacity classes to use. Allowed values: %s.", strings.Join(validCapacityClasses, ", ")),
-						Validators: []validator.List{
-							listvalidator.ValueStringsAre(
-								stringvalidator.OneOf(validCapacityClasses...),
-							),
-						},
+						MarkdownDescription: fmt.Sprintf("Capacity classes to use. Allowed values: %s.", coreweave.EnumMarkdownValues(inferencev1.DeploymentAutoscaling_CapacityClass_name, true)),
 					},
 					"concurrency": schema.Int64Attribute{
 						Optional:            true,
@@ -650,7 +626,12 @@ func buildDeploymentFields(ctx context.Context, m *InferenceDeploymentResourceMo
 		}
 		protoClasses := make([]inferencev1.DeploymentAutoscaling_CapacityClass, 0, len(ccs))
 		for _, cc := range ccs {
-			protoClasses = append(protoClasses, capacityClassFromString(cc))
+			val, ok := inferencev1.DeploymentAutoscaling_CapacityClass_value[cc]
+			if !ok {
+				diagnostics.AddError("Invalid capacity_classes entry", fmt.Sprintf("Invalid capacity_classes entry: %s. Must be one of: %s.", cc, coreweave.EnumMarkdownValues(inferencev1.DeploymentAutoscaling_CapacityClass_name, true)))
+				return deploymentFields{}, diagnostics
+			}
+			protoClasses = append(protoClasses, inferencev1.DeploymentAutoscaling_CapacityClass(val))
 		}
 		f.Autoscaling.CapacityClasses = protoClasses
 	}
@@ -813,7 +794,7 @@ func setFromDeployment(m *InferenceDeploymentResourceModel, d *inferencev1.Deplo
 		} else {
 			ccVals := make([]attr.Value, 0, len(as.GetCapacityClasses()))
 			for _, cc := range as.GetCapacityClasses() {
-				ccVals = append(ccVals, types.StringValue(capacityClassToString(cc)))
+				ccVals = append(ccVals, types.StringValue(cc.String()))
 			}
 			ccList, diags := types.ListValue(types.StringType, ccVals)
 			diagnostics.Append(diags...)
@@ -854,26 +835,3 @@ func setFromDeployment(m *InferenceDeploymentResourceModel, d *inferencev1.Deplo
 	return diagnostics
 }
 
-func capacityClassFromString(s string) inferencev1.DeploymentAutoscaling_CapacityClass {
-	switch s {
-	case "RESERVED":
-		return inferencev1.DeploymentAutoscaling_CAPACITY_CLASS_RESERVED
-	case "ON_DEMAND":
-		return inferencev1.DeploymentAutoscaling_CAPACITY_CLASS_ON_DEMAND
-	default:
-		return inferencev1.DeploymentAutoscaling_CAPACITY_CLASS_UNSPECIFIED
-	}
-}
-
-func capacityClassToString(cc inferencev1.DeploymentAutoscaling_CapacityClass) string {
-	switch cc {
-	case inferencev1.DeploymentAutoscaling_CAPACITY_CLASS_RESERVED:
-		return "RESERVED"
-	case inferencev1.DeploymentAutoscaling_CAPACITY_CLASS_ON_DEMAND:
-		return "ON_DEMAND"
-	case inferencev1.DeploymentAutoscaling_CAPACITY_CLASS_UNSPECIFIED:
-		return ""
-	default:
-		return ""
-	}
-}

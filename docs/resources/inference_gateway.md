@@ -23,7 +23,7 @@ resource "coreweave_inference_gateway" "example" {
 
   routing = {
     body_based = {
-      api_type = "OPENAI"
+      api_type = "API_TYPE_OPENAI"
     }
   }
 }
@@ -91,7 +91,7 @@ Optional:
 
 Required:
 
-- `api_type` (String) The well-known API type for routing. Must be one of: OPENAI.
+- `api_type` (String) The well-known API type for routing. Must be one of: `API_TYPE_OPENAI`.
 
 
 <a id="nestedatt--routing--header_based"></a>

@@ -43,7 +43,7 @@ resource "coreweave_inference_deployment" "example" {
     min              = 1
     max              = 4
     priority         = 100
-    capacity_classes = ["RESERVED", "ON_DEMAND"]
+    capacity_classes = ["CAPACITY_CLASS_RESERVED", "CAPACITY_CLASS_ON_DEMAND"]
     concurrency      = 16
   }
 
@@ -89,7 +89,7 @@ Required:
 
 Optional:
 
-- `capacity_classes` (List of String) Capacity classes to use. Allowed values: ON_DEMAND, RESERVED.
+- `capacity_classes` (List of String) Capacity classes to use. Allowed values: `CAPACITY_CLASS_RESERVED`, `CAPACITY_CLASS_ON_DEMAND`.
 - `concurrency` (Number) Concurrency per instance target (≥1). Controls latency vs throughput tradeoffs.
 - `priority` (Number) Priority for cross-deployment scaling (0–1000). Higher values win when there is contention.
 
