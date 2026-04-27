@@ -258,14 +258,32 @@ func TestToUpdateRequest_Fields(t *testing.T) {
 
 // --- Acceptance tests ---
 
-func inferenceDeploymentConfig(name string) string {
+func inferenceDeploymentConfig(name, preferredZone, preferredInstance string) string {
 	return fmt.Sprintf(`
 data "coreweave_inference_gateway_parameters" "gw_params" {}
-data "coreweave_inference_parameters" "params" {}
+
+# Read deployment parameters AFTER the gateway is created. The
+# GetDeploymentParameters response is scoped by the org's existing gateways and
+# returns an empty instance_types list when no gateway exists yet, which would
+# fail the precondition below at plan time. depends_on defers the read until
+# after the gateway resource exists, and Terraform re-evaluates the precondition
+# at apply time once available_instances is known.
+data "coreweave_inference_parameters" "params" {
+  depends_on = [coreweave_inference_gateway.test]
+}
+
+locals {
+  preferred_zone      = %q
+  available_zones     = data.coreweave_inference_gateway_parameters.gw_params.zones
+  zone                = local.preferred_zone != "" ? local.preferred_zone : local.available_zones[0]
+  preferred_instance  = %q
+  available_instances = data.coreweave_inference_parameters.params.instance_types
+  instance            = local.preferred_instance != "" ? local.preferred_instance : local.available_instances[0]
+}
 
 resource "coreweave_inference_gateway" "test" {
   name  = "%s-gw"
-  zones = [data.coreweave_inference_gateway_parameters.gw_params.zones[0]]
+  zones = [local.zone]
 
   auth = {
     core_weave = {}
@@ -274,6 +292,13 @@ resource "coreweave_inference_gateway" "test" {
   routing = {
     body_based = {
       api_type = "API_TYPE_OPENAI"
+    }
+  }
+
+  lifecycle {
+    precondition {
+      condition     = local.preferred_zone == "" || contains(local.available_zones, local.preferred_zone)
+      error_message = "TEST_ACC_INFERENCE_ZONE=\"${local.preferred_zone}\" is not present in gateway parameters; available: ${jsonencode(local.available_zones)}"
     }
   }
 }
@@ -287,7 +312,7 @@ resource "coreweave_inference_deployment" "test" {
   }
 
   resources = {
-    instance_type = data.coreweave_inference_parameters.params.instance_types[0]
+    instance_type = local.instance
     gpu_count     = 1
   }
 
@@ -303,18 +328,43 @@ resource "coreweave_inference_deployment" "test" {
   }
 
   traffic = {}
+
+  lifecycle {
+    precondition {
+      condition     = local.preferred_instance == "" || contains(local.available_instances, local.preferred_instance)
+      error_message = "INFR_INSTANCE_ID=\"${local.preferred_instance}\" is not present in inference parameters; available: ${jsonencode(local.available_instances)}"
+    }
+  }
 }
-`, name, name)
+`, preferredZone, preferredInstance, name, name)
 }
 
-func inferenceDeploymentUpdatedConfig(name string) string {
+func inferenceDeploymentUpdatedConfig(name, preferredZone, preferredInstance string) string {
 	return fmt.Sprintf(`
 data "coreweave_inference_gateway_parameters" "gw_params" {}
-data "coreweave_inference_parameters" "params" {}
+
+# Read deployment parameters AFTER the gateway is created. The
+# GetDeploymentParameters response is scoped by the org's existing gateways and
+# returns an empty instance_types list when no gateway exists yet, which would
+# fail the precondition below at plan time. depends_on defers the read until
+# after the gateway resource exists, and Terraform re-evaluates the precondition
+# at apply time once available_instances is known.
+data "coreweave_inference_parameters" "params" {
+  depends_on = [coreweave_inference_gateway.test]
+}
+
+locals {
+  preferred_zone      = %q
+  available_zones     = data.coreweave_inference_gateway_parameters.gw_params.zones
+  zone                = local.preferred_zone != "" ? local.preferred_zone : local.available_zones[0]
+  preferred_instance  = %q
+  available_instances = data.coreweave_inference_parameters.params.instance_types
+  instance            = local.preferred_instance != "" ? local.preferred_instance : local.available_instances[0]
+}
 
 resource "coreweave_inference_gateway" "test" {
   name  = "%s-gw"
-  zones = [data.coreweave_inference_gateway_parameters.gw_params.zones[0]]
+  zones = [local.zone]
 
   auth = {
     core_weave = {}
@@ -323,6 +373,13 @@ resource "coreweave_inference_gateway" "test" {
   routing = {
     body_based = {
       api_type = "API_TYPE_OPENAI"
+    }
+  }
+
+  lifecycle {
+    precondition {
+      condition     = local.preferred_zone == "" || contains(local.available_zones, local.preferred_zone)
+      error_message = "TEST_ACC_INFERENCE_ZONE=\"${local.preferred_zone}\" is not present in gateway parameters; available: ${jsonencode(local.available_zones)}"
     }
   }
 }
@@ -337,7 +394,7 @@ resource "coreweave_inference_deployment" "test" {
   }
 
   resources = {
-    instance_type = data.coreweave_inference_parameters.params.instance_types[0]
+    instance_type = local.instance
     gpu_count     = 1
   }
 
@@ -355,23 +412,36 @@ resource "coreweave_inference_deployment" "test" {
   traffic = {
     weight = 50
   }
+
+  lifecycle {
+    precondition {
+      condition     = local.preferred_instance == "" || contains(local.available_instances, local.preferred_instance)
+      error_message = "INFR_INSTANCE_ID=\"${local.preferred_instance}\" is not present in inference parameters; available: ${jsonencode(local.available_instances)}"
+    }
+  }
 }
-`, name, name)
+`, preferredZone, preferredInstance, name, name)
 }
 
 func TestAccInferenceDeployment(t *testing.T) {
 	name := fmt.Sprintf("%sdeploy-%x", AcceptanceTestPrefix, rand.IntN(100000))
 	fullResourceName := "coreweave_inference_deployment.test"
+	preferredZone := preferredInferenceZone()
+	preferredInstance := preferredInferenceInstanceType()
 
-	resource.ParallelTest(t, resource.TestCase{
+	// Inference acceptance tests run sequentially (resource.Test, not
+	// resource.ParallelTest) because the staging environment has limited
+	// per-zone capacity; parallelism causes allocation failures.
+	//nolint:forbidigo // see comment above
+	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testutil.SetEnvDefaults() },
 		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
-				Config: inferenceDeploymentConfig(name),
+				Config: inferenceDeploymentConfig(name, preferredZone, preferredInstance),
 				ConfigStateChecks: []statecheck.StateCheck{
 					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("name"), knownvalue.StringExact(name)),
-					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("status"), knownvalue.StringExact("STATUS_RUNNING")),
+					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("status"), knownvalue.StringExact("STATUS_READY")),
 					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("disabled"), knownvalue.Bool(false)),
 					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("id"), knownvalue.NotNull()),
 					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("organization_id"), knownvalue.NotNull()),
@@ -381,7 +451,7 @@ func TestAccInferenceDeployment(t *testing.T) {
 				},
 			},
 			{
-				Config: inferenceDeploymentUpdatedConfig(name),
+				Config: inferenceDeploymentUpdatedConfig(name, preferredZone, preferredInstance),
 				ConfigStateChecks: []statecheck.StateCheck{
 					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("autoscaling").AtMapKey("min"), knownvalue.Int64Exact(2)),
 					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("autoscaling").AtMapKey("max"), knownvalue.Int64Exact(4)),
