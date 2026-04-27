@@ -301,24 +301,23 @@ func (r *InferenceGatewayResource) Create(ctx context.Context, req resource.Crea
 
 	gatewayID := createResp.Msg.Gateway.GetSpec().GetId()
 
-	// TODO: follow up with the managed inference team to validate that STATUS_UNSPECIFIED
-	// is the correct "ready" target state for gateways, since the proto has no STATUS_READY enum value.
 	conf := retry.StateChangeConf{
 		Pending: []string{
-			inferencev1.GatewayStatus_STATUS_CREATING.String(),
+			inferencev1.Status_STATUS_CREATING.String(),
+			inferencev1.Status_STATUS_UNSPECIFIED.String(),
 		},
-		Target: []string{inferencev1.GatewayStatus_STATUS_UNSPECIFIED.String()},
+		Target: []string{inferencev1.Status_STATUS_READY.String()},
 		Refresh: func() (interface{}, string, error) {
 			getResp, err := r.client.GetGateway(ctx, connect.NewRequest(&inferencev1.GetGatewayRequest{
 				Id: gatewayID,
 			}))
 			if err != nil {
 				tflog.Error(ctx, "failed to poll gateway", map[string]interface{}{"error": err})
-				return nil, inferencev1.GatewayStatus_STATUS_UNSPECIFIED.String(), err
+				return nil, inferencev1.Status_STATUS_UNSPECIFIED.String(), err
 			}
 			gw := getResp.Msg.Gateway
 			status := gw.GetStatus().GetStatus()
-			if status == inferencev1.GatewayStatus_STATUS_ERROR || status == inferencev1.GatewayStatus_STATUS_FAILED {
+			if status == inferencev1.Status_STATUS_ERROR || status == inferencev1.Status_STATUS_FAILED {
 				return gw, status.String(), errGatewayFailed
 			}
 			return gw, status.String(), nil
@@ -339,8 +338,8 @@ func (r *InferenceGatewayResource) Create(ctx context.Context, req resource.Crea
 		return
 	}
 
-	if gw.GetStatus().GetStatus() == inferencev1.GatewayStatus_STATUS_ERROR ||
-		gw.GetStatus().GetStatus() == inferencev1.GatewayStatus_STATUS_FAILED {
+	if gw.GetStatus().GetStatus() == inferencev1.Status_STATUS_ERROR ||
+		gw.GetStatus().GetStatus() == inferencev1.Status_STATUS_FAILED {
 		resp.Diagnostics.AddError("Gateway creation failed",
 			fmt.Sprintf("Gateway entered status %s. You must destroy and recreate this resource.", gw.GetStatus().GetStatus().String()))
 	}
@@ -393,25 +392,24 @@ func (r *InferenceGatewayResource) Update(ctx context.Context, req resource.Upda
 
 	gatewayID := updateResp.Msg.Gateway.GetSpec().GetId()
 
-	// TODO: follow up with the managed inference team to validate that STATUS_UNSPECIFIED
-	// is the correct "ready" target state for gateways, since the proto has no STATUS_READY enum value.
 	conf := retry.StateChangeConf{
 		Pending: []string{
-			inferencev1.GatewayStatus_STATUS_UPDATING.String(),
-			inferencev1.GatewayStatus_STATUS_CREATING.String(),
+			inferencev1.Status_STATUS_UPDATING.String(),
+			inferencev1.Status_STATUS_CREATING.String(),
+			inferencev1.Status_STATUS_UNSPECIFIED.String(),
 		},
-		Target: []string{inferencev1.GatewayStatus_STATUS_UNSPECIFIED.String()},
+		Target: []string{inferencev1.Status_STATUS_READY.String()},
 		Refresh: func() (interface{}, string, error) {
 			getResp, err := r.client.GetGateway(ctx, connect.NewRequest(&inferencev1.GetGatewayRequest{
 				Id: gatewayID,
 			}))
 			if err != nil {
 				tflog.Error(ctx, "failed to poll gateway", map[string]interface{}{"error": err.Error()})
-				return nil, inferencev1.GatewayStatus_STATUS_UNSPECIFIED.String(), err
+				return nil, inferencev1.Status_STATUS_UNSPECIFIED.String(), err
 			}
 			gw := getResp.Msg.Gateway
 			status := gw.GetStatus().GetStatus()
-			if status == inferencev1.GatewayStatus_STATUS_ERROR || status == inferencev1.GatewayStatus_STATUS_FAILED {
+			if status == inferencev1.Status_STATUS_ERROR || status == inferencev1.Status_STATUS_FAILED {
 				return gw, status.String(), errGatewayFailed
 			}
 			return gw, status.String(), nil
@@ -432,8 +430,8 @@ func (r *InferenceGatewayResource) Update(ctx context.Context, req resource.Upda
 		return
 	}
 
-	if gw.GetStatus().GetStatus() == inferencev1.GatewayStatus_STATUS_ERROR ||
-		gw.GetStatus().GetStatus() == inferencev1.GatewayStatus_STATUS_FAILED {
+	if gw.GetStatus().GetStatus() == inferencev1.Status_STATUS_ERROR ||
+		gw.GetStatus().GetStatus() == inferencev1.Status_STATUS_FAILED {
 		resp.Diagnostics.AddError("Gateway update failed",
 			fmt.Sprintf("Gateway entered status %s. Check the `conditions` attribute for details.", gw.GetStatus().GetStatus().String()))
 	}
@@ -470,8 +468,8 @@ func (r *InferenceGatewayResource) Delete(ctx context.Context, req resource.Dele
 
 	conf := retry.StateChangeConf{
 		Pending: []string{
-			inferencev1.GatewayStatus_STATUS_DELETING.String(),
-			inferencev1.GatewayStatus_STATUS_UNSPECIFIED.String(),
+			inferencev1.Status_STATUS_DELETING.String(),
+			inferencev1.Status_STATUS_UNSPECIFIED.String(),
 		},
 		Target: []string{deletedState},
 		Refresh: func() (interface{}, string, error) {
@@ -483,7 +481,7 @@ func (r *InferenceGatewayResource) Delete(ctx context.Context, req resource.Dele
 					return struct{}{}, deletedState, nil
 				}
 				tflog.Error(ctx, "failed to poll gateway deletion", map[string]interface{}{"error": err.Error()})
-				return nil, inferencev1.GatewayStatus_STATUS_UNSPECIFIED.String(), err
+				return nil, inferencev1.Status_STATUS_UNSPECIFIED.String(), err
 			}
 			gw := getResp.Msg.Gateway
 			return gw, gw.GetStatus().GetStatus().String(), nil

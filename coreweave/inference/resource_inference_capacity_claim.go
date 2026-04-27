@@ -145,7 +145,7 @@ func (r *InferenceCapacityClaimResource) Schema(_ context.Context, _ resource.Sc
 					},
 					"capacity_type": schema.StringAttribute{
 						Required:            true,
-						MarkdownDescription: fmt.Sprintf("The capacity type for the capacity claim. Must be one of: %s.", coreweave.EnumMarkdownValues(inferencev1.CapacityClaimResources_CapacityType_name, true)),
+						MarkdownDescription: fmt.Sprintf("The capacity type for the capacity claim. Must be one of: %s.", coreweave.EnumMarkdownValues(inferencev1.CapacityType_name, true)),
 					},
 					"zones": schema.SetAttribute{
 						ElementType:         types.StringType,
@@ -209,15 +209,13 @@ func (r *InferenceCapacityClaimResource) Create(ctx context.Context, req resourc
 
 	claimID := createResp.Msg.GetCapacityClaim().GetSpec().GetId()
 
-	// TODO(inference-team): Validate polling target state. The CapacityClaim status
-	// enum lacks an explicit "ready" state (no STATUS_RUNNING). We treat STATUS_UNSPECIFIED
-	// as the settled state after creation/update. Confirm this matches API behavior.
 	conf := retry.StateChangeConf{
 		Pending: []string{
-			inferencev1.CapacityClaimStatus_STATUS_CREATING.String(),
+			inferencev1.Status_STATUS_CREATING.String(),
+			inferencev1.Status_STATUS_UNSPECIFIED.String(),
 		},
 		Target: []string{
-			inferencev1.CapacityClaimStatus_STATUS_UNSPECIFIED.String(),
+			inferencev1.Status_STATUS_READY.String(),
 		},
 		Refresh: func() (interface{}, string, error) {
 			getResp, err := r.client.GetCapacityClaim(ctx, connect.NewRequest(&inferencev1.GetCapacityClaimRequest{
@@ -225,11 +223,11 @@ func (r *InferenceCapacityClaimResource) Create(ctx context.Context, req resourc
 			}))
 			if err != nil {
 				tflog.Error(ctx, "failed to poll capacity claim", map[string]interface{}{"error": err})
-				return nil, inferencev1.CapacityClaimStatus_STATUS_UNSPECIFIED.String(), err
+				return nil, inferencev1.Status_STATUS_UNSPECIFIED.String(), err
 			}
 			cc := getResp.Msg.GetCapacityClaim()
 			status := cc.GetStatus().GetStatus()
-			if status == inferencev1.CapacityClaimStatus_STATUS_ERROR || status == inferencev1.CapacityClaimStatus_STATUS_FAILED {
+			if status == inferencev1.Status_STATUS_ERROR || status == inferencev1.Status_STATUS_FAILED {
 				return cc, status.String(), errCapacityClaimFailed
 			}
 			return cc, status.String(), nil
@@ -250,8 +248,8 @@ func (r *InferenceCapacityClaimResource) Create(ctx context.Context, req resourc
 		return
 	}
 
-	if cc.GetStatus().GetStatus() == inferencev1.CapacityClaimStatus_STATUS_ERROR ||
-		cc.GetStatus().GetStatus() == inferencev1.CapacityClaimStatus_STATUS_FAILED {
+	if cc.GetStatus().GetStatus() == inferencev1.Status_STATUS_ERROR ||
+		cc.GetStatus().GetStatus() == inferencev1.Status_STATUS_FAILED {
 		resp.Diagnostics.AddError("Capacity claim creation failed",
 			fmt.Sprintf("Capacity claim entered status %s. You must destroy and recreate this resource.", cc.GetStatus().GetStatus().String()))
 	}
@@ -304,16 +302,14 @@ func (r *InferenceCapacityClaimResource) Update(ctx context.Context, req resourc
 
 	claimID := updateResp.Msg.GetCapacityClaim().GetSpec().GetId()
 
-	// TODO(inference-team): Validate polling target state. The CapacityClaim status
-	// enum lacks an explicit "ready" state (no STATUS_RUNNING). We treat STATUS_UNSPECIFIED
-	// as the settled state after creation/update. Confirm this matches API behavior.
 	conf := retry.StateChangeConf{
 		Pending: []string{
-			inferencev1.CapacityClaimStatus_STATUS_UPDATING.String(),
-			inferencev1.CapacityClaimStatus_STATUS_CREATING.String(),
+			inferencev1.Status_STATUS_UPDATING.String(),
+			inferencev1.Status_STATUS_CREATING.String(),
+			inferencev1.Status_STATUS_UNSPECIFIED.String(),
 		},
 		Target: []string{
-			inferencev1.CapacityClaimStatus_STATUS_UNSPECIFIED.String(),
+			inferencev1.Status_STATUS_READY.String(),
 		},
 		Refresh: func() (interface{}, string, error) {
 			getResp, err := r.client.GetCapacityClaim(ctx, connect.NewRequest(&inferencev1.GetCapacityClaimRequest{
@@ -321,11 +317,11 @@ func (r *InferenceCapacityClaimResource) Update(ctx context.Context, req resourc
 			}))
 			if err != nil {
 				tflog.Error(ctx, "failed to poll capacity claim", map[string]interface{}{"error": err.Error()})
-				return nil, inferencev1.CapacityClaimStatus_STATUS_UNSPECIFIED.String(), err
+				return nil, inferencev1.Status_STATUS_UNSPECIFIED.String(), err
 			}
 			cc := getResp.Msg.GetCapacityClaim()
 			status := cc.GetStatus().GetStatus()
-			if status == inferencev1.CapacityClaimStatus_STATUS_ERROR || status == inferencev1.CapacityClaimStatus_STATUS_FAILED {
+			if status == inferencev1.Status_STATUS_ERROR || status == inferencev1.Status_STATUS_FAILED {
 				return cc, status.String(), errCapacityClaimFailed
 			}
 			return cc, status.String(), nil
@@ -346,8 +342,8 @@ func (r *InferenceCapacityClaimResource) Update(ctx context.Context, req resourc
 		return
 	}
 
-	if cc.GetStatus().GetStatus() == inferencev1.CapacityClaimStatus_STATUS_ERROR ||
-		cc.GetStatus().GetStatus() == inferencev1.CapacityClaimStatus_STATUS_FAILED {
+	if cc.GetStatus().GetStatus() == inferencev1.Status_STATUS_ERROR ||
+		cc.GetStatus().GetStatus() == inferencev1.Status_STATUS_FAILED {
 		resp.Diagnostics.AddError("Capacity claim update failed",
 			fmt.Sprintf("Capacity claim entered status %s. Check the `conditions` attribute for details.", cc.GetStatus().GetStatus().String()))
 	}
@@ -382,8 +378,8 @@ func (r *InferenceCapacityClaimResource) Delete(ctx context.Context, req resourc
 
 	conf := retry.StateChangeConf{
 		Pending: []string{
-			inferencev1.CapacityClaimStatus_STATUS_DELETING.String(),
-			inferencev1.CapacityClaimStatus_STATUS_UNSPECIFIED.String(),
+			inferencev1.Status_STATUS_DELETING.String(),
+			inferencev1.Status_STATUS_UNSPECIFIED.String(),
 		},
 		Target: []string{deletedState},
 		Refresh: func() (interface{}, string, error) {
@@ -395,7 +391,7 @@ func (r *InferenceCapacityClaimResource) Delete(ctx context.Context, req resourc
 					return struct{}{}, deletedState, nil
 				}
 				tflog.Error(ctx, "failed to poll capacity claim deletion", map[string]interface{}{"error": err.Error()})
-				return nil, inferencev1.CapacityClaimStatus_STATUS_UNSPECIFIED.String(), err
+				return nil, inferencev1.Status_STATUS_UNSPECIFIED.String(), err
 			}
 			cc := getResp.Msg.GetCapacityClaim()
 			return cc, cc.GetStatus().GetStatus().String(), nil
@@ -436,9 +432,9 @@ func buildCapacityClaimFields(ctx context.Context, m *InferenceCapacityClaimReso
 	}
 
 	capacityTypeStr := m.Resources.CapacityType.ValueString()
-	capacityTypeVal, ok := inferencev1.CapacityClaimResources_CapacityType_value[capacityTypeStr]
+	capacityTypeVal, ok := inferencev1.CapacityType_value[capacityTypeStr]
 	if !ok {
-		diagnostics.AddError("Invalid capacity_type", fmt.Sprintf("Invalid capacity_type: %s. Must be one of: %s.", capacityTypeStr, coreweave.EnumMarkdownValues(inferencev1.CapacityClaimResources_CapacityType_name, true)))
+		diagnostics.AddError("Invalid capacity_type", fmt.Sprintf("Invalid capacity_type: %s. Must be one of: %s.", capacityTypeStr, coreweave.EnumMarkdownValues(inferencev1.CapacityType_name, true)))
 		return capacityClaimFields{}, diagnostics
 	}
 
@@ -447,7 +443,7 @@ func buildCapacityClaimFields(ctx context.Context, m *InferenceCapacityClaimReso
 		Resources: &inferencev1.CapacityClaimResources{
 			InstanceId:    m.Resources.InstanceID.ValueString(),
 			InstanceCount: uint32(m.Resources.InstanceCount.ValueInt64()), //nolint:gosec
-			CapacityType:  inferencev1.CapacityClaimResources_CapacityType(capacityTypeVal),
+			CapacityType:  inferencev1.CapacityType(capacityTypeVal),
 			Zones:         zones,
 		},
 	}

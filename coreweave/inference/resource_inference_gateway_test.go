@@ -54,7 +54,7 @@ func TestSetFromGateway_CoreWeaveAuth(t *testing.T) {
 			},
 		},
 		Status: &inferencev1.GatewayStatus{
-			Status: inferencev1.GatewayStatus_STATUS_UNSPECIFIED,
+			Status: inferencev1.Status_STATUS_UNSPECIFIED,
 		},
 	}
 
@@ -99,7 +99,7 @@ func TestSetFromGateway_WeightsAndBiasesAuth(t *testing.T) {
 			},
 		},
 		Status: &inferencev1.GatewayStatus{
-			Status: inferencev1.GatewayStatus_STATUS_UNSPECIFIED,
+			Status: inferencev1.Status_STATUS_UNSPECIFIED,
 		},
 	}
 
@@ -166,7 +166,7 @@ func TestSetFromGateway_NullPreservation(t *testing.T) {
 			// No endpoint configuration — should remain nil.
 		},
 		Status: &inferencev1.GatewayStatus{
-			Status: inferencev1.GatewayStatus_STATUS_UNSPECIFIED,
+			Status: inferencev1.Status_STATUS_UNSPECIFIED,
 		},
 	}
 
@@ -226,7 +226,7 @@ func TestSetFromGateway_BodyBasedRouting(t *testing.T) {
 			},
 		},
 		Status: &inferencev1.GatewayStatus{
-			Status: inferencev1.GatewayStatus_STATUS_UNSPECIFIED,
+			Status: inferencev1.Status_STATUS_UNSPECIFIED,
 		},
 	}
 
@@ -268,7 +268,7 @@ func TestSetFromGateway_HeaderBasedRouting(t *testing.T) {
 			},
 		},
 		Status: &inferencev1.GatewayStatus{
-			Status: inferencev1.GatewayStatus_STATUS_UNSPECIFIED,
+			Status: inferencev1.Status_STATUS_UNSPECIFIED,
 		},
 	}
 
@@ -308,7 +308,7 @@ func TestSetFromGateway_PathBasedRouting(t *testing.T) {
 			},
 		},
 		Status: &inferencev1.GatewayStatus{
-			Status: inferencev1.GatewayStatus_STATUS_UNSPECIFIED,
+			Status: inferencev1.Status_STATUS_UNSPECIFIED,
 		},
 	}
 

@@ -354,21 +354,21 @@ func (r *InferenceDeploymentResource) Create(ctx context.Context, req resource.C
 
 	conf := retry.StateChangeConf{
 		Pending: []string{
-			inferencev1.DeploymentStatus_STATUS_CREATING.String(),
-			inferencev1.DeploymentStatus_STATUS_UNSPECIFIED.String(),
+			inferencev1.Status_STATUS_CREATING.String(),
+			inferencev1.Status_STATUS_UNSPECIFIED.String(),
 		},
-		Target: []string{inferencev1.DeploymentStatus_STATUS_RUNNING.String()},
+		Target: []string{inferencev1.Status_STATUS_READY.String()},
 		Refresh: func() (interface{}, string, error) {
 			getResp, err := r.client.GetDeployment(ctx, connect.NewRequest(&inferencev1.GetDeploymentRequest{
 				Id: deploymentID,
 			}))
 			if err != nil {
 				tflog.Error(ctx, "failed to poll deployment", map[string]interface{}{"error": err})
-				return nil, inferencev1.DeploymentStatus_STATUS_UNSPECIFIED.String(), err
+				return nil, inferencev1.Status_STATUS_UNSPECIFIED.String(), err
 			}
 			d := getResp.Msg.Deployment
 			status := d.GetStatus().GetStatus()
-			if status == inferencev1.DeploymentStatus_STATUS_ERROR || status == inferencev1.DeploymentStatus_STATUS_FAILED {
+			if status == inferencev1.Status_STATUS_ERROR || status == inferencev1.Status_STATUS_FAILED {
 				return d, status.String(), errDeploymentFailed
 			}
 			return d, status.String(), nil
@@ -389,8 +389,8 @@ func (r *InferenceDeploymentResource) Create(ctx context.Context, req resource.C
 		return
 	}
 
-	if d.GetStatus().GetStatus() == inferencev1.DeploymentStatus_STATUS_ERROR ||
-		d.GetStatus().GetStatus() == inferencev1.DeploymentStatus_STATUS_FAILED {
+	if d.GetStatus().GetStatus() == inferencev1.Status_STATUS_ERROR ||
+		d.GetStatus().GetStatus() == inferencev1.Status_STATUS_FAILED {
 		resp.Diagnostics.AddError("Deployment creation failed",
 			fmt.Sprintf("Deployment entered status %s. You must destroy and recreate this resource.", d.GetStatus().GetStatus().String()))
 	}
@@ -445,22 +445,22 @@ func (r *InferenceDeploymentResource) Update(ctx context.Context, req resource.U
 
 	conf := retry.StateChangeConf{
 		Pending: []string{
-			inferencev1.DeploymentStatus_STATUS_UPDATING.String(),
-			inferencev1.DeploymentStatus_STATUS_CREATING.String(),
-			inferencev1.DeploymentStatus_STATUS_UNSPECIFIED.String(),
+			inferencev1.Status_STATUS_UPDATING.String(),
+			inferencev1.Status_STATUS_CREATING.String(),
+			inferencev1.Status_STATUS_UNSPECIFIED.String(),
 		},
-		Target: []string{inferencev1.DeploymentStatus_STATUS_RUNNING.String()},
+		Target: []string{inferencev1.Status_STATUS_READY.String()},
 		Refresh: func() (interface{}, string, error) {
 			getResp, err := r.client.GetDeployment(ctx, connect.NewRequest(&inferencev1.GetDeploymentRequest{
 				Id: deploymentID,
 			}))
 			if err != nil {
 				tflog.Error(ctx, "failed to poll deployment", map[string]interface{}{"error": err.Error()})
-				return nil, inferencev1.DeploymentStatus_STATUS_UNSPECIFIED.String(), err
+				return nil, inferencev1.Status_STATUS_UNSPECIFIED.String(), err
 			}
 			d := getResp.Msg.Deployment
 			status := d.GetStatus().GetStatus()
-			if status == inferencev1.DeploymentStatus_STATUS_ERROR || status == inferencev1.DeploymentStatus_STATUS_FAILED {
+			if status == inferencev1.Status_STATUS_ERROR || status == inferencev1.Status_STATUS_FAILED {
 				return d, status.String(), errDeploymentFailed
 			}
 			return d, status.String(), nil
@@ -481,8 +481,8 @@ func (r *InferenceDeploymentResource) Update(ctx context.Context, req resource.U
 		return
 	}
 
-	if d.GetStatus().GetStatus() == inferencev1.DeploymentStatus_STATUS_ERROR ||
-		d.GetStatus().GetStatus() == inferencev1.DeploymentStatus_STATUS_FAILED {
+	if d.GetStatus().GetStatus() == inferencev1.Status_STATUS_ERROR ||
+		d.GetStatus().GetStatus() == inferencev1.Status_STATUS_FAILED {
 		resp.Diagnostics.AddError("Deployment update failed",
 			fmt.Sprintf("Deployment entered status %s. Check the `conditions` attribute for details.", d.GetStatus().GetStatus().String()))
 	}
@@ -519,8 +519,8 @@ func (r *InferenceDeploymentResource) Delete(ctx context.Context, req resource.D
 
 	conf := retry.StateChangeConf{
 		Pending: []string{
-			inferencev1.DeploymentStatus_STATUS_DELETING.String(),
-			inferencev1.DeploymentStatus_STATUS_UNSPECIFIED.String(),
+			inferencev1.Status_STATUS_DELETING.String(),
+			inferencev1.Status_STATUS_UNSPECIFIED.String(),
 		},
 		Target: []string{deletedState},
 		Refresh: func() (interface{}, string, error) {
@@ -532,7 +532,7 @@ func (r *InferenceDeploymentResource) Delete(ctx context.Context, req resource.D
 					return struct{}{}, deletedState, nil
 				}
 				tflog.Error(ctx, "failed to poll deployment deletion", map[string]interface{}{"error": err.Error()})
-				return nil, inferencev1.DeploymentStatus_STATUS_UNSPECIFIED.String(), err
+				return nil, inferencev1.Status_STATUS_UNSPECIFIED.String(), err
 			}
 			d := getResp.Msg.Deployment
 			return d, d.GetStatus().GetStatus().String(), nil

@@ -63,7 +63,7 @@ func TestSetFromDeployment_NullPreservation(t *testing.T) {
 			Traffic: &inferencev1.DeploymentTraffic{},
 		},
 		Status: &inferencev1.DeploymentStatus{
-			Status: inferencev1.DeploymentStatus_STATUS_RUNNING,
+			Status: inferencev1.Status_STATUS_READY,
 		},
 	}
 
