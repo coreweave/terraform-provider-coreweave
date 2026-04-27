@@ -52,7 +52,7 @@ func TestSetFromCapacityClaim_Fields(t *testing.T) {
 			Resources: (inferencev1.CapacityClaimResources_builder{
 				InstanceId:    testInstanceID,
 				InstanceCount: 3,
-				CapacityType:  inferencev1.CapacityType_CAPACITY_TYPE_CUSTOMER,
+				CapacityType:  inferencev1.CapacityType_CAPACITY_TYPE_SERVERLESS,
 				Zones:         []string{"US-WEST-04A", "US-EAST-01A"},
 			}).Build(),
 		}).Build(),
@@ -112,8 +112,8 @@ func TestSetFromCapacityClaim_Fields(t *testing.T) {
 	if m.Resources.InstanceCount.ValueInt64() != 3 {
 		t.Errorf("Resources.InstanceCount: got %d, want 3", m.Resources.InstanceCount.ValueInt64())
 	}
-	if m.Resources.CapacityType.ValueString() != "CAPACITY_TYPE_CUSTOMER" {
-		t.Errorf("Resources.CapacityType: got %q, want %q", m.Resources.CapacityType.ValueString(), "CAPACITY_TYPE_CUSTOMER")
+	if m.Resources.CapacityType.ValueString() != "CAPACITY_TYPE_SERVERLESS" {
+		t.Errorf("Resources.CapacityType: got %q, want %q", m.Resources.CapacityType.ValueString(), "CAPACITY_TYPE_SERVERLESS")
 	}
 
 	var zones []string
@@ -149,7 +149,7 @@ func TestToCreateCapacityClaimRequest_Fields(t *testing.T) {
 		Resources: &inference.CapacityClaimResourcesModel{
 			InstanceID:    types.StringValue(testInstanceID),
 			InstanceCount: types.Int64Value(5),
-			CapacityType:  types.StringValue("CAPACITY_TYPE_CUSTOMER"),
+			CapacityType:  types.StringValue("CAPACITY_TYPE_SERVERLESS"),
 			Zones:         zones,
 		},
 	}
@@ -168,8 +168,8 @@ func TestToCreateCapacityClaimRequest_Fields(t *testing.T) {
 	if req.GetResources().GetInstanceCount() != 5 {
 		t.Errorf("InstanceCount: got %d, want 5", req.GetResources().GetInstanceCount())
 	}
-	if req.GetResources().GetCapacityType() != inferencev1.CapacityType_CAPACITY_TYPE_CUSTOMER {
-		t.Errorf("CapacityType: got %v, want CAPACITY_TYPE_CUSTOMER", req.GetResources().GetCapacityType())
+	if req.GetResources().GetCapacityType() != inferencev1.CapacityType_CAPACITY_TYPE_SERVERLESS {
+		t.Errorf("CapacityType: got %v, want CAPACITY_TYPE_SERVERLESS", req.GetResources().GetCapacityType())
 	}
 	if len(req.GetResources().GetZones()) != 2 {
 		t.Fatalf("Zones: expected 2, got %d", len(req.GetResources().GetZones()))
@@ -222,14 +222,18 @@ func TestToUpdateCapacityClaimRequest_Fields(t *testing.T) {
 
 // --- Acceptance tests ---
 
-func capacityClaimConfig(name string, instanceCount int) string {
+func capacityClaimConfig(name string, instanceCount int, preferredZone, preferredInstance string) string {
 	return fmt.Sprintf(`
 data "coreweave_inference_capacity_claim_parameters" "params" {}
 
 locals {
-  zones_map = data.coreweave_inference_capacity_claim_parameters.params.zone_instance_types
-  zone      = keys(local.zones_map)[0]
-  instance  = local.zones_map[local.zone].instance_ids[0]
+  zones_map           = data.coreweave_inference_capacity_claim_parameters.params.zone_instance_types
+  preferred_zone      = %q
+  available_zones     = sort(keys(local.zones_map))
+  zone                = local.preferred_zone != "" ? local.preferred_zone : local.available_zones[0]
+  preferred_instance  = %q
+  available_instances = local.zones_map[local.zone].instance_ids
+  instance            = local.preferred_instance != "" ? local.preferred_instance : local.available_instances[0]
 }
 
 resource "coreweave_inference_capacity_claim" "test" {
@@ -238,23 +242,40 @@ resource "coreweave_inference_capacity_claim" "test" {
   resources = {
     instance_id    = local.instance
     instance_count = %d
-    capacity_type  = "CAPACITY_TYPE_CUSTOMER"
+    capacity_type  = "CAPACITY_TYPE_SERVERLESS"
     zones          = [local.zone]
   }
+
+  lifecycle {
+    precondition {
+      condition     = local.preferred_zone == "" || contains(local.available_zones, local.preferred_zone)
+      error_message = "TEST_ACC_INFERENCE_ZONE=\"${local.preferred_zone}\" is not present in capacity claim parameters; available: ${jsonencode(local.available_zones)}"
+    }
+    precondition {
+      condition     = local.preferred_instance == "" || contains(local.available_instances, local.preferred_instance)
+      error_message = "INFR_INSTANCE_ID=\"${local.preferred_instance}\" is not present in capacity claim parameters for zone ${local.zone}; available: ${jsonencode(local.available_instances)}"
+    }
+  }
 }
-`, name, instanceCount)
+`, preferredZone, preferredInstance, name, instanceCount)
 }
 
 func TestAccInferenceCapacityClaim(t *testing.T) {
 	name := fmt.Sprintf("%scc-%x", AcceptanceTestPrefix, rand.IntN(100000))
 	fullResourceName := "coreweave_inference_capacity_claim.test"
+	preferredZone := preferredInferenceZone()
+	preferredInstance := preferredInferenceInstanceType()
 
-	resource.ParallelTest(t, resource.TestCase{
+	// Inference acceptance tests run sequentially (resource.Test, not
+	// resource.ParallelTest) because the staging environment has limited
+	// per-zone capacity; parallelism causes allocation failures.
+	//nolint:forbidigo // see comment above
+	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testutil.SetEnvDefaults() },
 		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
-				Config: capacityClaimConfig(name, 1),
+				Config: capacityClaimConfig(name, 1, preferredZone, preferredInstance),
 				ConfigStateChecks: []statecheck.StateCheck{
 					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("name"), knownvalue.StringExact(name)),
 					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("id"), knownvalue.NotNull()),
@@ -265,11 +286,11 @@ func TestAccInferenceCapacityClaim(t *testing.T) {
 					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("pending_instances"), knownvalue.NotNull()),
 					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("resources").AtMapKey("instance_id"), knownvalue.NotNull()),
 					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("resources").AtMapKey("instance_count"), knownvalue.Int64Exact(1)),
-					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("resources").AtMapKey("capacity_type"), knownvalue.StringExact("CAPACITY_TYPE_CUSTOMER")),
+					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("resources").AtMapKey("capacity_type"), knownvalue.StringExact("CAPACITY_TYPE_SERVERLESS")),
 				},
 			},
 			{
-				Config: capacityClaimConfig(name, 2),
+				Config: capacityClaimConfig(name, 2, preferredZone, preferredInstance),
 				ConfigStateChecks: []statecheck.StateCheck{
 					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("resources").AtMapKey("instance_count"), knownvalue.Int64Exact(2)),
 				},

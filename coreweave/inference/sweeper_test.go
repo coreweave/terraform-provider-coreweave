@@ -3,6 +3,7 @@ package inference_test
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -19,6 +20,23 @@ const AcceptanceTestPrefix = "test-acc-inf-"
 
 func TestMain(m *testing.M) {
 	resource.TestMain(m)
+}
+
+// preferredInferenceZone returns the zone configured via the
+// INFR_ZONE env var, or the empty string when unset. When set,
+// tests prefer this zone and fail via lifecycle.precondition if the
+// zone is not present in the corresponding GetXxxParameters response.
+func preferredInferenceZone() string {
+	return os.Getenv("INFR_ZONE")
+}
+
+// preferredInferenceInstanceType returns the instance type configured via the
+// INFR_INSTANCE_ID env var, or the empty string when unset.
+// When set, tests prefer this instance type and fail via
+// lifecycle.precondition if it is not present in the corresponding
+// GetXxxParameters response.
+func preferredInferenceInstanceType() string {
+	return os.Getenv("INFR_INSTANCE_ID")
 }
 
 func init() {

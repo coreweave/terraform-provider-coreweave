@@ -505,13 +505,19 @@ func TestToCreateGatewayRequest_AllRoutingTypes(t *testing.T) {
 
 // --- Acceptance tests ---
 
-func gatewayBasicConfig(name string) string {
+func gatewayBasicConfig(name, preferredZone string) string {
 	return fmt.Sprintf(`
 data "coreweave_inference_gateway_parameters" "params" {}
 
+locals {
+  preferred_zone  = %q
+  available_zones = data.coreweave_inference_gateway_parameters.params.zones
+  zone            = local.preferred_zone != "" ? local.preferred_zone : local.available_zones[0]
+}
+
 resource "coreweave_inference_gateway" "test" {
   name  = %q
-  zones = [data.coreweave_inference_gateway_parameters.params.zones[0]]
+  zones = [local.zone]
 
   auth = {
     core_weave = {}
@@ -522,17 +528,30 @@ resource "coreweave_inference_gateway" "test" {
       api_type = "API_TYPE_OPENAI"
     }
   }
+
+  lifecycle {
+    precondition {
+      condition     = local.preferred_zone == "" || contains(local.available_zones, local.preferred_zone)
+      error_message = "INFERENCE_ZONE=\"${local.preferred_zone}\" is not present in gateway parameters; available: ${jsonencode(local.available_zones)}"
+    }
+  }
 }
-`, name)
+`, preferredZone, name)
 }
 
-func gatewayUpdatedConfig(name string) string {
+func gatewayUpdatedConfig(name, preferredZone string) string {
 	return fmt.Sprintf(`
 data "coreweave_inference_gateway_parameters" "params" {}
 
+locals {
+  preferred_zone  = %q
+  available_zones = data.coreweave_inference_gateway_parameters.params.zones
+  zone            = local.preferred_zone != "" ? local.preferred_zone : local.available_zones[0]
+}
+
 resource "coreweave_inference_gateway" "test" {
   name  = %q
-  zones = [data.coreweave_inference_gateway_parameters.params.zones[0]]
+  zones = [local.zone]
 
   auth = {
     core_weave = {}
@@ -543,20 +562,32 @@ resource "coreweave_inference_gateway" "test" {
       header_name = "X-Model-Name"
     }
   }
+
+  lifecycle {
+    precondition {
+      condition     = local.preferred_zone == "" || contains(local.available_zones, local.preferred_zone)
+      error_message = "INFERENCE_ZONE=\"${local.preferred_zone}\" is not present in gateway parameters; available: ${jsonencode(local.available_zones)}"
+    }
+  }
 }
-`, name)
+`, preferredZone, name)
 }
 
 func TestAccInferenceGateway(t *testing.T) {
 	name := fmt.Sprintf("%sgw-%x", AcceptanceTestPrefix, rand.IntN(100000))
 	fullResourceName := "coreweave_inference_gateway.test"
+	preferredZone := preferredInferenceZone()
 
-	resource.ParallelTest(t, resource.TestCase{
+	// Inference acceptance tests run sequentially (resource.Test, not
+	// resource.ParallelTest) because the staging environment has limited
+	// per-zone capacity; parallelism causes allocation failures.
+	//nolint:forbidigo // see comment above
+	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testutil.SetEnvDefaults() },
 		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
-				Config: gatewayBasicConfig(name),
+				Config: gatewayBasicConfig(name, preferredZone),
 				ConfigStateChecks: []statecheck.StateCheck{
 					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("name"), knownvalue.StringExact(name)),
 					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("id"), knownvalue.NotNull()),
@@ -567,7 +598,7 @@ func TestAccInferenceGateway(t *testing.T) {
 				},
 			},
 			{
-				Config: gatewayUpdatedConfig(name),
+				Config: gatewayUpdatedConfig(name, preferredZone),
 				ConfigStateChecks: []statecheck.StateCheck{
 					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("routing").AtMapKey("header_based").AtMapKey("header_name"), knownvalue.StringExact("X-Model-Name")),
 				},
