@@ -7,11 +7,11 @@ require (
 	buf.build/gen/go/coreweave/cks/protocolbuffers/go v1.36.11-20260210154401-704cd1ccd4c3.1
 	buf.build/gen/go/coreweave/cwobject/connectrpc/go v1.19.1-20250604181649-b97f17b05d5b.2
 	buf.build/gen/go/coreweave/cwobject/protocolbuffers/go v1.36.10-20250604181649-b97f17b05d5b.1
-	buf.build/gen/go/coreweave/inference/connectrpc/go v1.19.1-20260211175257-466329e2c514.2
-	buf.build/gen/go/coreweave/inference/protocolbuffers/go v1.36.11-20260211175257-466329e2c514.1
+	buf.build/gen/go/coreweave/inference/connectrpc/go v1.19.2-20260427194007-0f8bae2ca8ba.1
+	buf.build/gen/go/coreweave/inference/protocolbuffers/go v1.36.11-20260427194007-0f8bae2ca8ba.1
 	buf.build/gen/go/coreweave/networking/connectrpc/go v1.19.1-20260121155637-a637e7777165.2
 	buf.build/gen/go/coreweave/networking/protocolbuffers/go v1.36.11-20260121155637-a637e7777165.1
-	connectrpc.com/connect v1.19.1
+	connectrpc.com/connect v1.19.2
 	github.com/aws/aws-sdk-go-v2 v1.41.3
 	github.com/aws/aws-sdk-go-v2/config v1.32.11
 	github.com/aws/aws-sdk-go-v2/credentials v1.19.11

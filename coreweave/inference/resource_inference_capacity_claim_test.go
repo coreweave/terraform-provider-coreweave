@@ -52,12 +52,12 @@ func TestSetFromCapacityClaim_Fields(t *testing.T) {
 			Resources: (inferencev1.CapacityClaimResources_builder{
 				InstanceId:    testInstanceID,
 				InstanceCount: 3,
-				CapacityType:  inferencev1.CapacityClaimResources_CAPACITY_TYPE_CUSTOMER,
+				CapacityType:  inferencev1.CapacityType_CAPACITY_TYPE_CUSTOMER,
 				Zones:         []string{"US-WEST-04A", "US-EAST-01A"},
 			}).Build(),
 		}).Build(),
 		Status: (inferencev1.CapacityClaimStatus_builder{
-			Status:             inferencev1.CapacityClaimStatus_STATUS_UNSPECIFIED,
+			Status:             inferencev1.Status_STATUS_UNSPECIFIED,
 			CreatedAt:          now,
 			UpdatedAt:          now,
 			AllocatedInstances: 2,
@@ -89,8 +89,8 @@ func TestSetFromCapacityClaim_Fields(t *testing.T) {
 	if m.OrganizationID.ValueString() != "org-456" {
 		t.Errorf("OrganizationID: got %q, want %q", m.OrganizationID.ValueString(), "org-456")
 	}
-	if m.Status.ValueString() != inferencev1.CapacityClaimStatus_STATUS_UNSPECIFIED.String() {
-		t.Errorf("Status: got %q, want %q", m.Status.ValueString(), inferencev1.CapacityClaimStatus_STATUS_UNSPECIFIED.String())
+	if m.Status.ValueString() != inferencev1.Status_STATUS_UNSPECIFIED.String() {
+		t.Errorf("Status: got %q, want %q", m.Status.ValueString(), inferencev1.Status_STATUS_UNSPECIFIED.String())
 	}
 	if m.AllocatedInstances.ValueInt64() != 2 {
 		t.Errorf("AllocatedInstances: got %d, want 2", m.AllocatedInstances.ValueInt64())
@@ -168,7 +168,7 @@ func TestToCreateCapacityClaimRequest_Fields(t *testing.T) {
 	if req.GetResources().GetInstanceCount() != 5 {
 		t.Errorf("InstanceCount: got %d, want 5", req.GetResources().GetInstanceCount())
 	}
-	if req.GetResources().GetCapacityType() != inferencev1.CapacityClaimResources_CAPACITY_TYPE_CUSTOMER {
+	if req.GetResources().GetCapacityType() != inferencev1.CapacityType_CAPACITY_TYPE_CUSTOMER {
 		t.Errorf("CapacityType: got %v, want CAPACITY_TYPE_CUSTOMER", req.GetResources().GetCapacityType())
 	}
 	if len(req.GetResources().GetZones()) != 2 {
@@ -206,7 +206,7 @@ func TestToUpdateCapacityClaimRequest_Fields(t *testing.T) {
 	if req.GetResources().GetInstanceCount() != 10 {
 		t.Errorf("InstanceCount: got %d, want 10", req.GetResources().GetInstanceCount())
 	}
-	if req.GetResources().GetCapacityType() != inferencev1.CapacityClaimResources_CAPACITY_TYPE_SERVERLESS {
+	if req.GetResources().GetCapacityType() != inferencev1.CapacityType_CAPACITY_TYPE_SERVERLESS {
 		t.Errorf("CapacityType: got %v, want CAPACITY_TYPE_SERVERLESS", req.GetResources().GetCapacityType())
 	}
 	if len(req.GetResources().GetZones()) != 1 {
