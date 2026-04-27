@@ -1,22 +1,40 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
-    "github>coreweave/renovate-config"
+    "config:recommended",
+    ":semanticCommits",
+    ":disableRateLimiting",
+    "helpers:pinGitHubActionDigests"
   ],
   "semanticCommitType": "deps",
+  "commitMessageTopic": "{{depName}}",
+  "commitMessageExtra": "( {{currentVersion}} → {{newVersion}} )",
+  "commitMessageSuffix": "",
+  "postUpdateOptions": ["gomodTidy"],
+  "rebaseWhen": "conflicted",
+  "commitBodyTable": true,
   "packageRules": [
+    { "matchUpdateTypes": ["major"], "labels": ["type/major"] },
+    { "matchUpdateTypes": ["minor"], "labels": ["type/minor"] },
+    { "matchUpdateTypes": ["patch"], "labels": ["type/patch"] },
+    { "matchUpdateTypes": ["digest"], "labels": ["type/digest"] },
     {
-      // The parent preset (coreweave/renovate-config:semantic-commits) hardcodes
-      // commitMessagePrefix with "!" for all major updates. Override that globally:
-      // no external dependency bump should be treated as a provider breaking change.
-      // Intentional provider breaking changes come from developer-authored feat!/fix! commits.
-      "matchUpdateTypes": ["major"],
-      "commitMessagePrefix": "{{semanticCommitType}}{{#if semanticCommitScope}}({{semanticCommitScope}}){{/if}}:"
+      "matchUpdateTypes": ["digest"],
+      "commitMessageExtra": "( {{currentDigestShort}} → {{newDigestShort}} )"
+    },
+    {
+      // Default: all gomod deps use "deps" commit type regardless of update type.
+      // Placed before more specific rules; later rules take precedence per Renovate's
+      // last-rule-wins ordering.
+      "matchManagers": ["gomod"],
+      "semanticCommitType": "deps",
+      "semanticCommitScope": null
     },
     {
       "matchManagers": ["github-actions"],
       "semanticCommitType": "ci",
-      "semanticCommitScope": "github-action"
+      "semanticCommitScope": "github-action",
+      "addLabels": ["renovate/github-action"]
     },
     {
       "matchManagers": ["mise"],
@@ -24,7 +42,12 @@
       "semanticCommitScope": "mise"
     },
     {
-      // consolidate go.mod updates to use golang-version/go
+      // Ensure Go version range in go.mod is bumped rather than pinned.
+      "matchDatasources": ["golang-version"],
+      "rangeStrategy": "bump"
+    },
+    {
+      // Consolidate go.mod updates to use golang-version/go datasource.
       "matchDatasources": ["github-tags"],
       "matchPackageNames": ["golang/go"],
       "overrideDatasource": "golang-version",
