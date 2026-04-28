@@ -1,17 +1,30 @@
 ## Example using jsonencode to pass a raw JSON string to the policy attribute
 
+variable "org_id" {
+  type        = string
+  description = "CoreWeave organization ID to match in the bucket policy condition."
+}
+
 locals {
   bucket_policy = {
     Version = "2012-10-17"
     Statement = [
       {
-        Sid    = "allow-all"
+        Sid    = "AllowAllInOrg"
         Effect = "Allow"
         Principal = {
-          "CW" : "*"
+          "CW" : ["*"]
         }
-        Action   = ["s3:*"]
-        resource = ["arn:aws:s3:::${coreweave_object_storage_bucket.raw.name}"]
+        Action = ["s3:*"]
+        Resource = [
+          "arn:aws:s3:::${coreweave_object_storage_bucket.raw.name}",
+          "arn:aws:s3:::${coreweave_object_storage_bucket.raw.name}/*",
+        ]
+        Condition = {
+          "StringEquals" = {
+            "cw:PrincipalOrgID" = [var.org_id]
+          }
+        }
       },
     ]
   }
@@ -37,17 +50,25 @@ resource "coreweave_object_storage_bucket" "doc" {
 data "coreweave_object_storage_bucket_policy_document" "doc" {
   version = "2012-10-17"
   statement {
-    sid      = "allow-all"
-    effect   = "Allow"
-    action   = ["s3:*"]
-    resource = ["arn:aws:s3:::${coreweave_object_storage_bucket.doc.name}"]
+    sid    = "AllowAllInOrg"
+    effect = "Allow"
+    action = ["s3:*"]
+    resource = [
+      "arn:aws:s3:::${coreweave_object_storage_bucket.doc.name}",
+      "arn:aws:s3:::${coreweave_object_storage_bucket.doc.name}/*",
+    ]
     principal = {
       "CW" : ["*"]
+    }
+    condition = {
+      "StringEquals" : {
+        "cw:PrincipalOrgID" : var.org_id
+      }
     }
   }
 
   statement {
-    sid      = "DenyIfPrefixEquals"
+    sid      = "DenyIfPrefixNotEquals"
     effect   = "Deny"
     action   = ["s3:ListBucket"]
     resource = ["arn:aws:s3:::${coreweave_object_storage_bucket.doc.name}"]
@@ -57,6 +78,9 @@ data "coreweave_object_storage_bucket_policy_document" "doc" {
     condition = {
       "StringNotEquals" : {
         "s3:prefix" : "projects"
+      }
+      "StringEquals" : {
+        "cw:PrincipalOrgID" : var.org_id
       }
     }
   }
