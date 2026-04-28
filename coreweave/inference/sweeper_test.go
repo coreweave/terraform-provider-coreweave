@@ -3,6 +3,7 @@ package inference_test
 import (
 	"context"
 	"fmt"
+	"log"
 	"os"
 	"strings"
 	"testing"
@@ -56,7 +57,7 @@ func init() {
 			listResp, err := client.Inference.ListDeployments(ctx, connect.NewRequest(&inferencev1.ListDeploymentsRequest{}))
 			if err != nil {
 				if coreweave.IsNotFoundError(err) {
-					fmt.Println("no deployments found. skipping sweeper.")
+					log.Println("[INFO] No deployments found. Skipping sweeper.")
 					return nil
 				}
 				return fmt.Errorf("failed to list deployments: %w", err)
@@ -107,6 +108,10 @@ func init() {
 
 			listResp, err := client.Inference.ListCapacityClaims(ctx, connect.NewRequest(&inferencev1.ListCapacityClaimsRequest{}))
 			if err != nil {
+				if coreweave.IsNotFoundError(err) {
+					log.Println("[INFO] No capacity claims found. Skipping sweeper.")
+					return nil
+				}
 				return fmt.Errorf("failed to list capacity claims: %w", err)
 			}
 
@@ -155,6 +160,10 @@ func init() {
 
 			listResp, err := client.Inference.ListGateways(ctx, connect.NewRequest(&inferencev1.ListGatewaysRequest{}))
 			if err != nil {
+				if coreweave.IsNotFoundError(err) {
+					log.Println("[INFO] No gateways found. Skipping sweeper.")
+					return nil
+				}
 				return fmt.Errorf("failed to list gateways: %w", err)
 			}
 
