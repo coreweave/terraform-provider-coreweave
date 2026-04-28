@@ -13,18 +13,18 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
-var _ datasource.DataSource = &InferenceParametersDataSource{}
+var _ datasource.DataSource = &InferenceDeploymentParametersDataSource{}
 
-func NewInferenceParametersDataSource() datasource.DataSource {
-	return &InferenceParametersDataSource{}
+func NewInferenceDeploymentParametersDataSource() datasource.DataSource {
+	return &InferenceDeploymentParametersDataSource{}
 }
 
-type InferenceParametersDataSource struct {
+type InferenceDeploymentParametersDataSource struct {
 	client *coreweave.InferenceClient
 }
 
-// InferenceParametersDataSourceModel describes the data source data model.
-type InferenceParametersDataSourceModel struct {
+// InferenceDeploymentParametersDataSourceModel describes the data source data model.
+type InferenceDeploymentParametersDataSourceModel struct {
 	GatewayIds           types.List `tfsdk:"gateway_ids"`
 	RuntimeVersions      types.Map  `tfsdk:"runtime_versions"`
 	RuntimeConfigOptions types.Map  `tfsdk:"runtime_config_options"`
@@ -41,11 +41,11 @@ var (
 	}
 )
 
-func (d *InferenceParametersDataSource) Metadata(_ context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
-	resp.TypeName = req.ProviderTypeName + "_inference_parameters"
+func (d *InferenceDeploymentParametersDataSource) Metadata(_ context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
+	resp.TypeName = req.ProviderTypeName + "_inference_deployment_parameters"
 }
 
-func (d *InferenceParametersDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, resp *datasource.SchemaResponse) {
+func (d *InferenceDeploymentParametersDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, resp *datasource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		MarkdownDescription: "Retrieve available parameter values for CoreWeave Managed Inference deployments.",
 		Attributes: map[string]schema.Attribute{
@@ -87,7 +87,7 @@ func (d *InferenceParametersDataSource) Schema(_ context.Context, _ datasource.S
 	}
 }
 
-func (d *InferenceParametersDataSource) Configure(_ context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
+func (d *InferenceDeploymentParametersDataSource) Configure(_ context.Context, req datasource.ConfigureRequest, resp *datasource.ConfigureResponse) {
 	if req.ProviderData == nil {
 		return
 	}
@@ -104,7 +104,7 @@ func (d *InferenceParametersDataSource) Configure(_ context.Context, req datasou
 	d.client = client.Inference
 }
 
-func (d *InferenceParametersDataSource) Read(ctx context.Context, _ datasource.ReadRequest, resp *datasource.ReadResponse) {
+func (d *InferenceDeploymentParametersDataSource) Read(ctx context.Context, _ datasource.ReadRequest, resp *datasource.ReadResponse) {
 	paramsResp, err := d.client.GetDeploymentParameters(ctx, connect.NewRequest(&inferencev1.GetDeploymentParametersRequest{}))
 	if err != nil {
 		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
@@ -113,7 +113,7 @@ func (d *InferenceParametersDataSource) Read(ctx context.Context, _ datasource.R
 
 	msg := paramsResp.Msg
 
-	var data InferenceParametersDataSourceModel
+	var data InferenceDeploymentParametersDataSourceModel
 
 	// gateway_ids
 	gwVals := make([]attr.Value, 0, len(msg.GetGatewayIds()))

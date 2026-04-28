@@ -223,7 +223,7 @@ func (p *CoreweaveProvider) DataSources(ctx context.Context) []func() datasource
 		networking.NewVpcDataSource,
 		cks.NewClusterDataSource,
 		objectstorage.NewBucketPolicyDocumentDataSource,
-		inference.NewInferenceParametersDataSource,
+		inference.NewInferenceDeploymentParametersDataSource,
 		inference.NewCapacityClaimParametersDataSource,
 		inference.NewGatewayParametersDataSource,
 	}

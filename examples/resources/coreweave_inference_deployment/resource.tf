@@ -1,9 +1,9 @@
 # Look up available parameters first (optional but recommended).
-data "coreweave_inference_parameters" "params" {}
+data "coreweave_inference_deployment_parameters" "deploy_params" {}
 
 resource "coreweave_inference_deployment" "example" {
   name        = "my-llm"
-  gateway_ids = [data.coreweave_inference_parameters.params.gateway_ids[0]]
+  gateway_ids = [data.coreweave_inference_deployment_parameters.deploy_params.gateway_ids[0]]
 
   runtime = {
     engine  = "vllm"

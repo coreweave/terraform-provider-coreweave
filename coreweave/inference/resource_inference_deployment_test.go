@@ -268,7 +268,7 @@ data "coreweave_inference_gateway_parameters" "gw_params" {}
 # fail the precondition below at plan time. depends_on defers the read until
 # after the gateway resource exists, and Terraform re-evaluates the precondition
 # at apply time once available_instances is known.
-data "coreweave_inference_parameters" "params" {
+data "coreweave_inference_deployment_parameters" "deploy_params" {
   depends_on = [coreweave_inference_gateway.test]
 }
 
@@ -277,7 +277,7 @@ locals {
   available_zones     = data.coreweave_inference_gateway_parameters.gw_params.zones
   zone                = local.preferred_zone != "" ? local.preferred_zone : local.available_zones[0]
   preferred_instance  = %q
-  available_instances = data.coreweave_inference_parameters.params.instance_types
+  available_instances = data.coreweave_inference_deployment_parameters.deploy_params.instance_types
   instance            = local.preferred_instance != "" ? local.preferred_instance : local.available_instances[0]
 }
 
@@ -349,7 +349,7 @@ data "coreweave_inference_gateway_parameters" "gw_params" {}
 # fail the precondition below at plan time. depends_on defers the read until
 # after the gateway resource exists, and Terraform re-evaluates the precondition
 # at apply time once available_instances is known.
-data "coreweave_inference_parameters" "params" {
+data "coreweave_inference_deployment_parameters" "deploy_params" {
   depends_on = [coreweave_inference_gateway.test]
 }
 
@@ -358,7 +358,7 @@ locals {
   available_zones     = data.coreweave_inference_gateway_parameters.gw_params.zones
   zone                = local.preferred_zone != "" ? local.preferred_zone : local.available_zones[0]
   preferred_instance  = %q
-  available_instances = data.coreweave_inference_parameters.params.instance_types
+  available_instances = data.coreweave_inference_deployment_parameters.deploy_params.instance_types
   instance            = local.preferred_instance != "" ? local.preferred_instance : local.available_instances[0]
 }
 
@@ -474,15 +474,15 @@ func TestAccInferenceParameters(t *testing.T) {
 		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
-				Config: `data "coreweave_inference_parameters" "test" {}`,
+				Config: `data "coreweave_inference_deployment_parameters" "test" {}`,
 				ConfigStateChecks: []statecheck.StateCheck{
 					statecheck.ExpectKnownValue(
-						"data.coreweave_inference_parameters.test",
+						"data.coreweave_inference_deployment_parameters.test",
 						tfjsonpath.New("gateway_ids"),
 						knownvalue.NotNull(),
 					),
 					statecheck.ExpectKnownValue(
-						"data.coreweave_inference_parameters.test",
+						"data.coreweave_inference_deployment_parameters.test",
 						tfjsonpath.New("instance_types"),
 						knownvalue.NotNull(),
 					),
