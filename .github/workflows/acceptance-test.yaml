@@ -16,7 +16,7 @@ concurrency:
 jobs:
   sweep:
     runs-on: cw
-    container: ghcr.io/coreweave/github-actions-images/github-base-runner:1.16.0
+    container: ghcr.io/coreweave/github-actions-images/github-base-runner:1.17.0
     environment: QA
     env:
       COREWEAVE_API_ENDPOINT: ${{ inputs.suite == 'object_storage' && secrets.COREWEAVE_OBJS_API_ENDPOINT || vars.COREWEAVE_API_ENDPOINT }}
@@ -30,7 +30,7 @@ jobs:
 
   test:
     runs-on: cw
-    container: ghcr.io/coreweave/github-actions-images/github-base-runner:1.16.0
+    container: ghcr.io/coreweave/github-actions-images/github-base-runner:1.17.0
     environment: QA
     needs: [sweep]
     env:
