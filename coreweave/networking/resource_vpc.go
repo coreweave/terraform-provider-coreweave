@@ -6,8 +6,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"slices"
-	"strings"
 	"time"
 
 	networkingv1beta1 "buf.build/gen/go/coreweave/networking/protocolbuffers/go/coreweave/networking/v1beta1"
@@ -350,24 +348,6 @@ func (v *VpcResourceModel) GetDhcp(ctx context.Context) (*networkingv1beta1.DHCP
 	return dhcp, diagnostics
 }
 
-func enumMarkdownValues(m map[int32]string, dropZero bool) string {
-	// the values should be sorted by their enum value, not the string value.
-	keys := make([]int32, 0, len(m))
-	for k := range m {
-		if dropZero && k == 0 {
-			continue
-		}
-		keys = append(keys, k)
-	}
-	slices.Sort(keys)
-
-	values := make([]string, len(keys))
-	for i, k := range keys {
-		values[i] = fmt.Sprintf("`%s`", m[k])
-	}
-	return strings.Join(values, ", ")
-}
-
 func (v *VpcResourceModel) hostPrefixes(ctx context.Context) ([]*networkingv1beta1.HostPrefix, diag.Diagnostics) {
 	if v.HostPrefixes.IsNull() || v.HostPrefixes.IsUnknown() {
 		return nil, nil
@@ -521,7 +501,7 @@ func (r *VpcResource) Schema(ctx context.Context, req resource.SchemaRequest, re
 						},
 						"type": schema.StringAttribute{
 							Required:            true,
-							MarkdownDescription: fmt.Sprintf("Controls network connectivity from the prefix to the host. Must be one of: %s.", enumMarkdownValues(networkingv1beta1.HostPrefix_Type_name, true)),
+							MarkdownDescription: fmt.Sprintf("Controls network connectivity from the prefix to the host. Must be one of: %s.", coreweave.EnumMarkdownValues(networkingv1beta1.HostPrefix_Type_name, true)),
 						},
 						"prefixes": schema.ListAttribute{
 							Required:            true,
@@ -540,7 +520,7 @@ func (r *VpcResource) Schema(ctx context.Context, req resource.SchemaRequest, re
 									Optional:            true,
 									Computed:            true,
 									Default:             stringdefault.StaticString(networkingv1beta1.IPAddressManagementPolicy_UNSPECIFIED.String()),
-									MarkdownDescription: fmt.Sprintf("Describes which IP address from the prefix is allocated to the network gateway. Must be one of: %s.", enumMarkdownValues(networkingv1beta1.IPAddressManagementPolicy_GatewayAddressPolicy_name, false)),
+									MarkdownDescription: fmt.Sprintf("Describes which IP address from the prefix is allocated to the network gateway. Must be one of: %s.", coreweave.EnumMarkdownValues(networkingv1beta1.IPAddressManagementPolicy_GatewayAddressPolicy_name, false)),
 								},
 							},
 						},
