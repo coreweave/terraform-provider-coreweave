@@ -19,7 +19,7 @@ jobs:
     timeout-minutes: 5
     if: ${{ inputs.native }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
       - uses: ./.github/actions/setup
       - run: go mod download
       - run: go build -v ./...
@@ -30,7 +30,7 @@ jobs:
     timeout-minutes: 15
     if: ${{ inputs.snapshot }}
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
       - uses: ./.github/actions/setup
       - name: Cache Go modules and build cache
         uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5
