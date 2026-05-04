@@ -54,6 +54,10 @@ type ClusterResource struct {
 	client *coreweave.Client
 }
 
+type TailscaleResourceModel struct {
+	ClientID types.String `tfsdk:"client_id"`
+}
+
 type AuthWebhookResourceModel struct {
 	Server types.String `tfsdk:"server"`
 	CA     types.String `tfsdk:"ca"`
@@ -159,6 +163,7 @@ type ClusterResourceModel struct {
 	ServiceAccountOIDCIssuerURL types.String              `tfsdk:"service_account_oidc_issuer_url"`
 	SharedStorageClusterId      types.String              `tfsdk:"shared_storage_cluster_id"` //nolint:staticcheck
 	AdditionalServerSans        types.Set                 `tfsdk:"additional_server_sans"`
+	Tailscale                   *TailscaleResourceModel   `tfsdk:"tailscale"`
 }
 
 func nodePortEmpty(np *cksv1beta1.PortRange) bool {
@@ -315,8 +320,19 @@ func (c *ClusterResourceModel) Set(cluster *cksv1beta1.Cluster) {
 		c.AdditionalServerSans = types.SetValueMust(types.StringType, sans)
 	}
 
-	// Note: SharedStorageClusterId is not returned by the API, so we preserve it from the plan.
-	// This is intentional since it's marked as RequiresReplace - Terraform will manage this value.
+	c.setTailscale(cluster)
+}
+
+func (c *ClusterResourceModel) setTailscale(cluster *cksv1beta1.Cluster) {
+	switch {
+	case cluster.Tailscale != nil && cluster.Tailscale.ClientId != "":
+		c.Tailscale = &TailscaleResourceModel{ClientID: types.StringValue(cluster.Tailscale.ClientId)}
+	case c.Tailscale != nil && c.Tailscale.ClientID.IsNull():
+		// Preserve the block with a null client_id so state stays consistent
+		// when the user explicitly sets client_id = null to remove Tailscale.
+	default:
+		c.Tailscale = nil
+	}
 }
 
 func (c *ClusterResourceModel) oidcSigningAlgs(ctx context.Context) []cksv1beta1.SigningAlgorithm {
@@ -440,6 +456,10 @@ func (c *ClusterResourceModel) ToCreateRequest(ctx context.Context) *cksv1beta1.
 		req.AdditionalServerSans = c.additionalServerSans(ctx)
 	}
 
+	if c.Tailscale != nil {
+		req.Tailscale = &cksv1beta1.Tailscale{ClientId: c.Tailscale.ClientID.ValueString()}
+	}
+
 	return req
 }
 
@@ -461,6 +481,17 @@ func oidcChanged(plan, state *ClusterResourceModel) bool {
 		!plan.Oidc.RequiredClaim.Equal(state.Oidc.RequiredClaim) ||
 		!plan.Oidc.SigningAlgs.Equal(state.Oidc.SigningAlgs) ||
 		!plan.Oidc.AdminGroupBinding.Equal(state.Oidc.AdminGroupBinding)
+}
+
+// tailscaleChanged reports whether the Tailscale configuration differs between plan and state.
+func tailscaleChanged(plan, state *TailscaleResourceModel) bool {
+	if (plan == nil) != (state == nil) {
+		return true
+	}
+	if plan == nil {
+		return false
+	}
+	return !plan.ClientID.Equal(state.ClientID)
 }
 
 // authWebhookChanged reports whether an auth webhook block differs between plan and state.
@@ -558,6 +589,15 @@ func buildUpdateRequest(ctx context.Context, plan, state *ClusterResourceModel) 
 	if !plan.AdditionalServerSans.Equal(state.AdditionalServerSans) {
 		req.AdditionalServerSans = plan.additionalServerSans(ctx)
 		paths = append(paths, "additional_server_sans")
+	}
+
+	if tailscaleChanged(plan.Tailscale, state.Tailscale) {
+		if plan.Tailscale != nil {
+			req.Tailscale = &cksv1beta1.Tailscale{ClientId: plan.Tailscale.ClientID.ValueString()}
+		} else {
+			req.Tailscale = &cksv1beta1.Tailscale{}
+		}
+		paths = append(paths, "tailscale.client_id")
 	}
 
 	req.UpdateMask = &fieldmaskpb.FieldMask{Paths: paths}
@@ -911,6 +951,20 @@ func (r *ClusterResource) Schema(ctx context.Context, req resource.SchemaRequest
 					),
 				},
 			},
+			"tailscale": schema.SingleNestedAttribute{
+				Optional:            true,
+				MarkdownDescription: "Tailscale configuration for the cluster. Enables cluster access via a Tailscale VPN.",
+				Attributes: map[string]schema.Attribute{
+					"client_id": schema.StringAttribute{
+						Optional:            true,
+						MarkdownDescription: "The Tailscale Client ID for the federated identity.",
+						Validators: []validator.String{
+							stringvalidator.LengthAtMost(255),
+							stringvalidator.RegexMatches(nonWhitespace, "must not be empty"),
+						},
+					},
+				},
+			},
 		},
 	}
 }
@@ -1232,6 +1286,12 @@ func MustRenderClusterResource(ctx context.Context, resourceName string, cluster
 
 	if !cluster.AdditionalServerSans.IsNull() && !cluster.AdditionalServerSans.IsUnknown() {
 		setStringSetAttr(ctx, resourceBody, "additional_server_sans", cluster.AdditionalServerSans)
+	}
+
+	if cluster.Tailscale != nil {
+		resourceBody.SetAttributeValue("tailscale", cty.ObjectVal(map[string]cty.Value{
+			"client_id": cty.StringVal(cluster.Tailscale.ClientID.ValueString()),
+		}))
 	}
 
 	var buf bytes.Buffer

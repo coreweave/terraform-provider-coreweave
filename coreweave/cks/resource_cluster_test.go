@@ -376,6 +376,13 @@ func createClusterTestStep(ctx context.Context, t *testing.T, config testStepCon
 			}
 			statechecks = append(statechecks, statecheck.ExpectKnownValue(config.Resources.FullResourceName, tfjsonpath.New("additional_server_sans"), knownvalue.SetExact(checks)))
 		}
+
+		// tailscale
+		if config.cluster.Tailscale != nil {
+			statechecks = append(statechecks, statecheck.ExpectKnownValue(config.Resources.FullResourceName, tfjsonpath.New("tailscale").AtMapKey("client_id"), knownvalue.StringExact(config.cluster.Tailscale.ClientID.ValueString())))
+		} else {
+			statechecks = append(statechecks, statecheck.ExpectKnownValue(config.Resources.FullResourceName, tfjsonpath.New("tailscale"), knownvalue.Null()))
+		}
 	}
 
 	step := resource.TestStep{
@@ -732,6 +739,101 @@ func TestClusterResource_V6FieldsCreateOnly(t *testing.T) {
 		createStep,
 		reapplyStep,
 		importStep,
+	}
+
+	resource.ParallelTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+		PreCheck: func() {
+			testutil.SetEnvDefaults()
+		},
+		Steps: steps,
+	})
+}
+
+func TestClusterResource_Tailscale(t *testing.T) {
+	config := generateResourceNames("cks-tailscale")
+	zone := testutil.AcceptanceTestZone
+	kubeVersion := testutil.AcceptanceTestKubeVersion
+
+	vpc := defaultVpc(config.ClusterName, zone)
+
+	base := &cks.ClusterResourceModel{
+		VpcId:               types.StringValue(fmt.Sprintf("coreweave_networking_vpc.%s.id", config.ResourceName)),
+		Name:                types.StringValue(config.ClusterName),
+		Zone:                types.StringValue(zone),
+		Version:             types.StringValue(kubeVersion),
+		Public:              types.BoolValue(false),
+		PodCidrName:         types.StringValue("pod-cidr"),
+		ServiceCidrName:     types.StringValue("service-cidr"),
+		InternalLBCidrNames: types.ListValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr")}),
+	}
+
+	withTailscale := with(*base, func(c *cks.ClusterResourceModel) {
+		c.Tailscale = &cks.TailscaleResourceModel{
+			ClientID: types.StringValue("test-tailscale-client-id"),
+		}
+	})
+
+	ctx := context.Background()
+
+	steps := []resource.TestStep{
+		// Step 1: create without tailscale
+		createClusterTestStep(ctx, t, testStepConfig{
+			TestName: "create without tailscale",
+			ConfigPlanChecks: resource.ConfigPlanChecks{
+				PreApply: []plancheck.PlanCheck{
+					plancheck.ExpectResourceAction(config.FullResourceName, plancheck.ResourceActionCreate),
+				},
+			},
+			Resources: config,
+			cluster:   *base,
+			vpc:       *vpc,
+		}),
+		// Step 2: add tailscale
+		createClusterTestStep(ctx, t, testStepConfig{
+			TestName: "add tailscale client_id",
+			ConfigPlanChecks: resource.ConfigPlanChecks{
+				PreApply: []plancheck.PlanCheck{
+					plancheck.ExpectResourceAction(config.FullResourceName, plancheck.ResourceActionUpdate),
+				},
+			},
+			Resources: config,
+			cluster:   withTailscale,
+			vpc:       *vpc,
+		}),
+		// Step 3: reapply same config — expect noop
+		{
+			PreConfig: func() {
+				t.Log("Reapplying tailscale config to verify noop (roundtrip)")
+			},
+			Config: networking.MustRenderVpcResource(ctx, config.ResourceName, vpc) + "\n" + cks.MustRenderClusterResource(ctx, config.ResourceName, &withTailscale),
+			ConfigPlanChecks: resource.ConfigPlanChecks{
+				PreApply: []plancheck.PlanCheck{
+					plancheck.ExpectResourceAction(config.FullResourceName, plancheck.ResourceActionNoop),
+				},
+			},
+		},
+		// Step 4: remove tailscale block
+		createClusterTestStep(ctx, t, testStepConfig{
+			TestName: "remove tailscale block",
+			ConfigPlanChecks: resource.ConfigPlanChecks{
+				PreApply: []plancheck.PlanCheck{
+					plancheck.ExpectResourceAction(config.FullResourceName, plancheck.ResourceActionUpdate),
+				},
+			},
+			Resources: config,
+			cluster:   *base,
+			vpc:       *vpc,
+		}),
+		// Step 5: import verify
+		{
+			PreConfig: func() {
+				t.Log("Beginning coreweave_cks_cluster import test (tailscale)")
+			},
+			ResourceName:      config.FullResourceName,
+			ImportState:       true,
+			ImportStateVerify: true,
+		},
 	}
 
 	resource.ParallelTest(t, resource.TestCase{

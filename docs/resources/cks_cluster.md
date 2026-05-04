@@ -92,6 +92,7 @@ The prefixes must exist in the cluster's VPC. This field is append-only.
 - `public` (Boolean) Whether the cluster's api-server is publicly accessible from the internet.
 - `service_cidr_name_v6` (String) IPv6 Service CIDR name. If any IPv6 field is set, then ALL IPv6 fields must be set.
 - `shared_storage_cluster_id` (String) The `cluster_id` of the cluster to share storage with. Must be enabled by CoreWeave suppport. Contact CoreWeave support if you are interested in this feature.
+- `tailscale` (Attributes) Tailscale configuration for the cluster. Enables cluster access via a Tailscale VPN. (see [below for nested schema](#nestedatt--tailscale))
 
 ### Read-Only
 
@@ -151,6 +152,14 @@ Optional:
 - `signing_algs` (Set of String) A list of signing algorithms that the OpenID Connect discovery endpoint uses.
 - `username_claim` (String) The claim to use as the username.
 - `username_prefix` (String) The prefix to use for the username.
+
+
+<a id="nestedatt--tailscale"></a>
+### Nested Schema for `tailscale`
+
+Optional:
+
+- `client_id` (String) The Tailscale Client ID for the federated identity.
 
 ## Import
 
