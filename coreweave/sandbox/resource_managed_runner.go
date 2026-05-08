@@ -19,11 +19,13 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/retry"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 var (
@@ -31,6 +33,7 @@ var (
 	_ resource.ResourceWithImportState      = &ManagedRunnerResource{}
 	_ resource.ResourceWithConfigure        = &ManagedRunnerResource{}
 	_ resource.ResourceWithConfigValidators = &ManagedRunnerResource{}
+	_ resource.ResourceWithValidateConfig   = &ManagedRunnerResource{}
 
 	errRunnerInstallFailed = errors.New("runner installation failed")
 )
@@ -187,6 +190,23 @@ func (r *ManagedRunnerResource) ConfigValidators(context.Context) []resource.Con
 	}
 }
 
+// ValidateConfig surfaces profile_bindings invariants (exactly one default,
+// unique profile_template_id) at plan time so users see them before apply.
+// Skips bindings whose values are unknown — those are revisited at apply.
+func (r *ManagedRunnerResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
+	var data ManagedRunnerResourceModel
+	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	for _, b := range data.ProfileBindings {
+		if b.IsDefault.IsUnknown() || b.ProfileTemplateID.IsUnknown() {
+			return
+		}
+	}
+	resp.Diagnostics.Append(validateProfileBindings(data.ProfileBindings)...)
+}
+
 func (r *ManagedRunnerResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		MarkdownDescription: "Manage a CoreWeave Sandbox platform-managed runner. " +
@@ -251,6 +271,7 @@ func (r *ManagedRunnerResource) Schema(_ context.Context, _ resource.SchemaReque
 			"release_channel": schema.StringAttribute{
 				Optional:            true,
 				Computed:            true,
+				Default:             stringdefault.StaticString(sandboxv1beta2.ReleaseChannel_RELEASE_CHANNEL_STABLE.String()),
 				MarkdownDescription: "Release channel for automatic updates. One of `RELEASE_CHANNEL_STABLE`, `RELEASE_CHANNEL_RAPID`. Defaults to `RELEASE_CHANNEL_STABLE`.",
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
@@ -259,7 +280,6 @@ func (r *ManagedRunnerResource) Schema(_ context.Context, _ resource.SchemaReque
 					stringvalidator.OneOf(
 						sandboxv1beta2.ReleaseChannel_RELEASE_CHANNEL_STABLE.String(),
 						sandboxv1beta2.ReleaseChannel_RELEASE_CHANNEL_RAPID.String(),
-						sandboxv1beta2.ReleaseChannel_RELEASE_CHANNEL_UNSPECIFIED.String(),
 					),
 				},
 			},
@@ -479,10 +499,6 @@ func deploymentSpecComputedAttributes() map[string]schema.Attribute {
 	}
 }
 
-// Compile-time assertion that attr is referenced — keeps the import alive in case
-// future schema edits drop direct usage. Cheap and self-documenting.
-var _ = attr.Value(types.StringValue(""))
-
 // ----------------------------------------------------------------------------
 // Configure
 // ----------------------------------------------------------------------------
@@ -599,7 +615,7 @@ func (mp *MaintenancePolicyModel) toProto() (*sandboxv1beta2.MaintenancePolicy, 
 				diags.AddError("Invalid maintenance exclusion start_time", err.Error())
 				continue
 			}
-			excl.StartTime = timestampFromTime(t)
+			excl.StartTime = timestamppb.New(t)
 		}
 		if !e.EndTime.IsNull() && e.EndTime.ValueString() != "" {
 			t, err := time.Parse(time.RFC3339Nano, e.EndTime.ValueString())
@@ -607,7 +623,7 @@ func (mp *MaintenancePolicyModel) toProto() (*sandboxv1beta2.MaintenancePolicy, 
 				diags.AddError("Invalid maintenance exclusion end_time", err.Error())
 				continue
 			}
-			excl.EndTime = timestampFromTime(t)
+			excl.EndTime = timestamppb.New(t)
 		}
 		out.Exclusions = append(out.Exclusions, excl)
 	}
@@ -725,7 +741,9 @@ func (m *ManagedRunnerResourceModel) Set(ctx context.Context, runner *sandboxv1b
 	m.UpdateAvailable = types.BoolValue(runner.GetUpdateAvailable())
 	m.RolloutInProgress = types.BoolValue(runner.GetRolloutInProgress())
 
-	m.InstallError = installErrorFromProto(runner.GetInstallError())
+	installErr, d := installErrorFromProto(runner.GetInstallError())
+	diags.Append(d...)
+	m.InstallError = installErr
 
 	dep, d := deploymentSpecFromProto(ctx, runner.GetDeploymentSpec())
 	diags.Append(d...)
@@ -872,26 +890,29 @@ func bindingsFromProto(in []*sandboxv1beta2.RunnerProfileBinding) []ProfileBindi
 	return out
 }
 
-func installErrorFromProto(p *sandboxv1beta2.RunnerInstallError) *RunnerInstallErrorModel {
+func installErrorFromProto(p *sandboxv1beta2.RunnerInstallError) (*RunnerInstallErrorModel, diag.Diagnostics) {
 	if p == nil {
-		return nil
+		return nil, nil
 	}
+	var diags diag.Diagnostics
 	out := &RunnerInstallErrorModel{
 		Reason:           types.StringValue(p.GetReason().String()),
 		Message:          stringOrNull(p.GetMessage()),
 		DiagnosticDetail: stringOrNull(p.GetDiagnosticDetail()),
 		OccurredAt:       timestampString(p.GetOccurredAt()),
 	}
-	hints := make([]attr.Value, 0, len(p.GetRemediationHints()))
-	for _, h := range p.GetRemediationHints() {
-		hints = append(hints, types.StringValue(h))
-	}
-	if len(hints) == 0 {
+	if len(p.GetRemediationHints()) == 0 {
 		out.RemediationHints = types.ListNull(types.StringType)
 	} else {
-		out.RemediationHints, _ = types.ListValue(types.StringType, hints)
+		hints := make([]attr.Value, 0, len(p.GetRemediationHints()))
+		for _, h := range p.GetRemediationHints() {
+			hints = append(hints, types.StringValue(h))
+		}
+		list, d := types.ListValue(types.StringType, hints)
+		diags.Append(d...)
+		out.RemediationHints = list
 	}
-	return out
+	return out, diags
 }
 
 func deploymentSpecFromProto(ctx context.Context, p *sandboxv1beta2.RunnerDeploymentSpec) (*RunnerDeploymentSpecModel, diag.Diagnostics) {

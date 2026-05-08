@@ -10,11 +10,6 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-// timestampFromTime is a thin wrapper that's nil-safe for our usage.
-func timestampFromTime(t time.Time) *timestamppb.Timestamp {
-	return timestamppb.New(t)
-}
-
 // stringOrNull returns a null types.String when s is empty, otherwise the value.
 // API responses use empty strings for unset fields; mapping them to null prevents
 // Terraform from showing spurious diffs against unconfigured optional attributes.
@@ -23,6 +18,25 @@ func stringOrNull(s string) types.String {
 		return types.StringNull()
 	}
 	return types.StringValue(s)
+}
+
+// timestampStringsEqual compares two RFC3339 timestamp strings for semantic
+// equality, parsing each side and comparing the resulting time.Time. Falls back
+// to byte equality if either side fails to parse. Null/unknown values must
+// match exactly.
+func timestampStringsEqual(a, b types.String) bool {
+	if a.IsNull() != b.IsNull() || a.IsUnknown() != b.IsUnknown() {
+		return false
+	}
+	if a.IsNull() || a.IsUnknown() {
+		return true
+	}
+	at, errA := time.Parse(time.RFC3339Nano, a.ValueString())
+	bt, errB := time.Parse(time.RFC3339Nano, b.ValueString())
+	if errA != nil || errB != nil {
+		return a.ValueString() == b.ValueString()
+	}
+	return at.Equal(bt)
 }
 
 // timestampString converts a protobuf timestamp to an RFC3339 types.String, or null.

@@ -7,7 +7,6 @@ import (
 	sandboxv1beta2 "buf.build/gen/go/coreweave/sandbox/protocolbuffers/go/coreweave/sandbox/v1beta2"
 	"connectrpc.com/connect"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
-	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -514,5 +513,3 @@ func resourceDefaultsEqual(a, b *ResourceDefaultsModel) bool {
 		a.MemoryLimit.Equal(b.MemoryLimit)
 }
 
-// suppress unused-import warning for attr in case schema rev removes attr usage.
-var _ = attr.Value(types.StringValue(""))

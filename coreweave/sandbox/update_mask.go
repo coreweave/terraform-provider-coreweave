@@ -129,6 +129,9 @@ func buildManagedRunnerUpdateRequest(ctx context.Context, plan, state *ManagedRu
 }
 
 // maintenancePolicyEqual compares two policy models structurally. nil-safe.
+// Timestamps are compared semantically (parsed) rather than byte-for-byte so a
+// user writing "2026-01-01T00:00:00Z" doesn't appear to drift against a server
+// response of "2026-01-01T00:00:00.000000000Z" or similar.
 func maintenancePolicyEqual(a, b *MaintenancePolicyModel) bool {
 	if a == nil && b == nil {
 		return true
@@ -145,8 +148,8 @@ func maintenancePolicyEqual(a, b *MaintenancePolicyModel) bool {
 		}
 	}
 	for i := range a.Exclusions {
-		if !a.Exclusions[i].StartTime.Equal(b.Exclusions[i].StartTime) ||
-			!a.Exclusions[i].EndTime.Equal(b.Exclusions[i].EndTime) ||
+		if !timestampStringsEqual(a.Exclusions[i].StartTime, b.Exclusions[i].StartTime) ||
+			!timestampStringsEqual(a.Exclusions[i].EndTime, b.Exclusions[i].EndTime) ||
 			!a.Exclusions[i].Reason.Equal(b.Exclusions[i].Reason) {
 			return false
 		}
@@ -222,13 +225,21 @@ func runnerScalingEqual(a, b *RunnerScalingConfigModel) bool {
 // bindingsEqual compares two profile-binding lists order-independently, keyed
 // by profile_template_id. Replicates the server's matching semantics so a
 // reorder in plan doesn't appear as a diff.
+//
+// Duplicate profile_template_ids are caught earlier by validateProfileBindings;
+// if validation is ever bypassed, we treat duplicates as a diff rather than
+// silently merging them via map overwrite.
 func bindingsEqual(a, b []ProfileBindingModel) bool {
 	if len(a) != len(b) {
 		return false
 	}
-	bByKey := map[string]ProfileBindingModel{}
+	bByKey := make(map[string]ProfileBindingModel, len(b))
 	for _, x := range b {
-		bByKey[x.ProfileTemplateID.ValueString()] = x
+		key := x.ProfileTemplateID.ValueString()
+		if _, dup := bByKey[key]; dup {
+			return false
+		}
+		bByKey[key] = x
 	}
 	for _, x := range a {
 		other, ok := bByKey[x.ProfileTemplateID.ValueString()]

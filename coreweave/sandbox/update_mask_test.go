@@ -242,6 +242,48 @@ func TestBuildManagedRunnerUpdateRequest(t *testing.T) {
 			"display_name",
 		)
 	})
+
+	t.Run("display_name change only", func(t *testing.T) {
+		state := baseRunnerModel()
+		plan := baseRunnerModel()
+		plan.DisplayName = types.StringValue("Renamed")
+		req, diags := buildManagedRunnerUpdateRequest(ctx, &plan, &state)
+		if diags.HasError() {
+			t.Fatalf("unexpected diags: %v", diags)
+		}
+		expectMaskPaths(t, req.GetUpdateMask().GetPaths(), "display_name")
+		if req.GetRunner().GetDisplayName() != "Renamed" {
+			t.Errorf("expected display_name=Renamed, got %q", req.GetRunner().GetDisplayName())
+		}
+	})
+
+	t.Run("enforce_resource_limits flag emits managed_spec parent path", func(t *testing.T) {
+		state := baseRunnerModel()
+		plan := baseRunnerModel()
+		plan.EnforceResourceLimits = types.BoolValue(true)
+		req, diags := buildManagedRunnerUpdateRequest(ctx, &plan, &state)
+		if diags.HasError() {
+			t.Fatalf("unexpected diags: %v", diags)
+		}
+		expectMaskPaths(t, req.GetUpdateMask().GetPaths(), "managed_spec")
+		if !req.GetRunner().GetManagedSpec().GetEnforceResourceLimits() {
+			t.Errorf("expected enforce_resource_limits=true on the wire")
+		}
+	})
+
+	t.Run("allow_privileged_profile_annotations flag emits managed_spec parent path", func(t *testing.T) {
+		state := baseRunnerModel()
+		plan := baseRunnerModel()
+		plan.AllowPrivilegedProfileAnnotations = types.BoolValue(true)
+		req, diags := buildManagedRunnerUpdateRequest(ctx, &plan, &state)
+		if diags.HasError() {
+			t.Fatalf("unexpected diags: %v", diags)
+		}
+		expectMaskPaths(t, req.GetUpdateMask().GetPaths(), "managed_spec")
+		if !req.GetRunner().GetManagedSpec().GetAllowPrivilegedProfileAnnotations() {
+			t.Errorf("expected allow_privileged_profile_annotations=true on the wire")
+		}
+	})
 }
 
 func baseProfileTemplateModel() ProfileTemplateResourceModel {
@@ -350,6 +392,47 @@ func TestBuildManagedRunnerUpdateRequest_ReleaseChannel(t *testing.T) {
 		// Helper still returns the request struct but should not have added the path.
 		expectMaskPaths(t, req.GetUpdateMask().GetPaths())
 	})
+}
+
+func TestBindingsEqual_DuplicateKeysAreNotEqual(t *testing.T) {
+	a := []ProfileBindingModel{
+		{ProfileTemplateID: types.StringValue("pt-1"), IsDefault: types.BoolValue(true)},
+		{ProfileTemplateID: types.StringValue("pt-1"), IsDefault: types.BoolValue(false)},
+	}
+	b := []ProfileBindingModel{
+		{ProfileTemplateID: types.StringValue("pt-1"), IsDefault: types.BoolValue(true)},
+		{ProfileTemplateID: types.StringValue("pt-1"), IsDefault: types.BoolValue(false)},
+	}
+	// Same content but duplicate keys should be flagged as a diff so a buggy
+	// state never silently round-trips through the equality helper.
+	if bindingsEqual(a, b) {
+		t.Fatalf("expected duplicate-keyed binding lists to compare unequal")
+	}
+}
+
+func TestTimestampStringsEqual(t *testing.T) {
+	cases := []struct {
+		name string
+		a    types.String
+		b    types.String
+		want bool
+	}{
+		{"both null", types.StringNull(), types.StringNull(), true},
+		{"null vs value", types.StringNull(), types.StringValue("2026-01-01T00:00:00Z"), false},
+		{"identical strings", types.StringValue("2026-01-01T00:00:00Z"), types.StringValue("2026-01-01T00:00:00Z"), true},
+		{"different precision", types.StringValue("2026-01-01T00:00:00Z"), types.StringValue("2026-01-01T00:00:00.000000000Z"), true},
+		{"different zones same instant", types.StringValue("2026-01-01T00:00:00Z"), types.StringValue("2025-12-31T16:00:00-08:00"), true},
+		{"different instants", types.StringValue("2026-01-01T00:00:00Z"), types.StringValue("2026-01-02T00:00:00Z"), false},
+		{"both unparseable but equal", types.StringValue("not-a-time"), types.StringValue("not-a-time"), true},
+		{"both unparseable and different", types.StringValue("not-a-time"), types.StringValue("also-not"), false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := timestampStringsEqual(tc.a, tc.b); got != tc.want {
+				t.Errorf("timestampStringsEqual(%v, %v) = %v, want %v", tc.a, tc.b, got, tc.want)
+			}
+		})
+	}
 }
 
 func TestValidateProfileBindings(t *testing.T) {
