@@ -324,3 +324,71 @@ func TestBuildProfileTemplateUpdateRequest(t *testing.T) {
 		expectMaskPaths(t, req.GetUpdateMask().GetPaths(), "description", "spec", "labels")
 	})
 }
+
+func TestBuildManagedRunnerUpdateRequest_ReleaseChannel(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("unknown plan value skips the path", func(t *testing.T) {
+		state := baseRunnerModel()
+		plan := baseRunnerModel()
+		plan.ReleaseChannel = types.StringUnknown()
+		req, diags := buildManagedRunnerUpdateRequest(ctx, &plan, &state)
+		if diags.HasError() {
+			t.Fatalf("unexpected diags: %v", diags)
+		}
+		expectMaskPaths(t, req.GetUpdateMask().GetPaths())
+	})
+
+	t.Run("invalid value emits a diagnostic and skips the path", func(t *testing.T) {
+		state := baseRunnerModel()
+		plan := baseRunnerModel()
+		plan.ReleaseChannel = types.StringValue("RELEASE_CHANNEL_BOGUS")
+		req, diags := buildManagedRunnerUpdateRequest(ctx, &plan, &state)
+		if !diags.HasError() {
+			t.Fatalf("expected diagnostics for invalid release_channel")
+		}
+		// Helper still returns the request struct but should not have added the path.
+		expectMaskPaths(t, req.GetUpdateMask().GetPaths())
+	})
+}
+
+func TestValidateProfileBindings(t *testing.T) {
+	t.Run("exactly one default and unique ids", func(t *testing.T) {
+		bindings := []ProfileBindingModel{
+			{ProfileTemplateID: types.StringValue("pt-1"), IsDefault: types.BoolValue(true)},
+			{ProfileTemplateID: types.StringValue("pt-2"), IsDefault: types.BoolValue(false)},
+		}
+		if d := validateProfileBindings(bindings); d.HasError() {
+			t.Fatalf("expected no diags, got %v", d)
+		}
+	})
+
+	t.Run("zero defaults", func(t *testing.T) {
+		bindings := []ProfileBindingModel{
+			{ProfileTemplateID: types.StringValue("pt-1"), IsDefault: types.BoolValue(false)},
+		}
+		if d := validateProfileBindings(bindings); !d.HasError() {
+			t.Fatalf("expected diagnostic for zero defaults")
+		}
+	})
+
+	t.Run("two defaults", func(t *testing.T) {
+		bindings := []ProfileBindingModel{
+			{ProfileTemplateID: types.StringValue("pt-1"), IsDefault: types.BoolValue(true)},
+			{ProfileTemplateID: types.StringValue("pt-2"), IsDefault: types.BoolValue(true)},
+		}
+		if d := validateProfileBindings(bindings); !d.HasError() {
+			t.Fatalf("expected diagnostic for two defaults")
+		}
+	})
+
+	t.Run("duplicate profile_template_id", func(t *testing.T) {
+		bindings := []ProfileBindingModel{
+			{ProfileTemplateID: types.StringValue("pt-1"), IsDefault: types.BoolValue(true)},
+			{ProfileTemplateID: types.StringValue("pt-1"), IsDefault: types.BoolValue(false)},
+		}
+		if d := validateProfileBindings(bindings); !d.HasError() {
+			t.Fatalf("expected diagnostic for duplicate profile_template_id")
+		}
+	})
+}

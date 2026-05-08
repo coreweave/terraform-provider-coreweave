@@ -252,6 +252,9 @@ func (r *ManagedRunnerResource) Schema(_ context.Context, _ resource.SchemaReque
 				Optional:            true,
 				Computed:            true,
 				MarkdownDescription: "Release channel for automatic updates. One of `RELEASE_CHANNEL_STABLE`, `RELEASE_CHANNEL_RAPID`. Defaults to `RELEASE_CHANNEL_STABLE`.",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 				Validators: []validator.String{
 					stringvalidator.OneOf(
 						sandboxv1beta2.ReleaseChannel_RELEASE_CHANNEL_STABLE.String(),
@@ -973,7 +976,7 @@ func (r *ManagedRunnerResource) Create(ctx context.Context, req resource.CreateR
 		return
 	}
 
-	resp.Diagnostics.Append(validateExactlyOneDefaultBinding(data.ProfileBindings)...)
+	resp.Diagnostics.Append(validateProfileBindings(data.ProfileBindings)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -1005,7 +1008,7 @@ func (r *ManagedRunnerResource) Create(ctx context.Context, req resource.CreateR
 		// On install failure, refresh state with the latest install_error
 		// so the user can `terraform destroy` and retry.
 		if errors.Is(err, errRunnerInstallFailed) {
-			data.Set(ctx, final)
+			resp.Diagnostics.Append(data.Set(ctx, final)...)
 			resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 			resp.Diagnostics.AddError(
 				"Runner installation failed",
@@ -1058,7 +1061,7 @@ func (r *ManagedRunnerResource) Update(ctx context.Context, req resource.UpdateR
 		return
 	}
 
-	resp.Diagnostics.Append(validateExactlyOneDefaultBinding(plan.ProfileBindings)...)
+	resp.Diagnostics.Append(validateProfileBindings(plan.ProfileBindings)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -1084,7 +1087,7 @@ func (r *ManagedRunnerResource) Update(ctx context.Context, req resource.UpdateR
 	final, err := r.waitForReady(ctx, updateResp.Msg.GetId())
 	if err != nil {
 		if errors.Is(err, errRunnerInstallFailed) {
-			plan.Set(ctx, final)
+			resp.Diagnostics.Append(plan.Set(ctx, final)...)
 			resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 			resp.Diagnostics.AddError(
 				"Runner update failed",
@@ -1200,13 +1203,30 @@ func (r *ManagedRunnerResource) waitForReady(ctx context.Context, id string) (*s
 	return runner, nil
 }
 
-func validateExactlyOneDefaultBinding(bindings []ProfileBindingModel) diag.Diagnostics {
+// validateProfileBindings enforces invariants the Sandbox API expects:
+// exactly one binding marked is_default, and a unique profile_template_id
+// per binding. The schema already requires size >= 1, so empty lists are
+// rejected before this runs.
+func validateProfileBindings(bindings []ProfileBindingModel) diag.Diagnostics {
 	var diags diag.Diagnostics
 	defaults := 0
+	seen := make(map[string]struct{}, len(bindings))
 	for _, b := range bindings {
 		if b.IsDefault.ValueBool() {
 			defaults++
 		}
+		id := b.ProfileTemplateID.ValueString()
+		if id == "" {
+			continue
+		}
+		if _, dup := seen[id]; dup {
+			diags.AddAttributeError(
+				path.Root("profile_bindings"),
+				"Duplicate profile_template_id",
+				fmt.Sprintf("profile_template_id %q appears more than once; each binding must reference a distinct profile template.", id),
+			)
+		}
+		seen[id] = struct{}{}
 	}
 	if defaults != 1 {
 		diags.AddAttributeError(

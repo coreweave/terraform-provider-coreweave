@@ -2,10 +2,12 @@ package sandbox
 
 import (
 	"context"
+	"fmt"
 	"reflect"
 
 	sandboxv1beta2 "buf.build/gen/go/coreweave/sandbox/protocolbuffers/go/coreweave/sandbox/v1beta2"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 )
 
@@ -49,12 +51,21 @@ func buildManagedRunnerUpdateRequest(ctx context.Context, plan, state *ManagedRu
 	specOut := &sandboxv1beta2.ManagedRunnerSpec{}
 	specDirty := false
 
-	if !plan.ReleaseChannel.Equal(state.ReleaseChannel) {
-		if v, ok := sandboxv1beta2.ReleaseChannel_value[plan.ReleaseChannel.ValueString()]; ok {
+	// Skip release_channel when the plan value is unknown — Terraform will fill it
+	// in from the prior state via UseStateForUnknown, so there's nothing to update.
+	if !plan.ReleaseChannel.IsUnknown() && !plan.ReleaseChannel.Equal(state.ReleaseChannel) {
+		v, ok := sandboxv1beta2.ReleaseChannel_value[plan.ReleaseChannel.ValueString()]
+		if !ok {
+			diags.AddAttributeError(
+				path.Root("release_channel"),
+				"Invalid release_channel",
+				fmt.Sprintf("unknown release channel %q", plan.ReleaseChannel.ValueString()),
+			)
+		} else {
 			specOut.ReleaseChannel = sandboxv1beta2.ReleaseChannel(v)
+			paths = append(paths, "managed_spec.release_channel")
+			specDirty = true
 		}
-		paths = append(paths, "managed_spec.release_channel")
-		specDirty = true
 	}
 
 	if !maintenancePolicyEqual(plan.MaintenancePolicy, state.MaintenancePolicy) {
@@ -143,9 +154,9 @@ func maintenancePolicyEqual(a, b *MaintenancePolicyModel) bool {
 	return true
 }
 
-// overridesEqual compares two override models. Uses reflect.DeepEqual via
-// per-field Equal calls — the model is small enough that explicit comparison
-// is cheaper to reason about than reflection.
+// overridesEqual compares two override models field-by-field using each field's
+// Equal method. The model is small enough that explicit comparison is cheaper
+// to reason about than reflection.
 func overridesEqual(a, b *RunnerOverridesModel) bool {
 	if a == nil && b == nil {
 		return true
