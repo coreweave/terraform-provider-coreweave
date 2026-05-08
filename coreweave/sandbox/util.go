@@ -61,16 +61,6 @@ func stringSliceToList(_ context.Context, in []string, prior types.List) (types.
 	return types.ListValue(types.StringType, vals)
 }
 
-// stringSetToSlice extracts a []string from a types.Set of strings.
-func stringSetToSlice(ctx context.Context, set types.Set) ([]string, diag.Diagnostics) {
-	if set.IsNull() || set.IsUnknown() {
-		return nil, nil
-	}
-	out := make([]string, 0, len(set.Elements()))
-	d := set.ElementsAs(ctx, &out, false)
-	return out, d
-}
-
 // stringMapToMap extracts a map[string]string from a types.Map.
 func stringMapToMap(ctx context.Context, m types.Map) (map[string]string, diag.Diagnostics) {
 	if m.IsNull() || m.IsUnknown() {

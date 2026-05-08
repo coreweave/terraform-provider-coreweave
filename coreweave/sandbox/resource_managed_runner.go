@@ -517,9 +517,6 @@ func (m *ManagedRunnerResourceModel) toRunner(ctx context.Context) (*sandboxv1be
 	managedSpec, d := m.toManagedSpec(ctx)
 	diags.Append(d...)
 
-	bindings, d := m.toBindings()
-	diags.Append(d...)
-
 	if diags.HasError() {
 		return nil, diags
 	}
@@ -528,7 +525,7 @@ func (m *ManagedRunnerResourceModel) toRunner(ctx context.Context) (*sandboxv1be
 		DisplayName:     m.DisplayName.ValueString(),
 		Identity:        identity,
 		ManagedSpec:     managedSpec,
-		ProfileBindings: bindings,
+		ProfileBindings: m.toBindings(),
 	}, nil
 }
 
@@ -563,7 +560,7 @@ func (m *ManagedRunnerResourceModel) toManagedSpec(ctx context.Context) (*sandbo
 	}, nil
 }
 
-func (m *ManagedRunnerResourceModel) toBindings() ([]*sandboxv1beta2.RunnerProfileBinding, diag.Diagnostics) {
+func (m *ManagedRunnerResourceModel) toBindings() []*sandboxv1beta2.RunnerProfileBinding {
 	out := make([]*sandboxv1beta2.RunnerProfileBinding, 0, len(m.ProfileBindings))
 	for _, b := range m.ProfileBindings {
 		out = append(out, &sandboxv1beta2.RunnerProfileBinding{
@@ -573,7 +570,7 @@ func (m *ManagedRunnerResourceModel) toBindings() ([]*sandboxv1beta2.RunnerProfi
 			OverridesJson:     b.OverridesJSON.ValueString(),
 		})
 	}
-	return out, nil
+	return out
 }
 
 func (mp *MaintenancePolicyModel) toProto() (*sandboxv1beta2.MaintenancePolicy, diag.Diagnostics) {

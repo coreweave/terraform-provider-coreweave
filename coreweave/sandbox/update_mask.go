@@ -103,9 +103,7 @@ func buildManagedRunnerUpdateRequest(ctx context.Context, plan, state *ManagedRu
 
 	// --- Profile bindings ---
 	if !bindingsEqual(plan.ProfileBindings, state.ProfileBindings) {
-		bindings, d := plan.toBindings()
-		diags.Append(d...)
-		runnerOut.ProfileBindings = bindings
+		runnerOut.ProfileBindings = plan.toBindings()
 		paths = append(paths, "profile_bindings")
 	}
 
