@@ -125,7 +125,9 @@ Optional:
 
 - `is_default` (Boolean) Whether this is the default profile for the runner. Exactly one binding must set this to `true`.
 - `overrides_json` (String) Per-binding overrides as a JSON-encoded `ProfileSpec` fragment. Must be canonical JSON; use `jsonencode({...})` to construct.
-- `profile_name` (String) Optional local name for this profile on the runner. When unset, the runner uses the bound template's `display_name`. Set this only when you want a different name than the template provides — for example, to attach the same template under multiple aliases.
+- `profile_name` (String) Optional local name for this profile on the runner. When unset, the runner uses the bound template's `display_name` — this is the recommended path.
+
+**Warning:** the API does not enforce uniqueness of `profile_name` across runners. If two runners advertise the same `profile_name` resolving to different templates, sandbox callers that select profiles by name will get inconsistent behavior depending on which runner schedules them. Set this field only when you intentionally want a local alias (e.g., exposing the same template under multiple names on one runner) and ensure the chosen name is unique within your organization across all runners.
 
 
 <a id="nestedatt--maintenance_policy"></a>
