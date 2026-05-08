@@ -25,8 +25,11 @@ jobs:
       - name: Detect test suites to run
         id: changes
         run: |
-          # Available test suites - add new suites here
-          ALL_SUITES="cks networking object_storage sandbox"
+          # Available test suites - add new suites here.
+          # NOTE: sandbox is intentionally excluded until the Sandman API is
+          # available in the QA environment. The test files exist; uncomment
+          # `sandbox` here to re-enable once api.qa.coreweave.com serves it.
+          ALL_SUITES="cks networking object_storage"
 
           get_suite_dir() {
             echo "coreweave/$1"
