@@ -384,7 +384,10 @@ func (r *ManagedRunnerResource) Schema(_ context.Context, _ resource.SchemaReque
 						},
 						"profile_name": schema.StringAttribute{
 							Optional:            true,
-							MarkdownDescription: "Profile name on this runner. Overrides the template's name when set.",
+							MarkdownDescription: "Optional local name for this profile on the runner. " +
+								"When unset, the runner uses the bound template's `display_name`. " +
+								"Set this only when you want a different name than the template provides — " +
+								"for example, to attach the same template under multiple aliases.",
 						},
 						"is_default": schema.BoolAttribute{
 							Optional:            true,

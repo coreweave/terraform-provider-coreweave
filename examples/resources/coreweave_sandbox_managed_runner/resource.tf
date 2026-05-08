@@ -51,7 +51,6 @@ resource "coreweave_sandbox_managed_runner" "prod_east" {
   profile_bindings = [
     {
       profile_template_id = coreweave_sandbox_profile_template.default.id
-      profile_name        = "default"
       is_default          = true
     },
   ]

@@ -69,7 +69,6 @@ resource "coreweave_sandbox_managed_runner" "prod_east" {
   profile_bindings = [
     {
       profile_template_id = coreweave_sandbox_profile_template.default.id
-      profile_name        = "default"
       is_default          = true
     },
   ]
@@ -126,7 +125,7 @@ Optional:
 
 - `is_default` (Boolean) Whether this is the default profile for the runner. Exactly one binding must set this to `true`.
 - `overrides_json` (String) Per-binding overrides as a JSON-encoded `ProfileSpec` fragment. Must be canonical JSON; use `jsonencode({...})` to construct.
-- `profile_name` (String) Profile name on this runner. Overrides the template's name when set.
+- `profile_name` (String) Optional local name for this profile on the runner. When unset, the runner uses the bound template's `display_name`. Set this only when you want a different name than the template provides — for example, to attach the same template under multiple aliases.
 
 
 <a id="nestedatt--maintenance_policy"></a>
