@@ -24,7 +24,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: build
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
       - uses: ./.github/actions/setup
       - run: make lint
 
@@ -32,7 +32,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: build
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
       - uses: ./.github/actions/setup
       - run: make generate
       - name: git diff
@@ -53,7 +53,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
       - uses: ./.github/actions/setup
       - run: go mod download
       - name: Check go mod tidy
@@ -87,7 +87,7 @@ jobs:
             readonly input="${1}"
 
             echo "Input string: "${input}"
-          
+
             if grep --color=always -P "$re_full" <<< "${input}"; then
               echo "Test Passed! ✅"
             else
@@ -106,12 +106,12 @@ jobs:
 
           echo "testing a PR title with a major version bump change"
           run_test 'ci(github-action)!: Update actions/cache action ( v4 → v5 )'
-          
+
           if [ $tests_failed -gt 0 ]; then
             echo "One or more tests failed!"
             exit 1
           fi
-          
+
           grep --color=always -P "$re_full" <<< "${PR_TITLE}" || {
             cat <<EOF
           PR title does not match conventional commits format. Please update the PR title to match the format: '<type>(<scope>): <description>'"
