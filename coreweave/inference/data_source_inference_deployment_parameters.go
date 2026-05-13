@@ -25,10 +25,10 @@ type InferenceDeploymentParametersDataSource struct {
 
 // InferenceDeploymentParametersDataSourceModel describes the data source data model.
 type InferenceDeploymentParametersDataSourceModel struct {
-	GatewayIds           types.List `tfsdk:"gateway_ids"`
-	RuntimeVersions      types.Map  `tfsdk:"runtime_versions"`
-	RuntimeConfigOptions types.Map  `tfsdk:"runtime_config_options"`
-	InstanceTypes        types.List `tfsdk:"instance_types"`
+	GatewayIds           types.Set `tfsdk:"gateway_ids"`
+	RuntimeVersions      types.Map `tfsdk:"runtime_versions"`
+	RuntimeConfigOptions types.Map `tfsdk:"runtime_config_options"`
+	InstanceTypes        types.Set `tfsdk:"instance_types"`
 }
 
 var (
@@ -49,7 +49,7 @@ func (d *InferenceDeploymentParametersDataSource) Schema(_ context.Context, _ da
 	resp.Schema = schema.Schema{
 		MarkdownDescription: "Retrieve available parameter values for CoreWeave Managed Inference deployments.",
 		Attributes: map[string]schema.Attribute{
-			"gateway_ids": schema.ListAttribute{
+			"gateway_ids": schema.SetAttribute{
 				Computed:            true,
 				ElementType:         types.StringType,
 				MarkdownDescription: "Gateway IDs available for the current organization.",
@@ -60,8 +60,9 @@ func (d *InferenceDeploymentParametersDataSource) Schema(_ context.Context, _ da
 				NestedObject: schema.NestedAttributeObject{
 					Attributes: map[string]schema.Attribute{
 						"versions": schema.ListAttribute{
-							Computed:    true,
-							ElementType: types.StringType,
+							Computed:            true,
+							ElementType:         types.StringType,
+							MarkdownDescription: "Available semver versions for the engine, sorted by the API.",
 						},
 					},
 				},
@@ -72,13 +73,14 @@ func (d *InferenceDeploymentParametersDataSource) Schema(_ context.Context, _ da
 				NestedObject: schema.NestedAttributeObject{
 					Attributes: map[string]schema.Attribute{
 						"allowed_keys": schema.ListAttribute{
-							Computed:    true,
-							ElementType: types.StringType,
+							Computed:            true,
+							ElementType:         types.StringType,
+							MarkdownDescription: "Configuration keys accepted by the engine's `engine_config` field.",
 						},
 					},
 				},
 			},
-			"instance_types": schema.ListAttribute{
+			"instance_types": schema.SetAttribute{
 				Computed:            true,
 				ElementType:         types.StringType,
 				MarkdownDescription: "Available instance types for deployments.",
@@ -116,19 +118,19 @@ func (d *InferenceDeploymentParametersDataSource) Read(ctx context.Context, _ da
 	var data InferenceDeploymentParametersDataSourceModel
 
 	// gateway_ids
-	gwVals := make([]attr.Value, 0, len(msg.GetGatewayIds()))
-	for _, id := range msg.GetGatewayIds() {
-		gwVals = append(gwVals, types.StringValue(id))
+	gwVals := make([]attr.Value, len(msg.GetGatewayIds()))
+	for i, id := range msg.GetGatewayIds() {
+		gwVals[i] = types.StringValue(id)
 	}
-	data.GatewayIds = types.ListValueMust(types.StringType, gwVals)
+	data.GatewayIds = types.SetValueMust(types.StringType, gwVals)
 
 	// runtime_versions: map[string]object{versions: list[string]}
 	rvMap := make(map[string]attr.Value)
 	if rp := msg.GetRuntimeParameters(); rp != nil {
 		for engine, rv := range rp.GetRuntimeVersions() {
-			versionVals := make([]attr.Value, 0, len(rv.GetVersions()))
-			for _, v := range rv.GetVersions() {
-				versionVals = append(versionVals, types.StringValue(v))
+			versionVals := make([]attr.Value, len(rv.GetVersions()))
+			for i, v := range rv.GetVersions() {
+				versionVals[i] = types.StringValue(v)
 			}
 			obj, diags := types.ObjectValue(runtimeVersionsAttrTypes, map[string]attr.Value{
 				"versions": types.ListValueMust(types.StringType, versionVals),
@@ -146,9 +148,9 @@ func (d *InferenceDeploymentParametersDataSource) Read(ctx context.Context, _ da
 	rcoMap := make(map[string]attr.Value)
 	if rp := msg.GetRuntimeParameters(); rp != nil {
 		for engine, rco := range rp.GetRuntimeConfigOptions() {
-			keyVals := make([]attr.Value, 0, len(rco.GetAllowedKeys()))
-			for _, k := range rco.GetAllowedKeys() {
-				keyVals = append(keyVals, types.StringValue(k))
+			keyVals := make([]attr.Value, len(rco.GetAllowedKeys()))
+			for i, k := range rco.GetAllowedKeys() {
+				keyVals[i] = types.StringValue(k)
 			}
 			obj, diags := types.ObjectValue(runtimeConfigOptionsAttrTypes, map[string]attr.Value{
 				"allowed_keys": types.ListValueMust(types.StringType, keyVals),
@@ -166,12 +168,12 @@ func (d *InferenceDeploymentParametersDataSource) Read(ctx context.Context, _ da
 	var instanceTypeVals []attr.Value
 	if resourceParams := msg.GetResourceParameters(); resourceParams != nil {
 		instanceTypes := resourceParams.GetInstanceTypes()
-		instanceTypeVals = make([]attr.Value, 0, len(instanceTypes))
-		for _, it := range instanceTypes {
-			instanceTypeVals = append(instanceTypeVals, types.StringValue(it))
+		instanceTypeVals = make([]attr.Value, len(instanceTypes))
+		for i, it := range instanceTypes {
+			instanceTypeVals[i] = types.StringValue(it)
 		}
 	}
-	data.InstanceTypes = types.ListValueMust(types.StringType, instanceTypeVals)
+	data.InstanceTypes = types.SetValueMust(types.StringType, instanceTypeVals)
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }

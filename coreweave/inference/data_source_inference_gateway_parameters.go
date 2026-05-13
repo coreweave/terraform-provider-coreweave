@@ -25,7 +25,7 @@ type GatewayParametersDataSource struct {
 
 // GatewayParametersDataSourceModel describes the data source data model.
 type GatewayParametersDataSourceModel struct {
-	Zones types.List `tfsdk:"zones"`
+	Zones types.Set `tfsdk:"zones"`
 }
 
 func (d *GatewayParametersDataSource) Metadata(_ context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
@@ -36,7 +36,7 @@ func (d *GatewayParametersDataSource) Schema(_ context.Context, _ datasource.Sch
 	resp.Schema = schema.Schema{
 		MarkdownDescription: "Retrieve available gateway parameters for CoreWeave Managed Inference.",
 		Attributes: map[string]schema.Attribute{
-			"zones": schema.ListAttribute{
+			"zones": schema.SetAttribute{
 				Computed:            true,
 				ElementType:         types.StringType,
 				MarkdownDescription: "Available zones for inference gateways.",
@@ -79,7 +79,7 @@ func (d *GatewayParametersDataSource) Read(ctx context.Context, _ datasource.Rea
 	for i, z := range zones {
 		zoneVals[i] = types.StringValue(z)
 	}
-	data.Zones = types.ListValueMust(types.StringType, zoneVals)
+	data.Zones = types.SetValueMust(types.StringType, zoneVals)
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }

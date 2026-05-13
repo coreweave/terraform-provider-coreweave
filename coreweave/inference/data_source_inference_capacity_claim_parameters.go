@@ -29,7 +29,7 @@ type CapacityClaimParametersDataSourceModel struct {
 }
 
 var zoneInstanceTypesAttrTypes = map[string]attr.Type{
-	"instance_ids": types.ListType{ElemType: types.StringType},
+	"instance_types": types.SetType{ElemType: types.StringType},
 }
 
 func (d *CapacityClaimParametersDataSource) Metadata(_ context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
@@ -45,9 +45,10 @@ func (d *CapacityClaimParametersDataSource) Schema(_ context.Context, _ datasour
 				MarkdownDescription: "Available instance types per zone (keyed by zone name).",
 				NestedObject: schema.NestedAttributeObject{
 					Attributes: map[string]schema.Attribute{
-						"instance_ids": schema.ListAttribute{
-							Computed:    true,
-							ElementType: types.StringType,
+						"instance_types": schema.SetAttribute{
+							Computed:            true,
+							ElementType:         types.StringType,
+							MarkdownDescription: "Instance type IDs that can be claimed in this zone.",
 						},
 					},
 				},
@@ -84,15 +85,15 @@ func (d *CapacityClaimParametersDataSource) Read(ctx context.Context, _ datasour
 
 	var data CapacityClaimParametersDataSourceModel
 
-	// zone_instance_types: map[string]object{instance_ids: list[string]}
+	// zone_instance_types: map[string]object{instance_types: set[string]}
 	zitMap := make(map[string]attr.Value)
 	for zone, instanceTypes := range msg.GetZoneInstanceTypes() {
-		idVals := make([]attr.Value, 0, len(instanceTypes.GetInstanceIds()))
-		for _, id := range instanceTypes.GetInstanceIds() {
-			idVals = append(idVals, types.StringValue(id))
+		typeVals := make([]attr.Value, len(instanceTypes.GetInstanceIds()))
+		for i, id := range instanceTypes.GetInstanceIds() {
+			typeVals[i] = types.StringValue(id)
 		}
 		obj, diags := types.ObjectValue(zoneInstanceTypesAttrTypes, map[string]attr.Value{
-			"instance_ids": types.ListValueMust(types.StringType, idVals),
+			"instance_types": types.SetValueMust(types.StringType, typeVals),
 		})
 		resp.Diagnostics.Append(diags...)
 		if resp.Diagnostics.HasError() {

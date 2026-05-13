@@ -18,7 +18,7 @@ data "coreweave_inference_deployment_parameters" "deploy_params" {}
 
 resource "coreweave_inference_deployment" "example" {
   name        = "my-llm"
-  gateway_ids = [data.coreweave_inference_deployment_parameters.deploy_params.gateway_ids[0]]
+  gateway_ids = [tolist(data.coreweave_inference_deployment_parameters.deploy_params.gateway_ids)[0]]
 
   runtime = {
     engine  = "vllm"
@@ -59,16 +59,16 @@ resource "coreweave_inference_deployment" "example" {
 ### Required
 
 - `autoscaling` (Attributes) Autoscaling configuration. (see [below for nested schema](#nestedatt--autoscaling))
-- `gateway_ids` (Set of String) The gateway IDs to associate the deployment with. At least one is required. Order is not significant.
+- `gateway_ids` (Set of String) The gateway IDs to associate the deployment with. At least one is required.
 - `model` (Attributes) Model configuration. (see [below for nested schema](#nestedatt--model))
 - `name` (String) The name of the deployment. Must be a valid hostname label.
 - `resources` (Attributes) Resource configuration for the deployment. (see [below for nested schema](#nestedatt--resources))
 - `runtime` (Attributes) Runtime selection and configuration. (see [below for nested schema](#nestedatt--runtime))
-- `traffic` (Attributes) Traffic configuration. (see [below for nested schema](#nestedatt--traffic))
 
 ### Optional
 
 - `disabled` (Boolean) Whether the deployment is disabled.
+- `traffic` (Attributes) Traffic configuration. Omit to accept the API default (weight 0, which normalizes to 100% when no other deployment shares the model name). (see [below for nested schema](#nestedatt--traffic))
 
 ### Read-Only
 
@@ -89,7 +89,7 @@ Required:
 
 Optional:
 
-- `capacity_classes` (List of String) Capacity classes to use. Allowed values: `CAPACITY_CLASS_RESERVED`, `CAPACITY_CLASS_ON_DEMAND`.
+- `capacity_classes` (List of String) Ordered preference list of capacity classes to use. Order is significant: the first satisfiable class wins. Allowed values: `CAPACITY_CLASS_RESERVED`, `CAPACITY_CLASS_ON_DEMAND`.
 - `concurrency` (Number) Concurrency per instance target (≥1). Controls latency vs throughput tradeoffs.
 - `priority` (Number) Priority for cross-deployment scaling (0–1000). Higher values win when there is contention.
 
@@ -139,8 +139,18 @@ Optional:
 
 Read-Only:
 
-- `last_update_time` (String)
-- `message` (String)
-- `reason` (String)
-- `status` (String)
-- `type` (String)
+- `last_update_time` (String) RFC3339 timestamp of the last condition transition.
+- `message` (String) A human-readable message about the condition's last transition.
+- `reason` (String) A short, machine-readable reason for the condition's last transition.
+- `status` (String) The condition status (`True`, `False`, or `Unknown`).
+- `type` (String) The condition type (e.g. `Ready`, `Progressing`).
+
+## Import
+
+Import is supported using the following syntax:
+
+The [`terraform import` command](https://developer.hashicorp.com/terraform/cli/commands/import) can be used, for example:
+
+```shell
+terraform import coreweave_inference_deployment.example <deployment-id>
+```

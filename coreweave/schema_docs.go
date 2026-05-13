@@ -7,10 +7,20 @@ import (
 )
 
 // EnumMarkdownValues renders the values of an int-keyed name map as a
-// backtick-quoted, comma-separated list sorted by key. When dropZero is true
-// the zero-key entry is omitted.
+// backtick-quoted, comma-separated list sorted by enum value. When dropZero
+// is true the zero-key entry is omitted.
 func EnumMarkdownValues(m map[int32]string, dropZero bool) string {
-	// the values should be sorted by their enum (string) value, not the string value.
+	values := EnumValues(m, dropZero)
+	for i, v := range values {
+		values[i] = fmt.Sprintf("`%s`", v)
+	}
+	return strings.Join(values, ", ")
+}
+
+// EnumValues returns the string values of an int-keyed name map sorted by
+// enum value. When dropZero is true the zero-key entry is omitted. Useful
+// for building stringvalidator.OneOf(...) lists from proto enum maps.
+func EnumValues(m map[int32]string, dropZero bool) []string {
 	keys := make([]int32, 0, len(m))
 	for k := range m {
 		if dropZero && k == 0 {
@@ -22,7 +32,7 @@ func EnumMarkdownValues(m map[int32]string, dropZero bool) string {
 
 	values := make([]string, len(keys))
 	for i, k := range keys {
-		values[i] = fmt.Sprintf("`%s`", m[k])
+		values[i] = m[k]
 	}
-	return strings.Join(values, ", ")
+	return values
 }

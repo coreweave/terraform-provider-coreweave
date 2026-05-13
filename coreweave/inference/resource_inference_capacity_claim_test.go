@@ -1,7 +1,6 @@
 package inference_test
 
 import (
-	"context"
 	"fmt"
 	"math/rand/v2"
 	"testing"
@@ -21,14 +20,14 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-const testInstanceID = "gb200-4x"
+const testInstanceType = "gb200-4x"
 
 // --- Unit tests ---
 
-func TestInferenceCapacityClaimResource_Schema(t *testing.T) {
+func TestInferenceCapacityClaim_Schema(t *testing.T) {
 	t.Parallel()
 
-	ctx := context.Background()
+	ctx := t.Context()
 	schemaReq := fwresource.SchemaRequest{}
 	schemaResp := &fwresource.SchemaResponse{}
 
@@ -50,7 +49,7 @@ func TestSetFromCapacityClaim_Fields(t *testing.T) {
 			Name:           "my-capacity-claim",
 			OrganizationId: "org-456",
 			Resources: (inferencev1.CapacityClaimResources_builder{
-				InstanceId:    testInstanceID,
+				InstanceId:    testInstanceType,
 				InstanceCount: 3,
 				CapacityType:  inferencev1.CapacityType_CAPACITY_TYPE_SERVERLESS,
 				Zones:         []string{"US-WEST-04A", "US-EAST-01A"},
@@ -106,8 +105,8 @@ func TestSetFromCapacityClaim_Fields(t *testing.T) {
 	}
 
 	// Resources
-	if m.Resources.InstanceID.ValueString() != testInstanceID {
-		t.Errorf("Resources.InstanceID: got %q, want %q", m.Resources.InstanceID.ValueString(), testInstanceID)
+	if m.Resources.InstanceType.ValueString() != testInstanceType {
+		t.Errorf("Resources.InstanceType: got %q, want %q", m.Resources.InstanceType.ValueString(), testInstanceType)
 	}
 	if m.Resources.InstanceCount.ValueInt64() != 3 {
 		t.Errorf("Resources.InstanceCount: got %d, want 3", m.Resources.InstanceCount.ValueInt64())
@@ -117,7 +116,7 @@ func TestSetFromCapacityClaim_Fields(t *testing.T) {
 	}
 
 	var zones []string
-	diags = m.Resources.Zones.ElementsAs(context.Background(), &zones, false)
+	diags = m.Resources.Zones.ElementsAs(t.Context(), &zones, false)
 	if diags.HasError() {
 		t.Fatalf("failed to extract zones: %v", diags)
 	}
@@ -147,7 +146,7 @@ func TestToCreateCapacityClaimRequest_Fields(t *testing.T) {
 	m := &inference.InferenceCapacityClaimResourceModel{
 		Name: types.StringValue("my-claim"),
 		Resources: &inference.CapacityClaimResourcesModel{
-			InstanceID:    types.StringValue(testInstanceID),
+			InstanceType:  types.StringValue(testInstanceType),
 			InstanceCount: types.Int64Value(5),
 			CapacityType:  types.StringValue("CAPACITY_TYPE_SERVERLESS"),
 			Zones:         zones,
@@ -162,8 +161,8 @@ func TestToCreateCapacityClaimRequest_Fields(t *testing.T) {
 	if req.GetName() != "my-claim" {
 		t.Errorf("Name: got %q, want %q", req.GetName(), "my-claim")
 	}
-	if req.GetResources().GetInstanceId() != testInstanceID {
-		t.Errorf("InstanceID: got %q, want %q", req.GetResources().GetInstanceId(), testInstanceID)
+	if req.GetResources().GetInstanceId() != testInstanceType {
+		t.Errorf("InstanceType: got %q, want %q", req.GetResources().GetInstanceId(), testInstanceType)
 	}
 	if req.GetResources().GetInstanceCount() != 5 {
 		t.Errorf("InstanceCount: got %d, want 5", req.GetResources().GetInstanceCount())
@@ -188,7 +187,7 @@ func TestToUpdateCapacityClaimRequest_Fields(t *testing.T) {
 		ID:   types.StringValue("cc-789"),
 		Name: types.StringValue("my-claim"),
 		Resources: &inference.CapacityClaimResourcesModel{
-			InstanceID:    types.StringValue(testInstanceID),
+			InstanceType:  types.StringValue(testInstanceType),
 			InstanceCount: types.Int64Value(10),
 			CapacityType:  types.StringValue("CAPACITY_TYPE_SERVERLESS"),
 			Zones:         zones,
@@ -215,8 +214,8 @@ func TestToUpdateCapacityClaimRequest_Fields(t *testing.T) {
 
 	// Update request should NOT carry name (name triggers replace).
 	// The proto field is Id + Resources only.
-	if req.GetResources().GetInstanceId() != testInstanceID {
-		t.Errorf("InstanceID: got %q, want %q", req.GetResources().GetInstanceId(), testInstanceID)
+	if req.GetResources().GetInstanceId() != testInstanceType {
+		t.Errorf("InstanceType: got %q, want %q", req.GetResources().GetInstanceId(), testInstanceType)
 	}
 }
 
@@ -232,7 +231,7 @@ locals {
   available_zones     = sort(keys(local.zones_map))
   zone                = local.preferred_zone != "" ? local.preferred_zone : local.available_zones[0]
   preferred_instance  = %q
-  available_instances = local.zones_map[local.zone].instance_ids
+  available_instances = local.zones_map[local.zone].instance_types
   instance            = local.preferred_instance != "" ? local.preferred_instance : local.available_instances[0]
 }
 
@@ -240,7 +239,7 @@ resource "coreweave_inference_capacity_claim" "test" {
   name = %q
 
   resources = {
-    instance_id    = local.instance
+    instance_type  = local.instance
     instance_count = %d
     capacity_type  = "CAPACITY_TYPE_SERVERLESS"
     zones          = [local.zone]
@@ -260,65 +259,69 @@ resource "coreweave_inference_capacity_claim" "test" {
 `, preferredZone, preferredInstance, name, instanceCount)
 }
 
-func TestAccInferenceCapacityClaim(t *testing.T) {
-	name := fmt.Sprintf("%scc-%x", AcceptanceTestPrefix, rand.IntN(100000))
-	fullResourceName := "coreweave_inference_capacity_claim.test"
-	preferredZone := preferredInferenceZone()
-	preferredInstance := preferredInferenceInstanceType()
+func TestInferenceCapacityClaim(t *testing.T) {
+	t.Run("lifecycle", func(t *testing.T) {
+		name := fmt.Sprintf("%scc-%x", AcceptanceTestPrefix, rand.IntN(100000))
+		fullResourceName := "coreweave_inference_capacity_claim.test"
+		preferredZone := preferredInferenceZone()
+		preferredInstance := preferredInferenceInstanceType()
 
-	// Inference acceptance tests run sequentially (resource.Test, not
-	// resource.ParallelTest) because the staging environment has limited
-	// per-zone capacity; parallelism causes allocation failures.
-	//nolint:forbidigo // see comment above
-	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testutil.SetEnvDefaults() },
-		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
-		Steps: []resource.TestStep{
-			{
-				Config: capacityClaimConfig(name, 1, preferredZone, preferredInstance),
-				ConfigStateChecks: []statecheck.StateCheck{
-					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("name"), knownvalue.StringExact(name)),
-					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("id"), knownvalue.NotNull()),
-					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("organization_id"), knownvalue.NotNull()),
-					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("status"), knownvalue.NotNull()),
-					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("created_at"), knownvalue.NotNull()),
-					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("allocated_instances"), knownvalue.NotNull()),
-					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("pending_instances"), knownvalue.NotNull()),
-					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("resources").AtMapKey("instance_id"), knownvalue.NotNull()),
-					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("resources").AtMapKey("instance_count"), knownvalue.Int64Exact(1)),
-					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("resources").AtMapKey("capacity_type"), knownvalue.StringExact("CAPACITY_TYPE_SERVERLESS")),
+		// Inference acceptance tests run sequentially via resource.Test (not
+		// resource.ParallelTest) because the staging environment has limited
+		// per-zone capacity and parallel runs cause allocation failures.
+		//nolint:forbidigo // sequential per-zone capacity constraint, see comment above
+		resource.Test(t, resource.TestCase{
+			PreCheck:                 func() { testutil.SetEnvDefaults() },
+			ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+			Steps: []resource.TestStep{
+				{
+					Config: capacityClaimConfig(name, 1, preferredZone, preferredInstance),
+					ConfigStateChecks: []statecheck.StateCheck{
+						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("name"), knownvalue.StringExact(name)),
+						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("id"), knownvalue.NotNull()),
+						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("organization_id"), knownvalue.NotNull()),
+						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("status"), knownvalue.NotNull()),
+						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("created_at"), knownvalue.NotNull()),
+						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("allocated_instances"), knownvalue.NotNull()),
+						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("pending_instances"), knownvalue.NotNull()),
+						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("resources").AtMapKey("instance_type"), knownvalue.NotNull()),
+						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("resources").AtMapKey("instance_count"), knownvalue.Int64Exact(1)),
+						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("resources").AtMapKey("capacity_type"), knownvalue.StringExact("CAPACITY_TYPE_SERVERLESS")),
+					},
+				},
+				{
+					Config: capacityClaimConfig(name, 2, preferredZone, preferredInstance),
+					ConfigStateChecks: []statecheck.StateCheck{
+						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("resources").AtMapKey("instance_count"), knownvalue.Int64Exact(2)),
+					},
+				},
+				{
+					ResourceName:      fullResourceName,
+					ImportState:       true,
+					ImportStateVerify: true,
 				},
 			},
-			{
-				Config: capacityClaimConfig(name, 2, preferredZone, preferredInstance),
-				ConfigStateChecks: []statecheck.StateCheck{
-					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("resources").AtMapKey("instance_count"), knownvalue.Int64Exact(2)),
-				},
-			},
-			{
-				ResourceName:      fullResourceName,
-				ImportState:       true,
-				ImportStateVerify: true,
-			},
-		},
+		})
 	})
 }
 
-func TestAccInferenceCapacityClaimParameters(t *testing.T) {
-	resource.ParallelTest(t, resource.TestCase{
-		PreCheck:                 func() { testutil.SetEnvDefaults() },
-		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
-		Steps: []resource.TestStep{
-			{
-				Config: `data "coreweave_inference_capacity_claim_parameters" "test" {}`,
-				ConfigStateChecks: []statecheck.StateCheck{
-					statecheck.ExpectKnownValue(
-						"data.coreweave_inference_capacity_claim_parameters.test",
-						tfjsonpath.New("zone_instance_types"),
-						knownvalue.NotNull(),
-					),
+func TestInferenceCapacityClaimParameters(t *testing.T) {
+	t.Run("read", func(t *testing.T) {
+		resource.ParallelTest(t, resource.TestCase{
+			PreCheck:                 func() { testutil.SetEnvDefaults() },
+			ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+			Steps: []resource.TestStep{
+				{
+					Config: `data "coreweave_inference_capacity_claim_parameters" "test" {}`,
+					ConfigStateChecks: []statecheck.StateCheck{
+						statecheck.ExpectKnownValue(
+							"data.coreweave_inference_capacity_claim_parameters.test",
+							tfjsonpath.New("zone_instance_types"),
+							knownvalue.NotNull(),
+						),
+					},
 				},
 			},
-		},
+		})
 	})
 }

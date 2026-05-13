@@ -17,7 +17,7 @@ resource "coreweave_inference_capacity_claim" "example" {
   name = "my-capacity-claim"
 
   resources = {
-    instance_id    = "h100-80gb-sxm5"
+    instance_type  = "h100-80gb-sxm5"
     instance_count = 2
     capacity_type  = "CAPACITY_TYPE_SERVERLESS"
     zones          = ["US-EAST-04A"]
@@ -51,8 +51,8 @@ Required:
 
 - `capacity_type` (String) The capacity type for the capacity claim. Must be one of: `CAPACITY_TYPE_SERVERLESS`, `CAPACITY_TYPE_CUSTOMER`.
 - `instance_count` (Number) The number of instances to reserve. Must be at least 1.
-- `instance_id` (String) The instance type to reserve by ID specifier (e.g. `gb200-4x`). Case insensitive.
-- `zones` (Set of String) The availability zones where the capacity claim may use resources from (e.g. `US-WEST-04A`). Case insensitive. At least one is required.
+- `instance_type` (String) The instance type to reserve (e.g. `gb200-4x`).
+- `zones` (Set of String) The availability zones where the capacity claim may use resources from (e.g. `US-WEST-04A`). At least one is required.
 
 
 <a id="nestedatt--conditions"></a>
@@ -60,11 +60,11 @@ Required:
 
 Read-Only:
 
-- `last_update_time` (String)
-- `message` (String)
-- `reason` (String)
-- `status` (String)
-- `type` (String)
+- `last_update_time` (String) RFC3339 timestamp of the last condition transition.
+- `message` (String) A human-readable message about the condition's last transition.
+- `reason` (String) A short, machine-readable reason for the condition's last transition.
+- `status` (String) The condition status (`True`, `False`, or `Unknown`).
+- `type` (String) The condition type (e.g. `Ready`, `Progressing`).
 
 ## Import
 

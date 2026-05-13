@@ -28,4 +28,4 @@ data "coreweave_inference_capacity_claim_parameters" "example" {}
 
 Read-Only:
 
-- `instance_ids` (List of String)
+- `instance_types` (Set of String) Instance type IDs that can be claimed in this zone.

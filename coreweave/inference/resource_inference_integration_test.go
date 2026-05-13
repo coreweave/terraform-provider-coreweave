@@ -23,7 +23,7 @@ locals {
   available_zones     = sort(keys(local.zones_map))
   zone                = local.preferred_zone != "" ? local.preferred_zone : local.available_zones[0]
   preferred_instance  = %q
-  available_instances = local.zones_map[local.zone].instance_ids
+  available_instances = local.zones_map[local.zone].instance_types
   instance            = local.preferred_instance != "" ? local.preferred_instance : local.available_instances[0]
 }
 
@@ -31,7 +31,7 @@ resource "coreweave_inference_capacity_claim" "test" {
   name = "%s-cc"
 
   resources = {
-    instance_id    = local.instance
+    instance_type  = local.instance
     instance_count = 1
     capacity_type  = "CAPACITY_TYPE_SERVERLESS"
     zones          = [local.zone]
@@ -73,7 +73,7 @@ resource "coreweave_inference_deployment" "test" {
   }
 
   resources = {
-    instance_type = coreweave_inference_capacity_claim.test.resources.instance_id
+    instance_type = coreweave_inference_capacity_claim.test.resources.instance_type
     gpu_count     = 1
   }
 
@@ -90,49 +90,50 @@ resource "coreweave_inference_deployment" "test" {
     capacity_classes = ["CAPACITY_CLASS_RESERVED"]
   }
 
-  traffic = {}
-
   depends_on = [coreweave_inference_capacity_claim.test]
 }
 `, preferredZone, preferredInstance, name, name, name)
 }
 
-// TestAccInferenceReservedCapacity exercises the full reserved-capacity chain —
+// TestInferenceReservedCapacity exercises the full reserved-capacity chain —
 // coreweave_inference_capacity_claim, coreweave_inference_gateway, and
 // coreweave_inference_deployment — in a single config. The per-resource acceptance
 // tests cover each resource in isolation; this one verifies they compose correctly:
-// the deployment shares an instance_id with the capacity claim and schedules against
-// it via capacity_classes = ["CAPACITY_CLASS_RESERVED"]. depends_on sequences create and destroy so
-// the deployment tears down before the claim it references.
-func TestAccInferenceReservedCapacity(t *testing.T) {
-	name := fmt.Sprintf("%sint-%x", AcceptanceTestPrefix, rand.IntN(100000))
-	ccResource := "coreweave_inference_capacity_claim.test"
-	gwResource := "coreweave_inference_gateway.test"
-	depResource := "coreweave_inference_deployment.test"
-	preferredZone := preferredInferenceZone()
-	preferredInstance := preferredInferenceInstanceType()
+// the deployment shares an instance_type with the capacity claim and schedules
+// against it via capacity_classes = ["CAPACITY_CLASS_RESERVED"]. depends_on
+// sequences create and destroy so the deployment tears down before the claim it
+// references.
+func TestInferenceReservedCapacity(t *testing.T) {
+	t.Run("lifecycle", func(t *testing.T) {
+		name := fmt.Sprintf("%sint-%x", AcceptanceTestPrefix, rand.IntN(100000))
+		ccResource := "coreweave_inference_capacity_claim.test"
+		gwResource := "coreweave_inference_gateway.test"
+		depResource := "coreweave_inference_deployment.test"
+		preferredZone := preferredInferenceZone()
+		preferredInstance := preferredInferenceInstanceType()
 
-	// Inference acceptance tests run sequentially (resource.Test, not
-	// resource.ParallelTest) because the staging environment has limited
-	// per-zone capacity; parallelism causes allocation failures.
-	//nolint:forbidigo // see comment above
-	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testutil.SetEnvDefaults() },
-		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
-		Steps: []resource.TestStep{
-			{
-				Config: inferenceIntegrationConfig(name, preferredZone, preferredInstance),
-				ConfigStateChecks: []statecheck.StateCheck{
-					statecheck.ExpectKnownValue(ccResource, tfjsonpath.New("id"), knownvalue.NotNull()),
-					statecheck.ExpectKnownValue(ccResource, tfjsonpath.New("status"), knownvalue.NotNull()),
-					statecheck.ExpectKnownValue(ccResource, tfjsonpath.New("allocated_instances"), knownvalue.NotNull()),
-					statecheck.ExpectKnownValue(ccResource, tfjsonpath.New("resources").AtMapKey("capacity_type"), knownvalue.StringExact("CAPACITY_TYPE_SERVERLESS")),
-					statecheck.ExpectKnownValue(gwResource, tfjsonpath.New("id"), knownvalue.NotNull()),
-					statecheck.ExpectKnownValue(depResource, tfjsonpath.New("status"), knownvalue.StringExact("STATUS_READY")),
-					statecheck.ExpectKnownValue(depResource, tfjsonpath.New("autoscaling").AtMapKey("capacity_classes"), knownvalue.ListExact([]knownvalue.Check{knownvalue.StringExact("CAPACITY_CLASS_RESERVED")})),
-					statecheck.ExpectKnownValue(depResource, tfjsonpath.New("autoscaling").AtMapKey("priority"), knownvalue.Int64Exact(100)),
+		// Inference acceptance tests run sequentially via resource.Test (not
+		// resource.ParallelTest) because the staging environment has limited
+		// per-zone capacity and parallel runs cause allocation failures.
+		//nolint:forbidigo // sequential per-zone capacity constraint, see comment above
+		resource.Test(t, resource.TestCase{
+			PreCheck:                 func() { testutil.SetEnvDefaults() },
+			ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+			Steps: []resource.TestStep{
+				{
+					Config: inferenceIntegrationConfig(name, preferredZone, preferredInstance),
+					ConfigStateChecks: []statecheck.StateCheck{
+						statecheck.ExpectKnownValue(ccResource, tfjsonpath.New("id"), knownvalue.NotNull()),
+						statecheck.ExpectKnownValue(ccResource, tfjsonpath.New("status"), knownvalue.NotNull()),
+						statecheck.ExpectKnownValue(ccResource, tfjsonpath.New("allocated_instances"), knownvalue.NotNull()),
+						statecheck.ExpectKnownValue(ccResource, tfjsonpath.New("resources").AtMapKey("capacity_type"), knownvalue.StringExact("CAPACITY_TYPE_SERVERLESS")),
+						statecheck.ExpectKnownValue(gwResource, tfjsonpath.New("id"), knownvalue.NotNull()),
+						statecheck.ExpectKnownValue(depResource, tfjsonpath.New("status"), knownvalue.StringExact("STATUS_READY")),
+						statecheck.ExpectKnownValue(depResource, tfjsonpath.New("autoscaling").AtMapKey("capacity_classes"), knownvalue.ListExact([]knownvalue.Check{knownvalue.StringExact("CAPACITY_CLASS_RESERVED")})),
+						statecheck.ExpectKnownValue(depResource, tfjsonpath.New("autoscaling").AtMapKey("priority"), knownvalue.Int64Exact(100)),
+					},
 				},
 			},
-		},
+		})
 	})
 }

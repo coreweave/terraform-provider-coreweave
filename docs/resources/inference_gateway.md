@@ -47,7 +47,7 @@ resource "coreweave_inference_gateway" "example" {
 
 - `conditions` (Attributes List) Detailed status conditions for the gateway. (see [below for nested schema](#nestedatt--conditions))
 - `created_at` (String) RFC3339 timestamp of when the gateway was created.
-- `endpoints` (List of String) The endpoint URIs for the gateway.
+- `endpoints` (Set of String) The endpoint URIs for the gateway.
 - `id` (String) The unique identifier of the gateway.
 - `organization_id` (String) The organization ID that owns the gateway.
 - `status` (String) The current status of the gateway.
@@ -112,7 +112,7 @@ Required:
 
 Optional:
 
-- `additional_dns` (List of String) Additional DNS names for the gateway endpoint. These DNS names must be manually configured to point to the gateway endpoint.
+- `additional_dns` (Set of String) Additional DNS names for the gateway endpoint. These DNS names must be manually configured to point to the gateway endpoint.
 
 
 <a id="nestedatt--conditions"></a>
@@ -120,11 +120,11 @@ Optional:
 
 Read-Only:
 
-- `last_update_time` (String)
-- `message` (String)
-- `reason` (String)
-- `status` (String)
-- `type` (String)
+- `last_update_time` (String) RFC3339 timestamp of the last condition transition.
+- `message` (String) A human-readable message about the condition's last transition.
+- `reason` (String) A short, machine-readable reason for the condition's last transition.
+- `status` (String) The condition status (`True`, `False`, or `Unknown`).
+- `type` (String) The condition type (e.g. `Ready`, `Progressing`).
 
 ## Import
 

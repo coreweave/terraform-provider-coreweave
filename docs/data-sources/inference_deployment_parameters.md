@@ -33,8 +33,8 @@ output "vllm_versions" {
 
 ### Read-Only
 
-- `gateway_ids` (List of String) Gateway IDs available for the current organization.
-- `instance_types` (List of String) Available instance types for deployments.
+- `gateway_ids` (Set of String) Gateway IDs available for the current organization.
+- `instance_types` (Set of String) Available instance types for deployments.
 - `runtime_config_options` (Attributes Map) Available runtime config options per engine (keyed by engine name). (see [below for nested schema](#nestedatt--runtime_config_options))
 - `runtime_versions` (Attributes Map) Available runtime versions per engine (keyed by engine name). (see [below for nested schema](#nestedatt--runtime_versions))
 
@@ -43,7 +43,7 @@ output "vllm_versions" {
 
 Read-Only:
 
-- `allowed_keys` (List of String)
+- `allowed_keys` (List of String) Configuration keys accepted by the engine's `engine_config` field.
 
 
 <a id="nestedatt--runtime_versions"></a>
@@ -51,4 +51,4 @@ Read-Only:
 
 Read-Only:
 
-- `versions` (List of String)
+- `versions` (List of String) Available semver versions for the engine, sorted by the API.

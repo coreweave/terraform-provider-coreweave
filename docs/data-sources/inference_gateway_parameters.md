@@ -21,4 +21,4 @@ data "coreweave_inference_gateway_parameters" "example" {}
 
 ### Read-Only
 
-- `zones` (List of String) Available zones for inference gateways.
+- `zones` (Set of String) Available zones for inference gateways.

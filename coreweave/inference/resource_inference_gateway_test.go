@@ -1,7 +1,6 @@
 package inference_test
 
 import (
-	"context"
 	"fmt"
 	"math/rand/v2"
 	"testing"
@@ -21,10 +20,10 @@ import (
 
 // --- Unit tests ---
 
-func TestInferenceGatewayResource_Schema(t *testing.T) {
+func TestInferenceGateway_Schema(t *testing.T) {
 	t.Parallel()
 
-	ctx := context.Background()
+	ctx := t.Context()
 	schemaReq := fwresource.SchemaRequest{}
 	schemaResp := &fwresource.SchemaResponse{}
 
@@ -573,60 +572,64 @@ resource "coreweave_inference_gateway" "test" {
 `, preferredZone, name)
 }
 
-func TestAccInferenceGateway(t *testing.T) {
-	name := fmt.Sprintf("%sgw-%x", AcceptanceTestPrefix, rand.IntN(100000))
-	fullResourceName := "coreweave_inference_gateway.test"
-	preferredZone := preferredInferenceZone()
+func TestInferenceGateway(t *testing.T) {
+	t.Run("lifecycle", func(t *testing.T) {
+		name := fmt.Sprintf("%sgw-%x", AcceptanceTestPrefix, rand.IntN(100000))
+		fullResourceName := "coreweave_inference_gateway.test"
+		preferredZone := preferredInferenceZone()
 
-	// Inference acceptance tests run sequentially (resource.Test, not
-	// resource.ParallelTest) because the staging environment has limited
-	// per-zone capacity; parallelism causes allocation failures.
-	//nolint:forbidigo // see comment above
-	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testutil.SetEnvDefaults() },
-		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
-		Steps: []resource.TestStep{
-			{
-				Config: gatewayBasicConfig(name, preferredZone),
-				ConfigStateChecks: []statecheck.StateCheck{
-					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("name"), knownvalue.StringExact(name)),
-					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("id"), knownvalue.NotNull()),
-					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("organization_id"), knownvalue.NotNull()),
-					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("status"), knownvalue.NotNull()),
-					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("created_at"), knownvalue.NotNull()),
-					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("routing").AtMapKey("body_based").AtMapKey("api_type"), knownvalue.StringExact("API_TYPE_OPENAI")),
+		// Inference acceptance tests run sequentially via resource.Test (not
+		// resource.ParallelTest) because the staging environment has limited
+		// per-zone capacity and parallel runs cause allocation failures.
+		//nolint:forbidigo // sequential per-zone capacity constraint, see comment above
+		resource.Test(t, resource.TestCase{
+			PreCheck:                 func() { testutil.SetEnvDefaults() },
+			ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+			Steps: []resource.TestStep{
+				{
+					Config: gatewayBasicConfig(name, preferredZone),
+					ConfigStateChecks: []statecheck.StateCheck{
+						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("name"), knownvalue.StringExact(name)),
+						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("id"), knownvalue.NotNull()),
+						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("organization_id"), knownvalue.NotNull()),
+						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("status"), knownvalue.NotNull()),
+						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("created_at"), knownvalue.NotNull()),
+						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("routing").AtMapKey("body_based").AtMapKey("api_type"), knownvalue.StringExact("API_TYPE_OPENAI")),
+					},
+				},
+				{
+					Config: gatewayUpdatedConfig(name, preferredZone),
+					ConfigStateChecks: []statecheck.StateCheck{
+						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("routing").AtMapKey("header_based").AtMapKey("header_name"), knownvalue.StringExact("X-Model-Name")),
+					},
+				},
+				{
+					ResourceName:      fullResourceName,
+					ImportState:       true,
+					ImportStateVerify: true,
 				},
 			},
-			{
-				Config: gatewayUpdatedConfig(name, preferredZone),
-				ConfigStateChecks: []statecheck.StateCheck{
-					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("routing").AtMapKey("header_based").AtMapKey("header_name"), knownvalue.StringExact("X-Model-Name")),
-				},
-			},
-			{
-				ResourceName:      fullResourceName,
-				ImportState:       true,
-				ImportStateVerify: true,
-			},
-		},
+		})
 	})
 }
 
-func TestAccInferenceGatewayParameters(t *testing.T) {
-	resource.ParallelTest(t, resource.TestCase{
-		PreCheck:                 func() { testutil.SetEnvDefaults() },
-		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
-		Steps: []resource.TestStep{
-			{
-				Config: `data "coreweave_inference_gateway_parameters" "test" {}`,
-				ConfigStateChecks: []statecheck.StateCheck{
-					statecheck.ExpectKnownValue(
-						"data.coreweave_inference_gateway_parameters.test",
-						tfjsonpath.New("zones"),
-						knownvalue.NotNull(),
-					),
+func TestInferenceGatewayParameters(t *testing.T) {
+	t.Run("read", func(t *testing.T) {
+		resource.ParallelTest(t, resource.TestCase{
+			PreCheck:                 func() { testutil.SetEnvDefaults() },
+			ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+			Steps: []resource.TestStep{
+				{
+					Config: `data "coreweave_inference_gateway_parameters" "test" {}`,
+					ConfigStateChecks: []statecheck.StateCheck{
+						statecheck.ExpectKnownValue(
+							"data.coreweave_inference_gateway_parameters.test",
+							tfjsonpath.New("zones"),
+							knownvalue.NotNull(),
+						),
+					},
 				},
 			},
-		},
+		})
 	})
 }

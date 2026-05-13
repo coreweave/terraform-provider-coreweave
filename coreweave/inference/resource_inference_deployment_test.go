@@ -1,7 +1,6 @@
 package inference_test
 
 import (
-	"context"
 	"fmt"
 	"math/rand/v2"
 	"testing"
@@ -21,10 +20,10 @@ import (
 
 // --- Unit tests for pure helper functions ---
 
-func TestInferenceDeploymentResource_Schema(t *testing.T) {
+func TestInferenceDeployment_Schema(t *testing.T) {
 	t.Parallel()
 
-	ctx := context.Background()
+	ctx := t.Context()
 	schemaReq := fwresource.SchemaRequest{}
 	schemaResp := &fwresource.SchemaResponse{}
 
@@ -35,7 +34,7 @@ func TestInferenceDeploymentResource_Schema(t *testing.T) {
 	}
 }
 
-func TestSetFromDeployment_NullPreservation(t *testing.T) {
+func TestInferenceDeployment_SetFromDeployment_NullPreservation(t *testing.T) {
 	t.Parallel()
 
 	// Build a minimal proto deployment with no optional fields set.
@@ -101,8 +100,9 @@ func TestSetFromDeployment_NullPreservation(t *testing.T) {
 	if !m.Autoscaling.CapacityClasses.IsNull() {
 		t.Errorf("Autoscaling.CapacityClasses: expected null when API returns empty, got %v", m.Autoscaling.CapacityClasses)
 	}
-	if !m.Traffic.Weight.IsNull() {
-		t.Errorf("Traffic.Weight: expected null when API returns 0, got %v", m.Traffic.Weight)
+	// traffic is Optional+Computed: the API value is always populated into state.
+	if m.Traffic.Weight.ValueInt64() != 0 {
+		t.Errorf("Traffic.Weight: expected 0 from API response, got %v", m.Traffic.Weight)
 	}
 
 	// Required fields should always be populated.
@@ -117,10 +117,10 @@ func TestSetFromDeployment_NullPreservation(t *testing.T) {
 	}
 }
 
-func TestToCreateRequest_OptionalFields(t *testing.T) {
+func TestInferenceDeployment_ToCreateRequest_OptionalFields(t *testing.T) {
 	t.Parallel()
 
-	ctx := context.Background()
+	ctx := t.Context()
 	gwIds := types.SetValueMust(types.StringType, []attr.Value{types.StringValue("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")})
 
 	m := &inference.InferenceDeploymentResourceModel{
@@ -178,10 +178,10 @@ func TestToCreateRequest_OptionalFields(t *testing.T) {
 	}
 }
 
-func TestToUpdateRequest_Fields(t *testing.T) {
+func TestInferenceDeployment_ToUpdateRequest_Fields(t *testing.T) {
 	t.Parallel()
 
-	ctx := context.Background()
+	ctx := t.Context()
 	gwIds := types.SetValueMust(types.StringType, []attr.Value{types.StringValue("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")})
 	ccList, _ := types.ListValueFrom(ctx, types.StringType, []string{"CAPACITY_CLASS_RESERVED"})
 
@@ -423,71 +423,75 @@ resource "coreweave_inference_deployment" "test" {
 `, preferredZone, preferredInstance, name, name)
 }
 
-func TestAccInferenceDeployment(t *testing.T) {
-	name := fmt.Sprintf("%sdeploy-%x", AcceptanceTestPrefix, rand.IntN(100000))
-	fullResourceName := "coreweave_inference_deployment.test"
-	preferredZone := preferredInferenceZone()
-	preferredInstance := preferredInferenceInstanceType()
+func TestInferenceDeployment(t *testing.T) {
+	t.Run("lifecycle", func(t *testing.T) {
+		name := fmt.Sprintf("%sdeploy-%x", AcceptanceTestPrefix, rand.IntN(100000))
+		fullResourceName := "coreweave_inference_deployment.test"
+		preferredZone := preferredInferenceZone()
+		preferredInstance := preferredInferenceInstanceType()
 
-	// Inference acceptance tests run sequentially (resource.Test, not
-	// resource.ParallelTest) because the staging environment has limited
-	// per-zone capacity; parallelism causes allocation failures.
-	//nolint:forbidigo // see comment above
-	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testutil.SetEnvDefaults() },
-		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
-		Steps: []resource.TestStep{
-			{
-				Config: inferenceDeploymentConfig(name, preferredZone, preferredInstance),
-				ConfigStateChecks: []statecheck.StateCheck{
-					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("name"), knownvalue.StringExact(name)),
-					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("status"), knownvalue.StringExact("STATUS_READY")),
-					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("disabled"), knownvalue.Bool(false)),
-					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("id"), knownvalue.NotNull()),
-					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("organization_id"), knownvalue.NotNull()),
-					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("created_at"), knownvalue.NotNull()),
-					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("autoscaling").AtMapKey("min"), knownvalue.Int64Exact(1)),
-					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("autoscaling").AtMapKey("max"), knownvalue.Int64Exact(2)),
+		// Inference acceptance tests run sequentially via resource.Test (not
+		// resource.ParallelTest) because the staging environment has limited
+		// per-zone capacity and parallel runs cause allocation failures.
+		//nolint:forbidigo // sequential per-zone capacity constraint, see comment above
+		resource.Test(t, resource.TestCase{
+			PreCheck:                 func() { testutil.SetEnvDefaults() },
+			ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+			Steps: []resource.TestStep{
+				{
+					Config: inferenceDeploymentConfig(name, preferredZone, preferredInstance),
+					ConfigStateChecks: []statecheck.StateCheck{
+						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("name"), knownvalue.StringExact(name)),
+						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("status"), knownvalue.StringExact("STATUS_READY")),
+						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("disabled"), knownvalue.Bool(false)),
+						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("id"), knownvalue.NotNull()),
+						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("organization_id"), knownvalue.NotNull()),
+						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("created_at"), knownvalue.NotNull()),
+						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("autoscaling").AtMapKey("min"), knownvalue.Int64Exact(1)),
+						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("autoscaling").AtMapKey("max"), knownvalue.Int64Exact(2)),
+					},
+				},
+				{
+					Config: inferenceDeploymentUpdatedConfig(name, preferredZone, preferredInstance),
+					ConfigStateChecks: []statecheck.StateCheck{
+						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("autoscaling").AtMapKey("min"), knownvalue.Int64Exact(2)),
+						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("autoscaling").AtMapKey("max"), knownvalue.Int64Exact(4)),
+						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("disabled"), knownvalue.Bool(true)),
+						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("traffic").AtMapKey("weight"), knownvalue.Int64Exact(50)),
+					},
+				},
+				{
+					ResourceName:      fullResourceName,
+					ImportState:       true,
+					ImportStateVerify: true,
 				},
 			},
-			{
-				Config: inferenceDeploymentUpdatedConfig(name, preferredZone, preferredInstance),
-				ConfigStateChecks: []statecheck.StateCheck{
-					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("autoscaling").AtMapKey("min"), knownvalue.Int64Exact(2)),
-					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("autoscaling").AtMapKey("max"), knownvalue.Int64Exact(4)),
-					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("disabled"), knownvalue.Bool(true)),
-					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("traffic").AtMapKey("weight"), knownvalue.Int64Exact(50)),
-				},
-			},
-			{
-				ResourceName:      fullResourceName,
-				ImportState:       true,
-				ImportStateVerify: true,
-			},
-		},
+		})
 	})
 }
 
-func TestAccInferenceParameters(t *testing.T) {
-	resource.ParallelTest(t, resource.TestCase{
-		PreCheck:                 func() { testutil.SetEnvDefaults() },
-		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
-		Steps: []resource.TestStep{
-			{
-				Config: `data "coreweave_inference_deployment_parameters" "test" {}`,
-				ConfigStateChecks: []statecheck.StateCheck{
-					statecheck.ExpectKnownValue(
-						"data.coreweave_inference_deployment_parameters.test",
-						tfjsonpath.New("gateway_ids"),
-						knownvalue.NotNull(),
-					),
-					statecheck.ExpectKnownValue(
-						"data.coreweave_inference_deployment_parameters.test",
-						tfjsonpath.New("instance_types"),
-						knownvalue.NotNull(),
-					),
+func TestInferenceDeploymentParameters(t *testing.T) {
+	t.Run("read", func(t *testing.T) {
+		resource.ParallelTest(t, resource.TestCase{
+			PreCheck:                 func() { testutil.SetEnvDefaults() },
+			ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+			Steps: []resource.TestStep{
+				{
+					Config: `data "coreweave_inference_deployment_parameters" "test" {}`,
+					ConfigStateChecks: []statecheck.StateCheck{
+						statecheck.ExpectKnownValue(
+							"data.coreweave_inference_deployment_parameters.test",
+							tfjsonpath.New("gateway_ids"),
+							knownvalue.NotNull(),
+						),
+						statecheck.ExpectKnownValue(
+							"data.coreweave_inference_deployment_parameters.test",
+							tfjsonpath.New("instance_types"),
+							knownvalue.NotNull(),
+						),
+					},
 				},
 			},
-		},
+		})
 	})
 }

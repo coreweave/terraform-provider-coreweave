@@ -11,6 +11,7 @@ import (
 	"connectrpc.com/connect"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
+	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/setvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
@@ -32,7 +33,6 @@ var (
 	_ resource.ResourceWithImportState = &InferenceDeploymentResource{}
 
 	hostnamePattern = regexp.MustCompile(`^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?$`)
-	uuidPattern     = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
 	semverPattern   = regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+$`)
 
 	conditionAttrTypes = map[string]attr.Type{
@@ -103,9 +103,9 @@ type InferenceDeploymentResourceModel struct {
 	UpdatedAt      types.String `tfsdk:"updated_at"`
 	Conditions     types.List   `tfsdk:"conditions"`
 	// Required / Optional
-	Name        types.String          `tfsdk:"name"`
-	GatewayIds  types.Set             `tfsdk:"gateway_ids"`
-	Disabled    types.Bool            `tfsdk:"disabled"`
+	Name        types.String           `tfsdk:"name"`
+	GatewayIds  types.Set              `tfsdk:"gateway_ids"`
+	Disabled    types.Bool             `tfsdk:"disabled"`
 	Runtime     *RuntimeModel          `tfsdk:"runtime"`
 	Resources   *ResourcesModel        `tfsdk:"resources"`
 	Model       *DeploymentModelConfig `tfsdk:"model"`
@@ -149,18 +149,32 @@ func (r *InferenceDeploymentResource) Schema(_ context.Context, _ resource.Schem
 				MarkdownDescription: "Detailed status conditions for the deployment.",
 				NestedObject: schema.NestedAttributeObject{
 					Attributes: map[string]schema.Attribute{
-						"type":             schema.StringAttribute{Computed: true},
-						"status":           schema.StringAttribute{Computed: true},
-						"last_update_time": schema.StringAttribute{Computed: true},
-						"reason":           schema.StringAttribute{Computed: true},
-						"message":          schema.StringAttribute{Computed: true},
+						"type": schema.StringAttribute{
+							Computed:            true,
+							MarkdownDescription: "The condition type (e.g. `Ready`, `Progressing`).",
+						},
+						"status": schema.StringAttribute{
+							Computed:            true,
+							MarkdownDescription: "The condition status (`True`, `False`, or `Unknown`).",
+						},
+						"last_update_time": schema.StringAttribute{
+							Computed:            true,
+							MarkdownDescription: "RFC3339 timestamp of the last condition transition.",
+						},
+						"reason": schema.StringAttribute{
+							Computed:            true,
+							MarkdownDescription: "A short, machine-readable reason for the condition's last transition.",
+						},
+						"message": schema.StringAttribute{
+							Computed:            true,
+							MarkdownDescription: "A human-readable message about the condition's last transition.",
+						},
 					},
 				},
 			},
 			"name": schema.StringAttribute{
 				Required:            true,
 				MarkdownDescription: "The name of the deployment. Must be a valid hostname label.",
-				PlanModifiers:       []planmodifier.String{stringplanmodifier.RequiresReplace()},
 				Validators: []validator.String{
 					stringvalidator.RegexMatches(hostnamePattern, "must be a valid hostname label"),
 				},
@@ -168,12 +182,10 @@ func (r *InferenceDeploymentResource) Schema(_ context.Context, _ resource.Schem
 			"gateway_ids": schema.SetAttribute{
 				ElementType:         types.StringType,
 				Required:            true,
-				MarkdownDescription: "The gateway IDs to associate the deployment with. At least one is required. Order is not significant.",
+				MarkdownDescription: "The gateway IDs to associate the deployment with. At least one is required.",
 				Validators: []validator.Set{
 					setvalidator.SizeAtLeast(1),
-					setvalidator.ValueStringsAre(
-						stringvalidator.RegexMatches(uuidPattern, "must be a valid UUID"),
-					),
+					setvalidator.ValueStringsAre(stringvalidator.LengthAtLeast(1)),
 				},
 			},
 			"disabled": schema.BoolAttribute{
@@ -276,7 +288,10 @@ func (r *InferenceDeploymentResource) Schema(_ context.Context, _ resource.Schem
 					"capacity_classes": schema.ListAttribute{
 						ElementType:         types.StringType,
 						Optional:            true,
-						MarkdownDescription: fmt.Sprintf("Capacity classes to use. Allowed values: %s.", coreweave.EnumMarkdownValues(inferencev1.DeploymentAutoscaling_CapacityClass_name, true)),
+						MarkdownDescription: fmt.Sprintf("Ordered preference list of capacity classes to use. Order is significant: the first satisfiable class wins. Allowed values: %s.", coreweave.EnumMarkdownValues(inferencev1.DeploymentAutoscaling_CapacityClass_name, true)),
+						Validators: []validator.List{
+							listvalidator.ValueStringsAre(stringvalidator.OneOf(coreweave.EnumValues(inferencev1.DeploymentAutoscaling_CapacityClass_name, true)...)),
+						},
 					},
 					"concurrency": schema.Int64Attribute{
 						Optional:            true,
@@ -288,11 +303,13 @@ func (r *InferenceDeploymentResource) Schema(_ context.Context, _ resource.Schem
 				},
 			},
 			"traffic": schema.SingleNestedAttribute{
-				Required:            true,
-				MarkdownDescription: "Traffic configuration.",
+				Optional:            true,
+				Computed:            true,
+				MarkdownDescription: "Traffic configuration. Omit to accept the API default (weight 0, which normalizes to 100% when no other deployment shares the model name).",
 				Attributes: map[string]schema.Attribute{
 					"weight": schema.Int64Attribute{
 						Optional:            true,
+						Computed:            true,
 						MarkdownDescription: "Traffic weight (0–1000). Values are normalized into percentages across deployments with the same model name.",
 						Validators: []validator.Int64{
 							int64validator.Between(0, 1000),
@@ -363,7 +380,7 @@ func (r *InferenceDeploymentResource) Create(ctx context.Context, req resource.C
 				Id: deploymentID,
 			}))
 			if err != nil {
-				tflog.Error(ctx, "failed to poll deployment", map[string]interface{}{"error": err})
+				tflog.Error(ctx, "failed to poll deployment", map[string]interface{}{"error": err.Error()})
 				return nil, inferencev1.Status_STATUS_UNSPECIFIED.String(), err
 			}
 			d := getResp.Msg.Deployment
@@ -393,6 +410,7 @@ func (r *InferenceDeploymentResource) Create(ctx context.Context, req resource.C
 		d.GetStatus().GetStatus() == inferencev1.Status_STATUS_FAILED {
 		resp.Diagnostics.AddError("Deployment creation failed",
 			fmt.Sprintf("Deployment entered status %s. You must destroy and recreate this resource.", d.GetStatus().GetStatus().String()))
+		return
 	}
 
 	resp.Diagnostics.Append(setFromDeployment(&data, d)...)
@@ -441,6 +459,17 @@ func (r *InferenceDeploymentResource) Update(ctx context.Context, req resource.U
 		return
 	}
 
+	// Save intermediate state before polling so an in-flight update is not lost
+	// if polling fails or times out.
+	resp.Diagnostics.Append(setFromDeployment(&data, updateResp.Msg.Deployment)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
 	deploymentID := updateResp.Msg.Deployment.GetSpec().GetId()
 
 	conf := retry.StateChangeConf{
@@ -485,6 +514,7 @@ func (r *InferenceDeploymentResource) Update(ctx context.Context, req resource.U
 		d.GetStatus().GetStatus() == inferencev1.Status_STATUS_FAILED {
 		resp.Diagnostics.AddError("Deployment update failed",
 			fmt.Sprintf("Deployment entered status %s. Check the `conditions` attribute for details.", d.GetStatus().GetStatus().String()))
+		return
 	}
 
 	resp.Diagnostics.Append(setFromDeployment(&data, d)...)
@@ -601,6 +631,10 @@ func buildDeploymentFields(ctx context.Context, m *InferenceDeploymentResourceMo
 		Traffic: &inferencev1.DeploymentTraffic{},
 	}
 
+	if m.Traffic != nil && !m.Traffic.Weight.IsNull() && !m.Traffic.Weight.IsUnknown() {
+		f.Traffic.Weight = uint32(m.Traffic.Weight.ValueInt64()) //nolint:gosec
+	}
+
 	if !m.Runtime.Version.IsNull() && !m.Runtime.Version.IsUnknown() {
 		f.Runtime.Version = m.Runtime.Version.ValueString()
 	}
@@ -635,10 +669,6 @@ func buildDeploymentFields(ctx context.Context, m *InferenceDeploymentResourceMo
 		}
 		f.Autoscaling.CapacityClasses = protoClasses
 	}
-	if !m.Traffic.Weight.IsNull() && !m.Traffic.Weight.IsUnknown() {
-		f.Traffic.Weight = uint32(m.Traffic.Weight.ValueInt64()) //nolint:gosec
-	}
-
 	return f, diagnostics
 }
 
@@ -677,9 +707,6 @@ func toUpdateRequest(ctx context.Context, m *InferenceDeploymentResourceModel) (
 	}, diags
 }
 
-// setFromDeployment populates all fields on the model from a proto Deployment response.
-// For Optional (non-Computed) fields, null is preserved when the plan/state was null and the
-// API returns the default (zero/empty) value — matching the CKS pattern for optional fields.
 // ensureDeploymentNested initializes each required nested attribute on the model
 // if it is nil, so the model arriving from an ID-only import state is safe to
 // write into. Each initializer seeds optional inner fields as null so null
@@ -706,6 +733,10 @@ func ensureDeploymentNested(m *InferenceDeploymentResourceModel) {
 	}
 }
 
+// setFromDeployment populates all fields on the model from a proto Deployment response.
+// For Optional (non-Computed) fields, null is preserved when the plan/state was null and
+// the API returns the default (zero/empty) value — matching the CKS pattern for optional
+// fields. Computed fields are always populated from the API response.
 func setFromDeployment(m *InferenceDeploymentResourceModel, d *inferencev1.Deployment) (diagnostics diag.Diagnostics) {
 	spec := d.GetSpec()
 	status := d.GetStatus()
@@ -728,9 +759,9 @@ func setFromDeployment(m *InferenceDeploymentResourceModel, d *inferencev1.Deplo
 	}
 
 	// gateway_ids
-	gwVals := make([]attr.Value, 0, len(spec.GetGatewayIds()))
-	for _, id := range spec.GetGatewayIds() {
-		gwVals = append(gwVals, types.StringValue(id))
+	gwVals := make([]attr.Value, len(spec.GetGatewayIds()))
+	for i, id := range spec.GetGatewayIds() {
+		gwVals[i] = types.StringValue(id)
 	}
 	gwSet, diags := types.SetValue(types.StringType, gwVals)
 	diagnostics.Append(diags...)
@@ -792,9 +823,9 @@ func setFromDeployment(m *InferenceDeploymentResourceModel, d *inferencev1.Deplo
 		if m.Autoscaling.CapacityClasses.IsNull() && len(as.GetCapacityClasses()) == 0 {
 			m.Autoscaling.CapacityClasses = types.ListNull(types.StringType)
 		} else {
-			ccVals := make([]attr.Value, 0, len(as.GetCapacityClasses()))
-			for _, cc := range as.GetCapacityClasses() {
-				ccVals = append(ccVals, types.StringValue(cc.String()))
+			ccVals := make([]attr.Value, len(as.GetCapacityClasses()))
+			for i, cc := range as.GetCapacityClasses() {
+				ccVals[i] = types.StringValue(cc.String())
 			}
 			ccList, diags := types.ListValue(types.StringType, ccVals)
 			diagnostics.Append(diags...)
@@ -802,18 +833,14 @@ func setFromDeployment(m *InferenceDeploymentResourceModel, d *inferencev1.Deplo
 		}
 	}
 
-	// traffic
+	// traffic is Optional+Computed: always populate from the API response.
 	if tr := spec.GetTraffic(); tr != nil {
-		if m.Traffic.Weight.IsNull() && tr.GetWeight() == 0 {
-			m.Traffic.Weight = types.Int64Null()
-		} else {
-			m.Traffic.Weight = types.Int64Value(int64(tr.GetWeight()))
-		}
+		m.Traffic.Weight = types.Int64Value(int64(tr.GetWeight()))
 	}
 
 	// conditions
-	condVals := make([]attr.Value, 0, len(status.GetConditions()))
-	for _, c := range status.GetConditions() {
+	condVals := make([]attr.Value, len(status.GetConditions()))
+	for i, c := range status.GetConditions() {
 		lastUpdate := ""
 		if c.GetLastUpdateTime() != nil {
 			lastUpdate = c.GetLastUpdateTime().AsTime().Format(time.RFC3339)
@@ -826,7 +853,7 @@ func setFromDeployment(m *InferenceDeploymentResourceModel, d *inferencev1.Deplo
 			"message":          types.StringValue(c.GetMessage()),
 		})
 		diagnostics.Append(diags...)
-		condVals = append(condVals, condObj)
+		condVals[i] = condObj
 	}
 	condList, diags := types.ListValue(types.ObjectType{AttrTypes: conditionAttrTypes}, condVals)
 	diagnostics.Append(diags...)
@@ -834,4 +861,3 @@ func setFromDeployment(m *InferenceDeploymentResourceModel, d *inferencev1.Deplo
 
 	return diagnostics
 }
-

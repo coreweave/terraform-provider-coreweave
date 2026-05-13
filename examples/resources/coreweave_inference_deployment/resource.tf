@@ -3,7 +3,7 @@ data "coreweave_inference_deployment_parameters" "deploy_params" {}
 
 resource "coreweave_inference_deployment" "example" {
   name        = "my-llm"
-  gateway_ids = [data.coreweave_inference_deployment_parameters.deploy_params.gateway_ids[0]]
+  gateway_ids = [tolist(data.coreweave_inference_deployment_parameters.deploy_params.gateway_ids)[0]]
 
   runtime = {
     engine  = "vllm"

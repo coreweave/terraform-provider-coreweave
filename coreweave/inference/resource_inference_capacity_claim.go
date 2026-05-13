@@ -44,7 +44,7 @@ type InferenceCapacityClaimResource struct {
 // Nested model types.
 
 type CapacityClaimResourcesModel struct {
-	InstanceID    types.String `tfsdk:"instance_id"`
+	InstanceType  types.String `tfsdk:"instance_type"`
 	InstanceCount types.Int64  `tfsdk:"instance_count"`
 	CapacityType  types.String `tfsdk:"capacity_type"`
 	Zones         types.Set    `tfsdk:"zones"`
@@ -62,7 +62,7 @@ type InferenceCapacityClaimResourceModel struct {
 	AllocatedInstances types.Int64  `tfsdk:"allocated_instances"`
 	PendingInstances   types.Int64  `tfsdk:"pending_instances"`
 	// Required
-	Name      types.String                `tfsdk:"name"`
+	Name      types.String                 `tfsdk:"name"`
 	Resources *CapacityClaimResourcesModel `tfsdk:"resources"`
 }
 
@@ -102,11 +102,26 @@ func (r *InferenceCapacityClaimResource) Schema(_ context.Context, _ resource.Sc
 				MarkdownDescription: "Detailed status conditions for the capacity claim.",
 				NestedObject: schema.NestedAttributeObject{
 					Attributes: map[string]schema.Attribute{
-						"type":             schema.StringAttribute{Computed: true},
-						"status":           schema.StringAttribute{Computed: true},
-						"last_update_time": schema.StringAttribute{Computed: true},
-						"reason":           schema.StringAttribute{Computed: true},
-						"message":          schema.StringAttribute{Computed: true},
+						"type": schema.StringAttribute{
+							Computed:            true,
+							MarkdownDescription: "The condition type (e.g. `Ready`, `Progressing`).",
+						},
+						"status": schema.StringAttribute{
+							Computed:            true,
+							MarkdownDescription: "The condition status (`True`, `False`, or `Unknown`).",
+						},
+						"last_update_time": schema.StringAttribute{
+							Computed:            true,
+							MarkdownDescription: "RFC3339 timestamp of the last condition transition.",
+						},
+						"reason": schema.StringAttribute{
+							Computed:            true,
+							MarkdownDescription: "A short, machine-readable reason for the condition's last transition.",
+						},
+						"message": schema.StringAttribute{
+							Computed:            true,
+							MarkdownDescription: "A human-readable message about the condition's last transition.",
+						},
 					},
 				},
 			},
@@ -132,9 +147,9 @@ func (r *InferenceCapacityClaimResource) Schema(_ context.Context, _ resource.Sc
 				Required:            true,
 				MarkdownDescription: "Resource configuration for the capacity claim.",
 				Attributes: map[string]schema.Attribute{
-					"instance_id": schema.StringAttribute{
+					"instance_type": schema.StringAttribute{
 						Required:            true,
-						MarkdownDescription: "The instance type to reserve by ID specifier (e.g. `gb200-4x`). Case insensitive.",
+						MarkdownDescription: "The instance type to reserve (e.g. `gb200-4x`).",
 					},
 					"instance_count": schema.Int64Attribute{
 						Required:            true,
@@ -146,11 +161,14 @@ func (r *InferenceCapacityClaimResource) Schema(_ context.Context, _ resource.Sc
 					"capacity_type": schema.StringAttribute{
 						Required:            true,
 						MarkdownDescription: fmt.Sprintf("The capacity type for the capacity claim. Must be one of: %s.", coreweave.EnumMarkdownValues(inferencev1.CapacityType_name, true)),
+						Validators: []validator.String{
+							stringvalidator.OneOf(coreweave.EnumValues(inferencev1.CapacityType_name, true)...),
+						},
 					},
 					"zones": schema.SetAttribute{
 						ElementType:         types.StringType,
 						Required:            true,
-						MarkdownDescription: "The availability zones where the capacity claim may use resources from (e.g. `US-WEST-04A`). Case insensitive. At least one is required.",
+						MarkdownDescription: "The availability zones where the capacity claim may use resources from (e.g. `US-WEST-04A`). At least one is required.",
 						Validators: []validator.Set{
 							setvalidator.SizeAtLeast(1),
 						},
@@ -222,7 +240,7 @@ func (r *InferenceCapacityClaimResource) Create(ctx context.Context, req resourc
 				Id: claimID,
 			}))
 			if err != nil {
-				tflog.Error(ctx, "failed to poll capacity claim", map[string]interface{}{"error": err})
+				tflog.Error(ctx, "failed to poll capacity claim", map[string]interface{}{"error": err.Error()})
 				return nil, inferencev1.Status_STATUS_UNSPECIFIED.String(), err
 			}
 			cc := getResp.Msg.GetCapacityClaim()
@@ -252,6 +270,7 @@ func (r *InferenceCapacityClaimResource) Create(ctx context.Context, req resourc
 		cc.GetStatus().GetStatus() == inferencev1.Status_STATUS_FAILED {
 		resp.Diagnostics.AddError("Capacity claim creation failed",
 			fmt.Sprintf("Capacity claim entered status %s. You must destroy and recreate this resource.", cc.GetStatus().GetStatus().String()))
+		return
 	}
 
 	resp.Diagnostics.Append(setFromCapacityClaim(&data, cc)...)
@@ -297,6 +316,17 @@ func (r *InferenceCapacityClaimResource) Update(ctx context.Context, req resourc
 	updateResp, err := r.client.UpdateCapacityClaim(ctx, connect.NewRequest(updateReq))
 	if err != nil {
 		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
+		return
+	}
+
+	// Save intermediate state before polling so an in-flight update is not lost
+	// if polling fails or times out.
+	resp.Diagnostics.Append(setFromCapacityClaim(&data, updateResp.Msg.GetCapacityClaim())...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
 		return
 	}
 
@@ -346,6 +376,7 @@ func (r *InferenceCapacityClaimResource) Update(ctx context.Context, req resourc
 		cc.GetStatus().GetStatus() == inferencev1.Status_STATUS_FAILED {
 		resp.Diagnostics.AddError("Capacity claim update failed",
 			fmt.Sprintf("Capacity claim entered status %s. Check the `conditions` attribute for details.", cc.GetStatus().GetStatus().String()))
+		return
 	}
 
 	resp.Diagnostics.Append(setFromCapacityClaim(&data, cc)...)
@@ -441,7 +472,7 @@ func buildCapacityClaimFields(ctx context.Context, m *InferenceCapacityClaimReso
 	f := capacityClaimFields{
 		Name: m.Name.ValueString(),
 		Resources: &inferencev1.CapacityClaimResources{
-			InstanceId:    m.Resources.InstanceID.ValueString(),
+			InstanceId:    m.Resources.InstanceType.ValueString(),
 			InstanceCount: uint32(m.Resources.InstanceCount.ValueInt64()), //nolint:gosec
 			CapacityType:  inferencev1.CapacityType(capacityTypeVal),
 			Zones:         zones,
@@ -497,13 +528,13 @@ func setFromCapacityClaim(m *InferenceCapacityClaimResourceModel, cc *inferencev
 		if m.Resources == nil {
 			m.Resources = &CapacityClaimResourcesModel{}
 		}
-		m.Resources.InstanceID = types.StringValue(res.GetInstanceId())
+		m.Resources.InstanceType = types.StringValue(res.GetInstanceId())
 		m.Resources.InstanceCount = types.Int64Value(int64(res.GetInstanceCount()))
 		m.Resources.CapacityType = types.StringValue(res.GetCapacityType().String())
 
-		zoneVals := make([]attr.Value, 0, len(res.GetZones()))
-		for _, z := range res.GetZones() {
-			zoneVals = append(zoneVals, types.StringValue(z))
+		zoneVals := make([]attr.Value, len(res.GetZones()))
+		for i, z := range res.GetZones() {
+			zoneVals[i] = types.StringValue(z)
 		}
 		zoneSet, diags := types.SetValue(types.StringType, zoneVals)
 		diagnostics.Append(diags...)
@@ -511,8 +542,8 @@ func setFromCapacityClaim(m *InferenceCapacityClaimResourceModel, cc *inferencev
 	}
 
 	// conditions
-	condVals := make([]attr.Value, 0, len(status.GetConditions()))
-	for _, c := range status.GetConditions() {
+	condVals := make([]attr.Value, len(status.GetConditions()))
+	for i, c := range status.GetConditions() {
 		lastUpdate := ""
 		if c.GetLastUpdateTime() != nil {
 			lastUpdate = c.GetLastUpdateTime().AsTime().Format(time.RFC3339)
@@ -525,7 +556,7 @@ func setFromCapacityClaim(m *InferenceCapacityClaimResourceModel, cc *inferencev
 			"message":          types.StringValue(c.GetMessage()),
 		})
 		diagnostics.Append(diags...)
-		condVals = append(condVals, condObj)
+		condVals[i] = condObj
 	}
 	condList, diags := types.ListValue(types.ObjectType{AttrTypes: conditionAttrTypes}, condVals)
 	diagnostics.Append(diags...)
@@ -533,4 +564,3 @@ func setFromCapacityClaim(m *InferenceCapacityClaimResourceModel, cc *inferencev
 
 	return diagnostics
 }
-

@@ -74,7 +74,7 @@ type GatewayRoutingModel struct {
 }
 
 type EndpointConfigurationModel struct {
-	AdditionalDNS types.List `tfsdk:"additional_dns"`
+	AdditionalDNS types.Set `tfsdk:"additional_dns"`
 }
 
 // InferenceGatewayResourceModel is the top-level Terraform state model.
@@ -86,7 +86,7 @@ type InferenceGatewayResourceModel struct {
 	CreatedAt      types.String `tfsdk:"created_at"`
 	UpdatedAt      types.String `tfsdk:"updated_at"`
 	Conditions     types.List   `tfsdk:"conditions"`
-	Endpoints      types.List   `tfsdk:"endpoints"`
+	Endpoints      types.Set    `tfsdk:"endpoints"`
 	// Required / Optional
 	Name                  types.String                `tfsdk:"name"`
 	Zones                 types.Set                   `tfsdk:"zones"`
@@ -131,15 +131,30 @@ func (r *InferenceGatewayResource) Schema(_ context.Context, _ resource.SchemaRe
 				MarkdownDescription: "Detailed status conditions for the gateway.",
 				NestedObject: schema.NestedAttributeObject{
 					Attributes: map[string]schema.Attribute{
-						"type":             schema.StringAttribute{Computed: true},
-						"status":           schema.StringAttribute{Computed: true},
-						"last_update_time": schema.StringAttribute{Computed: true},
-						"reason":           schema.StringAttribute{Computed: true},
-						"message":          schema.StringAttribute{Computed: true},
+						"type": schema.StringAttribute{
+							Computed:            true,
+							MarkdownDescription: "The condition type (e.g. `Ready`, `Progressing`).",
+						},
+						"status": schema.StringAttribute{
+							Computed:            true,
+							MarkdownDescription: "The condition status (`True`, `False`, or `Unknown`).",
+						},
+						"last_update_time": schema.StringAttribute{
+							Computed:            true,
+							MarkdownDescription: "RFC3339 timestamp of the last condition transition.",
+						},
+						"reason": schema.StringAttribute{
+							Computed:            true,
+							MarkdownDescription: "A short, machine-readable reason for the condition's last transition.",
+						},
+						"message": schema.StringAttribute{
+							Computed:            true,
+							MarkdownDescription: "A human-readable message about the condition's last transition.",
+						},
 					},
 				},
 			},
-			"endpoints": schema.ListAttribute{
+			"endpoints": schema.SetAttribute{
 				Computed:            true,
 				ElementType:         types.StringType,
 				MarkdownDescription: "The endpoint URIs for the gateway.",
@@ -201,6 +216,9 @@ func (r *InferenceGatewayResource) Schema(_ context.Context, _ resource.SchemaRe
 							"api_type": schema.StringAttribute{
 								Required:            true,
 								MarkdownDescription: fmt.Sprintf("The well-known API type for routing. Must be one of: %s.", coreweave.EnumMarkdownValues(inferencev1.BodyBasedRouting_APIType_name, true)),
+								Validators: []validator.String{
+									stringvalidator.OneOf(coreweave.EnumValues(inferencev1.BodyBasedRouting_APIType_name, true)...),
+								},
 							},
 						},
 					},
@@ -228,7 +246,7 @@ func (r *InferenceGatewayResource) Schema(_ context.Context, _ resource.SchemaRe
 				Optional:            true,
 				MarkdownDescription: "Additional endpoint configuration options.",
 				Attributes: map[string]schema.Attribute{
-					"additional_dns": schema.ListAttribute{
+					"additional_dns": schema.SetAttribute{
 						ElementType:         types.StringType,
 						Optional:            true,
 						MarkdownDescription: "Additional DNS names for the gateway endpoint. These DNS names must be manually configured to point to the gateway endpoint.",
@@ -249,6 +267,10 @@ func (r *InferenceGatewayResource) ConfigValidators(_ context.Context) []resourc
 			path.MatchRoot("routing").AtName("body_based"),
 			path.MatchRoot("routing").AtName("header_based"),
 			path.MatchRoot("routing").AtName("path_based"),
+		),
+		resourcevalidator.RequiredTogether(
+			path.MatchRoot("auth").AtName("weights_and_biases").AtName("api_key"),
+			path.MatchRoot("auth").AtName("weights_and_biases").AtName("server_url"),
 		),
 	}
 }
@@ -312,7 +334,7 @@ func (r *InferenceGatewayResource) Create(ctx context.Context, req resource.Crea
 				Id: gatewayID,
 			}))
 			if err != nil {
-				tflog.Error(ctx, "failed to poll gateway", map[string]interface{}{"error": err})
+				tflog.Error(ctx, "failed to poll gateway", map[string]interface{}{"error": err.Error()})
 				return nil, inferencev1.Status_STATUS_UNSPECIFIED.String(), err
 			}
 			gw := getResp.Msg.Gateway
@@ -342,6 +364,7 @@ func (r *InferenceGatewayResource) Create(ctx context.Context, req resource.Crea
 		gw.GetStatus().GetStatus() == inferencev1.Status_STATUS_FAILED {
 		resp.Diagnostics.AddError("Gateway creation failed",
 			fmt.Sprintf("Gateway entered status %s. You must destroy and recreate this resource.", gw.GetStatus().GetStatus().String()))
+		return
 	}
 
 	resp.Diagnostics.Append(setFromGateway(&data, gw)...)
@@ -390,6 +413,17 @@ func (r *InferenceGatewayResource) Update(ctx context.Context, req resource.Upda
 		return
 	}
 
+	// Save intermediate state before polling so an in-flight update is not lost
+	// if polling fails or times out.
+	resp.Diagnostics.Append(setFromGateway(&data, updateResp.Msg.Gateway)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
 	gatewayID := updateResp.Msg.Gateway.GetSpec().GetId()
 
 	conf := retry.StateChangeConf{
@@ -434,6 +468,7 @@ func (r *InferenceGatewayResource) Update(ctx context.Context, req resource.Upda
 		gw.GetStatus().GetStatus() == inferencev1.Status_STATUS_FAILED {
 		resp.Diagnostics.AddError("Gateway update failed",
 			fmt.Sprintf("Gateway entered status %s. Check the `conditions` attribute for details.", gw.GetStatus().GetStatus().String()))
+		return
 	}
 
 	resp.Diagnostics.Append(setFromGateway(&data, gw)...)
@@ -525,17 +560,22 @@ func buildGatewayFields(ctx context.Context, m *InferenceGatewayResourceModel) (
 		Zones: zones,
 	}
 
-	if m.EndpointConfiguration != nil {
-		ec := &inferencev1.EndpointConfiguration{}
-		if !m.EndpointConfiguration.AdditionalDNS.IsNull() && !m.EndpointConfiguration.AdditionalDNS.IsUnknown() {
-			dns := []string{}
-			diagnostics.Append(m.EndpointConfiguration.AdditionalDNS.ElementsAs(ctx, &dns, false)...)
-			if diagnostics.HasError() {
-				return gatewayFields{}, diagnostics
-			}
-			ec.AdditionalDns = dns
+	// Only build an EndpointConfiguration when additional_dns is explicitly
+	// configured. Sending an empty EndpointConfiguration is non-destructive
+	// (the API merges DNS records rather than replacing them), but it muddies
+	// the wire payload for `endpoint_configuration {}` configs that set no
+	// fields.
+	if m.EndpointConfiguration != nil &&
+		!m.EndpointConfiguration.AdditionalDNS.IsNull() &&
+		!m.EndpointConfiguration.AdditionalDNS.IsUnknown() {
+		dns := []string{}
+		diagnostics.Append(m.EndpointConfiguration.AdditionalDNS.ElementsAs(ctx, &dns, false)...)
+		if diagnostics.HasError() {
+			return gatewayFields{}, diagnostics
 		}
-		f.EndpointConfiguration = ec
+		f.EndpointConfiguration = &inferencev1.EndpointConfiguration{
+			AdditionalDns: dns,
+		}
 	}
 
 	return f, diagnostics
@@ -686,9 +726,9 @@ func setFromGateway(m *InferenceGatewayResourceModel, gw *inferencev1.Gateway) (
 	}
 
 	// zones
-	zoneVals := make([]attr.Value, 0, len(spec.GetZones()))
-	for _, z := range spec.GetZones() {
-		zoneVals = append(zoneVals, types.StringValue(z))
+	zoneVals := make([]attr.Value, len(spec.GetZones()))
+	for i, z := range spec.GetZones() {
+		zoneVals[i] = types.StringValue(z)
 	}
 	zoneSet, diags := types.SetValue(types.StringType, zoneVals)
 	diagnostics.Append(diags...)
@@ -781,31 +821,31 @@ func setFromGateway(m *InferenceGatewayResourceModel, gw *inferencev1.Gateway) (
 	} else {
 		ecModel := &EndpointConfigurationModel{}
 		if ec != nil && len(ec.GetAdditionalDns()) > 0 {
-			dnsVals := make([]attr.Value, 0, len(ec.GetAdditionalDns()))
-			for _, d := range ec.GetAdditionalDns() {
-				dnsVals = append(dnsVals, types.StringValue(d))
+			dnsVals := make([]attr.Value, len(ec.GetAdditionalDns()))
+			for i, d := range ec.GetAdditionalDns() {
+				dnsVals[i] = types.StringValue(d)
 			}
-			dnsList, diags := types.ListValue(types.StringType, dnsVals)
+			dnsSet, diags := types.SetValue(types.StringType, dnsVals)
 			diagnostics.Append(diags...)
-			ecModel.AdditionalDNS = dnsList
+			ecModel.AdditionalDNS = dnsSet
 		} else {
-			ecModel.AdditionalDNS = types.ListNull(types.StringType)
+			ecModel.AdditionalDNS = types.SetNull(types.StringType)
 		}
 		m.EndpointConfiguration = ecModel
 	}
 
 	// endpoints
-	epVals := make([]attr.Value, 0, len(status.GetEndpoints()))
-	for _, ep := range status.GetEndpoints() {
-		epVals = append(epVals, types.StringValue(ep))
+	epVals := make([]attr.Value, len(status.GetEndpoints()))
+	for i, ep := range status.GetEndpoints() {
+		epVals[i] = types.StringValue(ep)
 	}
-	epList, diags := types.ListValue(types.StringType, epVals)
+	epSet, diags := types.SetValue(types.StringType, epVals)
 	diagnostics.Append(diags...)
-	m.Endpoints = epList
+	m.Endpoints = epSet
 
 	// conditions
-	condVals := make([]attr.Value, 0, len(status.GetConditions()))
-	for _, c := range status.GetConditions() {
+	condVals := make([]attr.Value, len(status.GetConditions()))
+	for i, c := range status.GetConditions() {
 		lastUpdate := ""
 		if c.GetLastUpdateTime() != nil {
 			lastUpdate = c.GetLastUpdateTime().AsTime().Format(time.RFC3339)
@@ -818,7 +858,7 @@ func setFromGateway(m *InferenceGatewayResourceModel, gw *inferencev1.Gateway) (
 			"message":          types.StringValue(c.GetMessage()),
 		})
 		diagnostics.Append(diags...)
-		condVals = append(condVals, condObj)
+		condVals[i] = condObj
 	}
 	condList, diags := types.ListValue(types.ObjectType{AttrTypes: conditionAttrTypes}, condVals)
 	diagnostics.Append(diags...)
