@@ -175,6 +175,7 @@ func (r *InferenceDeploymentResource) Schema(_ context.Context, _ resource.Schem
 			"name": schema.StringAttribute{
 				Required:            true,
 				MarkdownDescription: "The name of the deployment. Must be a valid hostname label.",
+				PlanModifiers:       []planmodifier.String{stringplanmodifier.RequiresReplace()},
 				Validators: []validator.String{
 					stringvalidator.RegexMatches(hostnamePattern, "must be a valid hostname label"),
 				},
@@ -207,7 +208,9 @@ func (r *InferenceDeploymentResource) Schema(_ context.Context, _ resource.Schem
 					},
 					"version": schema.StringAttribute{
 						Optional:            true,
+						Computed:            true,
 						MarkdownDescription: "The version of the engine. If not set, defaults to the latest available version. Must follow semver format (e.g. `1.2.3`).",
+						PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 						Validators: []validator.String{
 							stringvalidator.RegexMatches(semverPattern, "must be a semver string, e.g. 1.2.3"),
 						},
@@ -242,9 +245,9 @@ func (r *InferenceDeploymentResource) Schema(_ context.Context, _ resource.Schem
 				Attributes: map[string]schema.Attribute{
 					"name": schema.StringAttribute{
 						Required:            true,
-						MarkdownDescription: "The model name used in API requests (e.g. the `/models` endpoint). Length must be 8–63 characters.",
+						MarkdownDescription: "The model name used in API requests (e.g. the `/models` endpoint). Length must be 4-63 characters.",
 						Validators: []validator.String{
-							stringvalidator.LengthBetween(8, 63),
+							stringvalidator.LengthBetween(4, 63),
 						},
 					},
 					"bucket": schema.StringAttribute{

@@ -100,7 +100,7 @@ Optional:
 Required:
 
 - `bucket` (String) The CAIOS bucket the model is stored in.
-- `name` (String) The model name used in API requests (e.g. the `/models` endpoint). Length must be 8–63 characters.
+- `name` (String) The model name used in API requests (e.g. the `/models` endpoint). Length must be 4-63 characters.
 - `path` (String) The CAIOS path to the model and its configuration files.
 
 

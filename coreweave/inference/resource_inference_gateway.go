@@ -162,6 +162,7 @@ func (r *InferenceGatewayResource) Schema(_ context.Context, _ resource.SchemaRe
 			"name": schema.StringAttribute{
 				Required:            true,
 				MarkdownDescription: "The human-readable name of the gateway.",
+				PlanModifiers:       []planmodifier.String{stringplanmodifier.RequiresReplace()},
 			},
 			"zones": schema.SetAttribute{
 				ElementType:         types.StringType,

@@ -19,6 +19,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/setplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -150,6 +151,7 @@ func (r *InferenceCapacityClaimResource) Schema(_ context.Context, _ resource.Sc
 					"instance_type": schema.StringAttribute{
 						Required:            true,
 						MarkdownDescription: "The instance type to reserve (e.g. `gb200-4x`).",
+						PlanModifiers:       []planmodifier.String{stringplanmodifier.RequiresReplace()},
 					},
 					"instance_count": schema.Int64Attribute{
 						Required:            true,
@@ -161,6 +163,7 @@ func (r *InferenceCapacityClaimResource) Schema(_ context.Context, _ resource.Sc
 					"capacity_type": schema.StringAttribute{
 						Required:            true,
 						MarkdownDescription: fmt.Sprintf("The capacity type for the capacity claim. Must be one of: %s.", coreweave.EnumMarkdownValues(inferencev1.CapacityType_name, true)),
+						PlanModifiers:       []planmodifier.String{stringplanmodifier.RequiresReplace()},
 						Validators: []validator.String{
 							stringvalidator.OneOf(coreweave.EnumValues(inferencev1.CapacityType_name, true)...),
 						},
@@ -169,6 +172,7 @@ func (r *InferenceCapacityClaimResource) Schema(_ context.Context, _ resource.Sc
 						ElementType:         types.StringType,
 						Required:            true,
 						MarkdownDescription: "The availability zones where the capacity claim may use resources from (e.g. `US-WEST-04A`). At least one is required.",
+						PlanModifiers:       []planmodifier.Set{setplanmodifier.RequiresReplace()},
 						Validators: []validator.Set{
 							setvalidator.SizeAtLeast(1),
 						},
