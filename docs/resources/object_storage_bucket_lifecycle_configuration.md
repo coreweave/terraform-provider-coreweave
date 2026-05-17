@@ -61,8 +61,11 @@ resource "coreweave_object_storage_bucket_lifecycle_configuration" "default" {
   # Rule 2: Abort abandoned multipart uploads and expire traces after a fixed date
   rule {
     id     = "expire-traces"
-    prefix = "traces/"
     status = "Enabled"
+
+    filter {
+      prefix = "traces/"
+    }
 
     abort_incomplete_multipart_upload {
       days_after_initiation = 5
