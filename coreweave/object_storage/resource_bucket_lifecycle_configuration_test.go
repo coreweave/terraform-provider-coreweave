@@ -434,19 +434,24 @@ func TestBucketLifecycleConfiguration_MultiRule(t *testing.T) {
 		Zone: types.StringValue("US-EAST-04A"),
 	}
 
-	// two simple rules
+	// two simple rules — use filter.prefix instead of the deprecated top-level
+	// prefix, which CAIOS now rejects at request time.
 	r1 := objectstorage.LifecycleRuleModel{
 		ID:     types.StringValue("r1"),
-		Prefix: types.StringValue("metrics/"),
 		Status: types.StringValue("Enabled"),
+		Filter: &objectstorage.FilterModel{
+			Prefix: types.StringValue("metrics/"),
+		},
 		Expiration: &objectstorage.ExpirationModel{
 			Days: types.Int32Value(10),
 		},
 	}
 	r2 := objectstorage.LifecycleRuleModel{
 		ID:     types.StringValue("r2"),
-		Prefix: types.StringValue("logs/"),
 		Status: types.StringValue("Enabled"),
+		Filter: &objectstorage.FilterModel{
+			Prefix: types.StringValue("logs/"),
+		},
 		AbortIncompleteMultipart: &objectstorage.AbortIncompleteMultipartModel{
 			DaysAfterInitiation: types.Int32Value(5),
 		},

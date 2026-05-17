@@ -155,7 +155,8 @@ func (r *BucketLifecycleResource) Schema(ctx context.Context, req resource.Schem
 						},
 						"prefix": schema.StringAttribute{
 							Optional:            true,
-							MarkdownDescription: "Object key prefix to which the rule applies",
+							MarkdownDescription: "Deprecated. Object key prefix to which the rule applies. CoreWeave AI Object Storage rejects requests that set this field; use `filter.prefix` instead.",
+							DeprecationMessage:  "Use filter.prefix instead. CoreWeave AI Object Storage now rejects PutBucketLifecycleConfiguration requests that include this deprecated S3 field, so the provider no longer sends it on the wire. Any value set here is retained in state for backwards compatibility (the rule's id is used to match a rule to its preserved value across refreshes; rules without an id rely on positional alignment) but is otherwise ignored.",
 						},
 						"status": schema.StringAttribute{
 							Required:            true,
@@ -324,16 +325,18 @@ func parseISO8601(s string) time.Time {
 	return t
 }
 
-func expandRules(ctx context.Context, in []LifecycleRuleModel) []s3types.LifecycleRule { //nolint:gocyclo
+func expandRules(ctx context.Context, in []LifecycleRuleModel) []s3types.LifecycleRule {
 	out := make([]s3types.LifecycleRule, 0, len(in))
 	for _, r := range in {
 		rule := s3types.LifecycleRule{
 			ID:     aws.String(r.ID.ValueString()),
 			Status: s3types.ExpirationStatus(r.Status.ValueString()),
 		}
-		if !r.Prefix.IsNull() {
-			rule.Prefix = aws.String(r.Prefix.ValueString()) //nolint:staticcheck
-		}
+		// The deprecated top-level Prefix field is intentionally not propagated
+		// to the API: CoreWeave AI Object Storage rejects requests that set it
+		// (it was a silent no-op before, now it's an explicit error). Users
+		// should use filter.prefix instead. We retain the value in state via
+		// flattenLifecycleRules so existing configs don't churn at plan time.
 		if r.Expiration != nil {
 			exp := s3types.LifecycleExpiration{}
 			if !r.Expiration.Date.IsNull() {
@@ -462,13 +465,12 @@ func hasNilPointer[T any](pointers ...*T) bool {
 	return false
 }
 
-// eqLifecycleRule compares two LifecycleRule objects for exact equality.
+// eqLifecycleRule compares two LifecycleRule objects for exact equality. The
+// deprecated top-level Prefix field is intentionally not compared — the
+// provider never sets it on the wire, so both sides are always empty.
 func eqLifecycleRule(a, b s3types.LifecycleRule) bool { //nolint:gocyclo
 	// Compare simple scalar fields via aws.ToString / string conversion
 	if aws.ToString(a.ID) != aws.ToString(b.ID) {
-		return false
-	}
-	if aws.ToString(a.Prefix) != aws.ToString(b.Prefix) { //nolint:staticcheck
 		return false
 	}
 	if string(a.Status) != string(b.Status) {
@@ -635,20 +637,48 @@ func (r *BucketLifecycleResource) Create(ctx context.Context, req resource.Creat
 		handleS3Error(err, &resp.Diagnostics, data.Bucket.ValueString())
 		return
 	} else {
-		data.Rule = flattenLifecycleRules(result.Rules)
+		data.Rule = flattenLifecycleRules(result.Rules, data.Rule)
 	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-// flattenLifecycleRules turns AWS SDK LifecycleRule objects into our Terraform model.
-func flattenLifecycleRules(in []s3types.LifecycleRule) []LifecycleRuleModel {
+// flattenLifecycleRules turns AWS SDK LifecycleRule objects into our Terraform
+// model. The preserve argument is the prior model (plan or state) before the
+// API round-trip; it carries client-side-only fields that the API does not
+// echo back — currently just the deprecated rule.prefix.
+//
+// Matching is by rule ID first; for rules without an ID, we fall back to
+// positional alignment when the result and preserve lists have the same
+// length. The positional fallback only triggers when both sides are null at
+// position i (i.e. neither the prior model nor the API response identifies
+// the rule by ID), so it cannot accidentally cross-pollinate values between
+// distinguishable rules.
+func flattenLifecycleRules(in []s3types.LifecycleRule, preserve []LifecycleRuleModel) []LifecycleRuleModel {
+	preservedPrefix := make(map[string]types.String, len(preserve))
+	for _, p := range preserve {
+		if !isMissingRuleID(p.ID) {
+			preservedPrefix[p.ID.ValueString()] = p.Prefix
+		}
+	}
+	sameLength := len(in) == len(preserve)
+
 	out := make([]LifecycleRuleModel, 0, len(in))
-	for _, r := range in {
+	for i, r := range in {
 		mdl := LifecycleRuleModel{
 			ID:     types.StringPointerValue(r.ID),
-			Prefix: types.StringPointerValue(r.Prefix), //nolint:staticcheck
+			Prefix: types.StringNull(),
 			Status: types.StringValue(string(r.Status)),
+		}
+		if r.ID != nil && *r.ID != "" {
+			if pref, ok := preservedPrefix[*r.ID]; ok {
+				mdl.Prefix = pref
+			}
+		} else if sameLength && isMissingRuleID(preserve[i].ID) {
+			// Both sides have no ID at this position — positional alignment is
+			// the only signal we have, and it's safe because there's no other
+			// rule the preserved value could refer to.
+			mdl.Prefix = preserve[i].Prefix
 		}
 
 		if r.Expiration != nil {
@@ -714,7 +744,7 @@ func flattenLifecycleRules(in []s3types.LifecycleRule) []LifecycleRuleModel {
 			f.ObjectSizeLessThan = types.Int64PointerValue(r.Filter.ObjectSizeLessThan)
 			if r.Filter.And != nil {
 				and := AndFilterModel{
-					Prefix:                types.StringValue(aws.ToString(r.Filter.And.Prefix)),
+					Prefix:                types.StringPointerValue(r.Filter.And.Prefix),
 					ObjectSizeGreaterThan: types.Int64PointerValue(r.Filter.And.ObjectSizeGreaterThan),
 					ObjectSizeLessThan:    types.Int64PointerValue(r.Filter.And.ObjectSizeLessThan),
 				}
@@ -736,6 +766,10 @@ func flattenLifecycleRules(in []s3types.LifecycleRule) []LifecycleRuleModel {
 		out = append(out, mdl)
 	}
 	return out
+}
+
+func isMissingRuleID(id types.String) bool {
+	return id.IsNull() || id.IsUnknown() || id.ValueString() == ""
 }
 
 func (r *BucketLifecycleResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
@@ -765,7 +799,7 @@ func (r *BucketLifecycleResource) Read(ctx context.Context, req resource.ReadReq
 	}
 
 	// use our helper to flatten
-	data.Rule = flattenLifecycleRules(out.Rules)
+	data.Rule = flattenLifecycleRules(out.Rules, data.Rule)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -807,7 +841,7 @@ func (r *BucketLifecycleResource) Update(ctx context.Context, req resource.Updat
 		return
 	} else {
 		// Read the result back into state. Terraform will detect and fail if the state does not match the plan.
-		data.Rule = flattenLifecycleRules(result.Rules)
+		data.Rule = flattenLifecycleRules(result.Rules, data.Rule)
 	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
@@ -859,7 +893,7 @@ func (r *BucketLifecycleResource) ImportState(ctx context.Context, req resource.
 	}
 
 	// use our helper to flatten
-	data.Rule = flattenLifecycleRules(out.Rules)
+	data.Rule = flattenLifecycleRules(out.Rules, data.Rule)
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }

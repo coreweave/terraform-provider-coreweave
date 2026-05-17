@@ -39,3 +39,5 @@ test/
 .vscode/*
 
 __debug*
+
+.env
