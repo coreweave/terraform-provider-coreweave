@@ -657,7 +657,7 @@ func (r *BucketLifecycleResource) Create(ctx context.Context, req resource.Creat
 func flattenLifecycleRules(in []s3types.LifecycleRule, preserve []LifecycleRuleModel) []LifecycleRuleModel {
 	preservedPrefix := make(map[string]types.String, len(preserve))
 	for _, p := range preserve {
-		if !p.ID.IsNull() && !p.ID.IsUnknown() {
+		if !isMissingRuleID(p.ID) {
 			preservedPrefix[p.ID.ValueString()] = p.Prefix
 		}
 	}
@@ -674,7 +674,7 @@ func flattenLifecycleRules(in []s3types.LifecycleRule, preserve []LifecycleRuleM
 			if pref, ok := preservedPrefix[*r.ID]; ok {
 				mdl.Prefix = pref
 			}
-		} else if sameLength && (preserve[i].ID.IsNull() || preserve[i].ID.IsUnknown()) {
+		} else if sameLength && isMissingRuleID(preserve[i].ID) {
 			// Both sides have no ID at this position — positional alignment is
 			// the only signal we have, and it's safe because there's no other
 			// rule the preserved value could refer to.
@@ -766,6 +766,10 @@ func flattenLifecycleRules(in []s3types.LifecycleRule, preserve []LifecycleRuleM
 		out = append(out, mdl)
 	}
 	return out
+}
+
+func isMissingRuleID(id types.String) bool {
+	return id.IsNull() || id.IsUnknown() || id.ValueString() == ""
 }
 
 func (r *BucketLifecycleResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
