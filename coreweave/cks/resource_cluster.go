@@ -321,6 +321,9 @@ func (c *ClusterResourceModel) Set(cluster *cksv1beta1.Cluster) {
 	}
 
 	c.setTailscale(cluster)
+
+	// Note: SharedStorageClusterId is not returned by the API, so we preserve it from the plan.
+	// This is intentional since it's marked as RequiresReplace - Terraform will manage this value.
 }
 
 func (c *ClusterResourceModel) setTailscale(cluster *cksv1beta1.Cluster) {
