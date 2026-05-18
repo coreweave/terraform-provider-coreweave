@@ -12,6 +12,7 @@ import (
 	"github.com/coreweave/terraform-provider-coreweave/coreweave/cks"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave/networking"
 	objectstorage "github.com/coreweave/terraform-provider-coreweave/coreweave/object_storage"
+	"github.com/coreweave/terraform-provider-coreweave/coreweave/sandbox"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/function"
 	"github.com/hashicorp/terraform-plugin-framework/provider"
@@ -211,6 +212,8 @@ func (p *CoreweaveProvider) Resources(ctx context.Context) []func() resource.Res
 		objectstorage.NewBucketVersioningResource,
 		objectstorage.NewBucketPolicyResource,
 		objectstorage.NewBucketSettingsResource,
+		sandbox.NewManagedRunnerResource,
+		sandbox.NewProfileTemplateResource,
 	}
 }
 
@@ -219,6 +222,8 @@ func (p *CoreweaveProvider) DataSources(ctx context.Context) []func() datasource
 		networking.NewVpcDataSource,
 		cks.NewClusterDataSource,
 		objectstorage.NewBucketPolicyDocumentDataSource,
+		sandbox.NewManagedRunnerDataSource,
+		sandbox.NewProfileTemplateDataSource,
 	}
 }
 

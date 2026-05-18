@@ -9,6 +9,7 @@ import (
 	"buf.build/gen/go/coreweave/cks/connectrpc/go/coreweave/cks/v1beta1/cksv1beta1connect"
 	"buf.build/gen/go/coreweave/cwobject/connectrpc/go/cwobject/v1/cwobjectv1connect"
 	"buf.build/gen/go/coreweave/networking/connectrpc/go/coreweave/networking/v1beta1/networkingv1beta1connect"
+	"buf.build/gen/go/coreweave/sandbox/connectrpc/go/coreweave/sandbox/v1beta2/sandboxv1beta2connect"
 	"connectrpc.com/connect"
 
 	retryablehttp "github.com/hashicorp/go-retryablehttp"
@@ -31,9 +32,10 @@ func NewClient(endpoint string, s3Endpoint string, timeout time.Duration, interc
 	c := rc.StandardClient()
 
 	return &Client{
-		ClusterServiceClient: cksv1beta1connect.NewClusterServiceClient(c, endpoint, connect.WithInterceptors(interceptors...)),
-		VPCServiceClient:     networkingv1beta1connect.NewVPCServiceClient(c, endpoint, connect.WithInterceptors(interceptors...)),
-		CWObjectClient:       cwobjectv1connect.NewCWObjectClient(c, endpoint, connect.WithInterceptors(interceptors...)),
+		ClusterServiceClient:           cksv1beta1connect.NewClusterServiceClient(c, endpoint, connect.WithInterceptors(interceptors...)),
+		VPCServiceClient:               networkingv1beta1connect.NewVPCServiceClient(c, endpoint, connect.WithInterceptors(interceptors...)),
+		CWObjectClient:                 cwobjectv1connect.NewCWObjectClient(c, endpoint, connect.WithInterceptors(interceptors...)),
+		RunnerManagementServiceClient:  sandboxv1beta2connect.NewRunnerManagementServiceClient(c, endpoint, connect.WithInterceptors(interceptors...)),
 
 		s3Endpoint: s3Endpoint,
 	}
@@ -43,6 +45,7 @@ type Client struct {
 	cksv1beta1connect.ClusterServiceClient
 	networkingv1beta1connect.VPCServiceClient
 	cwobjectv1connect.CWObjectClient
+	sandboxv1beta2connect.RunnerManagementServiceClient
 
 	s3Endpoint string
 }
