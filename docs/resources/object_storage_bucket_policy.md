@@ -23,7 +23,7 @@ locals {
         Sid    = "allow-all"
         Effect = "Allow"
         Principal = {
-          "CW" : "*"
+          "CW" : ["*"]
         }
         Action   = ["s3:*"]
         resource = ["arn:aws:s3:::${coreweave_object_storage_bucket.raw.name}"]
