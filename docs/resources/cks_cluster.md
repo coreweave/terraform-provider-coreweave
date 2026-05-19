@@ -157,7 +157,7 @@ Optional:
 <a id="nestedatt--tailscale"></a>
 ### Nested Schema for `tailscale`
 
-Optional:
+Required:
 
 - `client_id` (String) The Tailscale Client ID for the federated identity.
 
