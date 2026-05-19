@@ -327,13 +327,9 @@ func (c *ClusterResourceModel) Set(cluster *cksv1beta1.Cluster) {
 }
 
 func (c *ClusterResourceModel) setTailscale(cluster *cksv1beta1.Cluster) {
-	switch {
-	case cluster.Tailscale != nil && cluster.Tailscale.ClientId != "":
+	if cluster.Tailscale != nil && cluster.Tailscale.ClientId != "" {
 		c.Tailscale = &TailscaleResourceModel{ClientID: types.StringValue(cluster.Tailscale.ClientId)}
-	case c.Tailscale != nil && c.Tailscale.ClientID.IsNull():
-		// Preserve the block with a null client_id so state stays consistent
-		// when the user explicitly sets client_id = null to remove Tailscale.
-	default:
+	} else {
 		c.Tailscale = nil
 	}
 }
@@ -959,7 +955,7 @@ func (r *ClusterResource) Schema(ctx context.Context, req resource.SchemaRequest
 				MarkdownDescription: "Tailscale configuration for the cluster. Enables cluster access via a Tailscale VPN.",
 				Attributes: map[string]schema.Attribute{
 					"client_id": schema.StringAttribute{
-						Optional:            true,
+						Required:            true,
 						MarkdownDescription: "The Tailscale Client ID for the federated identity.",
 						Validators: []validator.String{
 							stringvalidator.LengthAtMost(255),

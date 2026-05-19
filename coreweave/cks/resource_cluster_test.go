@@ -774,7 +774,7 @@ func TestClusterResource_Tailscale(t *testing.T) {
 		}
 	})
 
-	ctx := context.Background()
+	ctx := t.Context()
 
 	steps := []resource.TestStep{
 		// Step 1: create without tailscale
