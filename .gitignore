@@ -4,6 +4,8 @@
 example.tf
 terraform.tfplan
 terraform.tfstate
+terraform.tfvars
+.terraform.lock.hcl
 bin/
 dist/
 modules-dev/

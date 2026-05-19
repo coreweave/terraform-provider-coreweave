@@ -45,6 +45,7 @@ data "coreweave_cks_cluster" "default" {
 - `service_cidr_name_v6` (String) The IPv6 service CIDR name of the cluster.
 - `shared_storage_cluster_id` (String) The `cluster_id` of the cluster to share storage with. Must be enabled by CoreWeave suppport. Contact CoreWeave support if you are interested in this feature.
 - `status` (String) The status of the cluster.
+- `tailscale` (Attributes) Tailscale configuration for the cluster. Enables cluster access over a Tailscale VPN. (see [below for nested schema](#nestedatt--tailscale))
 - `version` (String) The version of the cluster.
 - `vpc_id` (String) The VPC ID of the cluster.
 - `zone` (String) The zone of the cluster.
@@ -83,3 +84,11 @@ Read-Only:
 
 - `client_id` (String) The client ID of the OIDC configuration.
 - `issuer_url` (String) The issuer URL of the OIDC configuration.
+
+
+<a id="nestedatt--tailscale"></a>
+### Nested Schema for `tailscale`
+
+Read-Only:
+
+- `client_id` (String) The Tailscale Client ID for the federated identity.

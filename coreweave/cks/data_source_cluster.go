@@ -170,6 +170,16 @@ func (d *ClusterDataSource) Schema(ctx context.Context, req datasource.SchemaReq
 				Computed:            true,
 				ElementType:         types.StringType,
 			},
+			"tailscale": schema.SingleNestedAttribute{
+				MarkdownDescription: "Tailscale configuration for the cluster. Enables cluster access over a Tailscale VPN.",
+				Computed:            true,
+				Attributes: map[string]schema.Attribute{
+					"client_id": schema.StringAttribute{
+						MarkdownDescription: "The Tailscale Client ID for the federated identity.",
+						Computed:            true,
+					},
+				},
+			},
 		},
 	}
 }
