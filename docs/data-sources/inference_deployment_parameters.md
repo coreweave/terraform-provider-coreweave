@@ -3,12 +3,12 @@
 page_title: "coreweave_inference_deployment_parameters Data Source - coreweave"
 subcategory: ""
 description: |-
-  Retrieve available parameter values for CoreWeave Managed Inference deployments.
+  Retrieve available parameter values for CoreWeave Managed Inference deployments https://docs.coreweave.com/products/inference/getting-started.
 ---
 
 # coreweave_inference_deployment_parameters (Data Source)
 
-Retrieve available parameter values for CoreWeave Managed Inference deployments.
+Retrieve available parameter values for [CoreWeave Managed Inference deployments](https://docs.coreweave.com/products/inference/getting-started).
 
 ## Example Usage
 

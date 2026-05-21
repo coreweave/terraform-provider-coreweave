@@ -3,12 +3,12 @@
 page_title: "coreweave_inference_capacity_claim Resource - coreweave"
 subcategory: ""
 description: |-
-  Create and manage CoreWeave Managed Inference https://docs.coreweave.com/products/inference capacity claims.
+  Create and manage CoreWeave Managed Inference https://docs.coreweave.com/products/inference capacity claims for Dedicated Inference https://docs.coreweave.com/products/inference/dedicated. See capacity claims https://docs.coreweave.com/products/inference/concepts/scaling#capacity-claims for capacity type details.
 ---
 
 # coreweave_inference_capacity_claim (Resource)
 
-Create and manage [CoreWeave Managed Inference](https://docs.coreweave.com/products/inference) capacity claims.
+Create and manage [CoreWeave Managed Inference](https://docs.coreweave.com/products/inference) capacity claims for [Dedicated Inference](https://docs.coreweave.com/products/inference/dedicated). See [capacity claims](https://docs.coreweave.com/products/inference/concepts/scaling#capacity-claims) for capacity type details.
 
 ## Example Usage
 
@@ -41,7 +41,7 @@ resource "coreweave_inference_capacity_claim" "example" {
 - `id` (String) The unique identifier of the capacity claim.
 - `organization_id` (String) The organization ID that owns the capacity claim.
 - `pending_instances` (Number) The number of instances pending allocation.
-- `status` (String) The current status of the capacity claim.
+- `status` (String) The current status of the capacity claim. See the [Inference API overview](https://docs.coreweave.com/products/inference/reference/api-overview#status-values) for status values.
 - `updated_at` (String) RFC3339 timestamp of when the capacity claim was last updated.
 
 <a id="nestedatt--resources"></a>
@@ -49,7 +49,7 @@ resource "coreweave_inference_capacity_claim" "example" {
 
 Required:
 
-- `capacity_type` (String) The capacity type for the capacity claim. Must be one of: `CAPACITY_TYPE_SERVERLESS`, `CAPACITY_TYPE_CUSTOMER`.
+- `capacity_type` (String) The [capacity type](https://docs.coreweave.com/products/inference/concepts/scaling#capacity-claims) for the capacity claim. Must be one of: `CAPACITY_TYPE_SERVERLESS`, `CAPACITY_TYPE_CUSTOMER`.
 - `instance_count` (Number) The number of instances to reserve. Must be at least 1.
 - `instance_type` (String) The instance type to reserve (e.g. `gb200-4x`).
 - `zones` (Set of String) The availability zones where the capacity claim may use resources from (e.g. `US-WEST-04A`). At least one is required.

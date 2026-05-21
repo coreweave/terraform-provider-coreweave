@@ -3,12 +3,12 @@
 page_title: "coreweave_inference_deployment Resource - coreweave"
 subcategory: ""
 description: |-
-  Create and manage CoreWeave Managed Inference https://docs.coreweave.com/products/inference deployments.
+  Create and manage CoreWeave Managed Inference https://docs.coreweave.com/products/inference deployments. See the getting started walkthrough https://docs.coreweave.com/products/inference/getting-started for the gateway-to-deployment flow.
 ---
 
 # coreweave_inference_deployment (Resource)
 
-Create and manage [CoreWeave Managed Inference](https://docs.coreweave.com/products/inference) deployments.
+Create and manage [CoreWeave Managed Inference](https://docs.coreweave.com/products/inference) deployments. See the [getting started walkthrough](https://docs.coreweave.com/products/inference/getting-started) for the gateway-to-deployment flow.
 
 ## Example Usage
 
@@ -58,12 +58,12 @@ resource "coreweave_inference_deployment" "example" {
 
 ### Required
 
-- `autoscaling` (Attributes) Autoscaling configuration. (see [below for nested schema](#nestedatt--autoscaling))
-- `gateway_ids` (Set of String) The gateway IDs to associate the deployment with. At least one is required.
-- `model` (Attributes) Model configuration. (see [below for nested schema](#nestedatt--model))
+- `autoscaling` (Attributes) [Autoscaling](https://docs.coreweave.com/products/inference/concepts/scaling) configuration. (see [below for nested schema](#nestedatt--autoscaling))
+- `gateway_ids` (Set of String) The [gateway](https://docs.coreweave.com/products/inference/concepts/gateways) IDs to associate the deployment with. At least one is required.
+- `model` (Attributes) [Model](https://docs.coreweave.com/products/inference/concepts/models) configuration. (see [below for nested schema](#nestedatt--model))
 - `name` (String) The name of the deployment. Must be a valid hostname label.
-- `resources` (Attributes) Resource configuration for the deployment. (see [below for nested schema](#nestedatt--resources))
-- `runtime` (Attributes) Runtime selection and configuration. (see [below for nested schema](#nestedatt--runtime))
+- `resources` (Attributes) [GPU resource](https://docs.coreweave.com/products/inference/concepts/models) configuration for the deployment. (see [below for nested schema](#nestedatt--resources))
+- `runtime` (Attributes) [Runtime](https://docs.coreweave.com/products/inference/concepts/models) selection and configuration. (see [below for nested schema](#nestedatt--runtime))
 
 ### Optional
 
@@ -76,7 +76,7 @@ resource "coreweave_inference_deployment" "example" {
 - `created_at` (String) RFC3339 timestamp of when the deployment was created.
 - `id` (String) The unique identifier of the deployment.
 - `organization_id` (String) The organization ID that owns the deployment.
-- `status` (String) The current status of the deployment.
+- `status` (String) The current status of the deployment. See the [Inference API overview](https://docs.coreweave.com/products/inference/reference/api-overview) for status values.
 - `updated_at` (String) RFC3339 timestamp of when the deployment was last updated.
 
 <a id="nestedatt--autoscaling"></a>
@@ -89,7 +89,7 @@ Required:
 
 Optional:
 
-- `capacity_classes` (List of String) Ordered preference list of capacity classes to use. Order is significant: the first satisfiable class wins. Allowed values: `CAPACITY_CLASS_RESERVED`, `CAPACITY_CLASS_ON_DEMAND`.
+- `capacity_classes` (List of String) Ordered preference list of [capacity classes](https://docs.coreweave.com/products/inference/concepts/scaling#capacity-claims) to use. Order is significant: the first satisfiable class wins. Allowed values: `CAPACITY_CLASS_RESERVED`, `CAPACITY_CLASS_ON_DEMAND`.
 - `concurrency` (Number) Concurrency per instance target (≥1). Controls latency vs throughput tradeoffs.
 - `priority` (Number) Priority for cross-deployment scaling (0–1000). Higher values win when there is contention.
 
@@ -99,7 +99,7 @@ Optional:
 
 Required:
 
-- `bucket` (String) The CAIOS bucket the model is stored in.
+- `bucket` (String) The CAIOS bucket the model is stored in. The inference service account must have [bucket access](https://docs.coreweave.com/products/inference/concepts/models#grant-inference-access-to-your-bucket).
 - `name` (String) The model name used in API requests (e.g. the `/models` endpoint). Length must be 4-63 characters.
 - `path` (String) The CAIOS path to the model and its configuration files.
 

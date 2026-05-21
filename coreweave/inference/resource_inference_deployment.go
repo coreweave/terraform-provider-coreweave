@@ -119,7 +119,7 @@ func (r *InferenceDeploymentResource) Metadata(_ context.Context, req resource.M
 
 func (r *InferenceDeploymentResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		MarkdownDescription: "Create and manage [CoreWeave Managed Inference](https://docs.coreweave.com/products/inference) deployments.",
+		MarkdownDescription: "Create and manage [CoreWeave Managed Inference](https://docs.coreweave.com/products/inference) deployments. See the [getting started walkthrough](https://docs.coreweave.com/products/inference/getting-started) for the gateway-to-deployment flow.",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Computed:            true,
@@ -133,7 +133,7 @@ func (r *InferenceDeploymentResource) Schema(_ context.Context, _ resource.Schem
 			},
 			"status": schema.StringAttribute{
 				Computed:            true,
-				MarkdownDescription: "The current status of the deployment.",
+				MarkdownDescription: "The current status of the deployment. See the [Inference API overview](https://docs.coreweave.com/products/inference/reference/api-overview) for status values.",
 			},
 			"created_at": schema.StringAttribute{
 				Computed:            true,
@@ -183,7 +183,7 @@ func (r *InferenceDeploymentResource) Schema(_ context.Context, _ resource.Schem
 			"gateway_ids": schema.SetAttribute{
 				ElementType:         types.StringType,
 				Required:            true,
-				MarkdownDescription: "The gateway IDs to associate the deployment with. At least one is required.",
+				MarkdownDescription: "The [gateway](https://docs.coreweave.com/products/inference/concepts/gateways) IDs to associate the deployment with. At least one is required.",
 				Validators: []validator.Set{
 					setvalidator.SizeAtLeast(1),
 					setvalidator.ValueStringsAre(stringvalidator.LengthAtLeast(1)),
@@ -197,7 +197,7 @@ func (r *InferenceDeploymentResource) Schema(_ context.Context, _ resource.Schem
 			},
 			"runtime": schema.SingleNestedAttribute{
 				Required:            true,
-				MarkdownDescription: "Runtime selection and configuration.",
+				MarkdownDescription: "[Runtime](https://docs.coreweave.com/products/inference/concepts/models) selection and configuration.",
 				Attributes: map[string]schema.Attribute{
 					"engine": schema.StringAttribute{
 						Required:            true,
@@ -224,7 +224,7 @@ func (r *InferenceDeploymentResource) Schema(_ context.Context, _ resource.Schem
 			},
 			"resources": schema.SingleNestedAttribute{
 				Required:            true,
-				MarkdownDescription: "Resource configuration for the deployment.",
+				MarkdownDescription: "[GPU resource](https://docs.coreweave.com/products/inference/concepts/models) configuration for the deployment.",
 				Attributes: map[string]schema.Attribute{
 					"instance_type": schema.StringAttribute{
 						Required:            true,
@@ -241,7 +241,7 @@ func (r *InferenceDeploymentResource) Schema(_ context.Context, _ resource.Schem
 			},
 			"model": schema.SingleNestedAttribute{
 				Required:            true,
-				MarkdownDescription: "Model configuration.",
+				MarkdownDescription: "[Model](https://docs.coreweave.com/products/inference/concepts/models) configuration.",
 				Attributes: map[string]schema.Attribute{
 					"name": schema.StringAttribute{
 						Required:            true,
@@ -252,7 +252,7 @@ func (r *InferenceDeploymentResource) Schema(_ context.Context, _ resource.Schem
 					},
 					"bucket": schema.StringAttribute{
 						Required:            true,
-						MarkdownDescription: "The CAIOS bucket the model is stored in.",
+						MarkdownDescription: "The CAIOS bucket the model is stored in. The inference service account must have [bucket access](https://docs.coreweave.com/products/inference/concepts/models#grant-inference-access-to-your-bucket).",
 						Validators: []validator.String{
 							stringvalidator.RegexMatches(hostnamePattern, "must be a valid hostname"),
 						},
@@ -265,7 +265,7 @@ func (r *InferenceDeploymentResource) Schema(_ context.Context, _ resource.Schem
 			},
 			"autoscaling": schema.SingleNestedAttribute{
 				Required:            true,
-				MarkdownDescription: "Autoscaling configuration.",
+				MarkdownDescription: "[Autoscaling](https://docs.coreweave.com/products/inference/concepts/scaling) configuration.",
 				Attributes: map[string]schema.Attribute{
 					"min": schema.Int64Attribute{
 						Required:            true,
@@ -291,7 +291,7 @@ func (r *InferenceDeploymentResource) Schema(_ context.Context, _ resource.Schem
 					"capacity_classes": schema.ListAttribute{
 						ElementType:         types.StringType,
 						Optional:            true,
-						MarkdownDescription: fmt.Sprintf("Ordered preference list of capacity classes to use. Order is significant: the first satisfiable class wins. Allowed values: %s.", coreweave.EnumMarkdownValues(inferencev1.DeploymentAutoscaling_CapacityClass_name, true)),
+						MarkdownDescription: fmt.Sprintf("Ordered preference list of [capacity classes](https://docs.coreweave.com/products/inference/concepts/scaling#capacity-claims) to use. Order is significant: the first satisfiable class wins. Allowed values: %s.", coreweave.EnumMarkdownValues(inferencev1.DeploymentAutoscaling_CapacityClass_name, true)),
 						Validators: []validator.List{
 							listvalidator.ValueStringsAre(stringvalidator.OneOf(coreweave.EnumValues(inferencev1.DeploymentAutoscaling_CapacityClass_name, true)...)),
 						},

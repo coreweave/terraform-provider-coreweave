@@ -54,7 +54,7 @@ resource "coreweave_inference_gateway" "test" {
   zones = [local.zone]
 
   auth = {
-    core_weave = {}
+    coreweave = {}
   }
 
   routing = {

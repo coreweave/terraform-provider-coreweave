@@ -47,7 +47,7 @@ func (d *InferenceDeploymentParametersDataSource) Metadata(_ context.Context, re
 
 func (d *InferenceDeploymentParametersDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, resp *datasource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		MarkdownDescription: "Retrieve available parameter values for CoreWeave Managed Inference deployments.",
+		MarkdownDescription: "Retrieve available parameter values for [CoreWeave Managed Inference deployments](https://docs.coreweave.com/products/inference/getting-started).",
 		Attributes: map[string]schema.Attribute{
 			"gateway_ids": schema.SetAttribute{
 				Computed:            true,

@@ -38,7 +38,7 @@ func (d *CapacityClaimParametersDataSource) Metadata(_ context.Context, req data
 
 func (d *CapacityClaimParametersDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, resp *datasource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		MarkdownDescription: "Retrieve available capacity claim parameters for CoreWeave Managed Inference.",
+		MarkdownDescription: "Retrieve available [capacity claim](https://docs.coreweave.com/products/inference/concepts/scaling#capacity-claims) parameters for CoreWeave Managed Inference.",
 		Attributes: map[string]schema.Attribute{
 			"zone_instance_types": schema.MapNestedAttribute{
 				Computed:            true,

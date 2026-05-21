@@ -53,7 +53,7 @@ type WeightsAndBiasesAuthModel struct {
 }
 
 type GatewayAuthModel struct {
-	CoreWeave        *CoreWeaveAuthModel        `tfsdk:"core_weave"`
+	CoreWeave        *CoreWeaveAuthModel        `tfsdk:"coreweave"`
 	WeightsAndBiases *WeightsAndBiasesAuthModel `tfsdk:"weights_and_biases"`
 }
 
@@ -101,7 +101,7 @@ func (r *InferenceGatewayResource) Metadata(_ context.Context, req resource.Meta
 
 func (r *InferenceGatewayResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		MarkdownDescription: "Create and manage [CoreWeave Managed Inference](https://docs.coreweave.com/products/inference) gateways.",
+		MarkdownDescription: "Create and manage [CoreWeave Managed Inference](https://docs.coreweave.com/products/inference) gateways. See [gateways](https://docs.coreweave.com/products/inference/concepts/gateways) for authentication and routing details.",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Computed:            true,
@@ -115,7 +115,7 @@ func (r *InferenceGatewayResource) Schema(_ context.Context, _ resource.SchemaRe
 			},
 			"status": schema.StringAttribute{
 				Computed:            true,
-				MarkdownDescription: "The current status of the gateway.",
+				MarkdownDescription: "The current status of the gateway. See the [Inference API overview](https://docs.coreweave.com/products/inference/reference/api-overview) for status values.",
 			},
 			"created_at": schema.StringAttribute{
 				Computed:            true,
@@ -174,16 +174,16 @@ func (r *InferenceGatewayResource) Schema(_ context.Context, _ resource.SchemaRe
 			},
 			"auth": schema.SingleNestedAttribute{
 				Required:            true,
-				MarkdownDescription: "The authentication configuration for the gateway. Exactly one of `core_weave` or `weights_and_biases` must be specified.",
+				MarkdownDescription: "The [authentication configuration](https://docs.coreweave.com/products/inference/concepts/gateways) for the gateway. Exactly one of `coreweave` or `weights_and_biases` must be specified.",
 				Attributes: map[string]schema.Attribute{
-					"core_weave": schema.SingleNestedAttribute{
+					"coreweave": schema.SingleNestedAttribute{
 						Optional:            true,
 						MarkdownDescription: "Use CoreWeave IAM authentication.",
 						Attributes:          map[string]schema.Attribute{},
 					},
 					"weights_and_biases": schema.SingleNestedAttribute{
 						Optional:            true,
-						MarkdownDescription: "Use Weights & Biases authentication.",
+						MarkdownDescription: "Use [Weights & Biases authentication](https://docs.coreweave.com/products/inference/concepts/gateways#weights-and-biases-authentication).",
 						Attributes: map[string]schema.Attribute{
 							"api_key": schema.StringAttribute{
 								Optional:            true,
@@ -208,7 +208,7 @@ func (r *InferenceGatewayResource) Schema(_ context.Context, _ resource.SchemaRe
 			},
 			"routing": schema.SingleNestedAttribute{
 				Required:            true,
-				MarkdownDescription: "The routing configuration for the gateway. Exactly one of `body_based`, `header_based`, or `path_based` must be specified.",
+				MarkdownDescription: "The [routing configuration](https://docs.coreweave.com/products/inference/concepts/gateways) for the gateway. Exactly one of `body_based`, `header_based`, or `path_based` must be specified.",
 				Attributes: map[string]schema.Attribute{
 					"body_based": schema.SingleNestedAttribute{
 						Optional:            true,
@@ -261,7 +261,7 @@ func (r *InferenceGatewayResource) Schema(_ context.Context, _ resource.SchemaRe
 func (r *InferenceGatewayResource) ConfigValidators(_ context.Context) []resource.ConfigValidator {
 	return []resource.ConfigValidator{
 		resourcevalidator.ExactlyOneOf(
-			path.MatchRoot("auth").AtName("core_weave"),
+			path.MatchRoot("auth").AtName("coreweave"),
 			path.MatchRoot("auth").AtName("weights_and_biases"),
 		),
 		resourcevalidator.ExactlyOneOf(

@@ -3,7 +3,7 @@ resource "coreweave_inference_gateway" "example" {
   zones = ["US-EAST-04A"]
 
   auth = {
-    core_weave = {}
+    coreweave = {}
   }
 
   routing = {

@@ -3,12 +3,12 @@
 page_title: "coreweave_inference_gateway Resource - coreweave"
 subcategory: ""
 description: |-
-  Create and manage CoreWeave Managed Inference https://docs.coreweave.com/products/inference gateways.
+  Create and manage CoreWeave Managed Inference https://docs.coreweave.com/products/inference gateways. See gateways https://docs.coreweave.com/products/inference/concepts/gateways for authentication and routing details.
 ---
 
 # coreweave_inference_gateway (Resource)
 
-Create and manage [CoreWeave Managed Inference](https://docs.coreweave.com/products/inference) gateways.
+Create and manage [CoreWeave Managed Inference](https://docs.coreweave.com/products/inference) gateways. See [gateways](https://docs.coreweave.com/products/inference/concepts/gateways) for authentication and routing details.
 
 ## Example Usage
 
@@ -18,7 +18,7 @@ resource "coreweave_inference_gateway" "example" {
   zones = ["US-EAST-04A"]
 
   auth = {
-    core_weave = {}
+    coreweave = {}
   }
 
   routing = {
@@ -34,9 +34,9 @@ resource "coreweave_inference_gateway" "example" {
 
 ### Required
 
-- `auth` (Attributes) The authentication configuration for the gateway. Exactly one of `core_weave` or `weights_and_biases` must be specified. (see [below for nested schema](#nestedatt--auth))
+- `auth` (Attributes) The [authentication configuration](https://docs.coreweave.com/products/inference/concepts/gateways) for the gateway. Exactly one of `coreweave` or `weights_and_biases` must be specified. (see [below for nested schema](#nestedatt--auth))
 - `name` (String) The human-readable name of the gateway.
-- `routing` (Attributes) The routing configuration for the gateway. Exactly one of `body_based`, `header_based`, or `path_based` must be specified. (see [below for nested schema](#nestedatt--routing))
+- `routing` (Attributes) The [routing configuration](https://docs.coreweave.com/products/inference/concepts/gateways) for the gateway. Exactly one of `body_based`, `header_based`, or `path_based` must be specified. (see [below for nested schema](#nestedatt--routing))
 - `zones` (Set of String) The zones to make the gateway available in. Limits where deployments associated with the gateway may exist.
 
 ### Optional
@@ -50,7 +50,7 @@ resource "coreweave_inference_gateway" "example" {
 - `endpoints` (Set of String) The endpoint URIs for the gateway.
 - `id` (String) The unique identifier of the gateway.
 - `organization_id` (String) The organization ID that owns the gateway.
-- `status` (String) The current status of the gateway.
+- `status` (String) The current status of the gateway. See the [Inference API overview](https://docs.coreweave.com/products/inference/reference/api-overview) for status values.
 - `updated_at` (String) RFC3339 timestamp of when the gateway was last updated.
 
 <a id="nestedatt--auth"></a>
@@ -58,11 +58,11 @@ resource "coreweave_inference_gateway" "example" {
 
 Optional:
 
-- `core_weave` (Attributes) Use CoreWeave IAM authentication. (see [below for nested schema](#nestedatt--auth--core_weave))
-- `weights_and_biases` (Attributes) Use Weights & Biases authentication. (see [below for nested schema](#nestedatt--auth--weights_and_biases))
+- `coreweave` (Attributes) Use CoreWeave IAM authentication. (see [below for nested schema](#nestedatt--auth--coreweave))
+- `weights_and_biases` (Attributes) Use [Weights & Biases authentication](https://docs.coreweave.com/products/inference/concepts/gateways#weights-and-biases-authentication). (see [below for nested schema](#nestedatt--auth--weights_and_biases))
 
-<a id="nestedatt--auth--core_weave"></a>
-### Nested Schema for `auth.core_weave`
+<a id="nestedatt--auth--coreweave"></a>
+### Nested Schema for `auth.coreweave`
 
 
 <a id="nestedatt--auth--weights_and_biases"></a>
