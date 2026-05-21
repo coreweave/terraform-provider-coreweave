@@ -511,7 +511,7 @@ data "coreweave_inference_gateway_parameters" "params" {}
 locals {
   preferred_zone  = %q
   available_zones = data.coreweave_inference_gateway_parameters.params.zones
-  zone            = local.preferred_zone != "" ? local.preferred_zone : local.available_zones[0]
+  zone            = local.preferred_zone != "" ? local.preferred_zone : sort(tolist(local.available_zones))[0]
 }
 
 resource "coreweave_inference_gateway" "test" {
@@ -545,7 +545,7 @@ data "coreweave_inference_gateway_parameters" "params" {}
 locals {
   preferred_zone  = %q
   available_zones = data.coreweave_inference_gateway_parameters.params.zones
-  zone            = local.preferred_zone != "" ? local.preferred_zone : local.available_zones[0]
+  zone            = local.preferred_zone != "" ? local.preferred_zone : sort(tolist(local.available_zones))[0]
 }
 
 resource "coreweave_inference_gateway" "test" {

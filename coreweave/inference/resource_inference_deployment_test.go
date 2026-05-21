@@ -275,10 +275,10 @@ data "coreweave_inference_deployment_parameters" "deploy_params" {
 locals {
   preferred_zone      = %q
   available_zones     = data.coreweave_inference_gateway_parameters.gw_params.zones
-  zone                = local.preferred_zone != "" ? local.preferred_zone : local.available_zones[0]
+  zone                = local.preferred_zone != "" ? local.preferred_zone : sort(tolist(local.available_zones))[0]
   preferred_instance  = %q
   available_instances = data.coreweave_inference_deployment_parameters.deploy_params.instance_types
-  instance            = local.preferred_instance != "" ? local.preferred_instance : local.available_instances[0]
+  instance            = local.preferred_instance != "" ? local.preferred_instance : sort(tolist(local.available_instances))[0]
 }
 
 resource "coreweave_inference_gateway" "test" {
@@ -356,10 +356,10 @@ data "coreweave_inference_deployment_parameters" "deploy_params" {
 locals {
   preferred_zone      = %q
   available_zones     = data.coreweave_inference_gateway_parameters.gw_params.zones
-  zone                = local.preferred_zone != "" ? local.preferred_zone : local.available_zones[0]
+  zone                = local.preferred_zone != "" ? local.preferred_zone : sort(tolist(local.available_zones))[0]
   preferred_instance  = %q
   available_instances = data.coreweave_inference_deployment_parameters.deploy_params.instance_types
-  instance            = local.preferred_instance != "" ? local.preferred_instance : local.available_instances[0]
+  instance            = local.preferred_instance != "" ? local.preferred_instance : sort(tolist(local.available_instances))[0]
 }
 
 resource "coreweave_inference_gateway" "test" {

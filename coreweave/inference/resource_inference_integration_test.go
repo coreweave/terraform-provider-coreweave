@@ -21,10 +21,10 @@ locals {
   zones_map           = data.coreweave_inference_capacity_claim_parameters.cc_params.zone_instance_types
   preferred_zone      = %q
   available_zones     = sort(keys(local.zones_map))
-  zone                = local.preferred_zone != "" ? local.preferred_zone : local.available_zones[0]
+  zone                = local.preferred_zone != "" ? local.preferred_zone : sort(tolist(local.available_zones))[0]
   preferred_instance  = %q
   available_instances = local.zones_map[local.zone].instance_types
-  instance            = local.preferred_instance != "" ? local.preferred_instance : local.available_instances[0]
+  instance            = local.preferred_instance != "" ? local.preferred_instance : sort(tolist(local.available_instances))[0]
 }
 
 resource "coreweave_inference_capacity_claim" "test" {
