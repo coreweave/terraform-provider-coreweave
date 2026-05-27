@@ -100,7 +100,7 @@ func TestInferenceDeployment_SetFromDeployment_NullPreservation(t *testing.T) {
 	if !m.Autoscaling.CapacityClasses.IsNull() {
 		t.Errorf("Autoscaling.CapacityClasses: expected null when API returns empty, got %v", m.Autoscaling.CapacityClasses)
 	}
-	// traffic is Optional+Computed: the API value is always populated into state.
+	// traffic weight is computed: the API value is always populated into state.
 	if m.Traffic.Weight.ValueInt64() != 0 {
 		t.Errorf("Traffic.Weight: expected 0 from API response, got %v", m.Traffic.Weight)
 	}

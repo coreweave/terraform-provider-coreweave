@@ -20,6 +20,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
@@ -307,13 +308,15 @@ func (r *InferenceDeploymentResource) Schema(_ context.Context, _ resource.Schem
 			},
 			"traffic": schema.SingleNestedAttribute{
 				Optional:            true,
-				Computed:            true,
-				MarkdownDescription: "Traffic configuration. Omit to accept the API default (weight 0, which normalizes to 100% when no other deployment shares the model name).",
+				MarkdownDescription: "Traffic configuration. Omit to accept the API default (weight 0, which normalizes to 100% when no other deployment shares the model name). After apply, `weight` is populated from the API.",
 				Attributes: map[string]schema.Attribute{
 					"weight": schema.Int64Attribute{
 						Optional:            true,
 						Computed:            true,
 						MarkdownDescription: "Traffic weight (0–1000). Values are normalized into percentages across deployments with the same model name.",
+						PlanModifiers: []planmodifier.Int64{
+							int64planmodifier.UseStateForUnknown(),
+						},
 						Validators: []validator.Int64{
 							int64validator.Between(0, 1000),
 						},
@@ -836,10 +839,12 @@ func setFromDeployment(m *InferenceDeploymentResourceModel, d *inferencev1.Deplo
 		}
 	}
 
-	// traffic is Optional+Computed: always populate from the API response.
+	// traffic block is optional; weight is computed from the API when omitted in config.
+	weight := int64(0)
 	if tr := spec.GetTraffic(); tr != nil {
-		m.Traffic.Weight = types.Int64Value(int64(tr.GetWeight()))
+		weight = int64(tr.GetWeight())
 	}
+	m.Traffic = &TrafficModel{Weight: types.Int64Value(weight)}
 
 	// conditions
 	condVals := make([]attr.Value, len(status.GetConditions()))
