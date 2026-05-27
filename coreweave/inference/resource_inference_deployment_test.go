@@ -259,6 +259,10 @@ func TestInferenceDeployment_ToUpdateRequest_Fields(t *testing.T) {
 // --- Acceptance tests ---
 
 func inferenceDeploymentConfig(name, preferredZone, preferredInstance string) string {
+	modelName := inferenceModelName()
+	modelBucket := inferenceModelBucket()
+	modelPath := inferenceModelPath()
+
 	return fmt.Sprintf(`
 data "coreweave_inference_gateway_parameters" "gw_params" {}
 
@@ -317,9 +321,9 @@ resource "coreweave_inference_deployment" "test" {
   }
 
   model = {
-    name   = "meta-llama/Llama-3.1-8B"
-    bucket = "test-model-bucket"
-    path   = "models/llama-3.1-8b"
+    name   = %q
+    bucket = %q
+    path   = %q
   }
 
   autoscaling = {
@@ -336,10 +340,14 @@ resource "coreweave_inference_deployment" "test" {
     }
   }
 }
-`, preferredZone, preferredInstance, name, name)
+`, preferredZone, preferredInstance, name, name, modelName, modelBucket, modelPath)
 }
 
 func inferenceDeploymentUpdatedConfig(name, preferredZone, preferredInstance string) string {
+	modelName := inferenceModelName()
+	modelBucket := inferenceModelBucket()
+	modelPath := inferenceModelPath()
+
 	return fmt.Sprintf(`
 data "coreweave_inference_gateway_parameters" "gw_params" {}
 
@@ -399,9 +407,9 @@ resource "coreweave_inference_deployment" "test" {
   }
 
   model = {
-    name   = "meta-llama/Llama-3.1-8B"
-    bucket = "test-model-bucket"
-    path   = "models/llama-3.1-8b"
+    name   = %q
+    bucket = %q
+    path   = %q
   }
 
   autoscaling = {
@@ -420,7 +428,7 @@ resource "coreweave_inference_deployment" "test" {
     }
   }
 }
-`, preferredZone, preferredInstance, name, name)
+`, preferredZone, preferredInstance, name, name, modelName, modelBucket, modelPath)
 }
 
 func TestInferenceDeployment(t *testing.T) {

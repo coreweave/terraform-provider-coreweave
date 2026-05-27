@@ -19,8 +19,21 @@ import (
 
 const AcceptanceTestPrefix = "test-acc-inf-"
 
+const (
+	defaultInferenceModelName   = "meta-llama/Llama-3.1-8B-Instruct"
+	defaultInferenceModelBucket = "infr-cwc38d"
+	defaultInferenceModelPath   = "raw/OpenPipe/Llama-3.1-8B-Instruct/a33eb8ed541ad2695fe492718662a3577c929888"
+)
+
 func TestMain(m *testing.M) {
 	resource.TestMain(m)
+}
+
+func inferenceEnvOrDefault(envVar, defaultValue string) string {
+	if v := os.Getenv(envVar); v != "" {
+		return v
+	}
+	return defaultValue
 }
 
 // preferredInferenceZone returns the zone configured via the
@@ -38,6 +51,24 @@ func preferredInferenceZone() string {
 // GetXxxParameters response.
 func preferredInferenceInstanceType() string {
 	return os.Getenv("INFR_INSTANCE_ID")
+}
+
+// inferenceModelName returns the model name configured via the INFR_MODEL_NAME
+// env var, or the shared acceptance-test default when unset.
+func inferenceModelName() string {
+	return inferenceEnvOrDefault("INFR_MODEL_NAME", defaultInferenceModelName)
+}
+
+// inferenceModelBucket returns the model bucket configured via the
+// INFR_MODEL_BUCKET env var, or the shared acceptance-test default when unset.
+func inferenceModelBucket() string {
+	return inferenceEnvOrDefault("INFR_MODEL_BUCKET", defaultInferenceModelBucket)
+}
+
+// inferenceModelPath returns the model path configured via the INFR_MODEL_PATH
+// env var, or the shared acceptance-test default when unset.
+func inferenceModelPath() string {
+	return inferenceEnvOrDefault("INFR_MODEL_PATH", defaultInferenceModelPath)
 }
 
 func init() {

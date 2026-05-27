@@ -14,6 +14,10 @@ import (
 )
 
 func inferenceIntegrationConfig(name, preferredZone, preferredInstance string) string {
+	modelName := inferenceModelName()
+	modelBucket := inferenceModelBucket()
+	modelPath := inferenceModelPath()
+
 	return fmt.Sprintf(`
 data "coreweave_inference_capacity_claim_parameters" "cc_params" {}
 
@@ -78,9 +82,9 @@ resource "coreweave_inference_deployment" "test" {
   }
 
   model = {
-    name   = "meta-llama/Llama-3.1-8B"
-    bucket = "test-model-bucket"
-    path   = "models/llama-3.1-8b"
+    name   = %q
+    bucket = %q
+    path   = %q
   }
 
   autoscaling = {
@@ -92,7 +96,7 @@ resource "coreweave_inference_deployment" "test" {
 
   depends_on = [coreweave_inference_capacity_claim.test]
 }
-`, preferredZone, preferredInstance, name, name, name)
+`, preferredZone, preferredInstance, name, name, name, modelName, modelBucket, modelPath)
 }
 
 // TestInferenceReservedCapacity exercises the full reserved-capacity chain —
