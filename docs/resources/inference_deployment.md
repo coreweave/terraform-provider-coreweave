@@ -68,7 +68,7 @@ resource "coreweave_inference_deployment" "example" {
 ### Optional
 
 - `disabled` (Boolean) Whether the deployment is disabled.
-- `traffic` (Attributes) Traffic configuration. Omit to accept the API default (weight 0, which normalizes to 100% when no other deployment shares the model name). (see [below for nested schema](#nestedatt--traffic))
+- `traffic` (Attributes) Traffic configuration. Omit to accept the API default (weight 0, which normalizes to 100% when no other deployment shares the model name). After apply, `weight` is populated from the API. (see [below for nested schema](#nestedatt--traffic))
 
 ### Read-Only
 

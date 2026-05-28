@@ -11,6 +11,7 @@ import (
 	"github.com/coreweave/terraform-provider-coreweave/internal/testutil"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	fwresource "github.com/hashicorp/terraform-plugin-framework/resource"
+	fwschema "github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/knownvalue"
@@ -31,6 +32,31 @@ func TestInferenceDeployment_Schema(t *testing.T) {
 
 	if schemaResp.Diagnostics.HasError() {
 		t.Fatalf("schema returned errors: %v", schemaResp.Diagnostics)
+	}
+
+	trafficAttr, ok := schemaResp.Schema.Attributes["traffic"].(fwschema.SingleNestedAttribute)
+	if !ok {
+		t.Fatalf("traffic: expected SingleNestedAttribute, got %T", schemaResp.Schema.Attributes["traffic"])
+	}
+	if !trafficAttr.Optional {
+		t.Error("traffic: expected optional")
+	}
+	if !trafficAttr.Computed {
+		t.Error("traffic: expected computed")
+	}
+	if trafficAttr.Default == nil {
+		t.Error("traffic: expected default")
+	}
+
+	weightAttr, ok := trafficAttr.Attributes["weight"].(fwschema.Int64Attribute)
+	if !ok {
+		t.Fatalf("traffic.weight: expected Int64Attribute, got %T", trafficAttr.Attributes["weight"])
+	}
+	if !weightAttr.Optional {
+		t.Error("traffic.weight: expected optional")
+	}
+	if !weightAttr.Computed {
+		t.Error("traffic.weight: expected computed")
 	}
 }
 
@@ -100,6 +126,12 @@ func TestInferenceDeployment_SetFromDeployment_NullPreservation(t *testing.T) {
 	if !m.Autoscaling.CapacityClasses.IsNull() {
 		t.Errorf("Autoscaling.CapacityClasses: expected null when API returns empty, got %v", m.Autoscaling.CapacityClasses)
 	}
+	m.Runtime.Version = types.StringUnknown()
+	inference.SetFromDeployment(m, d)
+	if !m.Runtime.Version.IsNull() {
+		t.Errorf("Runtime.Version: expected null when plan is unknown and API returns empty, got %v", m.Runtime.Version)
+	}
+
 	// traffic weight is computed: the API value is always populated into state.
 	if m.Traffic.Weight.ValueInt64() != 0 {
 		t.Errorf("Traffic.Weight: expected 0 from API response, got %v", m.Traffic.Weight)

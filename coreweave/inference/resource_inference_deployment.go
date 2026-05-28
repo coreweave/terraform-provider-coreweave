@@ -21,6 +21,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
@@ -308,7 +309,13 @@ func (r *InferenceDeploymentResource) Schema(_ context.Context, _ resource.Schem
 			},
 			"traffic": schema.SingleNestedAttribute{
 				Optional:            true,
+				Computed:            true,
 				MarkdownDescription: "Traffic configuration. Omit to accept the API default (weight 0, which normalizes to 100% when no other deployment shares the model name). After apply, `weight` is populated from the API.",
+				Default: objectdefault.StaticValue(types.ObjectValueMust(map[string]attr.Type{
+					"weight": types.Int64Type,
+				}, map[string]attr.Value{
+					"weight": types.Int64Value(0),
+				})),
 				Attributes: map[string]schema.Attribute{
 					"weight": schema.Int64Attribute{
 						Optional:            true,
@@ -777,7 +784,7 @@ func setFromDeployment(m *InferenceDeploymentResourceModel, d *inferencev1.Deplo
 	if rt := spec.GetRuntime(); rt != nil {
 		m.Runtime.Engine = types.StringValue(rt.GetEngine())
 
-		if m.Runtime.Version.IsNull() && rt.GetVersion() == "" {
+		if (m.Runtime.Version.IsNull() || m.Runtime.Version.IsUnknown()) && rt.GetVersion() == "" {
 			m.Runtime.Version = types.StringNull()
 		} else {
 			m.Runtime.Version = types.StringValue(rt.GetVersion())

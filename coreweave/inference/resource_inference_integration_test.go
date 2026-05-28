@@ -135,6 +135,7 @@ func TestInferenceReservedCapacity(t *testing.T) {
 						statecheck.ExpectKnownValue(depResource, tfjsonpath.New("status"), knownvalue.StringExact("STATUS_READY")),
 						statecheck.ExpectKnownValue(depResource, tfjsonpath.New("autoscaling").AtMapKey("capacity_classes"), knownvalue.ListExact([]knownvalue.Check{knownvalue.StringExact("CAPACITY_CLASS_RESERVED")})),
 						statecheck.ExpectKnownValue(depResource, tfjsonpath.New("autoscaling").AtMapKey("priority"), knownvalue.Int64Exact(100)),
+						statecheck.ExpectKnownValue(depResource, tfjsonpath.New("traffic").AtMapKey("weight"), knownvalue.Int64Exact(0)),
 					},
 				},
 			},
