@@ -1,0 +1,878 @@
+package inference
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"regexp"
+	"time"
+
+	inferencev1 "buf.build/gen/go/coreweave/inference/protocolbuffers/go/coreweave/inference/v1alpha1"
+	"connectrpc.com/connect"
+	"github.com/coreweave/terraform-provider-coreweave/coreweave"
+	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
+	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
+	"github.com/hashicorp/terraform-plugin-framework-validators/setvalidator"
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/path"
+	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectdefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
+	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-log/tflog"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/retry"
+)
+
+var (
+	_ resource.Resource                = &InferenceDeploymentResource{}
+	_ resource.ResourceWithImportState = &InferenceDeploymentResource{}
+
+	hostnamePattern = regexp.MustCompile(`^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?$`)
+	semverPattern   = regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+$`)
+
+	conditionAttrTypes = map[string]attr.Type{
+		"type":             types.StringType,
+		"status":           types.StringType,
+		"last_update_time": types.StringType,
+		"reason":           types.StringType,
+		"message":          types.StringType,
+	}
+
+	errDeploymentFailed = errors.New("inference deployment entered a failed state")
+)
+
+func NewInferenceDeploymentResource() resource.Resource {
+	return &InferenceDeploymentResource{}
+}
+
+type InferenceDeploymentResource struct {
+	client *coreweave.InferenceClient
+}
+
+// Nested model types.
+
+type RuntimeModel struct {
+	Engine       types.String `tfsdk:"engine"`
+	Version      types.String `tfsdk:"version"`
+	EngineConfig types.Map    `tfsdk:"engine_config"`
+}
+
+type ResourcesModel struct {
+	InstanceType types.String `tfsdk:"instance_type"`
+	GpuCount     types.Int64  `tfsdk:"gpu_count"`
+}
+
+type DeploymentModelConfig struct {
+	Name   types.String `tfsdk:"name"`
+	Bucket types.String `tfsdk:"bucket"`
+	Path   types.String `tfsdk:"path"`
+}
+
+type AutoscalingModel struct {
+	Min             types.Int64 `tfsdk:"min"`
+	Max             types.Int64 `tfsdk:"max"`
+	Priority        types.Int64 `tfsdk:"priority"`
+	CapacityClasses types.List  `tfsdk:"capacity_classes"`
+	Concurrency     types.Int64 `tfsdk:"concurrency"`
+}
+
+type TrafficModel struct {
+	Weight types.Int64 `tfsdk:"weight"`
+}
+
+type ConditionModel struct {
+	Type           types.String `tfsdk:"type"`
+	Status         types.String `tfsdk:"status"`
+	LastUpdateTime types.String `tfsdk:"last_update_time"`
+	Reason         types.String `tfsdk:"reason"`
+	Message        types.String `tfsdk:"message"`
+}
+
+// InferenceDeploymentResourceModel is the top-level Terraform state model.
+type InferenceDeploymentResourceModel struct {
+	// Computed
+	ID             types.String `tfsdk:"id"`
+	OrganizationID types.String `tfsdk:"organization_id"`
+	Status         types.String `tfsdk:"status"`
+	CreatedAt      types.String `tfsdk:"created_at"`
+	UpdatedAt      types.String `tfsdk:"updated_at"`
+	Conditions     types.List   `tfsdk:"conditions"`
+	// Required / Optional
+	Name        types.String           `tfsdk:"name"`
+	GatewayIds  types.Set              `tfsdk:"gateway_ids"`
+	Disabled    types.Bool             `tfsdk:"disabled"`
+	Runtime     *RuntimeModel          `tfsdk:"runtime"`
+	Resources   *ResourcesModel        `tfsdk:"resources"`
+	Model       *DeploymentModelConfig `tfsdk:"model"`
+	Autoscaling *AutoscalingModel      `tfsdk:"autoscaling"`
+	Traffic     *TrafficModel          `tfsdk:"traffic"`
+}
+
+func (r *InferenceDeploymentResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
+	resp.TypeName = req.ProviderTypeName + "_inference_deployment"
+}
+
+func (r *InferenceDeploymentResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
+	resp.Schema = schema.Schema{
+		MarkdownDescription: "Create and manage [CoreWeave Managed Inference](https://docs.coreweave.com/products/inference) deployments. See the [getting started walkthrough](https://docs.coreweave.com/products/inference/getting-started) for the gateway-to-deployment flow.",
+		Attributes: map[string]schema.Attribute{
+			"id": schema.StringAttribute{
+				Computed:            true,
+				MarkdownDescription: "The unique identifier of the deployment.",
+				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"organization_id": schema.StringAttribute{
+				Computed:            true,
+				MarkdownDescription: "The organization ID that owns the deployment.",
+				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"status": schema.StringAttribute{
+				Computed:            true,
+				MarkdownDescription: "The current status of the deployment. See the [Inference API overview](https://docs.coreweave.com/products/inference/reference/api-overview) for status values.",
+			},
+			"created_at": schema.StringAttribute{
+				Computed:            true,
+				MarkdownDescription: "RFC3339 timestamp of when the deployment was created.",
+				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"updated_at": schema.StringAttribute{
+				Computed:            true,
+				MarkdownDescription: "RFC3339 timestamp of when the deployment was last updated.",
+			},
+			"conditions": schema.ListNestedAttribute{
+				Computed:            true,
+				MarkdownDescription: "Detailed status conditions for the deployment.",
+				NestedObject: schema.NestedAttributeObject{
+					Attributes: map[string]schema.Attribute{
+						"type": schema.StringAttribute{
+							Computed:            true,
+							MarkdownDescription: "The condition type (e.g. `Ready`, `Progressing`).",
+						},
+						"status": schema.StringAttribute{
+							Computed:            true,
+							MarkdownDescription: "The condition status (`True`, `False`, or `Unknown`).",
+						},
+						"last_update_time": schema.StringAttribute{
+							Computed:            true,
+							MarkdownDescription: "RFC3339 timestamp of the last condition transition.",
+						},
+						"reason": schema.StringAttribute{
+							Computed:            true,
+							MarkdownDescription: "A short, machine-readable reason for the condition's last transition.",
+						},
+						"message": schema.StringAttribute{
+							Computed:            true,
+							MarkdownDescription: "A human-readable message about the condition's last transition.",
+						},
+					},
+				},
+			},
+			"name": schema.StringAttribute{
+				Required:            true,
+				MarkdownDescription: "The name of the deployment. Must be a valid hostname label.",
+				PlanModifiers:       []planmodifier.String{stringplanmodifier.RequiresReplace()},
+				Validators: []validator.String{
+					stringvalidator.RegexMatches(hostnamePattern, "must be a valid hostname label"),
+				},
+			},
+			"gateway_ids": schema.SetAttribute{
+				ElementType:         types.StringType,
+				Required:            true,
+				MarkdownDescription: "The [gateway](https://docs.coreweave.com/products/inference/concepts/gateways) IDs to associate the deployment with. At least one is required.",
+				Validators: []validator.Set{
+					setvalidator.SizeAtLeast(1),
+					setvalidator.ValueStringsAre(stringvalidator.LengthAtLeast(1)),
+				},
+			},
+			"disabled": schema.BoolAttribute{
+				Optional:            true,
+				Computed:            true,
+				MarkdownDescription: "Whether the deployment is disabled.",
+				Default:             booldefault.StaticBool(false),
+			},
+			"runtime": schema.SingleNestedAttribute{
+				Required:            true,
+				MarkdownDescription: "[Runtime](https://docs.coreweave.com/products/inference/concepts/models) selection and configuration.",
+				Attributes: map[string]schema.Attribute{
+					"engine": schema.StringAttribute{
+						Required:            true,
+						MarkdownDescription: "The inference engine to use.",
+						Validators: []validator.String{
+							stringvalidator.OneOf("vllm"),
+						},
+					},
+					"version": schema.StringAttribute{
+						Optional:            true,
+						Computed:            true,
+						MarkdownDescription: "The version of the engine. If not set, defaults to the latest available version. Must follow semver format (e.g. `1.2.3`).",
+						PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+						Validators: []validator.String{
+							stringvalidator.RegexMatches(semverPattern, "must be a semver string, e.g. 1.2.3"),
+						},
+					},
+					"engine_config": schema.MapAttribute{
+						ElementType:         types.StringType,
+						Optional:            true,
+						MarkdownDescription: "Engine-specific configuration key/value pairs.",
+					},
+				},
+			},
+			"resources": schema.SingleNestedAttribute{
+				Required:            true,
+				MarkdownDescription: "[GPU resource](https://docs.coreweave.com/products/inference/concepts/models) configuration for the deployment.",
+				Attributes: map[string]schema.Attribute{
+					"instance_type": schema.StringAttribute{
+						Required:            true,
+						MarkdownDescription: "The instance type to use.",
+					},
+					"gpu_count": schema.Int64Attribute{
+						Required:            true,
+						MarkdownDescription: "Number of GPUs per instance. Must be one of: 1, 2, 4, 8, 16.",
+						Validators: []validator.Int64{
+							int64validator.OneOf(1, 2, 4, 8, 16),
+						},
+					},
+				},
+			},
+			"model": schema.SingleNestedAttribute{
+				Required:            true,
+				MarkdownDescription: "[Model](https://docs.coreweave.com/products/inference/concepts/models) configuration.",
+				Attributes: map[string]schema.Attribute{
+					"name": schema.StringAttribute{
+						Required:            true,
+						MarkdownDescription: "The model name used in API requests (e.g. the `/models` endpoint). Length must be 4-63 characters.",
+						Validators: []validator.String{
+							stringvalidator.LengthBetween(4, 63),
+						},
+					},
+					"bucket": schema.StringAttribute{
+						Required:            true,
+						MarkdownDescription: "The CAIOS bucket the model is stored in. The inference service account must have [bucket access](https://docs.coreweave.com/products/inference/concepts/models#grant-inference-access-to-your-bucket).",
+						Validators: []validator.String{
+							stringvalidator.RegexMatches(hostnamePattern, "must be a valid hostname"),
+						},
+					},
+					"path": schema.StringAttribute{
+						Required:            true,
+						MarkdownDescription: "The CAIOS path to the model and its configuration files.",
+					},
+				},
+			},
+			"autoscaling": schema.SingleNestedAttribute{
+				Required:            true,
+				MarkdownDescription: "[Autoscaling](https://docs.coreweave.com/products/inference/concepts/scaling) configuration.",
+				Attributes: map[string]schema.Attribute{
+					"min": schema.Int64Attribute{
+						Required:            true,
+						MarkdownDescription: "Minimum number of instances. Must be ≥1.",
+						Validators: []validator.Int64{
+							int64validator.AtLeast(1),
+						},
+					},
+					"max": schema.Int64Attribute{
+						Required:            true,
+						MarkdownDescription: "Maximum number of instances. Must be ≥1.",
+						Validators: []validator.Int64{
+							int64validator.AtLeast(1),
+						},
+					},
+					"priority": schema.Int64Attribute{
+						Optional:            true,
+						MarkdownDescription: "Priority for cross-deployment scaling (0–1000). Higher values win when there is contention.",
+						Validators: []validator.Int64{
+							int64validator.Between(0, 1000),
+						},
+					},
+					"capacity_classes": schema.ListAttribute{
+						ElementType:         types.StringType,
+						Optional:            true,
+						MarkdownDescription: fmt.Sprintf("Ordered preference list of [capacity classes](https://docs.coreweave.com/products/inference/concepts/scaling#capacity-claims) to use. Order is significant: the first satisfiable class wins. Allowed values: %s.", coreweave.EnumMarkdownValues(inferencev1.DeploymentAutoscaling_CapacityClass_name, true)),
+						Validators: []validator.List{
+							listvalidator.ValueStringsAre(stringvalidator.OneOf(coreweave.EnumValues(inferencev1.DeploymentAutoscaling_CapacityClass_name, true)...)),
+						},
+					},
+					"concurrency": schema.Int64Attribute{
+						Optional:            true,
+						MarkdownDescription: "Concurrency per instance target (≥1). Controls latency vs throughput tradeoffs.",
+						Validators: []validator.Int64{
+							int64validator.AtLeast(1),
+						},
+					},
+				},
+			},
+			"traffic": schema.SingleNestedAttribute{
+				Optional:            true,
+				Computed:            true,
+				MarkdownDescription: "Traffic configuration. Omit to accept the API default (weight 0, which normalizes to 100% when no other deployment shares the model name). After apply, `weight` is populated from the API.",
+				Default: objectdefault.StaticValue(types.ObjectValueMust(map[string]attr.Type{
+					"weight": types.Int64Type,
+				}, map[string]attr.Value{
+					"weight": types.Int64Value(0),
+				})),
+				Attributes: map[string]schema.Attribute{
+					"weight": schema.Int64Attribute{
+						Optional:            true,
+						Computed:            true,
+						MarkdownDescription: "Traffic weight (0–1000). Values are normalized into percentages across deployments with the same model name.",
+						PlanModifiers: []planmodifier.Int64{
+							int64planmodifier.UseStateForUnknown(),
+						},
+						Validators: []validator.Int64{
+							int64validator.Between(0, 1000),
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+func (r *InferenceDeploymentResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+	if req.ProviderData == nil {
+		return
+	}
+
+	client, ok := req.ProviderData.(*coreweave.Client)
+	if !ok {
+		resp.Diagnostics.AddError(
+			"Unexpected Resource Configure Type",
+			fmt.Sprintf("Expected *coreweave.Client, got: %T. Please report this issue to the provider developers.", req.ProviderData),
+		)
+		return
+	}
+
+	r.client = client.Inference
+}
+
+func (r *InferenceDeploymentResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
+	var data InferenceDeploymentResourceModel
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	createReq, diags := toCreateRequest(ctx, &data)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	createResp, err := r.client.CreateDeployment(ctx, connect.NewRequest(createReq))
+	if err != nil {
+		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
+		return
+	}
+
+	// Save initial state before polling so the resource is tracked even if polling fails.
+	resp.Diagnostics.Append(setFromDeployment(&data, createResp.Msg.Deployment)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	deploymentID := createResp.Msg.Deployment.GetSpec().GetId()
+
+	conf := retry.StateChangeConf{
+		Pending: []string{
+			inferencev1.Status_STATUS_CREATING.String(),
+			inferencev1.Status_STATUS_UNSPECIFIED.String(),
+		},
+		Target: []string{inferencev1.Status_STATUS_READY.String()},
+		Refresh: func() (interface{}, string, error) {
+			getResp, err := r.client.GetDeployment(ctx, connect.NewRequest(&inferencev1.GetDeploymentRequest{
+				Id: deploymentID,
+			}))
+			if err != nil {
+				tflog.Error(ctx, "failed to poll deployment", map[string]interface{}{"error": err.Error()})
+				return nil, inferencev1.Status_STATUS_UNSPECIFIED.String(), err
+			}
+			d := getResp.Msg.Deployment
+			status := d.GetStatus().GetStatus()
+			if status == inferencev1.Status_STATUS_ERROR || status == inferencev1.Status_STATUS_FAILED {
+				return d, status.String(), errDeploymentFailed
+			}
+			return d, status.String(), nil
+		},
+		Timeout:    45 * time.Minute,
+		MinTimeout: 5 * time.Second,
+	}
+
+	raw, err := conf.WaitForStateContext(ctx)
+	if err != nil && !errors.Is(err, errDeploymentFailed) {
+		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
+		return
+	}
+
+	d, ok := raw.(*inferencev1.Deployment)
+	if !ok {
+		resp.Diagnostics.AddError("Unexpected polling result type", "Expected *inferencev1.Deployment. Please report this issue to the provider developers.")
+		return
+	}
+
+	if d.GetStatus().GetStatus() == inferencev1.Status_STATUS_ERROR ||
+		d.GetStatus().GetStatus() == inferencev1.Status_STATUS_FAILED {
+		resp.Diagnostics.AddError("Deployment creation failed",
+			fmt.Sprintf("Deployment entered status %s. You must destroy and recreate this resource.", d.GetStatus().GetStatus().String()))
+		return
+	}
+
+	resp.Diagnostics.Append(setFromDeployment(&data, d)...)
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+}
+
+func (r *InferenceDeploymentResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
+	var data InferenceDeploymentResourceModel
+	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	getResp, err := r.client.GetDeployment(ctx, connect.NewRequest(&inferencev1.GetDeploymentRequest{
+		Id: data.ID.ValueString(),
+	}))
+	if err != nil {
+		if coreweave.IsNotFoundError(err) {
+			resp.State.RemoveResource(ctx)
+			return
+		}
+		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
+		return
+	}
+
+	resp.Diagnostics.Append(setFromDeployment(&data, getResp.Msg.Deployment)...)
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+}
+
+func (r *InferenceDeploymentResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
+	var data InferenceDeploymentResourceModel
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	updateReq, diags := toUpdateRequest(ctx, &data)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	updateResp, err := r.client.UpdateDeployment(ctx, connect.NewRequest(updateReq))
+	if err != nil {
+		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
+		return
+	}
+
+	// Save intermediate state before polling so an in-flight update is not lost
+	// if polling fails or times out.
+	resp.Diagnostics.Append(setFromDeployment(&data, updateResp.Msg.Deployment)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	deploymentID := updateResp.Msg.Deployment.GetSpec().GetId()
+
+	conf := retry.StateChangeConf{
+		Pending: []string{
+			inferencev1.Status_STATUS_UPDATING.String(),
+			inferencev1.Status_STATUS_CREATING.String(),
+			inferencev1.Status_STATUS_UNSPECIFIED.String(),
+		},
+		Target: []string{inferencev1.Status_STATUS_READY.String()},
+		Refresh: func() (interface{}, string, error) {
+			getResp, err := r.client.GetDeployment(ctx, connect.NewRequest(&inferencev1.GetDeploymentRequest{
+				Id: deploymentID,
+			}))
+			if err != nil {
+				tflog.Error(ctx, "failed to poll deployment", map[string]interface{}{"error": err.Error()})
+				return nil, inferencev1.Status_STATUS_UNSPECIFIED.String(), err
+			}
+			d := getResp.Msg.Deployment
+			status := d.GetStatus().GetStatus()
+			if status == inferencev1.Status_STATUS_ERROR || status == inferencev1.Status_STATUS_FAILED {
+				return d, status.String(), errDeploymentFailed
+			}
+			return d, status.String(), nil
+		},
+		Timeout:    20 * time.Minute,
+		MinTimeout: 5 * time.Second,
+	}
+
+	raw, err := conf.WaitForStateContext(ctx)
+	if err != nil && !errors.Is(err, errDeploymentFailed) {
+		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
+		return
+	}
+
+	d, ok := raw.(*inferencev1.Deployment)
+	if !ok {
+		resp.Diagnostics.AddError("Unexpected polling result type", "Expected *inferencev1.Deployment. Please report this issue to the provider developers.")
+		return
+	}
+
+	if d.GetStatus().GetStatus() == inferencev1.Status_STATUS_ERROR ||
+		d.GetStatus().GetStatus() == inferencev1.Status_STATUS_FAILED {
+		resp.Diagnostics.AddError("Deployment update failed",
+			fmt.Sprintf("Deployment entered status %s. Check the `conditions` attribute for details.", d.GetStatus().GetStatus().String()))
+		return
+	}
+
+	resp.Diagnostics.Append(setFromDeployment(&data, d)...)
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+}
+
+func (r *InferenceDeploymentResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+	var data InferenceDeploymentResourceModel
+	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	deploymentID := data.ID.ValueString()
+
+	_, err := r.client.DeleteDeployment(ctx, connect.NewRequest(&inferencev1.DeleteDeploymentRequest{
+		Id: deploymentID,
+	}))
+	if err != nil {
+		if coreweave.IsNotFoundError(err) {
+			return
+		}
+		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
+		return
+	}
+
+	// deletedState is a synthetic target state returned when CodeNotFound is received,
+	// since the inference proto has no STATUS_DELETED enum value.
+	// TODO: follow up with the managed inference team to add STATUS_DELETED to the proto
+	// so deletion can be polled deterministically via status rather than CodeNotFound.
+	const deletedState = "NOT_FOUND"
+
+	conf := retry.StateChangeConf{
+		Pending: []string{
+			inferencev1.Status_STATUS_DELETING.String(),
+			inferencev1.Status_STATUS_UNSPECIFIED.String(),
+		},
+		Target: []string{deletedState},
+		Refresh: func() (interface{}, string, error) {
+			getResp, err := r.client.GetDeployment(ctx, connect.NewRequest(&inferencev1.GetDeploymentRequest{
+				Id: deploymentID,
+			}))
+			if err != nil {
+				if coreweave.IsNotFoundError(err) {
+					return struct{}{}, deletedState, nil
+				}
+				tflog.Error(ctx, "failed to poll deployment deletion", map[string]interface{}{"error": err.Error()})
+				return nil, inferencev1.Status_STATUS_UNSPECIFIED.String(), err
+			}
+			d := getResp.Msg.Deployment
+			return d, d.GetStatus().GetStatus().String(), nil
+		},
+		Timeout:    20 * time.Minute,
+		MinTimeout: 5 * time.Second,
+	}
+
+	_, err = conf.WaitForStateContext(ctx)
+	if err != nil {
+		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
+		return
+	}
+}
+
+func (r *InferenceDeploymentResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
+}
+
+// --- Helpers ---
+
+// deploymentFields holds the proto sub-messages shared between CreateDeploymentRequest
+// and UpdateDeploymentRequest. Use buildDeploymentFields to populate it.
+type deploymentFields struct {
+	Name        string
+	GatewayIds  []string
+	Disabled    bool
+	Runtime     *inferencev1.DeploymentRuntime
+	Resources   *inferencev1.DeploymentResources
+	Model       *inferencev1.DeploymentModel
+	Autoscaling *inferencev1.DeploymentAutoscaling
+	Traffic     *inferencev1.DeploymentTraffic
+}
+
+// buildDeploymentFields extracts the fields common to both create and update requests
+// from the Terraform resource model.
+func buildDeploymentFields(ctx context.Context, m *InferenceDeploymentResourceModel) (deploymentFields, diag.Diagnostics) {
+	var diagnostics diag.Diagnostics
+
+	gwIds := []string{}
+	diagnostics.Append(m.GatewayIds.ElementsAs(ctx, &gwIds, false)...)
+	if diagnostics.HasError() {
+		return deploymentFields{}, diagnostics
+	}
+
+	f := deploymentFields{
+		Name:       m.Name.ValueString(),
+		GatewayIds: gwIds,
+		Disabled:   m.Disabled.ValueBool(),
+		Runtime: &inferencev1.DeploymentRuntime{
+			Engine: m.Runtime.Engine.ValueString(),
+		},
+		Resources: &inferencev1.DeploymentResources{
+			InstanceType: m.Resources.InstanceType.ValueString(),
+			GpuCount:     uint32(m.Resources.GpuCount.ValueInt64()), //nolint:gosec
+		},
+		Model: &inferencev1.DeploymentModel{
+			Name:   m.Model.Name.ValueString(),
+			Bucket: m.Model.Bucket.ValueString(),
+			Path:   m.Model.Path.ValueString(),
+		},
+		Autoscaling: &inferencev1.DeploymentAutoscaling{
+			Min: uint32(m.Autoscaling.Min.ValueInt64()), //nolint:gosec
+			Max: uint32(m.Autoscaling.Max.ValueInt64()), //nolint:gosec
+		},
+		Traffic: &inferencev1.DeploymentTraffic{},
+	}
+
+	if m.Traffic != nil && !m.Traffic.Weight.IsNull() && !m.Traffic.Weight.IsUnknown() {
+		f.Traffic.Weight = uint32(m.Traffic.Weight.ValueInt64()) //nolint:gosec
+	}
+
+	if !m.Runtime.Version.IsNull() && !m.Runtime.Version.IsUnknown() {
+		f.Runtime.Version = m.Runtime.Version.ValueString()
+	}
+	if !m.Runtime.EngineConfig.IsNull() && !m.Runtime.EngineConfig.IsUnknown() {
+		ec := map[string]string{}
+		diagnostics.Append(m.Runtime.EngineConfig.ElementsAs(ctx, &ec, false)...)
+		if diagnostics.HasError() {
+			return deploymentFields{}, diagnostics
+		}
+		f.Runtime.EngineConfig = ec
+	}
+	if !m.Autoscaling.Priority.IsNull() && !m.Autoscaling.Priority.IsUnknown() {
+		f.Autoscaling.Priority = uint32(m.Autoscaling.Priority.ValueInt64()) //nolint:gosec
+	}
+	if !m.Autoscaling.Concurrency.IsNull() && !m.Autoscaling.Concurrency.IsUnknown() {
+		f.Autoscaling.Concurrency = uint32(m.Autoscaling.Concurrency.ValueInt64()) //nolint:gosec
+	}
+	if !m.Autoscaling.CapacityClasses.IsNull() && !m.Autoscaling.CapacityClasses.IsUnknown() {
+		ccs := []string{}
+		diagnostics.Append(m.Autoscaling.CapacityClasses.ElementsAs(ctx, &ccs, false)...)
+		if diagnostics.HasError() {
+			return deploymentFields{}, diagnostics
+		}
+		protoClasses := make([]inferencev1.DeploymentAutoscaling_CapacityClass, 0, len(ccs))
+		for _, cc := range ccs {
+			val, ok := inferencev1.DeploymentAutoscaling_CapacityClass_value[cc]
+			if !ok {
+				diagnostics.AddError("Invalid capacity_classes entry", fmt.Sprintf("Invalid capacity_classes entry: %s. Must be one of: %s.", cc, coreweave.EnumMarkdownValues(inferencev1.DeploymentAutoscaling_CapacityClass_name, true)))
+				return deploymentFields{}, diagnostics
+			}
+			protoClasses = append(protoClasses, inferencev1.DeploymentAutoscaling_CapacityClass(val))
+		}
+		f.Autoscaling.CapacityClasses = protoClasses
+	}
+	return f, diagnostics
+}
+
+func toCreateRequest(ctx context.Context, m *InferenceDeploymentResourceModel) (*inferencev1.CreateDeploymentRequest, diag.Diagnostics) {
+	f, diags := buildDeploymentFields(ctx, m)
+	if diags.HasError() {
+		return nil, diags
+	}
+	return &inferencev1.CreateDeploymentRequest{
+		Name:        f.Name,
+		GatewayIds:  f.GatewayIds,
+		Disabled:    f.Disabled,
+		Runtime:     f.Runtime,
+		Resources:   f.Resources,
+		Model:       f.Model,
+		Autoscaling: f.Autoscaling,
+		Traffic:     f.Traffic,
+	}, diags
+}
+
+func toUpdateRequest(ctx context.Context, m *InferenceDeploymentResourceModel) (*inferencev1.UpdateDeploymentRequest, diag.Diagnostics) {
+	f, diags := buildDeploymentFields(ctx, m)
+	if diags.HasError() {
+		return nil, diags
+	}
+	return &inferencev1.UpdateDeploymentRequest{
+		Id:          m.ID.ValueString(),
+		Name:        f.Name,
+		GatewayIds:  f.GatewayIds,
+		Disabled:    f.Disabled,
+		Runtime:     f.Runtime,
+		Resources:   f.Resources,
+		Model:       f.Model,
+		Autoscaling: f.Autoscaling,
+		Traffic:     f.Traffic,
+	}, diags
+}
+
+// ensureDeploymentNested initializes each required nested attribute on the model
+// if it is nil, so the model arriving from an ID-only import state is safe to
+// write into. Each initializer seeds optional inner fields as null so null
+// preservation checks in setFromDeployment behave correctly on first import.
+func ensureDeploymentNested(m *InferenceDeploymentResourceModel) {
+	if m.Runtime == nil {
+		m.Runtime = &RuntimeModel{Version: types.StringNull(), EngineConfig: types.MapNull(types.StringType)}
+	}
+	if m.Resources == nil {
+		m.Resources = &ResourcesModel{}
+	}
+	if m.Model == nil {
+		m.Model = &DeploymentModelConfig{}
+	}
+	if m.Autoscaling == nil {
+		m.Autoscaling = &AutoscalingModel{
+			Priority:        types.Int64Null(),
+			Concurrency:     types.Int64Null(),
+			CapacityClasses: types.ListNull(types.StringType),
+		}
+	}
+	if m.Traffic == nil {
+		m.Traffic = &TrafficModel{Weight: types.Int64Null()}
+	}
+}
+
+// setFromDeployment populates all fields on the model from a proto Deployment response.
+// For Optional (non-Computed) fields, null is preserved when the plan/state was null and
+// the API returns the default (zero/empty) value — matching the CKS pattern for optional
+// fields. Computed fields are always populated from the API response.
+func setFromDeployment(m *InferenceDeploymentResourceModel, d *inferencev1.Deployment) (diagnostics diag.Diagnostics) {
+	spec := d.GetSpec()
+	status := d.GetStatus()
+
+	// Initialize required nested attributes so setFromDeployment is safe when the
+	// model arrives with nil pointers (e.g. from ImportStatePassthroughID).
+	ensureDeploymentNested(m)
+
+	m.ID = types.StringValue(spec.GetId())
+	m.OrganizationID = types.StringValue(spec.GetOrganizationId())
+	m.Name = types.StringValue(spec.GetName())
+	m.Status = types.StringValue(status.GetStatus().String())
+	m.Disabled = types.BoolValue(spec.GetDisabled())
+
+	if status.GetCreatedAt() != nil {
+		m.CreatedAt = types.StringValue(status.GetCreatedAt().AsTime().Format(time.RFC3339))
+	}
+	if status.GetUpdatedAt() != nil {
+		m.UpdatedAt = types.StringValue(status.GetUpdatedAt().AsTime().Format(time.RFC3339))
+	}
+
+	// gateway_ids
+	gwVals := make([]attr.Value, len(spec.GetGatewayIds()))
+	for i, id := range spec.GetGatewayIds() {
+		gwVals[i] = types.StringValue(id)
+	}
+	gwSet, diags := types.SetValue(types.StringType, gwVals)
+	diagnostics.Append(diags...)
+	m.GatewayIds = gwSet
+
+	// runtime
+	if rt := spec.GetRuntime(); rt != nil {
+		m.Runtime.Engine = types.StringValue(rt.GetEngine())
+
+		if (m.Runtime.Version.IsNull() || m.Runtime.Version.IsUnknown()) && rt.GetVersion() == "" {
+			m.Runtime.Version = types.StringNull()
+		} else {
+			m.Runtime.Version = types.StringValue(rt.GetVersion())
+		}
+
+		if m.Runtime.EngineConfig.IsNull() && len(rt.GetEngineConfig()) == 0 {
+			m.Runtime.EngineConfig = types.MapNull(types.StringType)
+		} else {
+			ecVals := make(map[string]attr.Value, len(rt.GetEngineConfig()))
+			for k, v := range rt.GetEngineConfig() {
+				ecVals[k] = types.StringValue(v)
+			}
+			ecMap, diags := types.MapValue(types.StringType, ecVals)
+			diagnostics.Append(diags...)
+			m.Runtime.EngineConfig = ecMap
+		}
+	}
+
+	// resources
+	if res := spec.GetResources(); res != nil {
+		m.Resources.InstanceType = types.StringValue(res.GetInstanceType())
+		m.Resources.GpuCount = types.Int64Value(int64(res.GetGpuCount()))
+	}
+
+	// model
+	if mod := spec.GetModel(); mod != nil {
+		m.Model.Name = types.StringValue(mod.GetName())
+		m.Model.Bucket = types.StringValue(mod.GetBucket())
+		m.Model.Path = types.StringValue(mod.GetPath())
+	}
+
+	// autoscaling
+	if as := spec.GetAutoscaling(); as != nil {
+		m.Autoscaling.Min = types.Int64Value(int64(as.GetMin()))
+		m.Autoscaling.Max = types.Int64Value(int64(as.GetMax()))
+
+		if m.Autoscaling.Priority.IsNull() && as.GetPriority() == 0 {
+			m.Autoscaling.Priority = types.Int64Null()
+		} else {
+			m.Autoscaling.Priority = types.Int64Value(int64(as.GetPriority()))
+		}
+
+		if m.Autoscaling.Concurrency.IsNull() && as.GetConcurrency() == 0 {
+			m.Autoscaling.Concurrency = types.Int64Null()
+		} else {
+			m.Autoscaling.Concurrency = types.Int64Value(int64(as.GetConcurrency()))
+		}
+
+		if m.Autoscaling.CapacityClasses.IsNull() && len(as.GetCapacityClasses()) == 0 {
+			m.Autoscaling.CapacityClasses = types.ListNull(types.StringType)
+		} else {
+			ccVals := make([]attr.Value, len(as.GetCapacityClasses()))
+			for i, cc := range as.GetCapacityClasses() {
+				ccVals[i] = types.StringValue(cc.String())
+			}
+			ccList, diags := types.ListValue(types.StringType, ccVals)
+			diagnostics.Append(diags...)
+			m.Autoscaling.CapacityClasses = ccList
+		}
+	}
+
+	// traffic block is optional; weight is computed from the API when omitted in config.
+	weight := int64(0)
+	if tr := spec.GetTraffic(); tr != nil {
+		weight = int64(tr.GetWeight())
+	}
+	m.Traffic = &TrafficModel{Weight: types.Int64Value(weight)}
+
+	// conditions
+	condVals := make([]attr.Value, len(status.GetConditions()))
+	for i, c := range status.GetConditions() {
+		lastUpdate := ""
+		if c.GetLastUpdateTime() != nil {
+			lastUpdate = c.GetLastUpdateTime().AsTime().Format(time.RFC3339)
+		}
+		condObj, diags := types.ObjectValue(conditionAttrTypes, map[string]attr.Value{
+			"type":             types.StringValue(c.GetType()),
+			"status":           types.StringValue(c.GetStatus().String()),
+			"last_update_time": types.StringValue(lastUpdate),
+			"reason":           types.StringValue(c.GetReason()),
+			"message":          types.StringValue(c.GetMessage()),
+		})
+		diagnostics.Append(diags...)
+		condVals[i] = condObj
+	}
+	condList, diags := types.ListValue(types.ObjectType{AttrTypes: conditionAttrTypes}, condVals)
+	diagnostics.Append(diags...)
+	m.Conditions = condList
+
+	return diagnostics
+}

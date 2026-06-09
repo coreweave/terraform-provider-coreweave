@@ -10,6 +10,7 @@ import (
 	"connectrpc.com/connect"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave/cks"
+	"github.com/coreweave/terraform-provider-coreweave/coreweave/inference"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave/networking"
 	objectstorage "github.com/coreweave/terraform-provider-coreweave/coreweave/object_storage"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -211,6 +212,9 @@ func (p *CoreweaveProvider) Resources(ctx context.Context) []func() resource.Res
 		objectstorage.NewBucketVersioningResource,
 		objectstorage.NewBucketPolicyResource,
 		objectstorage.NewBucketSettingsResource,
+		inference.NewInferenceDeploymentResource,
+		inference.NewInferenceCapacityClaimResource,
+		inference.NewInferenceGatewayResource,
 	}
 }
 
@@ -219,6 +223,9 @@ func (p *CoreweaveProvider) DataSources(ctx context.Context) []func() datasource
 		networking.NewVpcDataSource,
 		cks.NewClusterDataSource,
 		objectstorage.NewBucketPolicyDocumentDataSource,
+		inference.NewInferenceDeploymentParametersDataSource,
+		inference.NewCapacityClaimParametersDataSource,
+		inference.NewGatewayParametersDataSource,
 	}
 }
 
