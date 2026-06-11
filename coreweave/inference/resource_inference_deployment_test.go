@@ -91,11 +91,10 @@ func TestInferenceDeployment_SemverPattern(t *testing.T) {
 	}
 
 	for _, tc := range tests {
-		tc := tc
-		t.Run(tc.version, func(t *testing.T) {
+		t.Run(fmt.Sprintf("%q", tc.version), func(t *testing.T) {
 			t.Parallel()
-			if got := inference.SemverPattern.MatchString(tc.version); got != tc.want {
-				t.Errorf("SemverPattern.MatchString(%q) = %v, want %v", tc.version, got, tc.want)
+			if got := inference.SemverMatches(tc.version); got != tc.want {
+				t.Errorf("SemverMatches(%q) = %v, want %v", tc.version, got, tc.want)
 			}
 		})
 	}

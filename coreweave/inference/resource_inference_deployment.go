@@ -31,12 +31,14 @@ import (
 )
 
 const (
-	semverNumericIdentifier = `(0|[1-9][0-9]*)`
+	// Non-capturing groups throughout: the pattern is only used with
+	// MatchString, so captures would be needless bookkeeping.
+	semverNumericIdentifier = `(?:0|[1-9][0-9]*)`
 
 	// A pre-release identifier is either:
 	//   - a numeric identifier with no leading zeroes, or
 	//   - an alphanumeric/hyphen identifier containing at least one non-digit
-	semverPrereleaseIdentifier = `(0|[1-9][0-9]*|[0-9]*[a-zA-Z-][0-9a-zA-Z-]*)`
+	semverPrereleaseIdentifier = `(?:0|[1-9][0-9]*|[0-9]*[a-zA-Z-][0-9a-zA-Z-]*)`
 
 	// Build metadata identifiers may be numeric and may have leading zeroes.
 	semverBuildIdentifier = `[0-9a-zA-Z-]+`
