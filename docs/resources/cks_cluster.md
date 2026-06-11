@@ -14,9 +14,17 @@ Create and manage clusters on [CoreWeave Kubernetes Service (CKS)](https://docs.
 
 ```terraform
 resource "coreweave_networking_vpc" "default" {
-  name        = "default"
-  zone        = "US-EAST-04A"
-  host_prefix = "10.16.192.0/18"
+  name = "default"
+  zone = "US-EAST-04A"
+
+  host_prefixes = [
+    {
+      name     = "primary"
+      type     = "PRIMARY"
+      prefixes = ["10.16.192.0/18"]
+    },
+  ]
+
   vpc_prefixes = [
     {
       name  = "pod cidr"
