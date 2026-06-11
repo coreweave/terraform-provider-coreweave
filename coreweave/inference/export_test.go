@@ -3,6 +3,9 @@ package inference
 // exported for testing
 
 var (
+	// Validation
+	SemverPattern = semverPattern
+
 	// Deployment
 	SetFromDeployment = setFromDeployment
 	ToCreateRequest   = toCreateRequest

@@ -30,12 +30,34 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/retry"
 )
 
+const (
+	semverNumericIdentifier = `(0|[1-9][0-9]*)`
+
+	// A pre-release identifier is either:
+	//   - a numeric identifier with no leading zeroes, or
+	//   - an alphanumeric/hyphen identifier containing at least one non-digit
+	semverPrereleaseIdentifier = `(0|[1-9][0-9]*|[0-9]*[a-zA-Z-][0-9a-zA-Z-]*)`
+
+	// Build metadata identifiers may be numeric and may have leading zeroes.
+	semverBuildIdentifier = `[0-9a-zA-Z-]+`
+)
+
 var (
 	_ resource.Resource                = &InferenceDeploymentResource{}
 	_ resource.ResourceWithImportState = &InferenceDeploymentResource{}
 
 	hostnamePattern = regexp.MustCompile(`^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?$`)
-	semverPattern   = regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+$`)
+	semverPattern   = regexp.MustCompile(
+		`^` +
+			semverNumericIdentifier + `\.` +
+			semverNumericIdentifier + `\.` +
+			semverNumericIdentifier +
+			`(?:-` + semverPrereleaseIdentifier +
+			`(?:\.` + semverPrereleaseIdentifier + `)*)?` +
+			`(?:\+` + semverBuildIdentifier +
+			`(?:\.` + semverBuildIdentifier + `)*)?` +
+			`$`,
+	)
 
 	conditionAttrTypes = map[string]attr.Type{
 		"type":             types.StringType,
