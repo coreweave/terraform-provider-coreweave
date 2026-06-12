@@ -8,10 +8,10 @@ buf.build/gen/go/coreweave/cwobject/connectrpc/go v1.19.1-20250604181649-b97f17b
 buf.build/gen/go/coreweave/cwobject/connectrpc/go v1.19.1-20250604181649-b97f17b05d5b.2/go.mod h1:psL+HRMYCDFcWXSom8U7bD6hienITQq/yHCJNlNXuU4=
 buf.build/gen/go/coreweave/cwobject/protocolbuffers/go v1.36.10-20250604181649-b97f17b05d5b.1 h1:MVGYLA7uYissV+3Q3XzT+y0i7clq/A734X8IDN1Ax9c=
 buf.build/gen/go/coreweave/cwobject/protocolbuffers/go v1.36.10-20250604181649-b97f17b05d5b.1/go.mod h1:GVgzP9nXZj2+Hm3L+N3dRTm9zEURuxAcrkdPLPryg3U=
-buf.build/gen/go/coreweave/inference/connectrpc/go v1.20.0-20260520183555-b358a95cf529.1 h1:dZH6VDEY5dureQJpurBpygZGsLMdkxSTlzjwA1/47jc=
-buf.build/gen/go/coreweave/inference/connectrpc/go v1.20.0-20260520183555-b358a95cf529.1/go.mod h1:uhN6SvzjLD5tYn30KyAMZyKQALHJPjbby1kIsm8BSX8=
-buf.build/gen/go/coreweave/inference/protocolbuffers/go v1.36.11-20260520183555-b358a95cf529.1 h1:sU81DJJttdc4VyW/f8eJXf6O5+E52MG6+2r12EzYitY=
-buf.build/gen/go/coreweave/inference/protocolbuffers/go v1.36.11-20260520183555-b358a95cf529.1/go.mod h1:hTrh8mWkz7c4WFsceMlVfBHnYUjz8CZ6ROAOHPpsIS4=
+buf.build/gen/go/coreweave/inference/connectrpc/go v1.20.0-20260612031318-f73d5826317e.1 h1:f0S14d2ethj38UtJb7feDjZ0BRj3ZAYJkA4KDRGTI7s=
+buf.build/gen/go/coreweave/inference/connectrpc/go v1.20.0-20260612031318-f73d5826317e.1/go.mod h1:GBVUSwqooLa9GLRDuc8h2IMr+a5gNHqIw709tGBKBy8=
+buf.build/gen/go/coreweave/inference/protocolbuffers/go v1.36.11-20260612031318-f73d5826317e.1 h1:kXnxgT8lTsGNJqURxZBj3+VJVoGYMCW7Cie8mE0lyF8=
+buf.build/gen/go/coreweave/inference/protocolbuffers/go v1.36.11-20260612031318-f73d5826317e.1/go.mod h1:hTrh8mWkz7c4WFsceMlVfBHnYUjz8CZ6ROAOHPpsIS4=
 buf.build/gen/go/coreweave/networking/connectrpc/go v1.19.1-20260121155637-a637e7777165.2 h1:7/T8Tbyq8JVWu5ZXznB84IdZ6zN/oXeDcebMaTc+eyc=
 buf.build/gen/go/coreweave/networking/connectrpc/go v1.19.1-20260121155637-a637e7777165.2/go.mod h1:Ri2fOqnsxnYU4CdWVP0GNqzSYq7L+Zw1AV/ebdbNITs=
 buf.build/gen/go/coreweave/networking/protocolbuffers/go v1.36.11-20260121155637-a637e7777165.1 h1:HgaTPkFCzegYtbVOir7vdty10GHoFxMceoscwcH0x7s=
