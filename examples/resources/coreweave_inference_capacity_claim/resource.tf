@@ -4,7 +4,7 @@ resource "coreweave_inference_capacity_claim" "example" {
   resources = {
     instance_type  = "h100-80gb-sxm5"
     instance_count = 2
-    capacity_type  = "CAPACITY_TYPE_SERVERLESS"
+    capacity_type  = "CAPACITY_TYPE_MANAGED"
     zones          = ["US-EAST-04A"]
   }
 }

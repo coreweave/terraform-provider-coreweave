@@ -51,7 +51,7 @@ func TestSetFromCapacityClaim_Fields(t *testing.T) {
 			Resources: (inferencev1.CapacityClaimResources_builder{
 				InstanceId:    testInstanceType,
 				InstanceCount: 3,
-				CapacityType:  inferencev1.CapacityType_CAPACITY_TYPE_SERVERLESS,
+				CapacityType:  inferencev1.CapacityType_CAPACITY_TYPE_MANAGED,
 				Zones:         []string{"US-WEST-04A", "US-EAST-01A"},
 			}).Build(),
 		}).Build(),
@@ -111,8 +111,8 @@ func TestSetFromCapacityClaim_Fields(t *testing.T) {
 	if m.Resources.InstanceCount.ValueInt64() != 3 {
 		t.Errorf("Resources.InstanceCount: got %d, want 3", m.Resources.InstanceCount.ValueInt64())
 	}
-	if m.Resources.CapacityType.ValueString() != "CAPACITY_TYPE_SERVERLESS" {
-		t.Errorf("Resources.CapacityType: got %q, want %q", m.Resources.CapacityType.ValueString(), "CAPACITY_TYPE_SERVERLESS")
+	if m.Resources.CapacityType.ValueString() != "CAPACITY_TYPE_MANAGED" {
+		t.Errorf("Resources.CapacityType: got %q, want %q", m.Resources.CapacityType.ValueString(), "CAPACITY_TYPE_MANAGED")
 	}
 
 	var zones []string
@@ -148,7 +148,7 @@ func TestToCreateCapacityClaimRequest_Fields(t *testing.T) {
 		Resources: &inference.CapacityClaimResourcesModel{
 			InstanceType:  types.StringValue(testInstanceType),
 			InstanceCount: types.Int64Value(5),
-			CapacityType:  types.StringValue("CAPACITY_TYPE_SERVERLESS"),
+			CapacityType:  types.StringValue("CAPACITY_TYPE_MANAGED"),
 			Zones:         zones,
 		},
 	}
@@ -167,8 +167,8 @@ func TestToCreateCapacityClaimRequest_Fields(t *testing.T) {
 	if req.GetResources().GetInstanceCount() != 5 {
 		t.Errorf("InstanceCount: got %d, want 5", req.GetResources().GetInstanceCount())
 	}
-	if req.GetResources().GetCapacityType() != inferencev1.CapacityType_CAPACITY_TYPE_SERVERLESS {
-		t.Errorf("CapacityType: got %v, want CAPACITY_TYPE_SERVERLESS", req.GetResources().GetCapacityType())
+	if req.GetResources().GetCapacityType() != inferencev1.CapacityType_CAPACITY_TYPE_MANAGED {
+		t.Errorf("CapacityType: got %v, want CAPACITY_TYPE_MANAGED", req.GetResources().GetCapacityType())
 	}
 	if len(req.GetResources().GetZones()) != 2 {
 		t.Fatalf("Zones: expected 2, got %d", len(req.GetResources().GetZones()))
@@ -189,7 +189,7 @@ func TestToUpdateCapacityClaimRequest_Fields(t *testing.T) {
 		Resources: &inference.CapacityClaimResourcesModel{
 			InstanceType:  types.StringValue(testInstanceType),
 			InstanceCount: types.Int64Value(10),
-			CapacityType:  types.StringValue("CAPACITY_TYPE_SERVERLESS"),
+			CapacityType:  types.StringValue("CAPACITY_TYPE_MANAGED"),
 			Zones:         zones,
 		},
 	}
@@ -205,8 +205,8 @@ func TestToUpdateCapacityClaimRequest_Fields(t *testing.T) {
 	if req.GetResources().GetInstanceCount() != 10 {
 		t.Errorf("InstanceCount: got %d, want 10", req.GetResources().GetInstanceCount())
 	}
-	if req.GetResources().GetCapacityType() != inferencev1.CapacityType_CAPACITY_TYPE_SERVERLESS {
-		t.Errorf("CapacityType: got %v, want CAPACITY_TYPE_SERVERLESS", req.GetResources().GetCapacityType())
+	if req.GetResources().GetCapacityType() != inferencev1.CapacityType_CAPACITY_TYPE_MANAGED {
+		t.Errorf("CapacityType: got %v, want CAPACITY_TYPE_MANAGED", req.GetResources().GetCapacityType())
 	}
 	if len(req.GetResources().GetZones()) != 1 {
 		t.Fatalf("Zones: expected 1, got %d", len(req.GetResources().GetZones()))
@@ -241,7 +241,7 @@ resource "coreweave_inference_capacity_claim" "test" {
   resources = {
     instance_type  = local.instance
     instance_count = %d
-    capacity_type  = "CAPACITY_TYPE_SERVERLESS"
+    capacity_type  = "CAPACITY_TYPE_MANAGED"
     zones          = [local.zone]
   }
 
@@ -286,7 +286,7 @@ func TestInferenceCapacityClaim(t *testing.T) {
 						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("pending_instances"), knownvalue.NotNull()),
 						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("resources").AtMapKey("instance_type"), knownvalue.NotNull()),
 						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("resources").AtMapKey("instance_count"), knownvalue.Int64Exact(1)),
-						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("resources").AtMapKey("capacity_type"), knownvalue.StringExact("CAPACITY_TYPE_SERVERLESS")),
+						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("resources").AtMapKey("capacity_type"), knownvalue.StringExact("CAPACITY_TYPE_MANAGED")),
 					},
 				},
 				{

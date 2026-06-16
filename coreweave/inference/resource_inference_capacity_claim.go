@@ -162,10 +162,13 @@ func (r *InferenceCapacityClaimResource) Schema(_ context.Context, _ resource.Sc
 					},
 					"capacity_type": schema.StringAttribute{
 						Required:            true,
-						MarkdownDescription: fmt.Sprintf("The [capacity type](https://docs.coreweave.com/products/inference/concepts/scaling#capacity-claims) for the capacity claim. Must be one of: %s.", coreweave.EnumMarkdownValues(inferencev1.CapacityType_name, true)),
+						MarkdownDescription: fmt.Sprintf("The [capacity type](https://docs.coreweave.com/products/inference/concepts/scaling#capacity-claims) for the capacity claim. Must be one of: %s. Note: `CAPACITY_TYPE_SERVERLESS` is deprecated and is rejected by the API for new or updated claims; existing claims are automatically migrated to `CAPACITY_TYPE_MANAGED`.", coreweave.EnumMarkdownValues(inferencev1.CapacityType_name, true)),
 						PlanModifiers:       []planmodifier.String{stringplanmodifier.RequiresReplace()},
 						Validators: []validator.String{
 							stringvalidator.OneOf(coreweave.EnumValues(inferencev1.CapacityType_name, true)...),
+							// Warn (not reject) on deprecated values such as
+							// CAPACITY_TYPE_SERVERLESS; the API owns rejection.
+							coreweave.DeprecatedEnumValue(inferencev1.CapacityType(0).Descriptor()),
 						},
 					},
 					"zones": schema.SetAttribute{
