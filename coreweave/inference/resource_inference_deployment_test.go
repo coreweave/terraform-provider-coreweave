@@ -60,6 +60,46 @@ func TestInferenceDeployment_Schema(t *testing.T) {
 	}
 }
 
+func TestInferenceDeployment_SemverPattern(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		version string
+		want    bool
+	}{
+		// Plain core versions.
+		{"1.2.3", true},
+		{"0.0.0", true},
+		{"10.20.30", true},
+		// Pre-release identifiers.
+		{"1.0.0-rc.1", true},
+		{"1.0.0-alpha", true},
+		{"1.0.0-0.3.7", true},
+		// Build metadata, including CoreWeave-flavored builds.
+		{"0.22.0+crwv.2", true},
+		{"1.2.3+build.123", true},
+		{"1.0.0-rc.1+crwv.2", true},
+		// Invalid: missing components, leading zeroes, empty identifiers.
+		{"", false},
+		{"1.2", false},
+		{"1", false},
+		{"v1.2.3", false},
+		{"01.2.3", false},
+		{"1.2.3-", false},
+		{"1.2.3+", false},
+		{"1.2.3 ", false},
+	}
+
+	for _, tc := range tests {
+		t.Run(fmt.Sprintf("%q", tc.version), func(t *testing.T) {
+			t.Parallel()
+			if got := inference.SemverMatches(tc.version); got != tc.want {
+				t.Errorf("SemverMatches(%q) = %v, want %v", tc.version, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestInferenceDeployment_SetFromDeployment_NullPreservation(t *testing.T) {
 	t.Parallel()
 
