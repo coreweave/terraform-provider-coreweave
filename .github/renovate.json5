@@ -79,6 +79,13 @@
       "semanticCommitScope": "object_storage"
     },
     {
+      "matchPackageNames": ["buf.build/gen/go/coreweave/inference/**"],
+      "groupName": "buf.build/coreweave/inference",
+      "semanticCommitType": "deps",
+      "semanticCommitScope": "inference",
+      "addLabels": ["acceptance-test:inference"]
+    },
+    {
       "matchPackageNames": [
         "github.com/hashicorp/terraform-plugin-framework",
         "github.com/hashicorp/terraform-plugin-framework-validators",
