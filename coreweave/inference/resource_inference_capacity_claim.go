@@ -9,6 +9,7 @@ import (
 	inferencev1 "buf.build/gen/go/coreweave/inference/protocolbuffers/go/coreweave/inference/v1alpha1"
 	"connectrpc.com/connect"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
+	cwvalidators "github.com/coreweave/terraform-provider-coreweave/internal/validators"
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/setvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
@@ -162,13 +163,14 @@ func (r *InferenceCapacityClaimResource) Schema(_ context.Context, _ resource.Sc
 					},
 					"capacity_type": schema.StringAttribute{
 						Required:            true,
-						MarkdownDescription: fmt.Sprintf("The [capacity type](https://docs.coreweave.com/products/inference/concepts/scaling#capacity-claims) for the capacity claim. Must be one of: %s. Note: `CAPACITY_TYPE_SERVERLESS` is deprecated and is rejected by the API for new or updated claims; existing claims are automatically migrated to `CAPACITY_TYPE_MANAGED`.", coreweave.EnumMarkdownValues(inferencev1.CapacityType_name, true)),
+						MarkdownDescription: fmt.Sprintf("The [capacity type](https://docs.coreweave.com/products/inference/concepts/scaling#capacity-claims) for the capacity claim. Must be one of: %s. `CAPACITY_TYPE_SERVERLESS` is deprecated and is no longer accepted; existing claims were automatically migrated to `CAPACITY_TYPE_MANAGED` — update your configuration to use `CAPACITY_TYPE_MANAGED`.", coreweave.EnumMarkdownValuesExcludingDeprecated(inferencev1.CapacityType_CAPACITY_TYPE_MANAGED.Descriptor())),
 						PlanModifiers:       []planmodifier.String{stringplanmodifier.RequiresReplace()},
 						Validators: []validator.String{
 							stringvalidator.OneOf(coreweave.EnumValues(inferencev1.CapacityType_name, true)...),
-							// Warn (not reject) on deprecated values such as
-							// CAPACITY_TYPE_SERVERLESS; the API owns rejection.
-							coreweave.DeprecatedEnumValue(inferencev1.CapacityType(0).Descriptor()),
+							// Reject deprecated values (e.g. CAPACITY_TYPE_SERVERLESS) at plan
+							// time: the API rejects them, and with RequiresReplace a deprecated
+							// value would otherwise produce a destructive, non-convergent plan.
+							cwvalidators.RejectDeprecatedEnumValue(inferencev1.CapacityType_CAPACITY_TYPE_MANAGED.Descriptor()),
 						},
 					},
 					"zones": schema.SetAttribute{

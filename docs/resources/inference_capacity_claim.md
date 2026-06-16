@@ -49,7 +49,7 @@ resource "coreweave_inference_capacity_claim" "example" {
 
 Required:
 
-- `capacity_type` (String) The [capacity type](https://docs.coreweave.com/products/inference/concepts/scaling#capacity-claims) for the capacity claim. Must be one of: `CAPACITY_TYPE_SERVERLESS`, `CAPACITY_TYPE_CUSTOMER`, `CAPACITY_TYPE_MANAGED`. Note: `CAPACITY_TYPE_SERVERLESS` is deprecated and is rejected by the API for new or updated claims; existing claims are automatically migrated to `CAPACITY_TYPE_MANAGED`.
+- `capacity_type` (String) The [capacity type](https://docs.coreweave.com/products/inference/concepts/scaling#capacity-claims) for the capacity claim. Must be one of: `CAPACITY_TYPE_CUSTOMER`, `CAPACITY_TYPE_MANAGED`. `CAPACITY_TYPE_SERVERLESS` is deprecated and is no longer accepted; existing claims were automatically migrated to `CAPACITY_TYPE_MANAGED` — update your configuration to use `CAPACITY_TYPE_MANAGED`.
 - `instance_count` (Number) The number of instances to reserve. Must be at least 1.
 - `instance_type` (String) The instance type to reserve (e.g. `gb200-4x`).
 - `zones` (Set of String) The availability zones where the capacity claim may use resources from (e.g. `US-WEST-04A`). At least one is required.
