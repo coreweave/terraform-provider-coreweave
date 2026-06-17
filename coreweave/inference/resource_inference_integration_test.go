@@ -29,6 +29,10 @@ locals {
   preferred_instance  = %q
   available_instances = local.zones_map[local.zone].instance_types
   instance            = local.preferred_instance != "" ? local.preferred_instance : sort(tolist(local.available_instances))[0]
+
+  # Runtime version is required on create; source it from deployment parameters.
+  available_runtime_versions = try(data.coreweave_inference_deployment_parameters.deploy_params.runtime_versions["vllm"].versions, [])
+  runtime_version            = length(local.available_runtime_versions) > 0 ? local.available_runtime_versions[0] : ""
 }
 
 resource "coreweave_inference_capacity_claim" "test" {
@@ -68,12 +72,17 @@ resource "coreweave_inference_gateway" "test" {
   }
 }
 
+data "coreweave_inference_deployment_parameters" "deploy_params" {
+  depends_on = [coreweave_inference_gateway.test]
+}
+
 resource "coreweave_inference_deployment" "test" {
   name        = "%s-deploy"
   gateway_ids = [coreweave_inference_gateway.test.id]
 
   runtime = {
-    engine = "vllm"
+    engine  = "vllm"
+    version = local.runtime_version
   }
 
   resources = {
@@ -92,6 +101,13 @@ resource "coreweave_inference_deployment" "test" {
     max              = 1
     priority         = 100
     capacity_classes = ["CAPACITY_CLASS_RESERVED"]
+  }
+
+  lifecycle {
+    precondition {
+      condition     = local.runtime_version != ""
+      error_message = "No vllm runtime version available; available: ${jsonencode(local.available_runtime_versions)}"
+    }
   }
 
   depends_on = [coreweave_inference_capacity_claim.test]
