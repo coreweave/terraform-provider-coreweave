@@ -20,7 +20,10 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-const testInstanceType = "gb200-4x"
+const (
+	testInstanceType    = "gb200-4x"
+	capacityTypeManaged = "CAPACITY_TYPE_MANAGED"
+)
 
 // --- Unit tests ---
 
@@ -111,8 +114,8 @@ func TestSetFromCapacityClaim_Fields(t *testing.T) {
 	if m.Resources.InstanceCount.ValueInt64() != 3 {
 		t.Errorf("Resources.InstanceCount: got %d, want 3", m.Resources.InstanceCount.ValueInt64())
 	}
-	if m.Resources.CapacityType.ValueString() != "CAPACITY_TYPE_MANAGED" {
-		t.Errorf("Resources.CapacityType: got %q, want %q", m.Resources.CapacityType.ValueString(), "CAPACITY_TYPE_MANAGED")
+	if m.Resources.CapacityType.ValueString() != capacityTypeManaged {
+		t.Errorf("Resources.CapacityType: got %q, want %q", m.Resources.CapacityType.ValueString(), capacityTypeManaged)
 	}
 
 	var zones []string
@@ -148,7 +151,7 @@ func TestToCreateCapacityClaimRequest_Fields(t *testing.T) {
 		Resources: &inference.CapacityClaimResourcesModel{
 			InstanceType:  types.StringValue(testInstanceType),
 			InstanceCount: types.Int64Value(5),
-			CapacityType:  types.StringValue("CAPACITY_TYPE_MANAGED"),
+			CapacityType:  types.StringValue(capacityTypeManaged),
 			Zones:         zones,
 		},
 	}
@@ -189,7 +192,7 @@ func TestToUpdateCapacityClaimRequest_Fields(t *testing.T) {
 		Resources: &inference.CapacityClaimResourcesModel{
 			InstanceType:  types.StringValue(testInstanceType),
 			InstanceCount: types.Int64Value(10),
-			CapacityType:  types.StringValue("CAPACITY_TYPE_MANAGED"),
+			CapacityType:  types.StringValue(capacityTypeManaged),
 			Zones:         zones,
 		},
 	}
@@ -206,7 +209,7 @@ func TestToUpdateCapacityClaimRequest_Fields(t *testing.T) {
 		t.Errorf("InstanceCount: got %d, want 10", req.GetResources().GetInstanceCount())
 	}
 	if req.GetResources().GetCapacityType() != inferencev1.CapacityType_CAPACITY_TYPE_MANAGED {
-		t.Errorf("CapacityType: got %v, want CAPACITY_TYPE_MANAGED", req.GetResources().GetCapacityType())
+		t.Errorf("CapacityType: got %v, want %s", req.GetResources().GetCapacityType(), capacityTypeManaged)
 	}
 	if len(req.GetResources().GetZones()) != 1 {
 		t.Fatalf("Zones: expected 1, got %d", len(req.GetResources().GetZones()))
@@ -241,7 +244,7 @@ resource "coreweave_inference_capacity_claim" "test" {
   resources = {
     instance_type  = local.instance
     instance_count = %d
-    capacity_type  = "CAPACITY_TYPE_MANAGED"
+    capacity_type  = %q
     zones          = [local.zone]
   }
 
@@ -256,7 +259,7 @@ resource "coreweave_inference_capacity_claim" "test" {
     }
   }
 }
-`, preferredZone, preferredInstance, name, instanceCount)
+`, preferredZone, preferredInstance, name, instanceCount, capacityTypeManaged)
 }
 
 func TestInferenceCapacityClaim(t *testing.T) {
@@ -286,7 +289,7 @@ func TestInferenceCapacityClaim(t *testing.T) {
 						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("pending_instances"), knownvalue.NotNull()),
 						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("resources").AtMapKey("instance_type"), knownvalue.NotNull()),
 						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("resources").AtMapKey("instance_count"), knownvalue.Int64Exact(1)),
-						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("resources").AtMapKey("capacity_type"), knownvalue.StringExact("CAPACITY_TYPE_MANAGED")),
+						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("resources").AtMapKey("capacity_type"), knownvalue.StringExact(capacityTypeManaged)),
 					},
 				},
 				{
