@@ -170,7 +170,10 @@ func (r *InferenceCapacityClaimResource) Schema(_ context.Context, _ resource.Sc
 							// Reject deprecated values (e.g. CAPACITY_TYPE_SERVERLESS) at plan
 							// time: the API rejects them, and with RequiresReplace a deprecated
 							// value would otherwise produce a destructive, non-convergent plan.
-							cwvalidators.RejectDeprecatedEnumValue(inferencev1.CapacityType_CAPACITY_TYPE_MANAGED.Descriptor()),
+							cwvalidators.RejectDeprecatedEnumValue(
+								inferencev1.CapacityType_CAPACITY_TYPE_MANAGED.Descriptor(),
+								`Change capacity_type to CAPACITY_TYPE_MANAGED. Existing claims were automatically migrated; no replacement will be triggered.`,
+							),
 						},
 					},
 					"zones": schema.SetAttribute{

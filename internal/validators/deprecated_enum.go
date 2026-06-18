@@ -20,8 +20,9 @@ import (
 // opt-in for attributes where the caller knows the value is no longer accepted
 // (e.g. the API rejects it) and allowing it would produce a non-convergent plan.
 type deprecatedEnumValueValidator struct {
-	desc   protoreflect.EnumDescriptor
-	reject bool
+	desc     protoreflect.EnumDescriptor
+	reject   bool
+	guidance string
 }
 
 // DeprecatedEnumValue returns a validator.String that warns when the configured
@@ -32,12 +33,17 @@ func DeprecatedEnumValue(desc protoreflect.EnumDescriptor) validator.String {
 }
 
 // RejectDeprecatedEnumValue returns a validator.String that errors when the
-// configured value is a deprecated value of the given proto enum, pointing the
-// user at the enum's non-deprecated values. Use it where a deprecated value is
-// no longer accepted and must be rejected at plan time rather than failing at
-// apply.
-func RejectDeprecatedEnumValue(desc protoreflect.EnumDescriptor) validator.String {
-	return deprecatedEnumValueValidator{desc: desc, reject: true}
+// configured value is a deprecated value of the given proto enum. Use it where a
+// deprecated value is no longer accepted and must be rejected at plan time
+// rather than failing at apply.
+//
+// guidance is appended to the error to tell the user what to do — e.g. the
+// specific replacement value and any migration notes. The proto deprecation flag
+// does not encode a replacement, so this is the caller's responsibility. When
+// guidance is empty, the error falls back to listing the enum's non-deprecated
+// values.
+func RejectDeprecatedEnumValue(desc protoreflect.EnumDescriptor, guidance string) validator.String {
+	return deprecatedEnumValueValidator{desc: desc, reject: true, guidance: guidance}
 }
 
 func (v deprecatedEnumValueValidator) Description(_ context.Context) string {
@@ -68,11 +74,13 @@ func (v deprecatedEnumValueValidator) ValidateString(_ context.Context, req vali
 	}
 
 	if v.reject {
-		resp.Diagnostics.AddAttributeError(
-			req.Path,
-			"Deprecated value",
-			fmt.Sprintf("%q is deprecated and is no longer an accepted value; use one of: %s.", name, coreweave.EnumMarkdownValuesExcludingDeprecated(v.desc)),
-		)
+		detail := fmt.Sprintf("%q is deprecated and is no longer an accepted value.", name)
+		if v.guidance != "" {
+			detail += " " + v.guidance
+		} else {
+			detail += fmt.Sprintf(" Use one of: %s.", coreweave.EnumMarkdownValuesExcludingDeprecated(v.desc))
+		}
+		resp.Diagnostics.AddAttributeError(req.Path, "Deprecated value", detail)
 		return
 	}
 
