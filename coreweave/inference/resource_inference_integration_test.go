@@ -29,6 +29,12 @@ locals {
   preferred_instance  = %q
   available_instances = local.zones_map[local.zone].instance_types
   instance            = local.preferred_instance != "" ? local.preferred_instance : sort(tolist(local.available_instances))[0]
+
+  # Runtime version is required on create; source it from deployment parameters.
+  # Restrict to plain MAJOR.MINOR.PATCH for now — pre-release/build-metadata
+  # versions are excluded pending #319. Revert this commit once #319 lands.
+  available_runtime_versions = try(data.coreweave_inference_deployment_parameters.deploy_params.runtime_versions["vllm"].versions, [])
+  runtime_version            = try([for v in local.available_runtime_versions : v if can(regex("^[0-9]+[.][0-9]+[.][0-9]+$", v))][0], "")
 }
 
 resource "coreweave_inference_capacity_claim" "test" {
@@ -37,7 +43,7 @@ resource "coreweave_inference_capacity_claim" "test" {
   resources = {
     instance_type  = local.instance
     instance_count = 1
-    capacity_type  = "CAPACITY_TYPE_SERVERLESS"
+    capacity_type  = "CAPACITY_TYPE_CUSTOMER"
     zones          = [local.zone]
   }
 
@@ -68,12 +74,17 @@ resource "coreweave_inference_gateway" "test" {
   }
 }
 
+data "coreweave_inference_deployment_parameters" "deploy_params" {
+  depends_on = [coreweave_inference_gateway.test]
+}
+
 resource "coreweave_inference_deployment" "test" {
   name        = "%s-deploy"
   gateway_ids = [coreweave_inference_gateway.test.id]
 
   runtime = {
-    engine = "vllm"
+    engine  = "vllm"
+    version = local.runtime_version
   }
 
   resources = {
@@ -92,6 +103,13 @@ resource "coreweave_inference_deployment" "test" {
     max              = 1
     priority         = 100
     capacity_classes = ["CAPACITY_CLASS_RESERVED"]
+  }
+
+  lifecycle {
+    precondition {
+      condition     = local.runtime_version != ""
+      error_message = "No x.y.z vllm runtime version available (pre-release/build-metadata excluded pending #319); available: ${jsonencode(local.available_runtime_versions)}"
+    }
   }
 
   depends_on = [coreweave_inference_capacity_claim.test]
@@ -130,7 +148,7 @@ func TestInferenceReservedCapacity(t *testing.T) {
 						statecheck.ExpectKnownValue(ccResource, tfjsonpath.New("id"), knownvalue.NotNull()),
 						statecheck.ExpectKnownValue(ccResource, tfjsonpath.New("status"), knownvalue.NotNull()),
 						statecheck.ExpectKnownValue(ccResource, tfjsonpath.New("allocated_instances"), knownvalue.NotNull()),
-						statecheck.ExpectKnownValue(ccResource, tfjsonpath.New("resources").AtMapKey("capacity_type"), knownvalue.StringExact("CAPACITY_TYPE_SERVERLESS")),
+						statecheck.ExpectKnownValue(ccResource, tfjsonpath.New("resources").AtMapKey("capacity_type"), knownvalue.StringExact("CAPACITY_TYPE_CUSTOMER")),
 						statecheck.ExpectKnownValue(gwResource, tfjsonpath.New("id"), knownvalue.NotNull()),
 						statecheck.ExpectKnownValue(depResource, tfjsonpath.New("status"), knownvalue.StringExact("STATUS_READY")),
 						statecheck.ExpectKnownValue(depResource, tfjsonpath.New("autoscaling").AtMapKey("capacity_classes"), knownvalue.ListExact([]knownvalue.Check{knownvalue.StringExact("CAPACITY_CLASS_RESERVED")})),

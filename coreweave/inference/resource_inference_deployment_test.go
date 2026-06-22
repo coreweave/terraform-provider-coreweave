@@ -315,6 +315,12 @@ locals {
   preferred_instance  = %q
   available_instances = data.coreweave_inference_deployment_parameters.deploy_params.instance_types
   instance            = local.preferred_instance != "" ? local.preferred_instance : sort(tolist(local.available_instances))[0]
+
+  # Runtime version is required on create; source it from deployment parameters.
+  # Restrict to plain MAJOR.MINOR.PATCH for now — pre-release/build-metadata
+  # versions are excluded pending #319. Revert this commit once #319 lands.
+  available_runtime_versions = try(data.coreweave_inference_deployment_parameters.deploy_params.runtime_versions["vllm"].versions, [])
+  runtime_version            = try([for v in local.available_runtime_versions : v if can(regex("^[0-9]+[.][0-9]+[.][0-9]+$", v))][0], "")
 }
 
 resource "coreweave_inference_gateway" "test" {
@@ -344,7 +350,8 @@ resource "coreweave_inference_deployment" "test" {
   gateway_ids = [coreweave_inference_gateway.test.id]
 
   runtime = {
-    engine = "vllm"
+    engine  = "vllm"
+    version = local.runtime_version
   }
 
   resources = {
@@ -369,6 +376,10 @@ resource "coreweave_inference_deployment" "test" {
     precondition {
       condition     = local.preferred_instance == "" || contains(local.available_instances, local.preferred_instance)
       error_message = "INFR_INSTANCE_ID=\"${local.preferred_instance}\" is not present in inference parameters; available: ${jsonencode(local.available_instances)}"
+    }
+    precondition {
+      condition     = local.runtime_version != ""
+      error_message = "No x.y.z vllm runtime version available (pre-release/build-metadata excluded pending #319); available: ${jsonencode(local.available_runtime_versions)}"
     }
   }
 }
@@ -400,6 +411,12 @@ locals {
   preferred_instance  = %q
   available_instances = data.coreweave_inference_deployment_parameters.deploy_params.instance_types
   instance            = local.preferred_instance != "" ? local.preferred_instance : sort(tolist(local.available_instances))[0]
+
+  # Runtime version is required on create; source it from deployment parameters.
+  # Restrict to plain MAJOR.MINOR.PATCH for now — pre-release/build-metadata
+  # versions are excluded pending #319. Revert this commit once #319 lands.
+  available_runtime_versions = try(data.coreweave_inference_deployment_parameters.deploy_params.runtime_versions["vllm"].versions, [])
+  runtime_version            = try([for v in local.available_runtime_versions : v if can(regex("^[0-9]+[.][0-9]+[.][0-9]+$", v))][0], "")
 }
 
 resource "coreweave_inference_gateway" "test" {
@@ -430,7 +447,8 @@ resource "coreweave_inference_deployment" "test" {
   disabled    = true
 
   runtime = {
-    engine = "vllm"
+    engine  = "vllm"
+    version = local.runtime_version
   }
 
   resources = {
@@ -457,6 +475,10 @@ resource "coreweave_inference_deployment" "test" {
     precondition {
       condition     = local.preferred_instance == "" || contains(local.available_instances, local.preferred_instance)
       error_message = "INFR_INSTANCE_ID=\"${local.preferred_instance}\" is not present in inference parameters; available: ${jsonencode(local.available_instances)}"
+    }
+    precondition {
+      condition     = local.runtime_version != ""
+      error_message = "No x.y.z vllm runtime version available (pre-release/build-metadata excluded pending #319); available: ${jsonencode(local.available_runtime_versions)}"
     }
   }
 }
