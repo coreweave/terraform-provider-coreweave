@@ -101,7 +101,7 @@ func (r *InferenceGatewayResource) Metadata(_ context.Context, req resource.Meta
 
 func (r *InferenceGatewayResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		MarkdownDescription: "Create and manage [CoreWeave Managed Inference](https://docs.coreweave.com/products/inference) gateways. See [gateways](https://docs.coreweave.com/products/inference/concepts/gateways) for authentication and routing details.",
+		MarkdownDescription: "Create and manage [CoreWeave Managed Inference](https://docs.coreweave.com/products/inference) gateways. See [gateways](https://docs.coreweave.com/products/inference/gateways) for authentication and routing details.",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Computed:            true,
@@ -174,7 +174,7 @@ func (r *InferenceGatewayResource) Schema(_ context.Context, _ resource.SchemaRe
 			},
 			"auth": schema.SingleNestedAttribute{
 				Required:            true,
-				MarkdownDescription: "The [authentication configuration](https://docs.coreweave.com/products/inference/concepts/gateways) for the gateway. Exactly one of `coreweave` or `weights_and_biases` must be specified.",
+				MarkdownDescription: "The [authentication configuration](https://docs.coreweave.com/products/inference/gateways) for the gateway. Exactly one of `coreweave` or `weights_and_biases` must be specified.",
 				Attributes: map[string]schema.Attribute{
 					"coreweave": schema.SingleNestedAttribute{
 						Optional:            true,
@@ -183,7 +183,7 @@ func (r *InferenceGatewayResource) Schema(_ context.Context, _ resource.SchemaRe
 					},
 					"weights_and_biases": schema.SingleNestedAttribute{
 						Optional:            true,
-						MarkdownDescription: "Use [Weights & Biases authentication](https://docs.coreweave.com/products/inference/concepts/gateways#weights-and-biases-authentication).",
+						MarkdownDescription: "Use [Weights & Biases authentication](https://docs.coreweave.com/products/inference/gateways#weights-and-biases-authentication).",
 						Attributes: map[string]schema.Attribute{
 							"api_key": schema.StringAttribute{
 								Optional:            true,
@@ -208,7 +208,7 @@ func (r *InferenceGatewayResource) Schema(_ context.Context, _ resource.SchemaRe
 			},
 			"routing": schema.SingleNestedAttribute{
 				Required:            true,
-				MarkdownDescription: "The [routing configuration](https://docs.coreweave.com/products/inference/concepts/gateways) for the gateway. Exactly one of `body_based`, `header_based`, or `path_based` must be specified.",
+				MarkdownDescription: "The [routing configuration](https://docs.coreweave.com/products/inference/gateways) for the gateway. Exactly one of `body_based`, `header_based`, or `path_based` must be specified.",
 				Attributes: map[string]schema.Attribute{
 					"body_based": schema.SingleNestedAttribute{
 						Optional:            true,

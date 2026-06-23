@@ -74,7 +74,7 @@ func (r *InferenceCapacityClaimResource) Metadata(_ context.Context, req resourc
 
 func (r *InferenceCapacityClaimResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		MarkdownDescription: "Create and manage [CoreWeave Managed Inference](https://docs.coreweave.com/products/inference) capacity claims for [Dedicated Inference](https://docs.coreweave.com/products/inference/dedicated). See [capacity claims](https://docs.coreweave.com/products/inference/concepts/scaling#capacity-claims) for capacity type details.",
+		MarkdownDescription: "Create and manage [CoreWeave Managed Inference](https://docs.coreweave.com/products/inference) capacity claims for [Dedicated Inference](https://docs.coreweave.com/products/inference/dedicated). See [capacity claims](https://docs.coreweave.com/products/inference/scaling#capacity-claims) for capacity type details.",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Computed:            true,
@@ -163,7 +163,7 @@ func (r *InferenceCapacityClaimResource) Schema(_ context.Context, _ resource.Sc
 					},
 					"capacity_type": schema.StringAttribute{
 						Required:            true,
-						MarkdownDescription: fmt.Sprintf("The [capacity type](https://docs.coreweave.com/products/inference/concepts/scaling#capacity-claims) for the capacity claim. Must be one of: %s. `CAPACITY_TYPE_SERVERLESS` is deprecated and is no longer accepted; existing claims were automatically migrated to `CAPACITY_TYPE_MANAGED` — update your configuration to use `CAPACITY_TYPE_MANAGED`.", coreweave.EnumMarkdownValuesExcludingDeprecated(inferencev1.CapacityType_CAPACITY_TYPE_MANAGED.Descriptor())),
+						MarkdownDescription: fmt.Sprintf("The [capacity type](https://docs.coreweave.com/products/inference/scaling#capacity-claims) for the capacity claim. Must be one of: %s. `CAPACITY_TYPE_SERVERLESS` is deprecated and is no longer accepted. Existing claims were automatically migrated to `CAPACITY_TYPE_MANAGED`; update your configuration to use `CAPACITY_TYPE_MANAGED`.", coreweave.EnumMarkdownValuesExcludingDeprecated(inferencev1.CapacityType_CAPACITY_TYPE_MANAGED.Descriptor())),
 						PlanModifiers:       []planmodifier.String{stringplanmodifier.RequiresReplace()},
 						Validators: []validator.String{
 							stringvalidator.OneOf(coreweave.EnumValues(inferencev1.CapacityType_name, true)...),

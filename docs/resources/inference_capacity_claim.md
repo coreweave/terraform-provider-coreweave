@@ -3,12 +3,12 @@
 page_title: "coreweave_inference_capacity_claim Resource - coreweave"
 subcategory: ""
 description: |-
-  Create and manage CoreWeave Managed Inference https://docs.coreweave.com/products/inference capacity claims for Dedicated Inference https://docs.coreweave.com/products/inference/dedicated. See capacity claims https://docs.coreweave.com/products/inference/concepts/scaling#capacity-claims for capacity type details.
+  Create and manage CoreWeave Managed Inference https://docs.coreweave.com/products/inference capacity claims for Dedicated Inference https://docs.coreweave.com/products/inference/dedicated. See capacity claims https://docs.coreweave.com/products/inference/scaling#capacity-claims for capacity type details.
 ---
 
 # coreweave_inference_capacity_claim (Resource)
 
-Create and manage [CoreWeave Managed Inference](https://docs.coreweave.com/products/inference) capacity claims for [Dedicated Inference](https://docs.coreweave.com/products/inference/dedicated). See [capacity claims](https://docs.coreweave.com/products/inference/concepts/scaling#capacity-claims) for capacity type details.
+Create and manage [CoreWeave Managed Inference](https://docs.coreweave.com/products/inference) capacity claims for [Dedicated Inference](https://docs.coreweave.com/products/inference/dedicated). See [capacity claims](https://docs.coreweave.com/products/inference/scaling#capacity-claims) for capacity type details.
 
 ## Example Usage
 
@@ -49,7 +49,7 @@ resource "coreweave_inference_capacity_claim" "example" {
 
 Required:
 
-- `capacity_type` (String) The [capacity type](https://docs.coreweave.com/products/inference/concepts/scaling#capacity-claims) for the capacity claim. Must be one of: `CAPACITY_TYPE_CUSTOMER`, `CAPACITY_TYPE_MANAGED`. `CAPACITY_TYPE_SERVERLESS` is deprecated and is no longer accepted; existing claims were automatically migrated to `CAPACITY_TYPE_MANAGED` — update your configuration to use `CAPACITY_TYPE_MANAGED`.
+- `capacity_type` (String) The [capacity type](https://docs.coreweave.com/products/inference/scaling#capacity-claims) for the capacity claim. Must be one of: `CAPACITY_TYPE_CUSTOMER`, `CAPACITY_TYPE_MANAGED`. `CAPACITY_TYPE_SERVERLESS` is deprecated and is no longer accepted. Existing claims were automatically migrated to `CAPACITY_TYPE_MANAGED`; update your configuration to use `CAPACITY_TYPE_MANAGED`.
 - `instance_count` (Number) The number of instances to reserve. Must be at least 1.
 - `instance_type` (String) The instance type to reserve (e.g. `gb200-4x`).
 - `zones` (Set of String) The availability zones where the capacity claim may use resources from (e.g. `US-WEST-04A`). At least one is required.
@@ -73,5 +73,5 @@ Import is supported using the following syntax:
 The [`terraform import` command](https://developer.hashicorp.com/terraform/cli/commands/import) can be used, for example:
 
 ```shell
-terraform import coreweave_inference_capacity_claim.example <capacity-claim-id>
+terraform import coreweave_inference_capacity_claim.example {{capacity-claim-id}}
 ```
