@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.0](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.14.0...v0.15.0) (2026-06-25)
+
+
+### Features
+
+* **inference:** accept full semver versions for deployment runtime ([#329](https://github.com/coreweave/terraform-provider-coreweave/issues/329)) ([a9d1221](https://github.com/coreweave/terraform-provider-coreweave/commit/a9d1221595847e2f04ab8fd5131a1c9aaacf4c39))
+
 ## [0.14.0](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.13.0...v0.14.0) (2026-06-22)
 
 
