@@ -39,7 +39,7 @@ jobs:
       COREWEAVE_API_TOKEN: ${{ inputs.suite == 'object_storage' && secrets.COREWEAVE_OBJS_API_TOKEN || secrets.COREWEAVE_API_TOKEN }}
       TEST_ACC_SWEEP_ZONE: ${{ inputs.suite == 'object_storage' && 'US-EAST-04A' || inputs.suite == 'inference' && 'RNO2A' || 'US-LAB-01A' }}
       INFR_ZONE: 'RNO2A'
-      INFR_INSTANCE_ID: 'gd-8xh100ib-i128'
+      INFR_INSTANCE_ID: 'gd-1xgh200'
       TF_IN_AUTOMATION: '1'
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
