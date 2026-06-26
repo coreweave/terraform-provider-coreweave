@@ -894,7 +894,7 @@ func (r *ClusterResource) Schema(ctx context.Context, req resource.SchemaRequest
 			"shared_storage_cluster_id": schema.StringAttribute{
 				Optional:            true,
 				Required:            false,
-				MarkdownDescription: "The `cluster_id` of the cluster to share storage with. Must be enabled by CoreWeave suppport. Contact CoreWeave support if you are interested in this feature.",
+				MarkdownDescription: "The `cluster_id` of the cluster to share storage with. Must be enabled by CoreWeave support. Contact CoreWeave support if you are interested in this feature.",
 				Computed:            false,
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
