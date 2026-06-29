@@ -93,9 +93,10 @@ resource "coreweave_networking_vpc" "example" {
 - `dhcp` (Attributes) Settings affecting DHCP behavior within the VPC. (see [below for nested schema](#nestedatt--dhcp))
 - `egress` (Attributes) Settings affecting traffic leaving the VPC. (see [below for nested schema](#nestedatt--egress))
 - `host_prefix` (String, Deprecated) An IPv4 CIDR range used to allocate host addresses when booting compute into a VPC.
-This CIDR must be have a mask size of /18. If left unspecified, a Zone-specific default value will be applied by the server.
+For SUNK clusters, this CIDR should have a mask size of /18 for optimal rank ordering; exceptions may be granted per customer. For non-SUNK VPCs, any prefix size is accepted. If left unspecified, a Zone-specific default value will be applied by the server.
 This field is immutable once set.
-- `host_prefixes` (Attributes Set) The IPv4 or IPv6 CIDR ranges used to allocate host addresses when booting compute into a VPC. (see [below for nested schema](#nestedatt--host_prefixes))
+- `host_prefixes` (Attributes Set) The IPv4 or IPv6 CIDR ranges used to allocate host addresses when booting compute into a VPC.
+For SUNK clusters, an IPv4 prefix with a mask size of /18 is recommended for optimal rank ordering; exceptions may be granted per customer. For non-SUNK VPCs, any prefix size is accepted. (see [below for nested schema](#nestedatt--host_prefixes))
 - `ingress` (Attributes) Settings affecting traffic entering the VPC. (see [below for nested schema](#nestedatt--ingress))
 - `vpc_prefixes` (Attributes Set) A list of additional prefixes associated with the VPC. For example, CKS clusters use these prefixes for Pod and service CIDR ranges. (see [below for nested schema](#nestedatt--vpc_prefixes))
 
