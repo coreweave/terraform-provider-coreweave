@@ -3,12 +3,12 @@
 page_title: "coreweave_inference_gateway_parameters Data Source - coreweave"
 subcategory: ""
 description: |-
-  Retrieve available gateway https://docs.coreweave.com/products/inference/concepts/gateways parameters for CoreWeave Managed Inference.
+  Retrieve available gateway https://docs.coreweave.com/products/inference/gateways parameters for CoreWeave Managed Inference.
 ---
 
 # coreweave_inference_gateway_parameters (Data Source)
 
-Retrieve available [gateway](https://docs.coreweave.com/products/inference/concepts/gateways) parameters for CoreWeave Managed Inference.
+Retrieve available [gateway](https://docs.coreweave.com/products/inference/gateways) parameters for CoreWeave Managed Inference.
 
 ## Example Usage
 

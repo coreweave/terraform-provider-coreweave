@@ -3,12 +3,12 @@
 page_title: "coreweave_inference_gateway Resource - coreweave"
 subcategory: ""
 description: |-
-  Create and manage CoreWeave Managed Inference https://docs.coreweave.com/products/inference gateways. See gateways https://docs.coreweave.com/products/inference/concepts/gateways for authentication and routing details.
+  Create and manage CoreWeave Managed Inference https://docs.coreweave.com/products/inference gateways. See gateways https://docs.coreweave.com/products/inference/gateways for authentication and routing details.
 ---
 
 # coreweave_inference_gateway (Resource)
 
-Create and manage [CoreWeave Managed Inference](https://docs.coreweave.com/products/inference) gateways. See [gateways](https://docs.coreweave.com/products/inference/concepts/gateways) for authentication and routing details.
+Create and manage [CoreWeave Managed Inference](https://docs.coreweave.com/products/inference) gateways. See [gateways](https://docs.coreweave.com/products/inference/gateways) for authentication and routing details.
 
 ## Example Usage
 
@@ -34,9 +34,9 @@ resource "coreweave_inference_gateway" "example" {
 
 ### Required
 
-- `auth` (Attributes) The [authentication configuration](https://docs.coreweave.com/products/inference/concepts/gateways) for the gateway. Exactly one of `coreweave` or `weights_and_biases` must be specified. (see [below for nested schema](#nestedatt--auth))
+- `auth` (Attributes) The [authentication configuration](https://docs.coreweave.com/products/inference/gateways) for the gateway. Exactly one of `coreweave` or `weights_and_biases` must be specified. (see [below for nested schema](#nestedatt--auth))
 - `name` (String) The human-readable name of the gateway.
-- `routing` (Attributes) The [routing configuration](https://docs.coreweave.com/products/inference/concepts/gateways) for the gateway. Exactly one of `body_based`, `header_based`, or `path_based` must be specified. (see [below for nested schema](#nestedatt--routing))
+- `routing` (Attributes) The [routing configuration](https://docs.coreweave.com/products/inference/gateways) for the gateway. Exactly one of `body_based`, `header_based`, or `path_based` must be specified. (see [below for nested schema](#nestedatt--routing))
 - `zones` (Set of String) The zones to make the gateway available in. Limits where deployments associated with the gateway may exist.
 
 ### Optional
@@ -59,7 +59,7 @@ resource "coreweave_inference_gateway" "example" {
 Optional:
 
 - `coreweave` (Attributes) Use CoreWeave IAM authentication. (see [below for nested schema](#nestedatt--auth--coreweave))
-- `weights_and_biases` (Attributes) Use [Weights & Biases authentication](https://docs.coreweave.com/products/inference/concepts/gateways#weights-and-biases-authentication). (see [below for nested schema](#nestedatt--auth--weights_and_biases))
+- `weights_and_biases` (Attributes) Use [Weights & Biases authentication](https://docs.coreweave.com/products/inference/gateways#w&b-authentication). (see [below for nested schema](#nestedatt--auth--weights_and_biases))
 
 <a id="nestedatt--auth--coreweave"></a>
 ### Nested Schema for `auth.coreweave`
@@ -133,5 +133,5 @@ Import is supported using the following syntax:
 The [`terraform import` command](https://developer.hashicorp.com/terraform/cli/commands/import) can be used, for example:
 
 ```shell
-terraform import coreweave_inference_gateway.example <gateway-id>
+terraform import coreweave_inference_gateway.example {{gateway-id}}
 ```

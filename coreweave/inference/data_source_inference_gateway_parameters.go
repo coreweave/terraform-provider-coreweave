@@ -34,7 +34,7 @@ func (d *GatewayParametersDataSource) Metadata(_ context.Context, req datasource
 
 func (d *GatewayParametersDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, resp *datasource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		MarkdownDescription: "Retrieve available [gateway](https://docs.coreweave.com/products/inference/concepts/gateways) parameters for CoreWeave Managed Inference.",
+		MarkdownDescription: "Retrieve available [gateway](https://docs.coreweave.com/products/inference/gateways) parameters for CoreWeave Managed Inference.",
 		Attributes: map[string]schema.Attribute{
 			"zones": schema.SetAttribute{
 				Computed:            true,

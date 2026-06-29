@@ -58,12 +58,12 @@ resource "coreweave_inference_deployment" "example" {
 
 ### Required
 
-- `autoscaling` (Attributes) [Autoscaling](https://docs.coreweave.com/products/inference/concepts/scaling) configuration. (see [below for nested schema](#nestedatt--autoscaling))
-- `gateway_ids` (Set of String) The [gateway](https://docs.coreweave.com/products/inference/concepts/gateways) IDs to associate the deployment with. At least one is required.
-- `model` (Attributes) [Model](https://docs.coreweave.com/products/inference/concepts/models) configuration. (see [below for nested schema](#nestedatt--model))
+- `autoscaling` (Attributes) [Autoscaling](https://docs.coreweave.com/products/inference/scaling) configuration. (see [below for nested schema](#nestedatt--autoscaling))
+- `gateway_ids` (Set of String) The [gateway](https://docs.coreweave.com/products/inference/gateways) IDs to associate the deployment with. At least one is required.
+- `model` (Attributes) [Model](https://docs.coreweave.com/products/inference/models) configuration. (see [below for nested schema](#nestedatt--model))
 - `name` (String) The name of the deployment. Must be a valid hostname label.
-- `resources` (Attributes) [GPU resource](https://docs.coreweave.com/products/inference/concepts/models) configuration for the deployment. (see [below for nested schema](#nestedatt--resources))
-- `runtime` (Attributes) [Runtime](https://docs.coreweave.com/products/inference/concepts/models) selection and configuration. (see [below for nested schema](#nestedatt--runtime))
+- `resources` (Attributes) [GPU resource](https://docs.coreweave.com/products/inference/models) configuration for the deployment. (see [below for nested schema](#nestedatt--resources))
+- `runtime` (Attributes) [Runtime](https://docs.coreweave.com/products/inference/models) selection and configuration. (see [below for nested schema](#nestedatt--runtime))
 
 ### Optional
 
@@ -89,9 +89,9 @@ Required:
 
 Optional:
 
-- `capacity_classes` (List of String) Ordered preference list of [capacity classes](https://docs.coreweave.com/products/inference/concepts/scaling#capacity-claims) to use. Order is significant: the first satisfiable class wins. Allowed values: `CAPACITY_CLASS_RESERVED`, `CAPACITY_CLASS_ON_DEMAND`.
+- `capacity_classes` (List of String) Ordered preference list of [capacity classes](https://docs.coreweave.com/products/inference/scaling#capacity-claims) to use. Order is significant: the first satisfiable class wins. Allowed values: `CAPACITY_CLASS_RESERVED`, `CAPACITY_CLASS_ON_DEMAND`.
 - `concurrency` (Number) Concurrency per instance target (≥1). Controls latency vs throughput tradeoffs.
-- `priority` (Number) Priority for cross-deployment scaling (0–1000). Higher values win when there is contention.
+- `priority` (Number) Priority for cross-deployment scaling (0-1000). Higher values win when there is contention.
 
 
 <a id="nestedatt--model"></a>
@@ -99,7 +99,7 @@ Optional:
 
 Required:
 
-- `bucket` (String) The CAIOS bucket the model is stored in. The inference service account must have [bucket access](https://docs.coreweave.com/products/inference/concepts/models#grant-inference-access-to-your-bucket).
+- `bucket` (String) The CAIOS bucket the model is stored in. The inference service account must have [bucket access](https://docs.coreweave.com/products/inference/models#grant-inference-access-to-your-bucket).
 - `name` (String) The model name used in API requests (e.g. the `/models` endpoint). Length must be 4-63 characters.
 - `path` (String) The CAIOS path to the model and its configuration files.
 
@@ -131,7 +131,7 @@ Optional:
 
 Optional:
 
-- `weight` (Number) Traffic weight (0–1000). Values are normalized into percentages across deployments with the same model name.
+- `weight` (Number) Traffic weight (0-1000). Values are normalized into percentages across deployments with the same model name.
 
 
 <a id="nestedatt--conditions"></a>
@@ -152,5 +152,5 @@ Import is supported using the following syntax:
 The [`terraform import` command](https://developer.hashicorp.com/terraform/cli/commands/import) can be used, for example:
 
 ```shell
-terraform import coreweave_inference_deployment.example <deployment-id>
+terraform import coreweave_inference_deployment.example {{deployment-id}}
 ```

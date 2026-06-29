@@ -1,1 +1,1 @@
-terraform import coreweave_inference_gateway.example <gateway-id>
+terraform import coreweave_inference_gateway.example {{gateway-id}}

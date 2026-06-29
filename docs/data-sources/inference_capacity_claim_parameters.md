@@ -3,12 +3,12 @@
 page_title: "coreweave_inference_capacity_claim_parameters Data Source - coreweave"
 subcategory: ""
 description: |-
-  Retrieve available capacity claim https://docs.coreweave.com/products/inference/concepts/scaling#capacity-claims parameters for CoreWeave Managed Inference.
+  Retrieve available capacity claim https://docs.coreweave.com/products/inference/scaling#capacity-claims parameters for CoreWeave Managed Inference.
 ---
 
 # coreweave_inference_capacity_claim_parameters (Data Source)
 
-Retrieve available [capacity claim](https://docs.coreweave.com/products/inference/concepts/scaling#capacity-claims) parameters for CoreWeave Managed Inference.
+Retrieve available [capacity claim](https://docs.coreweave.com/products/inference/scaling#capacity-claims) parameters for CoreWeave Managed Inference.
 
 ## Example Usage
 

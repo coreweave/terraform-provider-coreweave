@@ -209,7 +209,7 @@ func (r *InferenceDeploymentResource) Schema(_ context.Context, _ resource.Schem
 			"gateway_ids": schema.SetAttribute{
 				ElementType:         types.StringType,
 				Required:            true,
-				MarkdownDescription: "The [gateway](https://docs.coreweave.com/products/inference/concepts/gateways) IDs to associate the deployment with. At least one is required.",
+				MarkdownDescription: "The [gateway](https://docs.coreweave.com/products/inference/gateways) IDs to associate the deployment with. At least one is required.",
 				Validators: []validator.Set{
 					setvalidator.SizeAtLeast(1),
 					setvalidator.ValueStringsAre(stringvalidator.LengthAtLeast(1)),
@@ -223,7 +223,7 @@ func (r *InferenceDeploymentResource) Schema(_ context.Context, _ resource.Schem
 			},
 			"runtime": schema.SingleNestedAttribute{
 				Required:            true,
-				MarkdownDescription: "[Runtime](https://docs.coreweave.com/products/inference/concepts/models) selection and configuration.",
+				MarkdownDescription: "[Runtime](https://docs.coreweave.com/products/inference/models) selection and configuration.",
 				Attributes: map[string]schema.Attribute{
 					"engine": schema.StringAttribute{
 						Required:            true,
@@ -250,7 +250,7 @@ func (r *InferenceDeploymentResource) Schema(_ context.Context, _ resource.Schem
 			},
 			"resources": schema.SingleNestedAttribute{
 				Required:            true,
-				MarkdownDescription: "[GPU resource](https://docs.coreweave.com/products/inference/concepts/models) configuration for the deployment.",
+				MarkdownDescription: "[GPU resource](https://docs.coreweave.com/products/inference/models) configuration for the deployment.",
 				Attributes: map[string]schema.Attribute{
 					"instance_type": schema.StringAttribute{
 						Required:            true,
@@ -267,7 +267,7 @@ func (r *InferenceDeploymentResource) Schema(_ context.Context, _ resource.Schem
 			},
 			"model": schema.SingleNestedAttribute{
 				Required:            true,
-				MarkdownDescription: "[Model](https://docs.coreweave.com/products/inference/concepts/models) configuration.",
+				MarkdownDescription: "[Model](https://docs.coreweave.com/products/inference/models) configuration.",
 				Attributes: map[string]schema.Attribute{
 					"name": schema.StringAttribute{
 						Required:            true,
@@ -278,7 +278,7 @@ func (r *InferenceDeploymentResource) Schema(_ context.Context, _ resource.Schem
 					},
 					"bucket": schema.StringAttribute{
 						Required:            true,
-						MarkdownDescription: "The CAIOS bucket the model is stored in. The inference service account must have [bucket access](https://docs.coreweave.com/products/inference/concepts/models#grant-inference-access-to-your-bucket).",
+						MarkdownDescription: "The CAIOS bucket the model is stored in. The inference service account must have [bucket access](https://docs.coreweave.com/products/inference/models#grant-inference-access-to-your-bucket).",
 						Validators: []validator.String{
 							stringvalidator.RegexMatches(hostnamePattern, "must be a valid hostname"),
 						},
@@ -291,7 +291,7 @@ func (r *InferenceDeploymentResource) Schema(_ context.Context, _ resource.Schem
 			},
 			"autoscaling": schema.SingleNestedAttribute{
 				Required:            true,
-				MarkdownDescription: "[Autoscaling](https://docs.coreweave.com/products/inference/concepts/scaling) configuration.",
+				MarkdownDescription: "[Autoscaling](https://docs.coreweave.com/products/inference/scaling) configuration.",
 				Attributes: map[string]schema.Attribute{
 					"min": schema.Int64Attribute{
 						Required:            true,
@@ -309,7 +309,7 @@ func (r *InferenceDeploymentResource) Schema(_ context.Context, _ resource.Schem
 					},
 					"priority": schema.Int64Attribute{
 						Optional:            true,
-						MarkdownDescription: "Priority for cross-deployment scaling (0–1000). Higher values win when there is contention.",
+						MarkdownDescription: "Priority for cross-deployment scaling (0-1000). Higher values win when there is contention.",
 						Validators: []validator.Int64{
 							int64validator.Between(0, 1000),
 						},
@@ -317,7 +317,7 @@ func (r *InferenceDeploymentResource) Schema(_ context.Context, _ resource.Schem
 					"capacity_classes": schema.ListAttribute{
 						ElementType:         types.StringType,
 						Optional:            true,
-						MarkdownDescription: fmt.Sprintf("Ordered preference list of [capacity classes](https://docs.coreweave.com/products/inference/concepts/scaling#capacity-claims) to use. Order is significant: the first satisfiable class wins. Allowed values: %s.", coreweave.EnumMarkdownValues(inferencev1.DeploymentAutoscaling_CapacityClass_name, true)),
+						MarkdownDescription: fmt.Sprintf("Ordered preference list of [capacity classes](https://docs.coreweave.com/products/inference/scaling#capacity-claims) to use. Order is significant: the first satisfiable class wins. Allowed values: %s.", coreweave.EnumMarkdownValues(inferencev1.DeploymentAutoscaling_CapacityClass_name, true)),
 						Validators: []validator.List{
 							listvalidator.ValueStringsAre(stringvalidator.OneOf(coreweave.EnumValues(inferencev1.DeploymentAutoscaling_CapacityClass_name, true)...)),
 						},
@@ -344,7 +344,7 @@ func (r *InferenceDeploymentResource) Schema(_ context.Context, _ resource.Schem
 					"weight": schema.Int64Attribute{
 						Optional:            true,
 						Computed:            true,
-						MarkdownDescription: "Traffic weight (0–1000). Values are normalized into percentages across deployments with the same model name.",
+						MarkdownDescription: "Traffic weight (0-1000). Values are normalized into percentages across deployments with the same model name.",
 						PlanModifiers: []planmodifier.Int64{
 							int64planmodifier.UseStateForUnknown(),
 						},
