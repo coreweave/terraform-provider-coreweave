@@ -475,7 +475,7 @@ func (r *VpcResource) Schema(ctx context.Context, req resource.SchemaRequest, re
 			"host_prefix": schema.StringAttribute{
 				Optional:            true,
 				Computed:            true,
-				MarkdownDescription: "An IPv4 CIDR range used to allocate host addresses when booting compute into a VPC.\nThis CIDR must be have a mask size of /18. If left unspecified, a Zone-specific default value will be applied by the server.\nThis field is immutable once set.",
+				MarkdownDescription: "An IPv4 CIDR range used to allocate host addresses when booting compute into a VPC.\nFor SUNK clusters, this CIDR should have a mask size of /18 for optimal rank ordering; exceptions may be granted per customer. For non-SUNK VPCs, any prefix size is accepted. If left unspecified, a Zone-specific default value will be applied by the server.\nThis field is immutable once set.",
 				DeprecationMessage:  "`host_prefix` is deprecated. Use `host_prefixes` instead. The field will be removed in a future version. The equivalent expression for a given resource may be found by refreshing state and running `terraform state show coreweave_networking_vpc.example`.",
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplaceIfConfigured(),
@@ -483,7 +483,7 @@ func (r *VpcResource) Schema(ctx context.Context, req resource.SchemaRequest, re
 				},
 			},
 			"host_prefixes": schema.SetNestedAttribute{
-				MarkdownDescription: "The IPv4 or IPv6 CIDR ranges used to allocate host addresses when booting compute into a VPC.",
+				MarkdownDescription: "The IPv4 or IPv6 CIDR ranges used to allocate host addresses when booting compute into a VPC.\nFor SUNK clusters, an IPv4 prefix with a mask size of /18 is recommended for optimal rank ordering; exceptions may be granted per customer. For non-SUNK VPCs, any prefix size is accepted.",
 				Optional:            true,
 				Computed:            true,
 				Validators: []validator.Set{
