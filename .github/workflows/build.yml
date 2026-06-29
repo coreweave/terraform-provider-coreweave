@@ -40,7 +40,7 @@ jobs:
             ~/go/pkg/mod
           key: ${{ runner.os }}-goreleaser-snapshot-go-${{ hashFiles('**/go.sum') }}
       - name: Test snapshot build
-        uses: goreleaser/goreleaser-action@e24998b8b67b290c2fa8b7c14fcfa7de2c5c9b8c # v7.1.0
+        uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
         with:
           version: latest
           args: release --snapshot --clean --skip sign
