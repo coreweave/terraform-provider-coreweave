@@ -183,7 +183,7 @@ func (r *InferenceGatewayResource) Schema(_ context.Context, _ resource.SchemaRe
 					},
 					"weights_and_biases": schema.SingleNestedAttribute{
 						Optional:            true,
-						MarkdownDescription: "Use [Weights & Biases authentication](https://docs.coreweave.com/products/inference/gateways#weights-and-biases-authentication).",
+						MarkdownDescription: "Use [Weights & Biases authentication](https://docs.coreweave.com/products/inference/gateways#w&b-authentication).",
 						Attributes: map[string]schema.Attribute{
 							"api_key": schema.StringAttribute{
 								Optional:            true,
