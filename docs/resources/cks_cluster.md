@@ -99,7 +99,7 @@ The prefixes must exist in the cluster's VPC. This field is append-only.
 - `pod_cidr_name_v6` (String) IPv6 Pod CIDR name. If any IPv6 field is set, then ALL IPv6 fields must be set.
 - `public` (Boolean) Whether the cluster's api-server is publicly accessible from the internet.
 - `service_cidr_name_v6` (String) IPv6 Service CIDR name. If any IPv6 field is set, then ALL IPv6 fields must be set.
-- `shared_storage_cluster_id` (String) The `cluster_id` of the cluster to share storage with. Must be enabled by CoreWeave suppport. Contact CoreWeave support if you are interested in this feature.
+- `shared_storage_cluster_id` (String) The `cluster_id` of the cluster to share storage with. Must be enabled by CoreWeave support. Contact CoreWeave support if you are interested in this feature.
 
 ### Read-Only
 

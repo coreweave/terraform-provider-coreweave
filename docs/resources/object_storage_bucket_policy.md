@@ -26,7 +26,7 @@ locals {
           "CW" : "*"
         }
         Action   = ["s3:*"]
-        resource = ["arn:aws:s3:::${coreweave_object_storage_bucket.raw.name}"]
+        Resource = ["arn:aws:s3:::${coreweave_object_storage_bucket.raw.name}"]
       },
     ]
   }

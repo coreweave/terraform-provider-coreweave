@@ -27,7 +27,7 @@ resource "coreweave_object_storage_bucket" "default" {
 
 ### Required
 
-- `name` (String) The name of the bucket, must be unique
+- `name` (String) The bucket name. Must be globally unique and must not begin with `cw-` or `vip-`.
 - `zone` (String) The Availability Zone in which the bucket is located.
 
 ### Optional
