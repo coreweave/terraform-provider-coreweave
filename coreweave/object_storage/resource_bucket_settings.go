@@ -156,7 +156,7 @@ func (b *BucketSettingsResource) Read(ctx context.Context, req resource.ReadRequ
 
 func (b *BucketSettingsResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		Description: "Manages settings for an Object Storage Bucket.",
+		Description: "Manage settings for a CoreWeave AI Object Storage bucket.",
 		Attributes: map[string]schema.Attribute{
 			"bucket": schema.StringAttribute{
 				Description: "The name of the bucket to manage settings for.",
@@ -166,7 +166,7 @@ func (b *BucketSettingsResource) Schema(ctx context.Context, req resource.Schema
 				},
 			},
 			"audit_logging_enabled": schema.BoolAttribute{
-				Description: "Whether audit logging is enabled for the bucket. Note: please contact support to enable audit logging for your organization before enabling.",
+				Description: "Whether audit logging is enabled for the bucket. Contact support to enable audit logging for your organization before enabling this setting.",
 				Optional:    true,
 				Computed:    true,
 				Default:     booldefault.StaticBool(false),

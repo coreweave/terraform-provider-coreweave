@@ -62,7 +62,7 @@ func (b *BucketResource) Schema(ctx context.Context, req resource.SchemaRequest,
 		Attributes: map[string]schema.Attribute{
 			"name": schema.StringAttribute{
 				Required:            true,
-				MarkdownDescription: "The name of the bucket, must be unique",
+				MarkdownDescription: "The bucket name. Must be globally unique and must not begin with `cw-` or `vip-`.",
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
 				},

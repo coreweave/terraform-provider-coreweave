@@ -3,12 +3,12 @@
 page_title: "coreweave_object_storage_bucket_settings Resource - coreweave"
 subcategory: ""
 description: |-
-  Manages settings for an Object Storage Bucket.
+  Manage settings for a CoreWeave AI Object Storage bucket.
 ---
 
 # coreweave_object_storage_bucket_settings (Resource)
 
-Manages settings for an Object Storage Bucket.
+Manage settings for a CoreWeave AI Object Storage bucket.
 
 ## Example Usage
 
@@ -33,7 +33,7 @@ resource "coreweave_object_storage_bucket_settings" "default" {
 
 ### Optional
 
-- `audit_logging_enabled` (Boolean) Whether audit logging is enabled for the bucket. Note: please contact support to enable audit logging for your organization before enabling.
+- `audit_logging_enabled` (Boolean) Whether audit logging is enabled for the bucket. Contact support to enable audit logging for your organization before enabling this setting.
 
 ## Import
 

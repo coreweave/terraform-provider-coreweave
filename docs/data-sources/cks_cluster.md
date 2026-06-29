@@ -43,7 +43,7 @@ data "coreweave_cks_cluster" "default" {
 - `service_account_oidc_issuer_url` (String) The URL of the OIDC issuer for the cluster's service account tokens. This value corresponds to the `--service-account-issuer` flag on the kube-apiserver.
 - `service_cidr_name` (String) The service CIDR name of the cluster.
 - `service_cidr_name_v6` (String) The IPv6 service CIDR name of the cluster.
-- `shared_storage_cluster_id` (String) The `cluster_id` of the cluster to share storage with. Must be enabled by CoreWeave suppport. Contact CoreWeave support if you are interested in this feature.
+- `shared_storage_cluster_id` (String) The `cluster_id` of the cluster to share storage with. Must be enabled by CoreWeave support. Contact CoreWeave support if you are interested in this feature.
 - `status` (String) The status of the cluster.
 - `version` (String) The version of the cluster.
 - `vpc_id` (String) The VPC ID of the cluster.
