@@ -59,7 +59,7 @@ resource "coreweave_inference_gateway" "example" {
 Optional:
 
 - `coreweave` (Attributes) Use CoreWeave IAM authentication. (see [below for nested schema](#nestedatt--auth--coreweave))
-- `weights_and_biases` (Attributes) Use [Weights & Biases authentication](https://docs.coreweave.com/products/inference/gateways#weights-and-biases-authentication). (see [below for nested schema](#nestedatt--auth--weights_and_biases))
+- `weights_and_biases` (Attributes) Use [Weights & Biases authentication](https://docs.coreweave.com/products/inference/gateways#w&b-authentication). (see [below for nested schema](#nestedatt--auth--weights_and_biases))
 
 <a id="nestedatt--auth--coreweave"></a>
 ### Nested Schema for `auth.coreweave`
