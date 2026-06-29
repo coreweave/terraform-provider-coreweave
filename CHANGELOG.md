@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.15.1](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.15.0...v0.15.1) (2026-06-29)
+
+
+### Documentation
+
+* apply Terraform reference clarity edits from coreweave/docs[#3246](https://github.com/coreweave/terraform-provider-coreweave/issues/3246) ([#332](https://github.com/coreweave/terraform-provider-coreweave/issues/332)) ([873935d](https://github.com/coreweave/terraform-provider-coreweave/commit/873935dae8e1c973f89156cb77bd157ae26454cb))
+* **fix:** Broken doc URLs and minor documentation linting ([#326](https://github.com/coreweave/terraform-provider-coreweave/issues/326)) ([ec71cdf](https://github.com/coreweave/terraform-provider-coreweave/commit/ec71cdf2b4ced8b47cba338e37d6ddb6771256ed))
+* **networking_vpc:** scope host_prefix /18 requirement to SUNK ([#328](https://github.com/coreweave/terraform-provider-coreweave/issues/328)) ([8e2a6da](https://github.com/coreweave/terraform-provider-coreweave/commit/8e2a6daea4ad043714c40e73c3394c121cbc8998))
+
 ## [0.15.0](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.14.0...v0.15.0) (2026-06-25)
 
 
