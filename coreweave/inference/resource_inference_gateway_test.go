@@ -3,6 +3,7 @@ package inference_test
 import (
 	"fmt"
 	"math/rand/v2"
+	"regexp"
 	"testing"
 
 	inferencev1 "buf.build/gen/go/coreweave/inference/protocolbuffers/go/coreweave/inference/v1alpha1"
@@ -499,6 +500,67 @@ func TestToCreateGatewayRequest_AllRoutingTypes(t *testing.T) {
 		if pbr.PathBasedRouting == nil {
 			t.Error("Routing.PathBased: expected non-nil")
 		}
+	})
+}
+
+// wandbAuthGatewayConfig renders a minimal gateway whose W&B auth block contains
+// only the attributes in wandbAttrs. Zones are hardcoded (no data source) so the
+// plan stays local and never reaches the API.
+func wandbAuthGatewayConfig(wandbAttrs string) string {
+	return fmt.Sprintf(`
+resource "coreweave_inference_gateway" "test" {
+  name  = "unit-test-wandb"
+  zones = ["US-EAST-04A"]
+
+  auth = {
+    weights_and_biases = {
+      %s
+    }
+  }
+
+  routing = {
+    body_based = {
+      api_type = "API_TYPE_OPENAI"
+    }
+  }
+}
+`, wandbAttrs)
+}
+
+// TestInferenceGateway_WandBAuthValidation pins the W&B auth coupling: a
+// server_url may be set without an api_key (W&B custom-instance gateways are
+// read back with a server_url but never an api_key, which is sensitive and not
+// returned by the API), while an api_key still requires a server_url — mirroring
+// the proto's server_url_requires_api_key rule.
+func TestInferenceGateway_WandBAuthValidation(t *testing.T) {
+	// A non-empty token lets the provider configure so a plan-only create can be
+	// computed; no API call is made during plan.
+	t.Setenv("COREWEAVE_API_TOKEN", "CW-SECRET-unit-test")
+
+	t.Run("server_url without api_key is valid", func(t *testing.T) {
+		resource.UnitTest(t, resource.TestCase{
+			ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+			Steps: []resource.TestStep{
+				{
+					Config:             wandbAuthGatewayConfig(`server_url = "https://wandb.example.com"`),
+					PlanOnly:           true,
+					ExpectNonEmptyPlan: true,
+				},
+			},
+		})
+	})
+
+	t.Run("api_key without server_url is invalid", func(t *testing.T) {
+		resource.UnitTest(t, resource.TestCase{
+			ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+			Steps: []resource.TestStep{
+				{
+					Config:      wandbAuthGatewayConfig(`api_key = "wandb-key"`),
+					PlanOnly:    true,
+					ExpectError: regexp.MustCompile(`server_url" must be specified when`),
+				},
+			},
+		})
 	})
 }
 
