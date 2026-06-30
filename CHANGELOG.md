@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.2](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.15.1...v0.15.2) (2026-06-30)
+
+
+### Bug Fixes
+
+* **inference:** Allow W&B server_url without api_key on gateways ([#337](https://github.com/coreweave/terraform-provider-coreweave/issues/337)) ([fe9def8](https://github.com/coreweave/terraform-provider-coreweave/commit/fe9def8e89fb1779939d76331be2ffee729527da))
+
 ## [0.15.1](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.15.0...v0.15.1) (2026-06-29)
 
 
