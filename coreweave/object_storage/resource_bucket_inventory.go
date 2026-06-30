@@ -15,6 +15,7 @@ import (
 	"github.com/aws/smithy-go"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
 
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
@@ -72,7 +73,7 @@ type ScheduleModel struct {
 	Frequency types.String `tfsdk:"frequency"`
 }
 
-type DesinationModel struct {
+type DestinationModel struct {
 	Bucket *BucketModel `tfsdk:"bucket"` // nested block
 }
 
@@ -163,7 +164,7 @@ func (r *BucketInventoryResource) Schema(ctx context.Context, req resource.Schem
 				Optional:            true,
 				ElementType:         types.StringType,
 				MarkdownDescription: "List of optional fields to include in the inventory results",
-				Validators: []validator.Set{setvalidator.ValidateStringsAreOneOf("Size", "LastModifiedDate", "LastAccessedDate", "StorageClass", "ETag", "IsMultipartUploaded", "EncryptionStatus", "ChecksumAlgorithm")},
+				Validators: []validator.Set{setvalidator.OneOf("Size", "LastModifiedDate", "LastAccessedDate", "StorageClass", "ETag", "IsMultipartUploaded", "EncryptionStatus", "ChecksumAlgorithm")},
 			}
 		},
 		Blocks: map[string]schema.Block{
@@ -233,116 +234,65 @@ func parseISO8601(s string) time.Time {
 	return t
 }
 
-func expandRules(ctx context.Context, in []LifecycleRuleModel) []s3types.LifecycleRule {
-	out := make([]s3types.LifecycleRule, 0, len(in))
-	for _, r := range in {
-		rule := s3types.LifecycleRule{
-			ID:     aws.String(r.ID.ValueString()),
-			Status: s3types.ExpirationStatus(r.Status.ValueString()),
-		}
-		// The deprecated top-level Prefix field is intentionally not propagated
-		// to the API: CoreWeave AI Object Storage rejects requests that set it
-		// (it was a silent no-op before, now it's an explicit error). Users
-		// should use filter.prefix instead. We retain the value in state via
-		// flattenLifecycleRules so existing configs don't churn at plan time.
-		if r.Expiration != nil {
-			exp := s3types.LifecycleExpiration{}
-			if !r.Expiration.Date.IsNull() {
-				exp.Date = aws.Time(parseISO8601(r.Expiration.Date.ValueString()))
-			}
-			if !r.Expiration.Days.IsNull() {
-				exp.Days = aws.Int32(r.Expiration.Days.ValueInt32())
-			}
-			if !r.Expiration.ExpiredObjectDeleteMarker.IsNull() {
-				exp.ExpiredObjectDeleteMarker = aws.Bool(r.Expiration.ExpiredObjectDeleteMarker.ValueBool())
-			}
-			rule.Expiration = &exp
-		}
-		for _, transition := range r.Transitions {
-			t := s3types.Transition{
-				StorageClass: s3types.TransitionStorageClass(transition.StorageClass.ValueString()),
-				Days:         transition.Days.ValueInt32Pointer(),
-			}
-			if !transition.Date.IsNull() {
-				t.Date = aws.Time(parseISO8601(transition.Date.ValueString()))
-			}
-			rule.Transitions = append(rule.Transitions, t)
-		}
-		if r.NoncurrentVersionExpiration != nil {
-			nc := s3types.NoncurrentVersionExpiration{}
-			if !r.NoncurrentVersionExpiration.NoncurrentDays.IsNull() {
-				nc.NoncurrentDays = aws.Int32(r.NoncurrentVersionExpiration.NoncurrentDays.ValueInt32())
-			}
-			if !r.NoncurrentVersionExpiration.NewerNoncurrentVersions.IsNull() {
-				nc.NewerNoncurrentVersions = aws.Int32(r.NoncurrentVersionExpiration.NewerNoncurrentVersions.ValueInt32())
-			}
-			rule.NoncurrentVersionExpiration = &nc
-		}
-		if r.NoncurrentVersionTransitions != nil {
-			for _, noncurrentTransition := range r.NoncurrentVersionTransitions {
-				nct := s3types.NoncurrentVersionTransition{
-					StorageClass:            s3types.TransitionStorageClass(noncurrentTransition.StorageClass.ValueString()),
-					NoncurrentDays:          noncurrentTransition.NoncurrentDays.ValueInt32Pointer(),
-					NewerNoncurrentVersions: noncurrentTransition.NewerNoncurrentVersions.ValueInt32Pointer(),
-				}
-				rule.NoncurrentVersionTransitions = append(rule.NoncurrentVersionTransitions, nct)
-			}
-		}
-		if r.AbortIncompleteMultipart != nil {
-			ai := s3types.AbortIncompleteMultipartUpload{
-				DaysAfterInitiation: aws.Int32(r.AbortIncompleteMultipart.DaysAfterInitiation.ValueInt32()),
-			}
-			rule.AbortIncompleteMultipartUpload = &ai
-		}
-		if r.Filter != nil {
-			f := s3types.LifecycleRuleFilter{}
-			if !r.Filter.Prefix.IsNull() {
-				f.Prefix = aws.String(r.Filter.Prefix.ValueString())
-			}
-			if r.Filter.Tag != nil {
-				f.Tag = &s3types.Tag{
-					Key:   aws.String(r.Filter.Tag.Key.ValueString()),
-					Value: aws.String(r.Filter.Tag.Value.ValueString()),
-				}
-			}
-			if r.Filter.ObjectSizeGreaterThan.ValueInt64() > 0 {
-				f.ObjectSizeGreaterThan = aws.Int64(r.Filter.ObjectSizeGreaterThan.ValueInt64())
-			}
+// expandInventoryConfiguration translates the Terraform model into the AWS SDK
+// InventoryConfiguration that is sent to PutBucketInventoryConfiguration. It is
+// the inverse of flattenInventoryConfiguration: anything set here must be read
+// back there, or Terraform will report drift after apply.
+func expandInventoryConfiguration(ctx context.Context, data *BucketInventoryResourceModel) (*s3types.InventoryConfiguration, diag.Diagnostics) {
+	var diags diag.Diagnostics
 
-			if r.Filter.ObjectSizeLessThan.ValueInt64() > 0 {
-				f.ObjectSizeLessThan = aws.Int64(r.Filter.ObjectSizeLessThan.ValueInt64())
-			}
-
-			if r.Filter.And != nil {
-				and := s3types.LifecycleRuleAndOperator{}
-				if !r.Filter.And.Prefix.IsNull() {
-					and.Prefix = aws.String(r.Filter.And.Prefix.ValueString())
-				}
-				andTags := map[string]string{}
-				r.Filter.And.Tags.ElementsAs(ctx, &andTags, false)
-				if len(andTags) > 0 {
-					for key, value := range andTags {
-						and.Tags = append(and.Tags, s3types.Tag{
-							Key:   aws.String(key),
-							Value: aws.String(value),
-						})
-					}
-				}
-				if r.Filter.And.ObjectSizeGreaterThan.ValueInt64() > 0 {
-					and.ObjectSizeGreaterThan = aws.Int64(r.Filter.And.ObjectSizeGreaterThan.ValueInt64())
-				}
-
-				if r.Filter.And.ObjectSizeLessThan.ValueInt64() > 0 {
-					and.ObjectSizeLessThan = aws.Int64(r.Filter.And.ObjectSizeLessThan.ValueInt64())
-				}
-				f.And = &and
-			}
-			rule.Filter = &f
-		}
-		out = append(out, rule)
+	cfg := &s3types.InventoryConfiguration{
+		Id:                     aws.String(data.Name.ValueString()),
+		IsEnabled:              aws.Bool(data.Enabled.ValueBool()),
+		IncludedObjectVersions: s3types.InventoryIncludedObjectVersions(data.IncludedObjectVersions.ValueString()),
 	}
 
-	return out
+	// schedule (required) — frequency string is cast straight through.
+	if data.Schedule != nil {
+		cfg.Schedule = &s3types.InventorySchedule{
+			Frequency: s3types.InventoryFrequency(data.Schedule.Frequency.ValueString()),
+		}
+	}
+
+	// destination (required) — the nested bucket block carries the wire fields.
+	if data.Destination != nil && data.Destination.Bucket != nil {
+		b := data.Destination.Bucket
+		dest := &s3types.InventoryS3BucketDestination{
+			Bucket: aws.String(b.BucketArn.ValueString()),
+			Format: s3types.InventoryFormat(b.Format.ValueString()),
+		}
+		if !b.Prefix.IsNull() {
+			dest.Prefix = aws.String(b.Prefix.ValueString())
+		}
+		if !b.AccountId.IsNull() {
+			dest.AccountId = aws.String(b.AccountId.ValueString())
+		}
+		cfg.Destination = &s3types.InventoryDestination{
+			S3BucketDestination: dest,
+		}
+	}
+
+	// filter (optional) — inventory filters only support a prefix.
+	if data.Filter != nil && !data.Filter.Prefix.IsNull() {
+		cfg.Filter = &s3types.InventoryFilter{
+			Prefix: aws.String(data.Filter.Prefix.ValueString()),
+		}
+	}
+
+	// optional_fields (optional) — Set of strings -> []InventoryOptionalField.
+	if !data.OptionalFields.IsNull() && !data.OptionalFields.IsUnknown() {
+		var fields []string
+		diags.Append(data.OptionalFields.ElementsAs(ctx, &fields, false)...)
+		if diags.HasError() {
+			return nil, diags
+		}
+		cfg.OptionalFields = make([]s3types.InventoryOptionalField, 0, len(fields))
+		for _, f := range fields {
+			cfg.OptionalFields = append(cfg.OptionalFields, s3types.InventoryOptionalField(f))
+		}
+	}
+
+	return cfg, diags
 }
 
 // cmpLifecycleRule returns -1 if a<b, +1 if a>b, or 0 if equal (nil-safe).
