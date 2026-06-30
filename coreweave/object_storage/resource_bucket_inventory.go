@@ -228,11 +228,6 @@ func (r *BucketInventoryResource) Configure(_ context.Context, req resource.Conf
 	r.client = client
 }
 
-func parseISO8601(s string) time.Time {
-	t, _ := time.Parse(time.RFC3339, s)
-	return t
-}
-
 // expandInventoryConfiguration translates the Terraform model into the AWS SDK
 // InventoryConfiguration that is sent to PutBucketInventoryConfiguration. It is
 // the inverse of flattenInventoryConfiguration: anything set here must be read
@@ -294,149 +289,80 @@ func expandInventoryConfiguration(ctx context.Context, data *BucketInventoryReso
 	return cfg, diags
 }
 
-// cmpLifecycleRule returns -1 if a<b, +1 if a>b, or 0 if equal (nil-safe).
-func cmpLifecycleRule(a, b s3types.LifecycleRule) int {
-	// Key
-	switch {
-	case a.ID == nil && b.ID != nil:
-		return -1
-	case a.ID != nil && b.ID == nil:
-		return 1
-	case a.ID != nil && b.ID != nil:
-		if *a.ID < *b.ID {
-			return -1
-		} else if *a.ID > *b.ID {
-			return 1
-		}
-	}
-	return 0
-}
 
-func hasNilPointer[T any](pointers ...*T) bool {
-	for _, p := range pointers {
-		if p == nil {
-			return true
-		}
-	}
-
-	return false
-}
-
-// eqLifecycleRule compares two LifecycleRule objects for exact equality. The
-// deprecated top-level Prefix field is intentionally not compared — the
-// provider never sets it on the wire, so both sides are always empty.
-func eqLifecycleRule(a, b s3types.LifecycleRule) bool { //nolint:gocyclo
-	// Compare simple scalar fields via aws.ToString / string conversion
-	if aws.ToString(a.ID) != aws.ToString(b.ID) {
+// eqInventoryConfiguration reports whether two inventory configurations are
+// equivalent. OptionalFields are order-insensitive, so they are sorted before
+// comparison; every other field is compared for exact (nil-safe) equality.
+func eqInventoryConfiguration(a, b s3types.InventoryConfiguration) bool {
+	if aws.ToString(a.Id) != aws.ToString(b.Id) {
 		return false
 	}
-	if string(a.Status) != string(b.Status) {
+	if aws.ToBool(a.IsEnabled) != aws.ToBool(b.IsEnabled) {
+		return false
+	}
+	if string(a.IncludedObjectVersions) != string(b.IncludedObjectVersions) {
 		return false
 	}
 
-	// Compare Expiration
-	if (a.Expiration == nil) != (b.Expiration == nil) {
+	// Schedule
+	if (a.Schedule == nil) != (b.Schedule == nil) {
 		return false
 	}
-	if a.Expiration != nil {
-		if !hasNilPointer(a.Expiration.Date, b.Expiration.Date) && (!a.Expiration.Date.IsZero() || !b.Expiration.Date.IsZero()) {
-			if !a.Expiration.Date.Equal(*b.Expiration.Date) {
-				return false
-			}
-		}
-		if aws.ToInt32(a.Expiration.Days) != aws.ToInt32(b.Expiration.Days) {
-			return false
-		}
-		if aws.ToBool(a.Expiration.ExpiredObjectDeleteMarker) != aws.ToBool(b.Expiration.ExpiredObjectDeleteMarker) {
-			return false
-		}
-	}
-
-	// Compare NoncurrentVersionExpiration
-	if (a.NoncurrentVersionExpiration == nil) != (b.NoncurrentVersionExpiration == nil) {
+	if a.Schedule != nil && string(a.Schedule.Frequency) != string(b.Schedule.Frequency) {
 		return false
 	}
-	if a.NoncurrentVersionExpiration != nil {
-		if aws.ToInt32(a.NoncurrentVersionExpiration.NoncurrentDays) != aws.ToInt32(b.NoncurrentVersionExpiration.NoncurrentDays) {
-			return false
-		}
-		if aws.ToInt32(a.NoncurrentVersionExpiration.NewerNoncurrentVersions) != aws.ToInt32(b.NoncurrentVersionExpiration.NewerNoncurrentVersions) {
-			return false
-		}
-	}
 
-	// Compare AbortIncompleteMultipartUpload
-	if (a.AbortIncompleteMultipartUpload == nil) != (b.AbortIncompleteMultipartUpload == nil) {
-		return false
-	}
-	if a.AbortIncompleteMultipartUpload != nil {
-		if aws.ToInt32(a.AbortIncompleteMultipartUpload.DaysAfterInitiation) != aws.ToInt32(b.AbortIncompleteMultipartUpload.DaysAfterInitiation) {
-			return false
-		}
-	}
-
-	// Compare Filter
+	// Filter
 	if (a.Filter == nil) != (b.Filter == nil) {
 		return false
 	}
-	if a.Filter != nil {
-		// Prefix
-		if aws.ToString(a.Filter.Prefix) != aws.ToString(b.Filter.Prefix) {
+	if a.Filter != nil && aws.ToString(a.Filter.Prefix) != aws.ToString(b.Filter.Prefix) {
+		return false
+	}
+
+	// Destination
+	var aDest, bDest *s3types.InventoryS3BucketDestination
+	if a.Destination != nil {
+		aDest = a.Destination.S3BucketDestination
+	}
+	if b.Destination != nil {
+		bDest = b.Destination.S3BucketDestination
+	}
+	if (aDest == nil) != (bDest == nil) {
+		return false
+	}
+	if aDest != nil {
+		if aws.ToString(aDest.Bucket) != aws.ToString(bDest.Bucket) ||
+			string(aDest.Format) != string(bDest.Format) ||
+			aws.ToString(aDest.Prefix) != aws.ToString(bDest.Prefix) ||
+			aws.ToString(aDest.AccountId) != aws.ToString(bDest.AccountId) {
 			return false
-		}
-		// Tag
-		if (a.Filter.Tag == nil) != (b.Filter.Tag == nil) {
-			return false
-		}
-		if a.Filter.Tag != nil {
-			if aws.ToString(a.Filter.Tag.Key) != aws.ToString(b.Filter.Tag.Key) ||
-				aws.ToString(a.Filter.Tag.Value) != aws.ToString(b.Filter.Tag.Value) {
-				return false
-			}
-		}
-		// ObjectSize thresholds
-		if aws.ToInt64(a.Filter.ObjectSizeGreaterThan) != aws.ToInt64(b.Filter.ObjectSizeGreaterThan) {
-			return false
-		}
-		if aws.ToInt64(a.Filter.ObjectSizeLessThan) != aws.ToInt64(b.Filter.ObjectSizeLessThan) {
-			return false
-		}
-		// And operator
-		if (a.Filter.And == nil) != (b.Filter.And == nil) {
-			return false
-		}
-		if a.Filter.And != nil {
-			if aws.ToString(a.Filter.And.Prefix) != aws.ToString(b.Filter.And.Prefix) {
-				return false
-			}
-			if aws.ToInt64(a.Filter.And.ObjectSizeGreaterThan) != aws.ToInt64(b.Filter.And.ObjectSizeGreaterThan) {
-				return false
-			}
-			if aws.ToInt64(a.Filter.And.ObjectSizeLessThan) != aws.ToInt64(b.Filter.And.ObjectSizeLessThan) {
-				return false
-			}
-			aTags := a.Filter.And.Tags
-			bTags := b.Filter.And.Tags
-			slices.SortFunc(aTags, cmpTag)
-			slices.SortFunc(bTags, cmpTag)
-			if !slices.EqualFunc(aTags, bTags, eqTag) {
-				return false
-			}
 		}
 	}
 
-	return true
+	// OptionalFields (order-insensitive)
+	toSorted := func(in []s3types.InventoryOptionalField) []string {
+		out := make([]string, 0, len(in))
+		for _, f := range in {
+			out = append(out, string(f))
+		}
+		slices.Sort(out)
+		return out
+	}
+	return slices.Equal(toSorted(a.OptionalFields), toSorted(b.OptionalFields))
 }
 
-func waitForLifecycleConfig(parentCtx context.Context, client *s3.Client, bucket string, expected s3types.BucketLifecycleConfiguration) (*s3.GetBucketLifecycleConfigurationOutput, error) {
-	// make a sorted copy of expected rules
-	exp := slices.SortedFunc(slices.Values(expected.Rules), cmpLifecycleRule)
-
-	var out *s3.GetBucketLifecycleConfigurationOutput
-	err := coreweave.PollUntil("bucket lifecycle configuration", parentCtx, 5*time.Second, 5*time.Minute, func(ctx context.Context) (bool, error) {
-		result, err := client.GetBucketLifecycleConfiguration(ctx, &s3.GetBucketLifecycleConfigurationInput{Bucket: aws.String(bucket)})
+func waitForInventoryConfig(parentCtx context.Context, client *s3.Client, bucket, id string, expected s3types.InventoryConfiguration) (*s3.GetBucketInventoryConfigurationOutput, error) {
+	var out *s3.GetBucketInventoryConfigurationOutput
+	err := coreweave.PollUntil("bucket inventory configuration", parentCtx, 5*time.Second, 5*time.Minute, func(ctx context.Context) (bool, error) {
+		result, err := client.GetBucketInventoryConfiguration(ctx, &s3.GetBucketInventoryConfigurationInput{
+			Bucket: aws.String(bucket),
+			Id:     aws.String(id),
+		})
 		if err != nil {
 			out = nil
+			// A freshly-written config can 404 until it propagates; isTransientS3Error
+			// treats 404 (and 5xx/429/408) as retryable so we keep polling.
 			if isTransientS3Error(err) {
 				return false, nil
 			}
@@ -444,9 +370,10 @@ func waitForLifecycleConfig(parentCtx context.Context, client *s3.Client, bucket
 		}
 		out = result
 
-		// Make sorted a copy of the slice to sort for comparison, to avoid mutating the returned slice by reference.
-		rules := slices.SortedFunc(slices.Values(result.Rules), cmpLifecycleRule)
-		return slices.EqualFunc(exp, rules, eqLifecycleRule), nil
+		if result.InventoryConfiguration == nil {
+			return false, nil
+		}
+		return eqInventoryConfiguration(expected, *result.InventoryConfiguration), nil
 	})
 	return out, err
 }
@@ -465,19 +392,19 @@ func (r *BucketInventoryResource) Create(ctx context.Context, req resource.Creat
 	}
 
 	// model -> SDK
-	invConfig, diags := expandInventoryConfiguration(ctx, &data)
+	invetoryConfig, diags := expandInventoryConfiguration(ctx, &data)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	invJSON, err := json.Marshal(invConfig)
+	inventoryConfig, err := json.Marshal(inventoryConfig)
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to marshal inventory configuration to JSON", err.Error())
 		return
 	}
 	tflog.Debug(ctx, "creating inventory configuration for bucket", map[string]any{
-		"inventory": string(invJSON),
+		"inventory": string(inventoryConfig),
 		"bucket":    data.Bucket.ValueString(),
 		"id":        data.Name.ValueString(),
 	})
@@ -485,7 +412,7 @@ func (r *BucketInventoryResource) Create(ctx context.Context, req resource.Creat
 	_, err = s3c.PutBucketInventoryConfiguration(ctx, &s3.PutBucketInventoryConfigurationInput{
 		Bucket:                 aws.String(data.Bucket.ValueString()),
 		Id:                     aws.String(data.Name.ValueString()),
-		InventoryConfiguration: invConfig,
+		InventoryConfiguration: inventoryConfig,
 	})
 	if err != nil {
 		handleS3Error(err, &resp.Diagnostics, data.Bucket.ValueString())
