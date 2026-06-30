@@ -40,6 +40,9 @@ var (
 
 const (
 	ErrNoSuchLifecycleConfiguration string = "NoSuchLifecycleConfiguration"
+	// ErrNoSuchInventoryConfiguration is the S3 error code returned when an
+	// inventory configuration does not exist for the given bucket + id.
+	ErrNoSuchInventoryConfiguration string = "NoSuchConfiguration"
 )
 
 // NewBucketInventoryResource returns a new resource instance.
@@ -511,7 +514,7 @@ func flattenInventoryConfiguration(ctx context.Context, in *s3types.InventoryCon
 }
 
 func (r *BucketInventoryResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
-	var data BucketLifecycleResourceModel
+	var data BucketInventoryResourceModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -523,12 +526,15 @@ func (r *BucketInventoryResource) Read(ctx context.Context, req resource.ReadReq
 		return
 	}
 
-	out, err := s3c.GetBucketLifecycleConfiguration(ctx, &s3.GetBucketLifecycleConfigurationInput{
+	out, err := s3c.GetBucketInventoryConfiguration(ctx, &s3.GetBucketInventoryConfigurationInput{
 		Bucket: aws.String(data.Bucket.ValueString()),
+		Id:     aws.String(data.Name.ValueString()),
 	})
 	if err != nil {
 		var apiErr smithy.APIError
-		if errors.As(err, &apiErr) && (apiErr.ErrorCode() == ErrNoSuchLifecycleConfiguration) {
+		if errors.As(err, &apiErr) && apiErr.ErrorCode() == ErrNoSuchInventoryConfiguration {
+			// The inventory configuration no longer exists remotely; drop it from
+			// state so Terraform plans to recreate it.
 			resp.State.RemoveResource(ctx)
 			return
 		}
@@ -536,8 +542,10 @@ func (r *BucketInventoryResource) Read(ctx context.Context, req resource.ReadReq
 		return
 	}
 
-	// use our helper to flatten
-	data.Rule = flattenLifecycleRules(out.Rules, data.Rule)
+	resp.Diagnostics.Append(flattenInventoryConfiguration(ctx, out.InventoryConfiguration, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
