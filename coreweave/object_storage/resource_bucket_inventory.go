@@ -19,7 +19,6 @@ import (
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
-	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
@@ -516,133 +515,72 @@ func (r *BucketInventoryResource) Create(ctx context.Context, req resource.Creat
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-// flattenLifecycleRules turns AWS SDK LifecycleRule objects into our Terraform
-// model. The preserve argument is the prior model (plan or state) before the
-// API round-trip; it carries client-side-only fields that the API does not
-// echo back — currently just the deprecated rule.prefix.
-//
-// Matching is by rule ID first; for rules without an ID, we fall back to
-// positional alignment when the result and preserve lists have the same
-// length. The positional fallback only triggers when both sides are null at
-// position i (i.e. neither the prior model nor the API response identifies
-// the rule by ID), so it cannot accidentally cross-pollinate values between
-// distinguishable rules.
-func flattenLifecycleRules(in []s3types.LifecycleRule, preserve []LifecycleRuleModel) []LifecycleRuleModel {
-	preservedPrefix := make(map[string]types.String, len(preserve))
-	for _, p := range preserve {
-		if !isMissingRuleID(p.ID) {
-			preservedPrefix[p.ID.ValueString()] = p.Prefix
-		}
+// flattenInventoryConfiguration maps the AWS SDK InventoryConfiguration returned
+// by GetBucketInventoryConfiguration back into the Terraform model. It is the
+// inverse of expandInventoryConfiguration; the two must stay in lockstep or
+// Terraform will report drift after apply. It mutates data in place and returns
+// only diagnostics, since an inventory config is a single object rather than a
+// list of rules. The bucket name is not part of the API payload, so data.Bucket
+// is intentionally left untouched.
+func flattenInventoryConfiguration(ctx context.Context, in *s3types.InventoryConfiguration, data *BucketInventoryResourceModel) diag.Diagnostics {
+	var diags diag.Diagnostics
+	if in == nil {
+		return diags
 	}
-	sameLength := len(in) == len(preserve)
 
-	out := make([]LifecycleRuleModel, 0, len(in))
-	for i, r := range in {
-		mdl := LifecycleRuleModel{
-			ID:     types.StringPointerValue(r.ID),
-			Prefix: types.StringNull(),
-			Status: types.StringValue(string(r.Status)),
+	data.Name = types.StringPointerValue(in.Id)
+	data.Enabled = types.BoolPointerValue(in.IsEnabled)
+	data.IncludedObjectVersions = types.StringValue(string(in.IncludedObjectVersions))
+
+	// schedule
+	if in.Schedule != nil {
+		data.Schedule = &ScheduleModel{
+			Frequency: types.StringValue(string(in.Schedule.Frequency)),
 		}
-		if r.ID != nil && *r.ID != "" {
-			if pref, ok := preservedPrefix[*r.ID]; ok {
-				mdl.Prefix = pref
-			}
-		} else if sameLength && isMissingRuleID(preserve[i].ID) {
-			// Both sides have no ID at this position — positional alignment is
-			// the only signal we have, and it's safe because there's no other
-			// rule the preserved value could refer to.
-			mdl.Prefix = preserve[i].Prefix
-		}
-
-		if r.Expiration != nil {
-			expiration := &ExpirationModel{
-				ExpiredObjectDeleteMarker: types.BoolPointerValue(r.Expiration.ExpiredObjectDeleteMarker),
-				Days:                      types.Int32PointerValue(r.Expiration.Days),
-			}
-
-			if r.Expiration.Date != nil {
-				expiration.Date = types.StringValue(r.Expiration.Date.Format(time.RFC3339))
-			} else {
-				expiration.Date = types.StringNull()
-			}
-
-			mdl.Expiration = expiration
-		}
-
-		for _, t := range r.Transitions {
-			transition := &TransitionModel{
-				Date:         types.StringNull(),
-				Days:         types.Int32PointerValue(t.Days),
-				StorageClass: types.StringValue(string(t.StorageClass)),
-			}
-			if t.Date != nil {
-				transition.Date = types.StringValue(t.Date.Format(time.RFC3339))
-			}
-			mdl.Transitions = append(mdl.Transitions, transition)
-		}
-
-		if r.NoncurrentVersionExpiration != nil {
-			mdl.NoncurrentVersionExpiration = &NoncurrentVersionExpirationModel{
-				NoncurrentDays:          types.Int32PointerValue(r.NoncurrentVersionExpiration.NoncurrentDays),
-				NewerNoncurrentVersions: types.Int32PointerValue(r.NoncurrentVersionExpiration.NewerNoncurrentVersions),
-			}
-		}
-
-		for _, nct := range r.NoncurrentVersionTransitions {
-			ncTransition := &NoncurrentVersionTransitionModel{
-				NoncurrentDays:          types.Int32PointerValue(nct.NoncurrentDays),
-				StorageClass:            types.StringValue(string(nct.StorageClass)),
-				NewerNoncurrentVersions: types.Int32PointerValue(nct.NewerNoncurrentVersions),
-			}
-			mdl.NoncurrentVersionTransitions = append(mdl.NoncurrentVersionTransitions, ncTransition)
-		}
-
-		if r.AbortIncompleteMultipartUpload != nil {
-			mdl.AbortIncompleteMultipart = &AbortIncompleteMultipartModel{
-				DaysAfterInitiation: types.Int32PointerValue(r.AbortIncompleteMultipartUpload.DaysAfterInitiation),
-			}
-		}
-
-		if r.Filter != nil {
-			f := FilterModel{
-				Prefix: types.StringPointerValue(r.Filter.Prefix),
-			}
-			if r.Filter.Tag != nil {
-				f.Tag = &TagModel{
-					Key:   types.StringPointerValue(r.Filter.Tag.Key),
-					Value: types.StringPointerValue(r.Filter.Tag.Value),
-				}
-			}
-			f.ObjectSizeGreaterThan = types.Int64PointerValue(r.Filter.ObjectSizeGreaterThan)
-			f.ObjectSizeLessThan = types.Int64PointerValue(r.Filter.ObjectSizeLessThan)
-			if r.Filter.And != nil {
-				and := AndFilterModel{
-					Prefix:                types.StringPointerValue(r.Filter.And.Prefix),
-					ObjectSizeGreaterThan: types.Int64PointerValue(r.Filter.And.ObjectSizeGreaterThan),
-					ObjectSizeLessThan:    types.Int64PointerValue(r.Filter.And.ObjectSizeLessThan),
-				}
-				andTags := map[string]attr.Value{}
-				for _, t := range r.Filter.And.Tags {
-					andTags[*t.Key] = types.StringPointerValue(t.Value)
-				}
-				and.Tags = types.MapNull(types.StringType)
-				if len(andTags) > 0 {
-					tagMapValue, _ := types.MapValue(types.StringType, andTags)
-					and.Tags = tagMapValue
-				}
-
-				f.And = &and
-			}
-			mdl.Filter = &f
-		}
-
-		out = append(out, mdl)
+	} else {
+		data.Schedule = nil
 	}
-	return out
-}
 
-func isMissingRuleID(id types.String) bool {
-	return id.IsNull() || id.IsUnknown() || id.ValueString() == ""
+	// destination — the nested bucket block carries the wire fields.
+	if in.Destination != nil && in.Destination.S3BucketDestination != nil {
+		dest := in.Destination.S3BucketDestination
+		data.Destination = &DestinationModel{
+			Bucket: &BucketModel{
+				BucketArn: types.StringPointerValue(dest.Bucket),
+				Format:    types.StringValue(string(dest.Format)),
+				Prefix:    types.StringPointerValue(dest.Prefix),
+				AccountId: types.StringPointerValue(dest.AccountId),
+			},
+		}
+	} else {
+		data.Destination = nil
+	}
+
+	// filter — inventory filters only support a prefix.
+	if in.Filter != nil {
+		data.Filter = &FilterModel{
+			Prefix: types.StringPointerValue(in.Filter.Prefix),
+		}
+	} else {
+		data.Filter = nil
+	}
+
+	// optional_fields: []InventoryOptionalField -> Set of strings. Mirror expand
+	// by leaving the set null when there are no fields, so a config that omits
+	// optional_fields does not churn at plan time.
+	if len(in.OptionalFields) == 0 {
+		data.OptionalFields = types.SetNull(types.StringType)
+	} else {
+		fields := make([]string, 0, len(in.OptionalFields))
+		for _, f := range in.OptionalFields {
+			fields = append(fields, string(f))
+		}
+		setVal, d := types.SetValueFrom(ctx, types.StringType, fields)
+		diags.Append(d...)
+		data.OptionalFields = setVal
+	}
+
+	return diags
 }
 
 func (r *BucketInventoryResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
