@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.16.0](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.15.2...v0.16.0) (2026-06-30)
+
+
+### Features
+
+* **cks:** add support for cks tailscale integration ([#293](https://github.com/coreweave/terraform-provider-coreweave/issues/293)) ([c13a02d](https://github.com/coreweave/terraform-provider-coreweave/commit/c13a02d71a48f1cbf42d16f9142391c54f3a5782))
+
 ## [0.15.2](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.15.1...v0.15.2) (2026-06-30)
 
 
