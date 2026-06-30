@@ -503,7 +503,7 @@ func waitForLifecycleConfig(parentCtx context.Context, client *s3.Client, bucket
 }
 
 func (r *BucketInventoryResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
-	var data BucketLifecycleResourceModel
+	var data BucketInventoryResourceModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -515,37 +515,52 @@ func (r *BucketInventoryResource) Create(ctx context.Context, req resource.Creat
 		return
 	}
 
-	rules := expandRules(ctx, data.Rule)
-	rulesJSON, err := json.Marshal(rules)
-	if err != nil {
-		resp.Diagnostics.AddError("Failed to marshal lifecycle rules to JSON", err.Error())
+	// model -> SDK
+	invConfig, diags := expandInventoryConfiguration(ctx, &data)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
 		return
 	}
-	tflog.Debug(ctx, "creating lifecycle rules for bucket", map[string]any{"rules": string(rulesJSON), "bucket": data.Bucket.ValueString()})
-	lifecycleConfig := &s3types.BucketLifecycleConfiguration{
-		Rules: rules,
+
+	invJSON, err := json.Marshal(invConfig)
+	if err != nil {
+		resp.Diagnostics.AddError("Failed to marshal inventory configuration to JSON", err.Error())
+		return
 	}
-	_, err = s3c.PutBucketLifecycleConfiguration(ctx, &s3.PutBucketLifecycleConfigurationInput{
+	tflog.Debug(ctx, "creating inventory configuration for bucket", map[string]any{
+		"inventory": string(invJSON),
+		"bucket":    data.Bucket.ValueString(),
+		"id":        data.Name.ValueString(),
+	})
+
+	_, err = s3c.PutBucketInventoryConfiguration(ctx, &s3.PutBucketInventoryConfigurationInput{
 		Bucket:                 aws.String(data.Bucket.ValueString()),
-		LifecycleConfiguration: lifecycleConfig,
+		Id:                     aws.String(data.Name.ValueString()),
+		InventoryConfiguration: invConfig,
 	})
 	if err != nil {
 		handleS3Error(err, &resp.Diagnostics, data.Bucket.ValueString())
 		return
 	}
 
-	// set state while we wait for the lifecycle configuration to propagate
+	// Persist state before waiting so a failure mid-wait doesn't orphan the
+	// remote configuration we just created.
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	// wait for lifecycle config  to be read back from s3 API since it is not guaranteed to propagate immediately
-	if result, err := waitForLifecycleConfig(ctx, s3c, data.Bucket.ValueString(), *lifecycleConfig); err != nil {
+	// Inventory configuration is eventually consistent, so poll the GET API
+	// until it reflects what we just wrote before reading it back into state.
+	result, err := waitForInventoryConfig(ctx, s3c, data.Bucket.ValueString(), data.Name.ValueString(), *invConfig)
+	if err != nil {
 		handleS3Error(err, &resp.Diagnostics, data.Bucket.ValueString())
 		return
-	} else {
-		data.Rule = flattenLifecycleRules(result.Rules, data.Rule)
+	}
+
+	resp.Diagnostics.Append(flattenInventoryConfiguration(ctx, result.InventoryConfiguration, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
 	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
