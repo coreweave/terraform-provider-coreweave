@@ -188,7 +188,10 @@ func (r *InferenceGatewayResource) Schema(_ context.Context, _ resource.SchemaRe
 							"api_key": schema.StringAttribute{
 								Optional:            true,
 								Sensitive:           true,
-								MarkdownDescription: "The organization API key for Weights & Biases. Required if `server_url` is set.",
+								MarkdownDescription: "The organization API key for Weights & Biases. Requires `server_url` to also be set.",
+								Validators: []validator.String{
+									stringvalidator.AlsoRequires(path.MatchRelative().AtParent().AtName("server_url")),
+								},
 							},
 							"server_url": schema.StringAttribute{
 								Optional:            true,
@@ -268,10 +271,6 @@ func (r *InferenceGatewayResource) ConfigValidators(_ context.Context) []resourc
 			path.MatchRoot("routing").AtName("body_based"),
 			path.MatchRoot("routing").AtName("header_based"),
 			path.MatchRoot("routing").AtName("path_based"),
-		),
-		resourcevalidator.RequiredTogether(
-			path.MatchRoot("auth").AtName("weights_and_biases").AtName("api_key"),
-			path.MatchRoot("auth").AtName("weights_and_biases").AtName("server_url"),
 		),
 	}
 }

@@ -70,7 +70,7 @@ Optional:
 
 Optional:
 
-- `api_key` (String, Sensitive) The organization API key for Weights & Biases. Required if `server_url` is set.
+- `api_key` (String, Sensitive) The organization API key for Weights & Biases. Requires `server_url` to also be set.
 - `enable_rate_limiting` (Boolean) Whether to enable Weights & Biases controlled rate limiting.
 - `enable_usage_reports` (Boolean) Whether to send usage data to Weights & Biases.
 - `server_url` (String) The Weights & Biases server URL. Defaults to the shared SaaS instance if not set.
