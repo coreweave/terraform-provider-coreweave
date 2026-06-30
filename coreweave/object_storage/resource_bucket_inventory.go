@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -633,8 +634,20 @@ func (r *BucketInventoryResource) Delete(ctx context.Context, req resource.Delet
 }
 
 func (r *BucketInventoryResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	data := BucketLifecycleResourceModel{
-		Bucket: types.StringValue(req.ID),
+	// Import ID format: "<bucket>:<name>". Inventory configurations are keyed by
+	// both the bucket and the configuration id, so both are required to locate one.
+	parts := strings.SplitN(req.ID, ":", 2)
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		resp.Diagnostics.AddError(
+			"Invalid import ID",
+			fmt.Sprintf("Expected import ID in the format \"<bucket>:<name>\", got: %q", req.ID),
+		)
+		return
+	}
+
+	data := BucketInventoryResourceModel{
+		Bucket: types.StringValue(parts[0]),
+		Name:   types.StringValue(parts[1]),
 	}
 
 	s3c, err := r.client.S3Client(ctx, "")
@@ -642,16 +655,19 @@ func (r *BucketInventoryResource) ImportState(ctx context.Context, req resource.
 		resp.Diagnostics.AddError("Failed to create S3 client", err.Error())
 		return
 	}
-	out, err := s3c.GetBucketLifecycleConfiguration(ctx, &s3.GetBucketLifecycleConfigurationInput{
+	out, err := s3c.GetBucketInventoryConfiguration(ctx, &s3.GetBucketInventoryConfigurationInput{
 		Bucket: aws.String(data.Bucket.ValueString()),
+		Id:     aws.String(data.Name.ValueString()),
 	})
 	if err != nil {
 		handleS3Error(err, &resp.Diagnostics, data.Bucket.ValueString())
 		return
 	}
 
-	// use our helper to flatten
-	data.Rule = flattenLifecycleRules(out.Rules, data.Rule)
+	resp.Diagnostics.Append(flattenInventoryConfiguration(ctx, out.InventoryConfiguration, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
