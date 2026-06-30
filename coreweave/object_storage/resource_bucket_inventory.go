@@ -39,7 +39,6 @@ var (
 )
 
 const (
-	ErrNoSuchLifecycleConfiguration string = "NoSuchLifecycleConfiguration"
 	// ErrNoSuchInventoryConfiguration is the S3 error code returned when an
 	// inventory configuration does not exist for the given bucket + id.
 	ErrNoSuchInventoryConfiguration string = "NoSuchConfiguration"
@@ -550,7 +549,7 @@ func (r *BucketInventoryResource) Read(ctx context.Context, req resource.ReadReq
 }
 
 func (r *BucketInventoryResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	var data BucketLifecycleResourceModel
+	var data BucketInventoryResourceModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -562,39 +561,50 @@ func (r *BucketInventoryResource) Update(ctx context.Context, req resource.Updat
 		return
 	}
 
-	rules := expandRules(ctx, data.Rule)
-	lifecycleConfig := &s3types.BucketLifecycleConfiguration{
-		Rules: rules,
+	// model -> SDK
+	invConfig, diags := expandInventoryConfiguration(ctx, &data)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
 	}
-	_, err = s3c.PutBucketLifecycleConfiguration(ctx, &s3.PutBucketLifecycleConfigurationInput{
+
+	// PutBucketInventoryConfiguration is an upsert, so update is the same write
+	// path as create, keyed by bucket + id.
+	_, err = s3c.PutBucketInventoryConfiguration(ctx, &s3.PutBucketInventoryConfigurationInput{
 		Bucket:                 aws.String(data.Bucket.ValueString()),
-		LifecycleConfiguration: lifecycleConfig,
+		Id:                     aws.String(data.Name.ValueString()),
+		InventoryConfiguration: invConfig,
 	})
 	if err != nil {
 		handleS3Error(err, &resp.Diagnostics, data.Bucket.ValueString())
 		return
 	}
 
-	// set state while we wait for the lifecycle configuration to propagate
+	// Persist state before waiting so a failure mid-wait doesn't leave state
+	// pointing at the pre-update configuration.
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	// wait for lifecycle config  to be read back from s3 API since it is not guaranteed to propagate immediately
-	if result, err := waitForLifecycleConfig(ctx, s3c, data.Bucket.ValueString(), *lifecycleConfig); err != nil {
+	// Inventory configuration is eventually consistent, so poll the GET API
+	// until it reflects the update before reading it back into state.
+	result, err := waitForInventoryConfig(ctx, s3c, data.Bucket.ValueString(), data.Name.ValueString(), *invConfig)
+	if err != nil {
 		handleS3Error(err, &resp.Diagnostics, data.Bucket.ValueString())
 		return
-	} else {
-		// Read the result back into state. Terraform will detect and fail if the state does not match the plan.
-		data.Rule = flattenLifecycleRules(result.Rules, data.Rule)
+	}
+
+	resp.Diagnostics.Append(flattenInventoryConfiguration(ctx, result.InventoryConfiguration, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
 	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
 func (r *BucketInventoryResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
-	var data BucketLifecycleResourceModel
+	var data BucketInventoryResourceModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -606,13 +616,15 @@ func (r *BucketInventoryResource) Delete(ctx context.Context, req resource.Delet
 		return
 	}
 
-	_, err = s3c.DeleteBucketLifecycle(ctx, &s3.DeleteBucketLifecycleInput{
+	_, err = s3c.DeleteBucketInventoryConfiguration(ctx, &s3.DeleteBucketInventoryConfigurationInput{
 		Bucket: aws.String(data.Bucket.ValueString()),
+		Id:     aws.String(data.Name.ValueString()),
 	})
 	if err != nil {
 		var apiErr smithy.APIError
-		if errors.As(err, &apiErr) && (apiErr.ErrorCode() == ErrNoSuchLifecycleConfiguration) || (apiErr.ErrorCode() == ErrNoSuchBucket) {
-			// bucket lifecycle config doesn’t exist, return as it will be removed from state
+		if errors.As(err, &apiErr) && ((apiErr.ErrorCode() == ErrNoSuchInventoryConfiguration) || (apiErr.ErrorCode() == ErrNoSuchBucket)) {
+			// The inventory configuration (or its bucket) is already gone; treat as
+			// a successful delete so the resource is removed from state.
 			return
 		}
 
