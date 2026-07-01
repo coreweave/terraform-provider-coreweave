@@ -1,7 +1,6 @@
 package objectstorage
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -17,8 +16,6 @@ import (
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
 
 	"github.com/hashicorp/terraform-plugin-framework/diag"
-	"github.com/hashicorp/hcl/v2/hclsyntax"
-	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -30,7 +27,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework-validators/setvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/objectvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
-	"github.com/zclconf/go-cty/cty"
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
@@ -62,12 +58,12 @@ type BucketInventoryResourceModel struct {
 	Enabled 				types.Bool             	`tfsdk:"enabled"`
 	IncludedObjectVersions 	types.String 			`tfsdk:"included_object_versions"`
 	OptionalFields 			types.Set              	`tfsdk:"optional_fields"`
-	Filter 					*FilterModel 			`tfsdk:"filter"` // nested block
+	Filter 					*InventoryFilterModel 	`tfsdk:"filter"` // nested block
 	Schedule 				*ScheduleModel 			`tfsdk:"schedule"` // nested block
 	Destination 			*DestinationModel 		`tfsdk:"destination"` // nested block
 }
 
-type FilterModel struct {
+type InventoryFilterModel struct {
 	Prefix types.String `tfsdk:"prefix"`
 }
 
@@ -120,8 +116,8 @@ func (r *BucketInventoryResource) Schema(ctx context.Context, req resource.Schem
 				Optional:            true,
 				ElementType:         types.StringType,
 				MarkdownDescription: "List of optional fields to include in the inventory results",
-				Validators: []validator.Set{setvalidator.OneOf("Size", "LastModifiedDate", "LastAccessedDate", "StorageClass", "ETag", "IsMultipartUploaded", "EncryptionStatus", "ChecksumAlgorithm")},
-			}
+				Validators: []validator.Set{setvalidator.ValueStringsAre(stringvalidator.OneOf("Size", "LastModifiedDate", "LastAccessedDate", "StorageClass", "ETag", "IsMultipartUploaded", "EncryptionStatus", "ChecksumAlgorithm"))},
+			},
 		},
 		Blocks: map[string]schema.Block{
 			"filter": schema.SingleNestedBlock{
@@ -167,6 +163,7 @@ func (r *BucketInventoryResource) Schema(ctx context.Context, req resource.Schem
 				},
 				Validators: []validator.Object{objectvalidator.IsRequired()},
 			},
+		},
 	}
 }
 
@@ -349,19 +346,19 @@ func (r *BucketInventoryResource) Create(ctx context.Context, req resource.Creat
 	}
 
 	// model -> SDK
-	invetoryConfig, diags := expandInventoryConfiguration(ctx, &data)
+	invConfig, diags := expandInventoryConfiguration(ctx, &data)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	inventoryConfig, err := json.Marshal(inventoryConfig)
+	invJSON, err := json.Marshal(invConfig)
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to marshal inventory configuration to JSON", err.Error())
 		return
 	}
 	tflog.Debug(ctx, "creating inventory configuration for bucket", map[string]any{
-		"inventory": string(inventoryConfig),
+		"inventory": string(invJSON),
 		"bucket":    data.Bucket.ValueString(),
 		"id":        data.Name.ValueString(),
 	})
@@ -369,7 +366,7 @@ func (r *BucketInventoryResource) Create(ctx context.Context, req resource.Creat
 	_, err = s3c.PutBucketInventoryConfiguration(ctx, &s3.PutBucketInventoryConfigurationInput{
 		Bucket:                 aws.String(data.Bucket.ValueString()),
 		Id:                     aws.String(data.Name.ValueString()),
-		InventoryConfiguration: inventoryConfig,
+		InventoryConfiguration: invConfig,
 	})
 	if err != nil {
 		handleS3Error(err, &resp.Diagnostics, data.Bucket.ValueString())
@@ -442,7 +439,7 @@ func flattenInventoryConfiguration(ctx context.Context, in *s3types.InventoryCon
 
 	// filter — inventory filters only support a prefix.
 	if in.Filter != nil {
-		data.Filter = &FilterModel{
+		data.Filter = &InventoryFilterModel{
 			Prefix: types.StringPointerValue(in.Filter.Prefix),
 		}
 	} else {
