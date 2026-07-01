@@ -7,6 +7,11 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	s3types "github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/path"
+	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/stretchr/testify/require"
 )
@@ -181,4 +186,166 @@ func TestInventoryConfiguration_RoundTrip(t *testing.T) {
 	require.False(t, diags.HasError(), "re-expand: %v", diags)
 
 	require.True(t, eqInventoryConfiguration(*sdk1, *sdk2), "round trip changed the configuration")
+}
+
+// inventorySchema builds the resource schema so tests can exercise the real
+// validators wired into it (rather than re-declaring them).
+func inventorySchema(t *testing.T) schema.Schema {
+	t.Helper()
+	resp := &resource.SchemaResponse{}
+	NewBucketInventoryResource().Schema(context.Background(), resource.SchemaRequest{}, resp)
+	require.False(t, resp.Diagnostics.HasError(), "schema diagnostics: %v", resp.Diagnostics)
+	return resp.Schema
+}
+
+// runStringValidators runs every validator attached to a string attribute and
+// returns the aggregated diagnostics.
+func runStringValidators(ctx context.Context, vals []validator.String, value types.String) diag.Diagnostics {
+	var diags diag.Diagnostics
+	for _, v := range vals {
+		r := &validator.StringResponse{}
+		v.ValidateString(ctx, validator.StringRequest{Path: path.Root("test"), ConfigValue: value}, r)
+		diags.Append(r.Diagnostics...)
+	}
+	return diags
+}
+
+// runSetValidators runs every validator attached to a set attribute and returns
+// the aggregated diagnostics.
+func runSetValidators(ctx context.Context, vals []validator.Set, value types.Set) diag.Diagnostics {
+	var diags diag.Diagnostics
+	for _, v := range vals {
+		r := &validator.SetResponse{}
+		v.ValidateSet(ctx, validator.SetRequest{Path: path.Root("test"), ConfigValue: value}, r)
+		diags.Append(r.Diagnostics...)
+	}
+	return diags
+}
+
+// nestedStringValidators pulls the validators off a string attribute nested in a
+// SingleNestedBlock (e.g. schedule.frequency, destination.format).
+func nestedStringValidators(t *testing.T, sch schema.Schema, block, attribute string) []validator.String {
+	t.Helper()
+	b, ok := sch.Blocks[block].(schema.SingleNestedBlock)
+	require.Truef(t, ok, "block %q is not a SingleNestedBlock", block)
+	a, ok := b.Attributes[attribute].(schema.StringAttribute)
+	require.Truef(t, ok, "%s.%s is not a StringAttribute", block, attribute)
+	return a.StringValidators()
+}
+
+func TestInventorySchema_IncludedObjectVersionsValidator(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	att, ok := inventorySchema(t).Attributes["included_object_versions"].(schema.StringAttribute)
+	require.True(t, ok)
+	vals := att.StringValidators()
+	require.NotEmpty(t, vals, "included_object_versions should have validators")
+
+	cases := map[string]struct {
+		value   string
+		wantErr bool
+	}{
+		"All is valid":         {"All", false},
+		"Latest is valid":      {"Latest", false},
+		"Current is rejected":  {"Current", true}, // AWS enum value, not the documented CAIOS value
+		"arbitrary rejected":   {"Everything", true},
+		"empty string rejected": {"", true},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			diags := runStringValidators(ctx, vals, types.StringValue(tc.value))
+			require.Equal(t, tc.wantErr, diags.HasError(), "diags: %v", diags)
+		})
+	}
+}
+
+func TestInventorySchema_OptionalFieldsValidator(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	att, ok := inventorySchema(t).Attributes["optional_fields"].(schema.SetAttribute)
+	require.True(t, ok)
+	vals := att.SetValidators()
+	require.NotEmpty(t, vals, "optional_fields should have validators")
+
+	setOf := func(elems ...string) types.Set {
+		vs := make([]attr.Value, 0, len(elems))
+		for _, e := range elems {
+			vs = append(vs, types.StringValue(e))
+		}
+		return types.SetValueMust(types.StringType, vs)
+	}
+
+	cases := map[string]struct {
+		value   types.Set
+		wantErr bool
+	}{
+		// LastAccessedDate must be accepted — this is the crux of CFR-178.
+		"LastAccessedDate accepted":       {setOf("LastAccessedDate"), false},
+		"full superset accepted":          {setOf("Size", "LastModifiedDate", "LastAccessedDate", "StorageClass", "ETag", "IsMultipartUploaded", "EncryptionStatus", "ChecksumAlgorithm"), false},
+		"unknown field rejected":          {setOf("Bogus"), true},
+		"one invalid among valid rejected": {setOf("Size", "NotAField"), true},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			diags := runSetValidators(ctx, vals, tc.value)
+			require.Equal(t, tc.wantErr, diags.HasError(), "diags: %v", diags)
+		})
+	}
+}
+
+func TestInventorySchema_ScheduleFrequencyValidator(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	vals := nestedStringValidators(t, inventorySchema(t), "schedule", "frequency")
+	require.NotEmpty(t, vals, "schedule.frequency should have validators")
+
+	cases := map[string]struct {
+		value   string
+		wantErr bool
+	}{
+		"Daily valid":       {"Daily", false},
+		"Weekly valid":      {"Weekly", false},
+		"Monthly rejected":  {"Monthly", true},
+		"lowercase rejected": {"daily", true},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			diags := runStringValidators(ctx, vals, types.StringValue(tc.value))
+			require.Equal(t, tc.wantErr, diags.HasError(), "diags: %v", diags)
+		})
+	}
+}
+
+func TestInventorySchema_DestinationFormatValidator(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	vals := nestedStringValidators(t, inventorySchema(t), "destination", "format")
+	require.NotEmpty(t, vals, "destination.format should have validators")
+
+	cases := map[string]struct {
+		value   string
+		wantErr bool
+	}{
+		"CSV valid":         {"CSV", false},
+		"TSV valid":         {"TSV", false},
+		"JSON valid":        {"JSON", false},
+		"ORC valid":         {"ORC", false},
+		"Parquet valid":     {"Parquet", false},
+		"Avro rejected":     {"Avro", true},
+		"lowercase rejected": {"csv", true},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			diags := runStringValidators(ctx, vals, types.StringValue(tc.value))
+			require.Equal(t, tc.wantErr, diags.HasError(), "diags: %v", diags)
+		})
+	}
 }
