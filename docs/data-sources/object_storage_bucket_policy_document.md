@@ -48,6 +48,6 @@ Optional:
 - `action` (List of String) List of action strings, e.g. `["s3:PutObject"]`
 - `condition` (Map of Map of String) Map of condition operators to JSON expressions
 - `effect` (String) `Allow` or `Deny`
-- `principal` (Map of List of String) Map of principal types to identifiers. For CoreWeave principals, use short-form identifiers as documented in [bucket policies](https://docs.coreweave.com/products/storage/object-storage/auth-access/bucket-access/bucket-policies).
+- `principal` (Map of List of String) Map of principal types to identifiers. For CoreWeave principals, format each identifier as described in [bucket policies](https://docs.coreweave.com/products/storage/object-storage/auth-access/bucket-access/bucket-policies).
 - `resource` (List of String) List of resource ARNs, e.g. `["arn:aws:s3:::bucket/*"]`
 - `sid` (String) An optional statement identifier

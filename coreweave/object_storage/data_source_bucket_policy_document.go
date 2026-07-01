@@ -250,7 +250,7 @@ func (d *BucketPolicyDocumentDataSource) Schema(ctx context.Context, req datasou
 								ElemType: types.StringType,
 							},
 							Optional:            true,
-							MarkdownDescription: "Map of principal types to identifiers. For CoreWeave principals, use short-form identifiers as documented in [bucket policies](https://docs.coreweave.com/products/storage/object-storage/auth-access/bucket-access/bucket-policies).",
+							MarkdownDescription: "Map of principal types to identifiers. For CoreWeave principals, format each identifier as described in [bucket policies](https://docs.coreweave.com/products/storage/object-storage/auth-access/bucket-access/bucket-policies).",
 						},
 						"condition": schema.MapAttribute{
 							ElementType: types.MapType{
