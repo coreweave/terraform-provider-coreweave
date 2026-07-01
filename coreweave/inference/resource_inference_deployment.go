@@ -229,7 +229,7 @@ func (r *InferenceDeploymentResource) Schema(_ context.Context, _ resource.Schem
 						Required:            true,
 						MarkdownDescription: "The inference engine to use.",
 						Validators: []validator.String{
-							stringvalidator.OneOf("vllm"),
+							stringvalidator.OneOf("vllm", "dynamo-vllm"),
 						},
 					},
 					"version": schema.StringAttribute{
