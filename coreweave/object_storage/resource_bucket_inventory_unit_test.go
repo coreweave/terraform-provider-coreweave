@@ -246,10 +246,10 @@ func TestInventorySchema_IncludedObjectVersionsValidator(t *testing.T) {
 		value   string
 		wantErr bool
 	}{
-		"All is valid":         {"All", false},
-		"Latest is valid":      {"Latest", false},
-		"Current is rejected":  {"Current", true}, // AWS enum value, not the documented CAIOS value
-		"arbitrary rejected":   {"Everything", true},
+		"All is valid":          {"All", false},
+		"Latest is valid":       {"Latest", false},
+		"Current is rejected":   {"Current", true}, // AWS enum value, not the documented CAIOS value
+		"arbitrary rejected":    {"Everything", true},
 		"empty string rejected": {"", true},
 	}
 	for name, tc := range cases {
@@ -283,9 +283,9 @@ func TestInventorySchema_OptionalFieldsValidator(t *testing.T) {
 		wantErr bool
 	}{
 		// LastAccessedDate must be accepted — this is the crux of CFR-178.
-		"LastAccessedDate accepted":       {setOf("LastAccessedDate"), false},
-		"full superset accepted":          {setOf("Size", "LastModifiedDate", "LastAccessedDate", "StorageClass", "ETag", "IsMultipartUploaded", "EncryptionStatus", "ChecksumAlgorithm"), false},
-		"unknown field rejected":          {setOf("Bogus"), true},
+		"LastAccessedDate accepted":        {setOf("LastAccessedDate"), false},
+		"full superset accepted":           {setOf("Size", "LastModifiedDate", "LastAccessedDate", "StorageClass", "ETag", "IsMultipartUploaded", "EncryptionStatus", "ChecksumAlgorithm"), false},
+		"unknown field rejected":           {setOf("Bogus"), true},
 		"one invalid among valid rejected": {setOf("Size", "NotAField"), true},
 	}
 	for name, tc := range cases {
@@ -308,9 +308,9 @@ func TestInventorySchema_ScheduleFrequencyValidator(t *testing.T) {
 		value   string
 		wantErr bool
 	}{
-		"Daily valid":       {"Daily", false},
-		"Weekly valid":      {"Weekly", false},
-		"Monthly rejected":  {"Monthly", true},
+		"Daily valid":        {"Daily", false},
+		"Weekly valid":       {"Weekly", false},
+		"Monthly rejected":   {"Monthly", true},
 		"lowercase rejected": {"daily", true},
 	}
 	for name, tc := range cases {
@@ -340,12 +340,12 @@ func TestInventorySchema_DestinationFormatValidator(t *testing.T) {
 		value   string
 		wantErr bool
 	}{
-		"CSV valid":         {"CSV", false},
-		"TSV valid":         {"TSV", false},
-		"JSON valid":        {"JSON", false},
-		"ORC valid":         {"ORC", false},
-		"Parquet valid":     {"Parquet", false},
-		"Avro rejected":     {"Avro", true},
+		"CSV valid":          {"CSV", false},
+		"TSV valid":          {"TSV", false},
+		"JSON valid":         {"JSON", false},
+		"ORC valid":          {"ORC", false},
+		"Parquet valid":      {"Parquet", false},
+		"Avro rejected":      {"Avro", true},
 		"lowercase rejected": {"csv", true},
 	}
 	for name, tc := range cases {

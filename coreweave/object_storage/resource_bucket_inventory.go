@@ -18,18 +18,18 @@ import (
 
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/hashicorp/hcl/v2/hclwrite"
-	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework-validators/objectvalidator"
+	"github.com/hashicorp/terraform-plugin-framework-validators/setvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
-	"github.com/hashicorp/terraform-plugin-framework-validators/setvalidator"
-	"github.com/hashicorp/terraform-plugin-framework-validators/objectvalidator"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/zclconf/go-cty/cty"
 )
 
@@ -57,14 +57,14 @@ type BucketInventoryResource struct {
 
 // BucketInventoryResourceModel maps resource schema data.
 type BucketInventoryResourceModel struct {
-	Bucket  				types.String           	`tfsdk:"bucket"` // source bucket
-	Name					types.String           	`tfsdk:"name"`   // inventory configuration name
-	Enabled 				types.Bool             	`tfsdk:"enabled"`
-	IncludedObjectVersions 	types.String 			`tfsdk:"included_object_versions"`
-	OptionalFields 			types.Set              	`tfsdk:"optional_fields"`
-	Filter 					*InventoryFilterModel 	`tfsdk:"filter"` // nested block
-	Schedule 				*ScheduleModel 			`tfsdk:"schedule"` // nested block
-	Destination 			*DestinationModel 		`tfsdk:"destination"` // nested block
+	Bucket                 types.String          `tfsdk:"bucket"` // source bucket
+	Name                   types.String          `tfsdk:"name"`   // inventory configuration name
+	Enabled                types.Bool            `tfsdk:"enabled"`
+	IncludedObjectVersions types.String          `tfsdk:"included_object_versions"`
+	OptionalFields         types.Set             `tfsdk:"optional_fields"`
+	Filter                 *InventoryFilterModel `tfsdk:"filter"`      // nested block
+	Schedule               *ScheduleModel        `tfsdk:"schedule"`    // nested block
+	Destination            *DestinationModel     `tfsdk:"destination"` // nested block
 }
 
 type InventoryFilterModel struct {
@@ -81,8 +81,8 @@ type DestinationModel struct {
 
 type BucketModel struct {
 	BucketArn types.String `tfsdk:"bucket_arn"`
-	Format types.String `tfsdk:"format"`
-	Prefix types.String `tfsdk:"prefix"`
+	Format    types.String `tfsdk:"format"`
+	Prefix    types.String `tfsdk:"prefix"`
 	AccountId types.String `tfsdk:"account_id"`
 }
 
@@ -104,7 +104,7 @@ func (r *BucketInventoryResource) Schema(ctx context.Context, req resource.Schem
 			"name": schema.StringAttribute{
 				Required:            true,
 				MarkdownDescription: "Name of the inventory configuration. Must be unique within the bucket.",
-				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
+				PlanModifiers:       []planmodifier.String{stringplanmodifier.RequiresReplace()},
 			},
 			"enabled": schema.BoolAttribute{
 				Optional:            true,
@@ -115,13 +115,13 @@ func (r *BucketInventoryResource) Schema(ctx context.Context, req resource.Schem
 			"included_object_versions": schema.StringAttribute{
 				Required:            true,
 				MarkdownDescription: "Specifies which object versions are included in the inventory results. Valid values are `All` and `Latest`.",
-				Validators: []validator.String{stringvalidator.OneOf("All", "Latest")},
+				Validators:          []validator.String{stringvalidator.OneOf("All", "Latest")},
 			},
 			"optional_fields": schema.SetAttribute{
 				Optional:            true,
 				ElementType:         types.StringType,
 				MarkdownDescription: "List of optional fields to include in the inventory results",
-				Validators: []validator.Set{setvalidator.ValueStringsAre(stringvalidator.OneOf("Size", "LastModifiedDate", "LastAccessedDate", "StorageClass", "ETag", "IsMultipartUploaded", "EncryptionStatus", "ChecksumAlgorithm"))},
+				Validators:          []validator.Set{setvalidator.ValueStringsAre(stringvalidator.OneOf("Size", "LastModifiedDate", "LastAccessedDate", "StorageClass", "ETag", "IsMultipartUploaded", "EncryptionStatus", "ChecksumAlgorithm"))},
 			},
 		},
 		Blocks: map[string]schema.Block{
@@ -253,7 +253,6 @@ func expandInventoryConfiguration(ctx context.Context, data *BucketInventoryReso
 
 	return cfg, diags
 }
-
 
 // eqInventoryConfiguration reports whether two inventory configurations are
 // equivalent. OptionalFields are order-insensitive, so they are sorted before
