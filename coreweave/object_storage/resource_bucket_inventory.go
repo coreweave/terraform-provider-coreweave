@@ -42,7 +42,7 @@ var (
 const (
 	// ErrNoSuchInventoryConfiguration is the S3 error code returned when an
 	// inventory configuration does not exist for the given bucket + id.
-	ErrNoSuchInventoryConfiguration string = "NoSuchConfiguration"
+	ErrNoSuchInventoryConfiguration string = "NoSuchInventoryConfiguration"
 )
 
 // NewBucketInventoryResource returns a new resource instance.

@@ -218,10 +218,10 @@ func TestBucketInventoryBasic(t *testing.T) {
 	})
 }
 
-// TestBucketInventory_Disappears verifies the Read path's drift detection: after
+// TestBucketInventoryDisappears verifies the Read path's drift detection: after
 // the config is deleted out-of-band, the next refresh must notice it is gone
 // (Read -> RemoveResource) and plan to recreate it, producing a non-empty plan.
-func TestBucketInventory_Disappears(t *testing.T) {
+func TestBucketInventoryDisappears(t *testing.T) {
 	ctx := context.Background()
 
 	randomInt := rand.IntN(100000)
@@ -269,11 +269,24 @@ func TestBucketInventory_Disappears(t *testing.T) {
 		CheckDestroy:             testAccCheckInventoryDestroy(ctx),
 		Steps: []resource.TestStep{
 			{
+				PreConfig: func() {
+					t.Logf("beginning coreweave_object_storage_bucket_inventory disappears step")
+				},
 				Config: config,
 				// Delete the inventory configuration behind Terraform's back, then
 				// let the built-in post-apply refresh+plan run. Read should detect
 				// the disappearance and plan a recreate (hence a non-empty plan).
-				Check:              deleteInventoryOutOfBand(ctx, t, bucket.Name.ValueString(), inventoryName),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					func(*terraform.State) error {
+						t.Logf("completed apply; deleting inventory %q out of band", inventoryName)
+						return nil
+					},
+					deleteInventoryOutOfBand(ctx, t, bucket.Name.ValueString(), inventoryName),
+					func(*terraform.State) error {
+						t.Logf("completed out-of-band delete; expecting non-empty plan on refresh")
+						return nil
+					},
+				),
 				ExpectNonEmptyPlan: true,
 			},
 		},
@@ -294,7 +307,7 @@ func testAccCheckInventoryDestroy(ctx context.Context) resource.TestCheckFunc {
 		if err != nil {
 			return fmt.Errorf("failed to create S3 client: %w", err)
 		}
-
+		fmt.Printf("[testAccCheckInventoryDestroy] checking for remaining inventory configurations in state after destroy")
 		for _, rs := range s.RootModule().Resources {
 			if rs.Type != "coreweave_object_storage_bucket_inventory" {
 				continue
@@ -331,6 +344,7 @@ func deleteInventoryOutOfBand(ctx context.Context, t *testing.T, bucket, id stri
 		if err != nil {
 			return fmt.Errorf("failed to build client: %w", err)
 		}
+		fmt.Printf("[deleteInventoryOutOfBand] Deleting inventory configuration %q on bucket %q out of band", id, bucket)
 		s3c, err := client.S3Client(ctx, "")
 		if err != nil {
 			return fmt.Errorf("failed to create S3 client: %w", err)
@@ -341,6 +355,7 @@ func deleteInventoryOutOfBand(ctx context.Context, t *testing.T, bucket, id stri
 		}); err != nil {
 			return fmt.Errorf("failed to delete inventory %q on bucket %q out of band: %w", id, bucket, err)
 		}
+		fmt.Printf("[deleteInventoryOutOfBand] Deleted")
 		return nil
 	}
 }
