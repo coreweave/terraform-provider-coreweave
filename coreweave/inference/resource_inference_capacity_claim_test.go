@@ -77,7 +77,7 @@ func TestSetFromCapacityClaim_Fields(t *testing.T) {
 	}).Build()
 
 	var m inference.InferenceCapacityClaimResourceModel
-	diags := inference.SetFromCapacityClaim(&m, cc)
+	diags := inference.SetFromCapacityClaim(&m, cc, false)
 	if diags.HasError() {
 		t.Fatalf("SetFromCapacityClaim returned errors: %v", diags)
 	}
@@ -134,6 +134,102 @@ func TestSetFromCapacityClaim_Fields(t *testing.T) {
 	condElems := m.Conditions.Elements()
 	if len(condElems) != 1 {
 		t.Fatalf("Conditions: expected 1 element, got %d", len(condElems))
+	}
+}
+
+// TestSetFromCapacityClaim_PreserveStatusFields verifies that during Update
+// (preserveStatusFields=true) the observed status fields — status,
+// allocated_instances, pending_instances, updated_at, conditions — retain their
+// prior-state values (as carried by the plan via UseStateForUnknown) rather than
+// being overwritten by the fresh API response, while spec fields are still
+// refreshed. Read/Create (preserveStatusFields=false) refresh all fields.
+func TestSetFromCapacityClaim_PreserveStatusFields(t *testing.T) {
+	t.Parallel()
+
+	base := func(status inferencev1.Status, name, condReason string, allocated, pending uint32, updatedAt *timestamppb.Timestamp) *inferencev1.CapacityClaim {
+		return (inferencev1.CapacityClaim_builder{
+			Spec: (inferencev1.CapacityClaimSpec_builder{
+				Id:             "cc-123",
+				Name:           name,
+				OrganizationId: "org-456",
+				Resources: (inferencev1.CapacityClaimResources_builder{
+					InstanceId:    testInstanceType,
+					InstanceCount: 3,
+					CapacityType:  inferencev1.CapacityType_CAPACITY_TYPE_MANAGED,
+					Zones:         []string{"US-WEST-04A"},
+				}).Build(),
+			}).Build(),
+			Status: (inferencev1.CapacityClaimStatus_builder{
+				Status:             status,
+				UpdatedAt:          updatedAt,
+				AllocatedInstances: allocated,
+				PendingInstances:   pending,
+				Conditions: []*inferencev1.Condition{
+					(inferencev1.Condition_builder{
+						Type:   "Ready",
+						Status: inferencev1.Condition_STATUS_TRUE,
+						Reason: condReason,
+					}).Build(),
+				},
+			}).Build(),
+		}).Build()
+	}
+
+	prior := base(inferencev1.Status_STATUS_READY, "my-cc", "AllAllocated", 3, 0, timestamppb.New(time.Unix(1000, 0).UTC()))
+	fresh := base(inferencev1.Status_STATUS_UPDATING, "my-cc-renamed", "Reconciling", 1, 2, timestamppb.New(time.Unix(2000, 0).UTC()))
+
+	// Seed the model with prior-state values (what the plan holds on Update).
+	m := &inference.InferenceCapacityClaimResourceModel{}
+	if diags := inference.SetFromCapacityClaim(m, prior, false); diags.HasError() {
+		t.Fatalf("seed SetFromCapacityClaim returned errors: %v", diags)
+	}
+	priorStatus := m.Status
+	priorUpdatedAt := m.UpdatedAt
+	priorConditions := m.Conditions
+	priorAllocated := m.AllocatedInstances
+	priorPending := m.PendingInstances
+
+	// Update path: status fields must be preserved, spec fields refreshed.
+	if diags := inference.SetFromCapacityClaim(m, fresh, true); diags.HasError() {
+		t.Fatalf("preserve SetFromCapacityClaim returned errors: %v", diags)
+	}
+	if !m.Status.Equal(priorStatus) {
+		t.Errorf("Status: expected preserved %v, got %v", priorStatus, m.Status)
+	}
+	if !m.UpdatedAt.Equal(priorUpdatedAt) {
+		t.Errorf("UpdatedAt: expected preserved %v, got %v", priorUpdatedAt, m.UpdatedAt)
+	}
+	if !m.Conditions.Equal(priorConditions) {
+		t.Errorf("Conditions: expected preserved %v, got %v", priorConditions, m.Conditions)
+	}
+	if !m.AllocatedInstances.Equal(priorAllocated) {
+		t.Errorf("AllocatedInstances: expected preserved %v, got %v", priorAllocated, m.AllocatedInstances)
+	}
+	if !m.PendingInstances.Equal(priorPending) {
+		t.Errorf("PendingInstances: expected preserved %v, got %v", priorPending, m.PendingInstances)
+	}
+	if m.Name.ValueString() != "my-cc-renamed" {
+		t.Errorf("Name: expected spec to refresh to 'my-cc-renamed', got %q", m.Name.ValueString())
+	}
+
+	// Read path: status fields must refresh from the API response.
+	if diags := inference.SetFromCapacityClaim(m, fresh, false); diags.HasError() {
+		t.Fatalf("refresh SetFromCapacityClaim returned errors: %v", diags)
+	}
+	if m.Status.ValueString() != inferencev1.Status_STATUS_UPDATING.String() {
+		t.Errorf("Status: expected refreshed %q, got %q", inferencev1.Status_STATUS_UPDATING.String(), m.Status.ValueString())
+	}
+	if m.AllocatedInstances.ValueInt64() != 1 {
+		t.Errorf("AllocatedInstances: expected refreshed 1, got %d", m.AllocatedInstances.ValueInt64())
+	}
+	if m.PendingInstances.ValueInt64() != 2 {
+		t.Errorf("PendingInstances: expected refreshed 2, got %d", m.PendingInstances.ValueInt64())
+	}
+	if m.UpdatedAt.Equal(priorUpdatedAt) {
+		t.Errorf("UpdatedAt: expected refresh to differ from prior %v, got %v", priorUpdatedAt, m.UpdatedAt)
+	}
+	if m.Conditions.Equal(priorConditions) {
+		t.Errorf("Conditions: expected refresh to differ from prior, got %v", m.Conditions)
 	}
 }
 
@@ -302,6 +398,10 @@ func TestInferenceCapacityClaim(t *testing.T) {
 					ResourceName:      fullResourceName,
 					ImportState:       true,
 					ImportStateVerify: true,
+					// Server-observed fields are intentionally not refreshed into state on
+					// Update (see setFromCapacityClaim preserveStatusFields); a fresh import
+					// Read legitimately observes newer values, so they can't be verified here.
+					ImportStateVerifyIgnore: []string{"status", "updated_at", "conditions", "allocated_instances", "pending_instances"},
 				},
 			},
 		})

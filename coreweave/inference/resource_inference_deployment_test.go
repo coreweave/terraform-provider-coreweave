@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math/rand/v2"
 	"testing"
+	"time"
 
 	inferencev1 "buf.build/gen/go/coreweave/inference/protocolbuffers/go/coreweave/inference/v1alpha1"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave/inference"
@@ -17,6 +18,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-testing/knownvalue"
 	"github.com/hashicorp/terraform-plugin-testing/statecheck"
 	"github.com/hashicorp/terraform-plugin-testing/tfjsonpath"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 // --- Unit tests for pure helper functions ---
@@ -148,7 +150,7 @@ func TestInferenceDeployment_SetFromDeployment_NullPreservation(t *testing.T) {
 		},
 	}
 
-	inference.SetFromDeployment(m, d)
+	inference.SetFromDeployment(m, d, false)
 
 	// Optional fields with default values should remain null.
 	if !m.Runtime.Version.IsNull() {
@@ -167,7 +169,7 @@ func TestInferenceDeployment_SetFromDeployment_NullPreservation(t *testing.T) {
 		t.Errorf("Autoscaling.CapacityClasses: expected null when API returns empty, got %v", m.Autoscaling.CapacityClasses)
 	}
 	m.Runtime.Version = types.StringUnknown()
-	inference.SetFromDeployment(m, d)
+	inference.SetFromDeployment(m, d, false)
 	if !m.Runtime.Version.IsNull() {
 		t.Errorf("Runtime.Version: expected null when plan is unknown and API returns empty, got %v", m.Runtime.Version)
 	}
@@ -186,6 +188,83 @@ func TestInferenceDeployment_SetFromDeployment_NullPreservation(t *testing.T) {
 	}
 	if m.Autoscaling.Min.ValueInt64() != 1 {
 		t.Errorf("Autoscaling.Min: expected 1, got %d", m.Autoscaling.Min.ValueInt64())
+	}
+}
+
+// TestSetFromDeployment_PreserveStatusFields verifies that during Update
+// (preserveStatusFields=true) the observed status fields — status, updated_at,
+// conditions — retain their prior-state values (as carried by the plan via
+// UseStateForUnknown) rather than being overwritten by the fresh API response,
+// while spec fields are still refreshed. Read/Create (preserveStatusFields=false)
+// refresh all fields.
+func TestSetFromDeployment_PreserveStatusFields(t *testing.T) {
+	t.Parallel()
+
+	base := func(status inferencev1.Status, name, condReason string, updatedAt *timestamppb.Timestamp) *inferencev1.Deployment {
+		return &inferencev1.Deployment{
+			Spec: &inferencev1.DeploymentSpec{
+				Id:        "test-id",
+				Name:      name,
+				Runtime:   &inferencev1.DeploymentRuntime{Engine: "vllm"},
+				Resources: &inferencev1.DeploymentResources{InstanceType: "H100_80GB_SXM5", GpuCount: 1},
+				Model:     &inferencev1.DeploymentModel{Name: "meta-llama/Llama-3.1-8B"},
+				Autoscaling: &inferencev1.DeploymentAutoscaling{
+					Min: 1,
+					Max: 4,
+				},
+				Traffic: &inferencev1.DeploymentTraffic{},
+			},
+			Status: &inferencev1.DeploymentStatus{
+				Status:    status,
+				UpdatedAt: updatedAt,
+				Conditions: []*inferencev1.Condition{
+					{Type: "Ready", Status: inferencev1.Condition_STATUS_TRUE, Reason: condReason},
+				},
+			},
+		}
+	}
+
+	prior := base(inferencev1.Status_STATUS_READY, "my-llm", "AsExpected", timestamppb.New(time.Unix(1000, 0).UTC()))
+	fresh := base(inferencev1.Status_STATUS_UPDATING, "my-llm-renamed", "Reconciling", timestamppb.New(time.Unix(2000, 0).UTC()))
+
+	// Seed the model with prior-state values (what the plan holds on Update).
+	m := &inference.InferenceDeploymentResourceModel{}
+	if diags := inference.SetFromDeployment(m, prior, false); diags.HasError() {
+		t.Fatalf("seed SetFromDeployment returned errors: %v", diags)
+	}
+	priorStatus := m.Status
+	priorUpdatedAt := m.UpdatedAt
+	priorConditions := m.Conditions
+
+	// Update path: status fields must be preserved, spec fields refreshed.
+	if diags := inference.SetFromDeployment(m, fresh, true); diags.HasError() {
+		t.Fatalf("preserve SetFromDeployment returned errors: %v", diags)
+	}
+	if !m.Status.Equal(priorStatus) {
+		t.Errorf("Status: expected preserved %v, got %v", priorStatus, m.Status)
+	}
+	if !m.UpdatedAt.Equal(priorUpdatedAt) {
+		t.Errorf("UpdatedAt: expected preserved %v, got %v", priorUpdatedAt, m.UpdatedAt)
+	}
+	if !m.Conditions.Equal(priorConditions) {
+		t.Errorf("Conditions: expected preserved %v, got %v", priorConditions, m.Conditions)
+	}
+	if m.Name.ValueString() != "my-llm-renamed" {
+		t.Errorf("Name: expected spec to refresh to 'my-llm-renamed', got %q", m.Name.ValueString())
+	}
+
+	// Read path: status fields must refresh from the API response.
+	if diags := inference.SetFromDeployment(m, fresh, false); diags.HasError() {
+		t.Fatalf("refresh SetFromDeployment returned errors: %v", diags)
+	}
+	if m.Status.ValueString() != inferencev1.Status_STATUS_UPDATING.String() {
+		t.Errorf("Status: expected refreshed %q, got %q", inferencev1.Status_STATUS_UPDATING.String(), m.Status.ValueString())
+	}
+	if m.UpdatedAt.Equal(priorUpdatedAt) {
+		t.Errorf("UpdatedAt: expected refresh to differ from prior %v, got %v", priorUpdatedAt, m.UpdatedAt)
+	}
+	if m.Conditions.Equal(priorConditions) {
+		t.Errorf("Conditions: expected refresh to differ from prior, got %v", m.Conditions)
 	}
 }
 
@@ -566,6 +645,10 @@ func TestInferenceDeployment(t *testing.T) {
 					ResourceName:      fullResourceName,
 					ImportState:       true,
 					ImportStateVerify: true,
+					// Server-observed fields are intentionally not refreshed into state on
+					// Update (see setFromDeployment preserveStatusFields); a fresh import Read
+					// legitimately observes newer values, so they can't be verified here.
+					ImportStateVerifyIgnore: []string{"status", "updated_at", "conditions"},
 				},
 			},
 		})

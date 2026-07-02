@@ -5,6 +5,7 @@ import (
 	"math/rand/v2"
 	"regexp"
 	"testing"
+	"time"
 
 	inferencev1 "buf.build/gen/go/coreweave/inference/protocolbuffers/go/coreweave/inference/v1alpha1"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave/inference"
@@ -17,6 +18,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-testing/knownvalue"
 	"github.com/hashicorp/terraform-plugin-testing/statecheck"
 	"github.com/hashicorp/terraform-plugin-testing/tfjsonpath"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 // --- Unit tests ---
@@ -59,7 +61,7 @@ func TestSetFromGateway_CoreWeaveAuth(t *testing.T) {
 	}
 
 	m := &inference.InferenceGatewayResourceModel{}
-	diags := inference.SetFromGateway(m, gw)
+	diags := inference.SetFromGateway(m, gw, false)
 	if diags.HasError() {
 		t.Fatalf("SetFromGateway returned errors: %v", diags)
 	}
@@ -72,6 +74,85 @@ func TestSetFromGateway_CoreWeaveAuth(t *testing.T) {
 	}
 	if m.ID.ValueString() != "gw-123" {
 		t.Errorf("ID: got %q, want %q", m.ID.ValueString(), "gw-123")
+	}
+}
+
+// TestSetFromGateway_PreserveStatusFields verifies that during Update
+// (preserveStatusFields=true) the observed status fields — status, updated_at,
+// conditions — retain their prior-state values (as carried by the plan via
+// UseStateForUnknown) rather than being overwritten by the fresh API response,
+// while spec fields are still refreshed. Read/Create (preserveStatusFields=false)
+// refresh all fields.
+func TestSetFromGateway_PreserveStatusFields(t *testing.T) {
+	t.Parallel()
+
+	base := func(status inferencev1.Status, name, condReason string, updatedAt *timestamppb.Timestamp) *inferencev1.Gateway {
+		return &inferencev1.Gateway{
+			Spec: &inferencev1.GatewaySpec{
+				Id:             "gw-123",
+				Name:           name,
+				OrganizationId: "org-abc",
+				Zones:          []string{"US-EAST-04A"},
+				Auth: &inferencev1.GatewaySpec_CoreWeaveAuth{
+					CoreWeaveAuth: &inferencev1.CoreWeaveAuth{},
+				},
+				Routing: &inferencev1.GatewaySpec_BodyBasedRouting{
+					BodyBasedRouting: &inferencev1.BodyBasedRouting{
+						ApiType: inferencev1.BodyBasedRouting_API_TYPE_OPENAI,
+					},
+				},
+			},
+			Status: &inferencev1.GatewayStatus{
+				Status:    status,
+				UpdatedAt: updatedAt,
+				Conditions: []*inferencev1.Condition{
+					{Type: "Ready", Status: inferencev1.Condition_STATUS_TRUE, Reason: condReason},
+				},
+			},
+		}
+	}
+
+	prior := base(inferencev1.Status_STATUS_READY, "test-gw", "AsExpected", timestamppb.New(time.Unix(1000, 0).UTC()))
+	fresh := base(inferencev1.Status_STATUS_UPDATING, "test-gw-renamed", "Reconciling", timestamppb.New(time.Unix(2000, 0).UTC()))
+
+	// Seed the model with prior-state values (what the plan holds on Update).
+	m := &inference.InferenceGatewayResourceModel{}
+	if diags := inference.SetFromGateway(m, prior, false); diags.HasError() {
+		t.Fatalf("seed SetFromGateway returned errors: %v", diags)
+	}
+	priorStatus := m.Status
+	priorUpdatedAt := m.UpdatedAt
+	priorConditions := m.Conditions
+
+	// Update path: status fields must be preserved, spec fields refreshed.
+	if diags := inference.SetFromGateway(m, fresh, true); diags.HasError() {
+		t.Fatalf("preserve SetFromGateway returned errors: %v", diags)
+	}
+	if !m.Status.Equal(priorStatus) {
+		t.Errorf("Status: expected preserved %v, got %v", priorStatus, m.Status)
+	}
+	if !m.UpdatedAt.Equal(priorUpdatedAt) {
+		t.Errorf("UpdatedAt: expected preserved %v, got %v", priorUpdatedAt, m.UpdatedAt)
+	}
+	if !m.Conditions.Equal(priorConditions) {
+		t.Errorf("Conditions: expected preserved %v, got %v", priorConditions, m.Conditions)
+	}
+	if m.Name.ValueString() != "test-gw-renamed" {
+		t.Errorf("Name: expected spec to refresh to 'test-gw-renamed', got %q", m.Name.ValueString())
+	}
+
+	// Read path: status fields must refresh from the API response.
+	if diags := inference.SetFromGateway(m, fresh, false); diags.HasError() {
+		t.Fatalf("refresh SetFromGateway returned errors: %v", diags)
+	}
+	if m.Status.ValueString() != inferencev1.Status_STATUS_UPDATING.String() {
+		t.Errorf("Status: expected refreshed %q, got %q", inferencev1.Status_STATUS_UPDATING.String(), m.Status.ValueString())
+	}
+	if m.UpdatedAt.Equal(priorUpdatedAt) {
+		t.Errorf("UpdatedAt: expected refresh to differ from prior %v, got %v", priorUpdatedAt, m.UpdatedAt)
+	}
+	if m.Conditions.Equal(priorConditions) {
+		t.Errorf("Conditions: expected refresh to differ from prior, got %v", m.Conditions)
 	}
 }
 
@@ -115,7 +196,7 @@ func TestSetFromGateway_WeightsAndBiasesAuth(t *testing.T) {
 		},
 	}
 
-	diags := inference.SetFromGateway(m, gw)
+	diags := inference.SetFromGateway(m, gw, false)
 	if diags.HasError() {
 		t.Fatalf("SetFromGateway returned errors: %v", diags)
 	}
@@ -183,7 +264,7 @@ func TestSetFromGateway_NullPreservation(t *testing.T) {
 		EndpointConfiguration: nil,
 	}
 
-	diags := inference.SetFromGateway(m, gw)
+	diags := inference.SetFromGateway(m, gw, false)
 	if diags.HasError() {
 		t.Fatalf("SetFromGateway returned errors: %v", diags)
 	}
@@ -231,7 +312,7 @@ func TestSetFromGateway_BodyBasedRouting(t *testing.T) {
 	}
 
 	m := &inference.InferenceGatewayResourceModel{}
-	diags := inference.SetFromGateway(m, gw)
+	diags := inference.SetFromGateway(m, gw, false)
 	if diags.HasError() {
 		t.Fatalf("SetFromGateway returned errors: %v", diags)
 	}
@@ -273,7 +354,7 @@ func TestSetFromGateway_HeaderBasedRouting(t *testing.T) {
 	}
 
 	m := &inference.InferenceGatewayResourceModel{}
-	diags := inference.SetFromGateway(m, gw)
+	diags := inference.SetFromGateway(m, gw, false)
 	if diags.HasError() {
 		t.Fatalf("SetFromGateway returned errors: %v", diags)
 	}
@@ -313,7 +394,7 @@ func TestSetFromGateway_PathBasedRouting(t *testing.T) {
 	}
 
 	m := &inference.InferenceGatewayResourceModel{}
-	diags := inference.SetFromGateway(m, gw)
+	diags := inference.SetFromGateway(m, gw, false)
 	if diags.HasError() {
 		t.Fatalf("SetFromGateway returned errors: %v", diags)
 	}
@@ -669,6 +750,10 @@ func TestInferenceGateway(t *testing.T) {
 					ResourceName:      fullResourceName,
 					ImportState:       true,
 					ImportStateVerify: true,
+					// Server-observed fields are intentionally not refreshed into state on
+					// Update (see setFromGateway preserveStatusFields); a fresh import Read
+					// legitimately observes newer values, so they can't be verified here.
+					ImportStateVerifyIgnore: []string{"status", "updated_at", "conditions"},
 				},
 			},
 		})
