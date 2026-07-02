@@ -108,7 +108,7 @@ func TestBucketInventoryBasic(t *testing.T) {
 	randomInt := rand.IntN(100000)
 	bucket := objectstorage.BucketResourceModel{
 		Name: types.StringValue(fmt.Sprintf("%sinv-bucket-%x", AcceptanceTestPrefix, randomInt)),
-		Zone: types.StringValue("US-LAB-01A"),
+		Zone: types.StringValue("US-EAST-04A"),
 	}
 
 	resourceName := "test_inv"
@@ -227,7 +227,7 @@ func TestBucketInventoryDisappears(t *testing.T) {
 	randomInt := rand.IntN(100000)
 	bucket := objectstorage.BucketResourceModel{
 		Name: types.StringValue(fmt.Sprintf("%sinv-disp-%x", AcceptanceTestPrefix, randomInt)),
-		Zone: types.StringValue("US-LAB-01A"),
+		Zone: types.StringValue("US-EAST-04A"),
 	}
 
 	resourceName := "test_inv_disappear"
