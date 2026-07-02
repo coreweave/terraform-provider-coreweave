@@ -59,7 +59,7 @@ func TestSetFromGateway_CoreWeaveAuth(t *testing.T) {
 	}
 
 	m := &inference.InferenceGatewayResourceModel{}
-	diags := inference.SetFromGateway(m, gw)
+	diags := inference.SetFromGateway(m, gw, false)
 	if diags.HasError() {
 		t.Fatalf("SetFromGateway returned errors: %v", diags)
 	}
@@ -115,7 +115,7 @@ func TestSetFromGateway_WeightsAndBiasesAuth(t *testing.T) {
 		},
 	}
 
-	diags := inference.SetFromGateway(m, gw)
+	diags := inference.SetFromGateway(m, gw, false)
 	if diags.HasError() {
 		t.Fatalf("SetFromGateway returned errors: %v", diags)
 	}
@@ -183,7 +183,7 @@ func TestSetFromGateway_NullPreservation(t *testing.T) {
 		EndpointConfiguration: nil,
 	}
 
-	diags := inference.SetFromGateway(m, gw)
+	diags := inference.SetFromGateway(m, gw, false)
 	if diags.HasError() {
 		t.Fatalf("SetFromGateway returned errors: %v", diags)
 	}
@@ -231,7 +231,7 @@ func TestSetFromGateway_BodyBasedRouting(t *testing.T) {
 	}
 
 	m := &inference.InferenceGatewayResourceModel{}
-	diags := inference.SetFromGateway(m, gw)
+	diags := inference.SetFromGateway(m, gw, false)
 	if diags.HasError() {
 		t.Fatalf("SetFromGateway returned errors: %v", diags)
 	}
@@ -273,7 +273,7 @@ func TestSetFromGateway_HeaderBasedRouting(t *testing.T) {
 	}
 
 	m := &inference.InferenceGatewayResourceModel{}
-	diags := inference.SetFromGateway(m, gw)
+	diags := inference.SetFromGateway(m, gw, false)
 	if diags.HasError() {
 		t.Fatalf("SetFromGateway returned errors: %v", diags)
 	}
@@ -313,7 +313,7 @@ func TestSetFromGateway_PathBasedRouting(t *testing.T) {
 	}
 
 	m := &inference.InferenceGatewayResourceModel{}
-	diags := inference.SetFromGateway(m, gw)
+	diags := inference.SetFromGateway(m, gw, false)
 	if diags.HasError() {
 		t.Fatalf("SetFromGateway returned errors: %v", diags)
 	}
