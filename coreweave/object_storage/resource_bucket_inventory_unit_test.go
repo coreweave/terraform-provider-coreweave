@@ -326,8 +326,15 @@ func TestInventorySchema_DestinationFormatValidator(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 
-	vals := nestedStringValidators(t, inventorySchema(t), "destination", "format")
-	require.NotEmpty(t, vals, "destination.format should have validators")
+	// format lives at destination.bucket.format (two levels of SingleNestedBlock).
+	destBlock, ok := inventorySchema(t).Blocks["destination"].(schema.SingleNestedBlock)
+	require.True(t, ok, "destination is not a SingleNestedBlock")
+	bucketBlock, ok := destBlock.Blocks["bucket"].(schema.SingleNestedBlock)
+	require.True(t, ok, "destination.bucket is not a SingleNestedBlock")
+	formatAttr, ok := bucketBlock.Attributes["format"].(schema.StringAttribute)
+	require.True(t, ok, "destination.bucket.format is not a StringAttribute")
+	vals := formatAttr.StringValidators()
+	require.NotEmpty(t, vals, "destination.bucket.format should have validators")
 
 	cases := map[string]struct {
 		value   string

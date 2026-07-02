@@ -1,6 +1,7 @@
 package objectstorage
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -15,6 +16,8 @@ import (
 	"github.com/aws/smithy-go"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
 
+	"github.com/hashicorp/hcl/v2/hclsyntax"
+	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -27,6 +30,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework-validators/setvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/objectvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
+	"github.com/zclconf/go-cty/cty"
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
@@ -103,9 +107,10 @@ func (r *BucketInventoryResource) Schema(ctx context.Context, req resource.Schem
 				PlanModifiers: []planmodifier.String{stringplanmodifier.RequiresReplace()},
 			},
 			"enabled": schema.BoolAttribute{
-				Required:            true,
+				Optional:            true,
+				Computed:            true,
 				Default:             booldefault.StaticBool(true),
-				MarkdownDescription: "Whether the inventory configuration is enabled",
+				MarkdownDescription: "Whether the inventory configuration is enabled. Defaults to `true`.",
 			},
 			"included_object_versions": schema.StringAttribute{
 				Required:            true,
@@ -142,23 +147,29 @@ func (r *BucketInventoryResource) Schema(ctx context.Context, req resource.Schem
 			},
 			"destination": schema.SingleNestedBlock{
 				MarkdownDescription: "Where the inventory report is written. May be the same bucket as the source.",
-				Attributes: map[string]schema.Attribute{
-					"bucket": schema.StringAttribute{
-						Required:            true,
+				Blocks: map[string]schema.Block{
+					"bucket": schema.SingleNestedBlock{
 						MarkdownDescription: "Destination bucket for the report (may equal the source bucket).",
-					},
-					"format": schema.StringAttribute{
-						Required:            true,
-						MarkdownDescription: "Output format: `CSV`, `TSV`, `JSON`, `ORC`, or `Parquet`.",
-						Validators:          []validator.String{stringvalidator.OneOf("CSV", "TSV", "JSON", "ORC", "Parquet")},
-					},
-					"prefix": schema.StringAttribute{
-						Optional:            true,
-						MarkdownDescription: "Prefix prepended to the report output path.",
-					},
-					"account_id": schema.StringAttribute{
-						Optional:            true,
-						MarkdownDescription: "Account ID of the destination bucket owner.",
+						Attributes: map[string]schema.Attribute{
+							"bucket_arn": schema.StringAttribute{
+								Required:            true,
+								MarkdownDescription: "ARN of the destination bucket.",
+							},
+							"format": schema.StringAttribute{
+								Required:            true,
+								MarkdownDescription: "Output format: `CSV`, `TSV`, `JSON`, `ORC`, or `Parquet`.",
+								Validators:          []validator.String{stringvalidator.OneOf("CSV", "TSV", "JSON", "ORC", "Parquet")},
+							},
+							"prefix": schema.StringAttribute{
+								Optional:            true,
+								MarkdownDescription: "Prefix prepended to the report output path.",
+							},
+							"account_id": schema.StringAttribute{
+								Optional:            true,
+								MarkdownDescription: "Account ID of the destination bucket owner.",
+							},
+						},
+						Validators: []validator.Object{objectvalidator.IsRequired()},
 					},
 				},
 				Validators: []validator.Object{objectvalidator.IsRequired()},
@@ -621,4 +632,70 @@ func (r *BucketInventoryResource) ImportState(ctx context.Context, req resource.
 	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+}
+
+// MustRenderBucketInventoryResource renders HCL for an inventory configuration.
+// It mirrors the other object-storage Must* helpers used by acceptance tests.
+// The bucket attribute is emitted as a raw token so callers can pass a resource
+// reference (e.g. coreweave_object_storage_bucket.x.name); every other value is
+// emitted as a literal.
+func MustRenderBucketInventoryResource(ctx context.Context, name string, cfg *BucketInventoryResourceModel) string {
+	file := hclwrite.NewEmptyFile()
+	body := file.Body()
+
+	block := body.AppendNewBlock("resource", []string{"coreweave_object_storage_bucket_inventory", name})
+	b := block.Body()
+
+	// bucket rendered as a raw reference token, not a quoted string.
+	b.SetAttributeRaw("bucket", hclwrite.Tokens{{Type: hclsyntax.TokenIdent, Bytes: []byte(cfg.Bucket.ValueString())}})
+
+	b.SetAttributeValue("name", cty.StringVal(cfg.Name.ValueString()))
+	if !cfg.Enabled.IsNull() {
+		b.SetAttributeValue("enabled", cty.BoolVal(cfg.Enabled.ValueBool()))
+	}
+	b.SetAttributeValue("included_object_versions", cty.StringVal(cfg.IncludedObjectVersions.ValueString()))
+
+	if !cfg.OptionalFields.IsNull() {
+		var fields []string
+		cfg.OptionalFields.ElementsAs(ctx, &fields, false)
+		vals := make([]cty.Value, 0, len(fields))
+		for _, f := range fields {
+			vals = append(vals, cty.StringVal(f))
+		}
+		if len(vals) > 0 {
+			b.SetAttributeValue("optional_fields", cty.SetVal(vals))
+		}
+	}
+
+	if cfg.Filter != nil {
+		fb := b.AppendNewBlock("filter", nil).Body()
+		if !cfg.Filter.Prefix.IsNull() {
+			fb.SetAttributeValue("prefix", cty.StringVal(cfg.Filter.Prefix.ValueString()))
+		}
+	}
+
+	if cfg.Schedule != nil {
+		sb := b.AppendNewBlock("schedule", nil).Body()
+		sb.SetAttributeValue("frequency", cty.StringVal(cfg.Schedule.Frequency.ValueString()))
+	}
+
+	if cfg.Destination != nil && cfg.Destination.Bucket != nil {
+		db := b.AppendNewBlock("destination", nil).Body()
+		bb := db.AppendNewBlock("bucket", nil).Body()
+		dest := cfg.Destination.Bucket
+		bb.SetAttributeValue("bucket_arn", cty.StringVal(dest.BucketArn.ValueString()))
+		bb.SetAttributeValue("format", cty.StringVal(dest.Format.ValueString()))
+		if !dest.Prefix.IsNull() {
+			bb.SetAttributeValue("prefix", cty.StringVal(dest.Prefix.ValueString()))
+		}
+		if !dest.AccountId.IsNull() {
+			bb.SetAttributeValue("account_id", cty.StringVal(dest.AccountId.ValueString()))
+		}
+	}
+
+	var buf bytes.Buffer
+	if _, err := file.WriteTo(&buf); err != nil {
+		panic(err)
+	}
+	return buf.String()
 }
