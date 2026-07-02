@@ -23,6 +23,11 @@ import (
 	"github.com/hashicorp/terraform-plugin-testing/tfjsonpath"
 )
 
+// inventoryDestinationPolicy grants the S3 inventory service write access to
+// the destination bucket so PutBucketInventoryConfiguration is accepted. It
+// mirrors the allow-all policy used by the bucket policy acceptance tests.
+const inventoryDestinationPolicy = `{"Statement":[{"Action":["s3:*"],"Effect":"Allow","Principal":{"CW":"*"},"Resource":["arn:aws:s3:::*"],"Sid":"allow-inventory"}],"Version":"2012-10-17"}`
+
 type inventoryTestConfig struct {
 	name             string
 	resourceName     string
@@ -38,11 +43,24 @@ func createInventoryTestStep(ctx context.Context, t *testing.T, opts inventoryTe
 
 	bucketHCL := objectstorage.MustRenderBucketResource(ctx, "test_bucket", &opts.bucket)
 
+	// The S3 inventory service must be able to PutObject to the destination
+	// bucket, or PutBucketInventoryConfiguration is rejected with
+	// IllegalInventoryConfigurationException. Grant that access via a bucket
+	// policy on the destination (here the same bucket as the source).
+	policyName := opts.resourceName + "_dest"
+	policyHCL := objectstorage.MustRenderBucketPolicyResource(ctx, policyName, &objectstorage.BucketPolicyResourceModel{
+		Bucket: types.StringValue(fmt.Sprintf("coreweave_object_storage_bucket.%s.name", "test_bucket")),
+		Policy: types.StringValue(inventoryDestinationPolicy),
+	})
+
 	inv := opts.inventory
 	inv.Bucket = types.StringValue(fmt.Sprintf("coreweave_object_storage_bucket.%s.name", "test_bucket"))
-	invHCL := objectstorage.MustRenderBucketInventoryResource(ctx, opts.resourceName, &inv)
+	// depends_on the destination policy so it is in place before the inventory
+	// service validates it can write reports to the destination.
+	invHCL := objectstorage.MustRenderBucketInventoryResource(ctx, opts.resourceName, &inv,
+		fmt.Sprintf("coreweave_object_storage_bucket_policy.%s", policyName))
 
-	config := bucketHCL + invHCL
+	config := bucketHCL + policyHCL + invHCL
 	rs := fmt.Sprintf("coreweave_object_storage_bucket_inventory.%s", opts.resourceName)
 
 	checks := []statecheck.StateCheck{
@@ -66,11 +84,15 @@ func createInventoryTestStep(ctx context.Context, t *testing.T, opts inventoryTe
 
 	return resource.TestStep{
 		PreConfig: func() {
-			t.Logf("beginning coreweave_object_storage_bucket_inventory %s test", opts.name)
+			t.Logf("beginning coreweave_object_storage_bucket_inventory %s step", opts.name)
 		},
 		Config:            config,
 		ConfigPlanChecks:  opts.configPlanChecks,
 		ConfigStateChecks: checks,
+		Check: func(*terraform.State) error {
+			t.Logf("completed coreweave_object_storage_bucket_inventory %s step", opts.name)
+			return nil
+		},
 	}
 }
 
@@ -80,13 +102,13 @@ func createInventoryTestStep(ctx context.Context, t *testing.T, opts inventoryTe
 //   - change optional_fields + schedule and assert an UPDATE is planned & applied
 //   - re-apply the changed config and assert an EMPTY plan again
 //   - import round-trip
-func TestBucketInventory(t *testing.T) {
+func TestBucketInventoryBasic(t *testing.T) {
 	ctx := context.Background()
 
 	randomInt := rand.IntN(100000)
 	bucket := objectstorage.BucketResourceModel{
 		Name: types.StringValue(fmt.Sprintf("%sinv-bucket-%x", AcceptanceTestPrefix, randomInt)),
-		Zone: types.StringValue("US-EAST-04A"),
+		Zone: types.StringValue("US-LAB-01A"),
 	}
 
 	resourceName := "test_inv"
@@ -174,10 +196,18 @@ func TestBucketInventory(t *testing.T) {
 		}),
 		// 5. import round-trip using the "<bucket>:<name>" composite ID
 		{
-			ResourceName:      rs,
-			ImportState:       true,
-			ImportStateVerify: true,
-			ImportStateId:     fmt.Sprintf("%s:%s", bucket.Name.ValueString(), updated.Name.ValueString()),
+			PreConfig: func() {
+				t.Logf("beginning coreweave_object_storage_bucket_inventory import step")
+			},
+			ResourceName:                         rs,
+			ImportState:                          true,
+			ImportStateVerify:                    true,
+			ImportStateVerifyIdentifierAttribute: "name",
+			ImportStateId:                        fmt.Sprintf("%s:%s", bucket.Name.ValueString(), updated.Name.ValueString()),
+			ImportStateCheck: func([]*terraform.InstanceState) error {
+				t.Logf("completed coreweave_object_storage_bucket_inventory import step")
+				return nil
+			},
 		},
 	}
 
@@ -197,7 +227,7 @@ func TestBucketInventory_Disappears(t *testing.T) {
 	randomInt := rand.IntN(100000)
 	bucket := objectstorage.BucketResourceModel{
 		Name: types.StringValue(fmt.Sprintf("%sinv-disp-%x", AcceptanceTestPrefix, randomInt)),
-		Zone: types.StringValue("US-EAST-04A"),
+		Zone: types.StringValue("US-LAB-01A"),
 	}
 
 	resourceName := "test_inv_disappear"
@@ -221,8 +251,18 @@ func TestBucketInventory_Disappears(t *testing.T) {
 		},
 	}
 
+	// Grant the inventory service write access to the destination bucket, and
+	// order the inventory after it, so PutBucketInventoryConfiguration is accepted.
+	policyName := resourceName + "_dest"
+	policyHCL := objectstorage.MustRenderBucketPolicyResource(ctx, policyName, &objectstorage.BucketPolicyResourceModel{
+		Bucket: types.StringValue(fmt.Sprintf("coreweave_object_storage_bucket.%s.name", "test_bucket")),
+		Policy: types.StringValue(inventoryDestinationPolicy),
+	})
+
 	config := objectstorage.MustRenderBucketResource(ctx, "test_bucket", &bucket) +
-		objectstorage.MustRenderBucketInventoryResource(ctx, resourceName, &inv)
+		policyHCL +
+		objectstorage.MustRenderBucketInventoryResource(ctx, resourceName, &inv,
+			fmt.Sprintf("coreweave_object_storage_bucket_policy.%s", policyName))
 
 	resource.ParallelTest(t, resource.TestCase{
 		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,

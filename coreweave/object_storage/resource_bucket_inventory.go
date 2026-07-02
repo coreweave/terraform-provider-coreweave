@@ -639,7 +639,7 @@ func (r *BucketInventoryResource) ImportState(ctx context.Context, req resource.
 // The bucket attribute is emitted as a raw token so callers can pass a resource
 // reference (e.g. coreweave_object_storage_bucket.x.name); every other value is
 // emitted as a literal.
-func MustRenderBucketInventoryResource(ctx context.Context, name string, cfg *BucketInventoryResourceModel) string {
+func MustRenderBucketInventoryResource(ctx context.Context, name string, cfg *BucketInventoryResourceModel, dependsOn ...string) string {
 	file := hclwrite.NewEmptyFile()
 	body := file.Body()
 
@@ -648,6 +648,21 @@ func MustRenderBucketInventoryResource(ctx context.Context, name string, cfg *Bu
 
 	// bucket rendered as a raw reference token, not a quoted string.
 	b.SetAttributeRaw("bucket", hclwrite.Tokens{{Type: hclsyntax.TokenIdent, Bytes: []byte(cfg.Bucket.ValueString())}})
+
+	// depends_on rendered as raw reference tokens (a list of resource addresses),
+	// so the destination bucket's policy is applied before the inventory service
+	// validates it can write reports to the destination.
+	if len(dependsOn) > 0 {
+		toks := hclwrite.Tokens{{Type: hclsyntax.TokenOBrack, Bytes: []byte("[")}}
+		for i, dep := range dependsOn {
+			if i > 0 {
+				toks = append(toks, &hclwrite.Token{Type: hclsyntax.TokenComma, Bytes: []byte(",")})
+			}
+			toks = append(toks, &hclwrite.Token{Type: hclsyntax.TokenIdent, Bytes: []byte(dep)})
+		}
+		toks = append(toks, &hclwrite.Token{Type: hclsyntax.TokenCBrack, Bytes: []byte("]")})
+		b.SetAttributeRaw("depends_on", toks)
+	}
 
 	b.SetAttributeValue("name", cty.StringVal(cfg.Name.ValueString()))
 	if !cfg.Enabled.IsNull() {
