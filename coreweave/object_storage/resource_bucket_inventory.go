@@ -83,7 +83,7 @@ type BucketModel struct {
 	BucketArn types.String `tfsdk:"bucket_arn"`
 	Format    types.String `tfsdk:"format"`
 	Prefix    types.String `tfsdk:"prefix"`
-	AccountId types.String `tfsdk:"account_id"`
+	AccountID types.String `tfsdk:"account_id"`
 }
 
 func (r *BucketInventoryResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -223,8 +223,8 @@ func expandInventoryConfiguration(ctx context.Context, data *BucketInventoryReso
 		if !b.Prefix.IsNull() {
 			dest.Prefix = aws.String(b.Prefix.ValueString())
 		}
-		if !b.AccountId.IsNull() {
-			dest.AccountId = aws.String(b.AccountId.ValueString())
+		if !b.AccountID.IsNull() {
+			dest.AccountId = aws.String(b.AccountID.ValueString())
 		}
 		cfg.Destination = &s3types.InventoryDestination{
 			S3BucketDestination: dest,
@@ -440,7 +440,7 @@ func flattenInventoryConfiguration(ctx context.Context, in *s3types.InventoryCon
 				BucketArn: types.StringPointerValue(dest.Bucket),
 				Format:    types.StringValue(string(dest.Format)),
 				Prefix:    types.StringPointerValue(dest.Prefix),
-				AccountId: types.StringPointerValue(dest.AccountId),
+				AccountID: types.StringPointerValue(dest.AccountId),
 			},
 		}
 	} else {
@@ -702,8 +702,8 @@ func MustRenderBucketInventoryResource(ctx context.Context, name string, cfg *Bu
 		if !dest.Prefix.IsNull() {
 			bb.SetAttributeValue("prefix", cty.StringVal(dest.Prefix.ValueString()))
 		}
-		if !dest.AccountId.IsNull() {
-			bb.SetAttributeValue("account_id", cty.StringVal(dest.AccountId.ValueString()))
+		if !dest.AccountID.IsNull() {
+			bb.SetAttributeValue("account_id", cty.StringVal(dest.AccountID.ValueString()))
 		}
 	}
 

@@ -337,8 +337,8 @@ func testAccCheckInventoryDestroy(ctx context.Context) resource.TestCheckFunc {
 // deleteInventoryOutOfBand deletes an inventory configuration directly via the
 // API, simulating drift caused by an external actor.
 func deleteInventoryOutOfBand(ctx context.Context, t *testing.T, bucket, id string) resource.TestCheckFunc {
+	t.Helper()
 	return func(*terraform.State) error {
-		t.Helper()
 		testutil.SetEnvDefaults()
 		client, err := provider.BuildClient(ctx, provider.CoreweaveProviderModel{}, "", "")
 		if err != nil {

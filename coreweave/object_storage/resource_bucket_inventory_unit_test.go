@@ -36,7 +36,7 @@ func fullInventoryModel() *BucketInventoryResourceModel {
 				BucketArn: types.StringValue("arn:aws:s3:::dest-bucket"),
 				Format:    types.StringValue("CSV"),
 				Prefix:    types.StringValue("reports/"),
-				AccountId: types.StringValue("123456789012"),
+				AccountID: types.StringValue("123456789012"),
 			},
 		},
 	}
@@ -136,7 +136,7 @@ func TestFlattenInventoryConfiguration(t *testing.T) {
 	require.Equal(t, "arn:aws:s3:::dest-bucket", data.Destination.Bucket.BucketArn.ValueString())
 	require.Equal(t, "Parquet", data.Destination.Bucket.Format.ValueString())
 	require.Equal(t, "reports/", data.Destination.Bucket.Prefix.ValueString())
-	require.Equal(t, "123456789012", data.Destination.Bucket.AccountId.ValueString())
+	require.Equal(t, "123456789012", data.Destination.Bucket.AccountID.ValueString())
 
 	var fields []string
 	require.False(t, data.OptionalFields.ElementsAs(ctx, &fields, false).HasError())
