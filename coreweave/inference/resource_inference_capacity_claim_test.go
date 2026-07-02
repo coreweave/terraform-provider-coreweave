@@ -77,7 +77,7 @@ func TestSetFromCapacityClaim_Fields(t *testing.T) {
 	}).Build()
 
 	var m inference.InferenceCapacityClaimResourceModel
-	diags := inference.SetFromCapacityClaim(&m, cc)
+	diags := inference.SetFromCapacityClaim(&m, cc, false)
 	if diags.HasError() {
 		t.Fatalf("SetFromCapacityClaim returned errors: %v", diags)
 	}

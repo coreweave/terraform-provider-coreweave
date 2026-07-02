@@ -17,6 +17,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
@@ -116,6 +117,7 @@ func (r *InferenceGatewayResource) Schema(_ context.Context, _ resource.SchemaRe
 			"status": schema.StringAttribute{
 				Computed:            true,
 				MarkdownDescription: "The current status of the gateway. See the [Inference API overview](https://docs.coreweave.com/products/inference/reference/api-overview) for status values.",
+				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
 			"created_at": schema.StringAttribute{
 				Computed:            true,
@@ -125,10 +127,12 @@ func (r *InferenceGatewayResource) Schema(_ context.Context, _ resource.SchemaRe
 			"updated_at": schema.StringAttribute{
 				Computed:            true,
 				MarkdownDescription: "RFC3339 timestamp of when the gateway was last updated.",
+				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
 			"conditions": schema.ListNestedAttribute{
 				Computed:            true,
 				MarkdownDescription: "Detailed status conditions for the gateway.",
+				PlanModifiers:       []planmodifier.List{listplanmodifier.UseStateForUnknown()},
 				NestedObject: schema.NestedAttributeObject{
 					Attributes: map[string]schema.Attribute{
 						"type": schema.StringAttribute{
@@ -312,7 +316,7 @@ func (r *InferenceGatewayResource) Create(ctx context.Context, req resource.Crea
 	}
 
 	// Save initial state before polling so the resource is tracked even if polling fails.
-	resp.Diagnostics.Append(setFromGateway(&data, createResp.Msg.Gateway)...)
+	resp.Diagnostics.Append(setFromGateway(&data, createResp.Msg.Gateway, false)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -367,7 +371,7 @@ func (r *InferenceGatewayResource) Create(ctx context.Context, req resource.Crea
 		return
 	}
 
-	resp.Diagnostics.Append(setFromGateway(&data, gw)...)
+	resp.Diagnostics.Append(setFromGateway(&data, gw, false)...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -390,7 +394,7 @@ func (r *InferenceGatewayResource) Read(ctx context.Context, req resource.ReadRe
 		return
 	}
 
-	resp.Diagnostics.Append(setFromGateway(&data, getResp.Msg.Gateway)...)
+	resp.Diagnostics.Append(setFromGateway(&data, getResp.Msg.Gateway, false)...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -415,7 +419,7 @@ func (r *InferenceGatewayResource) Update(ctx context.Context, req resource.Upda
 
 	// Save intermediate state before polling so an in-flight update is not lost
 	// if polling fails or times out.
-	resp.Diagnostics.Append(setFromGateway(&data, updateResp.Msg.Gateway)...)
+	resp.Diagnostics.Append(setFromGateway(&data, updateResp.Msg.Gateway, true)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -471,7 +475,7 @@ func (r *InferenceGatewayResource) Update(ctx context.Context, req resource.Upda
 		return
 	}
 
-	resp.Diagnostics.Append(setFromGateway(&data, gw)...)
+	resp.Diagnostics.Append(setFromGateway(&data, gw, true)...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -708,20 +712,29 @@ func toUpdateGatewayRequest(ctx context.Context, m *InferenceGatewayResourceMode
 // For Optional (non-Computed) fields, null is preserved when the plan/state was null and the
 // API returns the default (zero/empty) value.
 //
+// When preserveStatusFields is true, the observed status fields (status, updated_at,
+// conditions) are left untouched on the model. These fields carry UseStateForUnknown plan
+// modifiers, so during Update the plan holds their prior-state values; overwriting them with
+// the fresh API response would violate Terraform's plan/apply consistency check. Read always
+// refreshes them (preserveStatusFields=false).
+//
 //nolint:gocyclo
-func setFromGateway(m *InferenceGatewayResourceModel, gw *inferencev1.Gateway) (diagnostics diag.Diagnostics) {
+func setFromGateway(m *InferenceGatewayResourceModel, gw *inferencev1.Gateway, preserveStatusFields bool) (diagnostics diag.Diagnostics) {
 	spec := gw.GetSpec()
 	status := gw.GetStatus()
 
 	m.ID = types.StringValue(spec.GetId())
 	m.OrganizationID = types.StringValue(spec.GetOrganizationId())
 	m.Name = types.StringValue(spec.GetName())
-	m.Status = types.StringValue(status.GetStatus().String())
+
+	if !preserveStatusFields {
+		m.Status = types.StringValue(status.GetStatus().String())
+	}
 
 	if status.GetCreatedAt() != nil {
 		m.CreatedAt = types.StringValue(status.GetCreatedAt().AsTime().Format(time.RFC3339))
 	}
-	if status.GetUpdatedAt() != nil {
+	if !preserveStatusFields && status.GetUpdatedAt() != nil {
 		m.UpdatedAt = types.StringValue(status.GetUpdatedAt().AsTime().Format(time.RFC3339))
 	}
 
@@ -844,25 +857,27 @@ func setFromGateway(m *InferenceGatewayResourceModel, gw *inferencev1.Gateway) (
 	m.Endpoints = epSet
 
 	// conditions
-	condVals := make([]attr.Value, len(status.GetConditions()))
-	for i, c := range status.GetConditions() {
-		lastUpdate := ""
-		if c.GetLastUpdateTime() != nil {
-			lastUpdate = c.GetLastUpdateTime().AsTime().Format(time.RFC3339)
+	if !preserveStatusFields {
+		condVals := make([]attr.Value, len(status.GetConditions()))
+		for i, c := range status.GetConditions() {
+			lastUpdate := ""
+			if c.GetLastUpdateTime() != nil {
+				lastUpdate = c.GetLastUpdateTime().AsTime().Format(time.RFC3339)
+			}
+			condObj, diags := types.ObjectValue(conditionAttrTypes, map[string]attr.Value{
+				"type":             types.StringValue(c.GetType()),
+				"status":           types.StringValue(c.GetStatus().String()),
+				"last_update_time": types.StringValue(lastUpdate),
+				"reason":           types.StringValue(c.GetReason()),
+				"message":          types.StringValue(c.GetMessage()),
+			})
+			diagnostics.Append(diags...)
+			condVals[i] = condObj
 		}
-		condObj, diags := types.ObjectValue(conditionAttrTypes, map[string]attr.Value{
-			"type":             types.StringValue(c.GetType()),
-			"status":           types.StringValue(c.GetStatus().String()),
-			"last_update_time": types.StringValue(lastUpdate),
-			"reason":           types.StringValue(c.GetReason()),
-			"message":          types.StringValue(c.GetMessage()),
-		})
+		condList, diags := types.ListValue(types.ObjectType{AttrTypes: conditionAttrTypes}, condVals)
 		diagnostics.Append(diags...)
-		condVals[i] = condObj
+		m.Conditions = condList
 	}
-	condList, diags := types.ListValue(types.ObjectType{AttrTypes: conditionAttrTypes}, condVals)
-	diagnostics.Append(diags...)
-	m.Conditions = condList
 
 	return diagnostics
 }
