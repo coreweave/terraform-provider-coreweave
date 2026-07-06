@@ -11,6 +11,9 @@ resource "coreweave_inference_deployment" "example" {
     engine_config = {
       "max-model-len" = "8192"
     }
+    engine_env = {
+      VLLM_USE_FLASHINFER_MOE_FP4 = "0"
+    }
   }
 
   resources = {

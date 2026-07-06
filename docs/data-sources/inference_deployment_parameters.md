@@ -33,10 +33,19 @@ output "vllm_versions" {
 
 ### Read-Only
 
+- `engine_env_options` (Attributes Map) Available engine environment variable options per engine (keyed by engine name). (see [below for nested schema](#nestedatt--engine_env_options))
 - `gateway_ids` (Set of String) Gateway IDs available for the current organization.
 - `instance_types` (Set of String) Available instance types for deployments.
 - `runtime_config_options` (Attributes Map) Available runtime config options per engine (keyed by engine name). (see [below for nested schema](#nestedatt--runtime_config_options))
 - `runtime_versions` (Attributes Map) Available runtime versions per engine (keyed by engine name). (see [below for nested schema](#nestedatt--runtime_versions))
+
+<a id="nestedatt--engine_env_options"></a>
+### Nested Schema for `engine_env_options`
+
+Read-Only:
+
+- `allowed_names` (List of String) Environment variable names accepted by the engine's `engine_env` field.
+
 
 <a id="nestedatt--runtime_config_options"></a>
 ### Nested Schema for `runtime_config_options`
