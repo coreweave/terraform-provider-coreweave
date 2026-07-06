@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.0](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.16.0...v0.17.0) (2026-07-01)
+
+
+### Features
+
+* **inference:** Add support for dynamo-vllm runtime engine ([#342](https://github.com/coreweave/terraform-provider-coreweave/issues/342)) ([71070f3](https://github.com/coreweave/terraform-provider-coreweave/commit/71070f364deee8e654ff95549c9ea65cace708e6))
+
 ## [0.16.0](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.15.2...v0.16.0) (2026-06-30)
 
 
