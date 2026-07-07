@@ -15,6 +15,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/knownvalue"
+	"github.com/hashicorp/terraform-plugin-testing/plancheck"
 	"github.com/hashicorp/terraform-plugin-testing/statecheck"
 	"github.com/hashicorp/terraform-plugin-testing/tfjsonpath"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -392,6 +393,18 @@ func TestInferenceCapacityClaim(t *testing.T) {
 					Config: capacityClaimConfig(name, 2, preferredZone, preferredInstance),
 					ConfigStateChecks: []statecheck.StateCheck{
 						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("resources").AtMapKey("instance_count"), knownvalue.Int64Exact(2)),
+					},
+				},
+				{
+					// Re-applying the identical config after Update must be a no-op:
+					// the preserved server-observed fields (status, updated_at,
+					// conditions, allocated_instances, pending_instances) must not
+					// produce perpetual plan churn.
+					Config: capacityClaimConfig(name, 2, preferredZone, preferredInstance),
+					ConfigPlanChecks: resource.ConfigPlanChecks{
+						PreApply: []plancheck.PlanCheck{
+							plancheck.ExpectResourceAction(fullResourceName, plancheck.ResourceActionNoop),
+						},
 					},
 				},
 				{

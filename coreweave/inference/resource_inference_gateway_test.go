@@ -16,6 +16,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/knownvalue"
+	"github.com/hashicorp/terraform-plugin-testing/plancheck"
 	"github.com/hashicorp/terraform-plugin-testing/statecheck"
 	"github.com/hashicorp/terraform-plugin-testing/tfjsonpath"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -744,6 +745,17 @@ func TestInferenceGateway(t *testing.T) {
 					Config: gatewayUpdatedConfig(name, preferredZone),
 					ConfigStateChecks: []statecheck.StateCheck{
 						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("routing").AtMapKey("header_based").AtMapKey("header_name"), knownvalue.StringExact("X-Model-Name")),
+					},
+				},
+				{
+					// Re-applying the identical config after Update must be a no-op:
+					// the preserved server-observed fields (status, updated_at,
+					// conditions) must not produce perpetual plan churn.
+					Config: gatewayUpdatedConfig(name, preferredZone),
+					ConfigPlanChecks: resource.ConfigPlanChecks{
+						PreApply: []plancheck.PlanCheck{
+							plancheck.ExpectResourceAction(fullResourceName, plancheck.ResourceActionNoop),
+						},
 					},
 				},
 				{

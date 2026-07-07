@@ -16,6 +16,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/knownvalue"
+	"github.com/hashicorp/terraform-plugin-testing/plancheck"
 	"github.com/hashicorp/terraform-plugin-testing/statecheck"
 	"github.com/hashicorp/terraform-plugin-testing/tfjsonpath"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -639,6 +640,17 @@ func TestInferenceDeployment(t *testing.T) {
 						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("autoscaling").AtMapKey("max"), knownvalue.Int64Exact(4)),
 						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("disabled"), knownvalue.Bool(true)),
 						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("traffic").AtMapKey("weight"), knownvalue.Int64Exact(50)),
+					},
+				},
+				{
+					// Re-applying the identical config after Update must be a no-op:
+					// the preserved server-observed fields (status, updated_at,
+					// conditions) must not produce perpetual plan churn.
+					Config: inferenceDeploymentUpdatedConfig(name, preferredZone, preferredInstance),
+					ConfigPlanChecks: resource.ConfigPlanChecks{
+						PreApply: []plancheck.PlanCheck{
+							plancheck.ExpectResourceAction(fullResourceName, plancheck.ResourceActionNoop),
+						},
 					},
 				},
 				{
