@@ -51,6 +51,7 @@ resource "coreweave_cks_cluster" "default" {
   service_cidr_name      = "service cidr"
   internal_lb_cidr_names = ["internal lb cidr"]
   audit_policy           = filebase64("${path.module}/audit-policy.yaml")
+  kubelet                = jsonencode({ maxPods = 256 })
   oidc = {
     ca              = filebase64("${path.module}/example-ca.crt")
     client_id       = "kbyuFDidLLm280LIwVFiazOqjO3ty8KH"
@@ -94,6 +95,7 @@ The prefixes must exist in the cluster's VPC. This field is append-only.
 - `authn_webhook` (Attributes) Authentication webhook configuration for the cluster. (see [below for nested schema](#nestedatt--authn_webhook))
 - `authz_webhook` (Attributes) Authorization webhook configuration for the cluster. (see [below for nested schema](#nestedatt--authz_webhook))
 - `internal_lb_cidr_names_v6` (List of String) IPv6 Internal Load Balancer CIDR names. If any IPv6 field is set, then ALL IPv6 fields must be set.
+- `kubelet` (String) Selective overrides applied to every cluster Node's kubelet configuration, as a JSON object (e.g. `jsonencode({ maxPods = 256 })`). A Node reboot is required for changes to take effect, and unknown options are stored but ignored by CKS. See the [Kubernetes kubelet configuration reference](https://kubernetes.io/docs/tasks/administer-cluster/kubelet-config-file/) for supported options.
 - `node_port_range` (Attributes) Kubernetes Service NodePort range. NodePort range can be expanded in existing clusters but not shrunk. Updating the NodePort range to a smaller range will require a replacement of the cluster. (see [below for nested schema](#nestedatt--node_port_range))
 - `oidc` (Attributes) OpenID Connect (OIDC) configuration for authentication to the api-server. (see [below for nested schema](#nestedatt--oidc))
 - `pod_cidr_name_v6` (String) IPv6 Pod CIDR name. If any IPv6 field is set, then ALL IPv6 fields must be set.

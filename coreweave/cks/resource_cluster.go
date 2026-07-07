@@ -13,6 +13,7 @@ import (
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/hashicorp/hcl/v2/hclwrite"
+	"github.com/hashicorp/terraform-plugin-framework-jsontypes/jsontypes"
 	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/setvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
@@ -31,6 +32,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/retry"
 	"github.com/zclconf/go-cty/cty"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
+	"google.golang.org/protobuf/types/known/structpb"
 )
 
 const (
@@ -164,6 +166,7 @@ type ClusterResourceModel struct {
 	SharedStorageClusterId      types.String              `tfsdk:"shared_storage_cluster_id"` //nolint:staticcheck
 	AdditionalServerSans        types.Set                 `tfsdk:"additional_server_sans"`
 	Tailscale                   *TailscaleResourceModel   `tfsdk:"tailscale"`
+	Kubelet                     jsontypes.Normalized      `tfsdk:"kubelet"`
 }
 
 func nodePortEmpty(np *cksv1beta1.PortRange) bool {
@@ -321,6 +324,7 @@ func (c *ClusterResourceModel) Set(cluster *cksv1beta1.Cluster) {
 	}
 
 	c.setTailscale(cluster)
+	c.setKubelet(cluster)
 
 	// Note: SharedStorageClusterId is not returned by the API, so we preserve it from the plan.
 	// This is intentional since it's marked as RequiresReplace - Terraform will manage this value.
@@ -332,6 +336,42 @@ func (c *ClusterResourceModel) setTailscale(cluster *cksv1beta1.Cluster) {
 	} else {
 		c.Tailscale = nil
 	}
+}
+
+// setKubelet flattens the API's kubelet override struct into normalized JSON
+// state. When the API returns no overrides we preserve a null value so an unset
+// HCL block does not perpetually diff against an empty object. Normalized JSON
+// state compares semantically, so key ordering differences never produce drift.
+func (c *ClusterResourceModel) setKubelet(cluster *cksv1beta1.Cluster) {
+	if cluster.Kubelet == nil || len(cluster.Kubelet.GetFields()) == 0 {
+		c.Kubelet = jsontypes.NewNormalizedNull()
+		return
+	}
+
+	raw, err := cluster.Kubelet.MarshalJSON()
+	if err != nil {
+		// The value came from the API as a well-formed struct; a marshal failure
+		// here is not actionable by the user, so fall back to null rather than panic.
+		c.Kubelet = jsontypes.NewNormalizedNull()
+		return
+	}
+	c.Kubelet = jsontypes.NewNormalizedValue(string(raw))
+}
+
+// kubeletStruct converts the normalized-JSON kubelet attribute into the
+// *structpb.Struct the API expects. It returns nil when the attribute is unset.
+// The value is validated as a JSON object at plan time (see kubeletValidator),
+// so a parse failure here is not expected in practice.
+func (c *ClusterResourceModel) kubeletStruct() (*structpb.Struct, error) {
+	if c.Kubelet.IsNull() || c.Kubelet.IsUnknown() {
+		return nil, nil
+	}
+
+	s := &structpb.Struct{}
+	if err := s.UnmarshalJSON([]byte(c.Kubelet.ValueString())); err != nil {
+		return nil, err
+	}
+	return s, nil
 }
 
 func (c *ClusterResourceModel) oidcSigningAlgs(ctx context.Context) []cksv1beta1.SigningAlgorithm {
@@ -459,6 +499,12 @@ func (c *ClusterResourceModel) ToCreateRequest(ctx context.Context) *cksv1beta1.
 		req.Tailscale = &cksv1beta1.Tailscale{ClientId: c.Tailscale.ClientID.ValueString()}
 	}
 
+	// Errors are ignored here because the value is validated as a JSON object at
+	// plan time; a nil result simply omits the field from the request.
+	if kubelet, _ := c.kubeletStruct(); kubelet != nil {
+		req.Kubelet = kubelet
+	}
+
 	return req
 }
 
@@ -502,6 +548,52 @@ func authWebhookChanged(plan, state *AuthWebhookResourceModel) bool {
 		return false
 	}
 	return !plan.Server.Equal(state.Server) || !plan.CA.Equal(state.CA)
+}
+
+// kubeletChanged reports whether the kubelet configuration differs between plan
+// and state. It compares JSON semantically so that a re-serialized value with
+// reordered keys (as returned by the API) is not mistaken for a change, which
+// would otherwise trigger an unnecessary Node reboot.
+func kubeletChanged(ctx context.Context, plan, state *ClusterResourceModel) bool {
+	if plan.Kubelet.IsNull() != state.Kubelet.IsNull() {
+		return true
+	}
+	if plan.Kubelet.IsNull() {
+		return false
+	}
+	equal, _ := plan.Kubelet.StringSemanticEquals(ctx, state.Kubelet)
+	return !equal
+}
+
+// kubeletValidator ensures the kubelet attribute is a JSON object, matching the
+// google.protobuf.Struct shape the CKS API expects. jsontypes.Normalized already
+// guarantees the value is syntactically valid JSON; this rejects non-object JSON
+// (arrays, scalars) with a clear error at plan time.
+type kubeletValidator struct{}
+
+var _ validator.String = kubeletValidator{}
+
+func (kubeletValidator) Description(_ context.Context) string {
+	return "must be a JSON object of kubelet configuration overrides"
+}
+
+func (v kubeletValidator) MarkdownDescription(ctx context.Context) string {
+	return v.Description(ctx)
+}
+
+func (kubeletValidator) ValidateString(_ context.Context, req validator.StringRequest, resp *validator.StringResponse) {
+	if req.ConfigValue.IsNull() || req.ConfigValue.IsUnknown() {
+		return
+	}
+
+	s := &structpb.Struct{}
+	if err := s.UnmarshalJSON([]byte(req.ConfigValue.ValueString())); err != nil {
+		resp.Diagnostics.AddAttributeError(
+			req.Path,
+			"Invalid kubelet configuration",
+			fmt.Sprintf("The kubelet value must be a JSON object of kubelet configuration overrides: %s", err),
+		)
+	}
 }
 
 // buildUpdateRequest constructs an UpdateClusterRequest containing only the fields
@@ -597,6 +689,15 @@ func buildUpdateRequest(ctx context.Context, plan, state *ClusterResourceModel) 
 			req.Tailscale = &cksv1beta1.Tailscale{}
 		}
 		paths = append(paths, "tailscale.client_id")
+	}
+
+	if kubeletChanged(ctx, plan, state) {
+		// A nil struct clears the overrides; the mask path signals the change
+		// either way. Errors are ignored because the value is validated at plan time.
+		if kubelet, _ := plan.kubeletStruct(); kubelet != nil {
+			req.Kubelet = kubelet
+		}
+		paths = append(paths, "kubelet")
 	}
 
 	req.UpdateMask = &fieldmaskpb.FieldMask{Paths: paths}
@@ -964,6 +1065,14 @@ func (r *ClusterResource) Schema(ctx context.Context, req resource.SchemaRequest
 					},
 				},
 			},
+			"kubelet": schema.StringAttribute{
+				CustomType:          jsontypes.NormalizedType{},
+				Optional:            true,
+				MarkdownDescription: "Selective overrides applied to every cluster Node's kubelet configuration, as a JSON object (e.g. `jsonencode({ maxPods = 256 })`). A Node reboot is required for changes to take effect, and unknown options are stored but ignored by CKS. See the [Kubernetes kubelet configuration reference](https://kubernetes.io/docs/tasks/administer-cluster/kubelet-config-file/) for supported options.",
+				Validators: []validator.String{
+					kubeletValidator{},
+				},
+			},
 		},
 	}
 }
@@ -1291,6 +1400,10 @@ func MustRenderClusterResource(ctx context.Context, resourceName string, cluster
 		resourceBody.SetAttributeValue("tailscale", cty.ObjectVal(map[string]cty.Value{
 			"client_id": cty.StringVal(cluster.Tailscale.ClientID.ValueString()),
 		}))
+	}
+
+	if !cluster.Kubelet.IsNull() && !cluster.Kubelet.IsUnknown() {
+		resourceBody.SetAttributeValue("kubelet", cty.StringVal(cluster.Kubelet.ValueString()))
 	}
 
 	var buf bytes.Buffer
