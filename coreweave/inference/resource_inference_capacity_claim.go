@@ -19,6 +19,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/setplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
@@ -89,6 +90,7 @@ func (r *InferenceCapacityClaimResource) Schema(_ context.Context, _ resource.Sc
 			"status": schema.StringAttribute{
 				Computed:            true,
 				MarkdownDescription: "The current status of the capacity claim. See the [Inference API overview](https://docs.coreweave.com/products/inference/reference/api-overview#status-values) for status values.",
+				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
 			"created_at": schema.StringAttribute{
 				Computed:            true,
@@ -98,10 +100,12 @@ func (r *InferenceCapacityClaimResource) Schema(_ context.Context, _ resource.Sc
 			"updated_at": schema.StringAttribute{
 				Computed:            true,
 				MarkdownDescription: "RFC3339 timestamp of when the capacity claim was last updated.",
+				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
 			"conditions": schema.ListNestedAttribute{
 				Computed:            true,
 				MarkdownDescription: "Detailed status conditions for the capacity claim.",
+				PlanModifiers:       []planmodifier.List{listplanmodifier.UseStateForUnknown()},
 				NestedObject: schema.NestedAttributeObject{
 					Attributes: map[string]schema.Attribute{
 						"type": schema.StringAttribute{
@@ -228,7 +232,7 @@ func (r *InferenceCapacityClaimResource) Create(ctx context.Context, req resourc
 	}
 
 	// Save initial state before polling so the resource is tracked even if polling fails.
-	resp.Diagnostics.Append(setFromCapacityClaim(&data, createResp.Msg.GetCapacityClaim())...)
+	resp.Diagnostics.Append(setFromCapacityClaim(&data, createResp.Msg.GetCapacityClaim(), false)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -285,7 +289,7 @@ func (r *InferenceCapacityClaimResource) Create(ctx context.Context, req resourc
 		return
 	}
 
-	resp.Diagnostics.Append(setFromCapacityClaim(&data, cc)...)
+	resp.Diagnostics.Append(setFromCapacityClaim(&data, cc, false)...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -308,7 +312,7 @@ func (r *InferenceCapacityClaimResource) Read(ctx context.Context, req resource.
 		return
 	}
 
-	resp.Diagnostics.Append(setFromCapacityClaim(&data, getResp.Msg.GetCapacityClaim())...)
+	resp.Diagnostics.Append(setFromCapacityClaim(&data, getResp.Msg.GetCapacityClaim(), false)...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -333,7 +337,7 @@ func (r *InferenceCapacityClaimResource) Update(ctx context.Context, req resourc
 
 	// Save intermediate state before polling so an in-flight update is not lost
 	// if polling fails or times out.
-	resp.Diagnostics.Append(setFromCapacityClaim(&data, updateResp.Msg.GetCapacityClaim())...)
+	resp.Diagnostics.Append(setFromCapacityClaim(&data, updateResp.Msg.GetCapacityClaim(), true)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -391,7 +395,7 @@ func (r *InferenceCapacityClaimResource) Update(ctx context.Context, req resourc
 		return
 	}
 
-	resp.Diagnostics.Append(setFromCapacityClaim(&data, cc)...)
+	resp.Diagnostics.Append(setFromCapacityClaim(&data, cc, true)...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -517,21 +521,30 @@ func toUpdateCapacityClaimRequest(ctx context.Context, m *InferenceCapacityClaim
 }
 
 // setFromCapacityClaim populates all fields on the model from a proto CapacityClaim response.
-func setFromCapacityClaim(m *InferenceCapacityClaimResourceModel, cc *inferencev1.CapacityClaim) (diagnostics diag.Diagnostics) {
+//
+// When preserveStatusFields is true, the observed status fields (status, allocated_instances,
+// pending_instances, updated_at, conditions) are left untouched on the model. These fields
+// carry UseStateForUnknown plan modifiers, so during Update the plan holds their prior-state
+// values; overwriting them with the fresh API response would violate Terraform's plan/apply
+// consistency check. Read always refreshes them (preserveStatusFields=false).
+func setFromCapacityClaim(m *InferenceCapacityClaimResourceModel, cc *inferencev1.CapacityClaim, preserveStatusFields bool) (diagnostics diag.Diagnostics) {
 	spec := cc.GetSpec()
 	status := cc.GetStatus()
 
 	m.ID = types.StringValue(spec.GetId())
 	m.OrganizationID = types.StringValue(spec.GetOrganizationId())
 	m.Name = types.StringValue(spec.GetName())
-	m.Status = types.StringValue(status.GetStatus().String())
-	m.AllocatedInstances = types.Int64Value(int64(status.GetAllocatedInstances()))
-	m.PendingInstances = types.Int64Value(int64(status.GetPendingInstances()))
+
+	if !preserveStatusFields {
+		m.Status = types.StringValue(status.GetStatus().String())
+		m.AllocatedInstances = types.Int64Value(int64(status.GetAllocatedInstances()))
+		m.PendingInstances = types.Int64Value(int64(status.GetPendingInstances()))
+	}
 
 	if status.GetCreatedAt() != nil {
 		m.CreatedAt = types.StringValue(status.GetCreatedAt().AsTime().Format(time.RFC3339))
 	}
-	if status.GetUpdatedAt() != nil {
+	if !preserveStatusFields && status.GetUpdatedAt() != nil {
 		m.UpdatedAt = types.StringValue(status.GetUpdatedAt().AsTime().Format(time.RFC3339))
 	}
 
@@ -554,25 +567,11 @@ func setFromCapacityClaim(m *InferenceCapacityClaimResourceModel, cc *inferencev
 	}
 
 	// conditions
-	condVals := make([]attr.Value, len(status.GetConditions()))
-	for i, c := range status.GetConditions() {
-		lastUpdate := ""
-		if c.GetLastUpdateTime() != nil {
-			lastUpdate = c.GetLastUpdateTime().AsTime().Format(time.RFC3339)
-		}
-		condObj, diags := types.ObjectValue(conditionAttrTypes, map[string]attr.Value{
-			"type":             types.StringValue(c.GetType()),
-			"status":           types.StringValue(c.GetStatus().String()),
-			"last_update_time": types.StringValue(lastUpdate),
-			"reason":           types.StringValue(c.GetReason()),
-			"message":          types.StringValue(c.GetMessage()),
-		})
+	if !preserveStatusFields {
+		condList, diags := conditionsListFromStatus(status.GetConditions())
 		diagnostics.Append(diags...)
-		condVals[i] = condObj
+		m.Conditions = condList
 	}
-	condList, diags := types.ListValue(types.ObjectType{AttrTypes: conditionAttrTypes}, condVals)
-	diagnostics.Append(diags...)
-	m.Conditions = condList
 
 	return diagnostics
 }
