@@ -213,7 +213,7 @@ func TestBucketInventoryBasic(t *testing.T) {
 
 	resource.ParallelTest(t, resource.TestCase{
 		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
-		CheckDestroy:             testAccCheckInventoryDestroy(ctx),
+		CheckDestroy:             testAccCheckInventoryDestroy(ctx, t),
 		Steps:                    steps,
 	})
 }
@@ -266,7 +266,7 @@ func TestBucketInventoryDisappears(t *testing.T) {
 
 	resource.ParallelTest(t, resource.TestCase{
 		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
-		CheckDestroy:             testAccCheckInventoryDestroy(ctx),
+		CheckDestroy:             testAccCheckInventoryDestroy(ctx, t),
 		Steps: []resource.TestStep{
 			{
 				PreConfig: func() {
@@ -296,7 +296,8 @@ func TestBucketInventoryDisappears(t *testing.T) {
 // testAccCheckInventoryDestroy confirms every inventory configuration in state
 // is gone from the API after destroy — the assertion that Delete actually
 // removed the remote resource.
-func testAccCheckInventoryDestroy(ctx context.Context) resource.TestCheckFunc {
+func testAccCheckInventoryDestroy(ctx context.Context, t *testing.T) resource.TestCheckFunc {
+	t.Helper()
 	return func(s *terraform.State) error {
 		testutil.SetEnvDefaults()
 		client, err := provider.BuildClient(ctx, provider.CoreweaveProviderModel{}, "", "")
@@ -307,7 +308,7 @@ func testAccCheckInventoryDestroy(ctx context.Context) resource.TestCheckFunc {
 		if err != nil {
 			return fmt.Errorf("failed to create S3 client: %w", err)
 		}
-		fmt.Printf("[testAccCheckInventoryDestroy] checking for remaining inventory configurations in state after destroy")
+		t.Logf("[testAccCheckInventoryDestroy] checking for remaining inventory configurations in state after destroy")
 		for _, rs := range s.RootModule().Resources {
 			if rs.Type != "coreweave_object_storage_bucket_inventory" {
 				continue
@@ -344,7 +345,7 @@ func deleteInventoryOutOfBand(ctx context.Context, t *testing.T, bucket, id stri
 		if err != nil {
 			return fmt.Errorf("failed to build client: %w", err)
 		}
-		fmt.Printf("[deleteInventoryOutOfBand] Deleting inventory configuration %q on bucket %q out of band", id, bucket)
+		t.Logf("[deleteInventoryOutOfBand] Deleting inventory configuration %q on bucket %q out of band", id, bucket)
 		s3c, err := client.S3Client(ctx, "")
 		if err != nil {
 			return fmt.Errorf("failed to create S3 client: %w", err)
@@ -355,7 +356,7 @@ func deleteInventoryOutOfBand(ctx context.Context, t *testing.T, bucket, id stri
 		}); err != nil {
 			return fmt.Errorf("failed to delete inventory %q on bucket %q out of band: %w", id, bucket, err)
 		}
-		fmt.Printf("[deleteInventoryOutOfBand] Deleted")
+		t.Logf("[deleteInventoryOutOfBand] Deleted")
 		return nil
 	}
 }

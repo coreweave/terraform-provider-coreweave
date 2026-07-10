@@ -493,7 +493,7 @@ func (r *BucketInventoryResource) Read(ctx context.Context, req resource.ReadReq
 	})
 	if err != nil {
 		var apiErr smithy.APIError
-		if errors.As(err, &apiErr) && apiErr.ErrorCode() == ErrNoSuchInventoryConfiguration {
+		if errors.As(err, &apiErr) && ((apiErr.ErrorCode() == ErrNoSuchInventoryConfiguration) || (apiErr.ErrorCode() == ErrNoSuchBucket)) {
 			// The inventory configuration no longer exists remotely; drop it from
 			// state so Terraform plans to recreate it.
 			resp.State.RemoveResource(ctx)
