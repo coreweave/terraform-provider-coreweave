@@ -121,7 +121,10 @@ func (r *BucketInventoryResource) Schema(ctx context.Context, req resource.Schem
 				Optional:            true,
 				ElementType:         types.StringType,
 				MarkdownDescription: "List of optional fields to include in the inventory results",
-				Validators:          []validator.Set{setvalidator.ValueStringsAre(stringvalidator.OneOf("Size", "LastModifiedDate", "LastAccessedDate", "StorageClass", "ETag", "IsMultipartUploaded", "EncryptionStatus", "ChecksumAlgorithm"))},
+				Validators: []validator.Set{
+					setvalidator.SizeAtLeast(1),
+					setvalidator.ValueStringsAre(stringvalidator.OneOf("Size", "LastModifiedDate", "LastAccessedDate", "StorageClass", "ETag", "IsMultipartUploaded", "EncryptionStatus", "ChecksumAlgorithm")),
+				},
 			},
 		},
 		Blocks: map[string]schema.Block{
