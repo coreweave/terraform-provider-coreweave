@@ -65,7 +65,6 @@ resource "terraform_data" "cluster_tfvars" {
 resource "tailscale_federated_identity" "default" {
   description = var.cks_cluster.name
   issuer      = var.service_account_oidc_issuer_url
-  audience    = var.service_account_oidc_issuer_url
   subject     = "system:serviceaccount:cw-tailscale:tailscale"
   scopes = [
     "auth_keys",
