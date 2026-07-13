@@ -28,6 +28,7 @@ type InferenceDeploymentParametersDataSourceModel struct {
 	GatewayIds           types.Set `tfsdk:"gateway_ids"`
 	RuntimeVersions      types.Map `tfsdk:"runtime_versions"`
 	RuntimeConfigOptions types.Map `tfsdk:"runtime_config_options"`
+	EngineEnvOptions     types.Map `tfsdk:"engine_env_options"`
 	InstanceTypes        types.Set `tfsdk:"instance_types"`
 }
 
@@ -38,6 +39,10 @@ var (
 
 	runtimeConfigOptionsAttrTypes = map[string]attr.Type{
 		"allowed_keys": types.ListType{ElemType: types.StringType},
+	}
+
+	engineEnvOptionsAttrTypes = map[string]attr.Type{
+		"allowed_names": types.ListType{ElemType: types.StringType},
 	}
 )
 
@@ -76,6 +81,19 @@ func (d *InferenceDeploymentParametersDataSource) Schema(_ context.Context, _ da
 							Computed:            true,
 							ElementType:         types.StringType,
 							MarkdownDescription: "Configuration keys accepted by the engine's `engine_config` field.",
+						},
+					},
+				},
+			},
+			"engine_env_options": schema.MapNestedAttribute{
+				Computed:            true,
+				MarkdownDescription: "Available engine environment variable options per engine (keyed by engine name).",
+				NestedObject: schema.NestedAttributeObject{
+					Attributes: map[string]schema.Attribute{
+						"allowed_names": schema.ListAttribute{
+							Computed:            true,
+							ElementType:         types.StringType,
+							MarkdownDescription: "Environment variable names accepted by the engine's `engine_env` field.",
 						},
 					},
 				},
@@ -163,6 +181,26 @@ func (d *InferenceDeploymentParametersDataSource) Read(ctx context.Context, _ da
 		}
 	}
 	data.RuntimeConfigOptions = types.MapValueMust(types.ObjectType{AttrTypes: runtimeConfigOptionsAttrTypes}, rcoMap)
+
+	// engine_env_options: map[string]object{allowed_names: list[string]}
+	eeoMap := make(map[string]attr.Value)
+	if rp := msg.GetRuntimeParameters(); rp != nil {
+		for engine, eeo := range rp.GetEngineEnvOptions() {
+			nameVals := make([]attr.Value, len(eeo.GetAllowedNames()))
+			for i, name := range eeo.GetAllowedNames() {
+				nameVals[i] = types.StringValue(name)
+			}
+			obj, diags := types.ObjectValue(engineEnvOptionsAttrTypes, map[string]attr.Value{
+				"allowed_names": types.ListValueMust(types.StringType, nameVals),
+			})
+			resp.Diagnostics.Append(diags...)
+			if resp.Diagnostics.HasError() {
+				return
+			}
+			eeoMap[engine] = obj
+		}
+	}
+	data.EngineEnvOptions = types.MapValueMust(types.ObjectType{AttrTypes: engineEnvOptionsAttrTypes}, eeoMap)
 
 	// instance_types
 	var instanceTypeVals []attr.Value

@@ -22,6 +22,11 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
+const (
+	acceptanceEngineEnvName  = "VLLM_USE_FLASHINFER_MOE_FP4"
+	acceptanceEngineEnvValue = "0"
+)
+
 // --- Unit tests for pure helper functions ---
 
 func TestInferenceDeployment_Schema(t *testing.T) {
@@ -140,6 +145,7 @@ func TestInferenceDeployment_SetFromDeployment_NullPreservation(t *testing.T) {
 		Runtime: &inference.RuntimeModel{
 			Version:      types.StringNull(),
 			EngineConfig: types.MapNull(types.StringType),
+			EngineEnv:    types.MapNull(types.StringType),
 		},
 		Autoscaling: &inference.AutoscalingModel{
 			Priority:        types.Int64Null(),
@@ -159,6 +165,9 @@ func TestInferenceDeployment_SetFromDeployment_NullPreservation(t *testing.T) {
 	}
 	if !m.Runtime.EngineConfig.IsNull() {
 		t.Errorf("Runtime.EngineConfig: expected null when API returns empty map, got %v", m.Runtime.EngineConfig)
+	}
+	if !m.Runtime.EngineEnv.IsNull() {
+		t.Errorf("Runtime.EngineEnv: expected null when API returns empty map, got %v", m.Runtime.EngineEnv)
 	}
 	if !m.Autoscaling.Priority.IsNull() {
 		t.Errorf("Autoscaling.Priority: expected null when API returns 0, got %v", m.Autoscaling.Priority)
@@ -269,6 +278,63 @@ func TestSetFromDeployment_PreserveStatusFields(t *testing.T) {
 	}
 }
 
+func TestInferenceDeployment_SetFromDeployment_RuntimeMaps(t *testing.T) {
+	t.Parallel()
+
+	d := &inferencev1.Deployment{
+		Spec: &inferencev1.DeploymentSpec{
+			Id:   "test-id",
+			Name: "my-llm",
+			Runtime: &inferencev1.DeploymentRuntime{
+				Engine: "vllm",
+				EngineEnv: map[string]string{
+					"VLLM_LOGGING_LEVEL": "INFO",
+				},
+			},
+			Resources: &inferencev1.DeploymentResources{
+				InstanceType: "H100_80GB_SXM5",
+				GpuCount:     1,
+			},
+			Model: &inferencev1.DeploymentModel{
+				Name:   "meta-llama/Llama-3.1-8B",
+				Bucket: "my-bucket",
+				Path:   "models/llama",
+			},
+			Autoscaling: &inferencev1.DeploymentAutoscaling{
+				Min: 1,
+				Max: 4,
+			},
+		},
+		Status: &inferencev1.DeploymentStatus{
+			Status: inferencev1.Status_STATUS_READY,
+		},
+	}
+
+	m := &inference.InferenceDeploymentResourceModel{
+		Runtime: &inference.RuntimeModel{
+			Version:      types.StringNull(),
+			EngineConfig: types.MapNull(types.StringType),
+			EngineEnv:    types.MapNull(types.StringType),
+		},
+		Autoscaling: &inference.AutoscalingModel{
+			Priority:        types.Int64Null(),
+			CapacityClasses: types.ListNull(types.StringType),
+			Concurrency:     types.Int64Null(),
+		},
+	}
+
+	inference.SetFromDeployment(m, d, false)
+
+	var engineEnv map[string]string
+	diags := m.Runtime.EngineEnv.ElementsAs(t.Context(), &engineEnv, false)
+	if diags.HasError() {
+		t.Fatalf("EngineEnv ElementsAs returned errors: %v", diags)
+	}
+	if got := engineEnv["VLLM_LOGGING_LEVEL"]; got != "INFO" {
+		t.Errorf("Runtime.EngineEnv[\"VLLM_LOGGING_LEVEL\"]: got %q, want 'INFO'", got)
+	}
+}
+
 func TestInferenceDeployment_ToCreateRequest_OptionalFields(t *testing.T) {
 	t.Parallel()
 
@@ -283,6 +349,7 @@ func TestInferenceDeployment_ToCreateRequest_OptionalFields(t *testing.T) {
 			Engine:       types.StringValue("vllm"),
 			Version:      types.StringNull(),
 			EngineConfig: types.MapNull(types.StringType),
+			EngineEnv:    types.MapNull(types.StringType),
 		},
 		Resources: &inference.ResourcesModel{
 			InstanceType: types.StringValue("H100_80GB_SXM5"),
@@ -319,6 +386,9 @@ func TestInferenceDeployment_ToCreateRequest_OptionalFields(t *testing.T) {
 	if len(req.Runtime.EngineConfig) != 0 {
 		t.Errorf("Runtime.EngineConfig: expected empty map, got %v", req.Runtime.EngineConfig)
 	}
+	if len(req.Runtime.EngineEnv) != 0 {
+		t.Errorf("Runtime.EngineEnv: expected empty map, got %v", req.Runtime.EngineEnv)
+	}
 	if req.Autoscaling.Priority != 0 {
 		t.Errorf("Autoscaling.Priority: expected 0 when null, got %d", req.Autoscaling.Priority)
 	}
@@ -336,6 +406,9 @@ func TestInferenceDeployment_ToUpdateRequest_Fields(t *testing.T) {
 	ctx := t.Context()
 	gwIds := types.SetValueMust(types.StringType, []attr.Value{types.StringValue("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")})
 	ccList, _ := types.ListValueFrom(ctx, types.StringType, []string{"CAPACITY_CLASS_RESERVED"})
+	engineEnv := types.MapValueMust(types.StringType, map[string]attr.Value{
+		"VLLM_LOGGING_LEVEL": types.StringValue("INFO"),
+	})
 
 	m := &inference.InferenceDeploymentResourceModel{
 		ID:         types.StringValue("deploy-123"),
@@ -346,6 +419,7 @@ func TestInferenceDeployment_ToUpdateRequest_Fields(t *testing.T) {
 			Engine:       types.StringValue("vllm"),
 			Version:      types.StringValue("1.0.0"),
 			EngineConfig: types.MapNull(types.StringType),
+			EngineEnv:    engineEnv,
 		},
 		Resources: &inference.ResourcesModel{
 			InstanceType: types.StringValue("H100_80GB_SXM5"),
@@ -384,6 +458,9 @@ func TestInferenceDeployment_ToUpdateRequest_Fields(t *testing.T) {
 	}
 	if req.Runtime.Version != "1.0.0" {
 		t.Errorf("Runtime.Version: got %q, want '1.0.0'", req.Runtime.Version)
+	}
+	if got := req.Runtime.EngineEnv["VLLM_LOGGING_LEVEL"]; got != "INFO" {
+		t.Errorf("Runtime.EngineEnv[\"VLLM_LOGGING_LEVEL\"]: got %q, want 'INFO'", got)
 	}
 	if req.Resources.GpuCount != 2 {
 		t.Errorf("GpuCount: expected 2, got %d", req.Resources.GpuCount)
@@ -441,6 +518,9 @@ locals {
   # versions are excluded pending #319. Revert this commit once #319 lands.
   available_runtime_versions = try(data.coreweave_inference_deployment_parameters.deploy_params.runtime_versions["vllm"].versions, [])
   runtime_version            = try([for v in local.available_runtime_versions : v if can(regex("^[0-9]+[.][0-9]+[.][0-9]+$", v))][0], "")
+  available_engine_env_names = try(data.coreweave_inference_deployment_parameters.deploy_params.engine_env_options["vllm"].allowed_names, [])
+  engine_env_name            = %q
+  engine_env_value           = %q
 }
 
 resource "coreweave_inference_gateway" "test" {
@@ -472,6 +552,9 @@ resource "coreweave_inference_deployment" "test" {
   runtime = {
     engine  = "vllm"
     version = local.runtime_version
+    engine_env = {
+      (local.engine_env_name) = local.engine_env_value
+    }
   }
 
   resources = {
@@ -501,9 +584,13 @@ resource "coreweave_inference_deployment" "test" {
       condition     = local.runtime_version != ""
       error_message = "No x.y.z vllm runtime version available (pre-release/build-metadata excluded pending #319); available: ${jsonencode(local.available_runtime_versions)}"
     }
+    precondition {
+      condition     = contains(local.available_engine_env_names, local.engine_env_name)
+      error_message = "${local.engine_env_name} is not present in vllm engine env options; available: ${jsonencode(local.available_engine_env_names)}"
+    }
   }
 }
-`, preferredZone, preferredInstance, name, name, modelName, modelBucket, modelPath)
+`, preferredZone, preferredInstance, acceptanceEngineEnvName, acceptanceEngineEnvValue, name, name, modelName, modelBucket, modelPath)
 }
 
 func inferenceDeploymentUpdatedConfig(name, preferredZone, preferredInstance string) string {
@@ -537,6 +624,9 @@ locals {
   # versions are excluded pending #319. Revert this commit once #319 lands.
   available_runtime_versions = try(data.coreweave_inference_deployment_parameters.deploy_params.runtime_versions["vllm"].versions, [])
   runtime_version            = try([for v in local.available_runtime_versions : v if can(regex("^[0-9]+[.][0-9]+[.][0-9]+$", v))][0], "")
+  available_engine_env_names = try(data.coreweave_inference_deployment_parameters.deploy_params.engine_env_options["vllm"].allowed_names, [])
+  engine_env_name            = %q
+  engine_env_value           = %q
 }
 
 resource "coreweave_inference_gateway" "test" {
@@ -569,6 +659,9 @@ resource "coreweave_inference_deployment" "test" {
   runtime = {
     engine  = "vllm"
     version = local.runtime_version
+    engine_env = {
+      (local.engine_env_name) = local.engine_env_value
+    }
   }
 
   resources = {
@@ -600,9 +693,13 @@ resource "coreweave_inference_deployment" "test" {
       condition     = local.runtime_version != ""
       error_message = "No x.y.z vllm runtime version available (pre-release/build-metadata excluded pending #319); available: ${jsonencode(local.available_runtime_versions)}"
     }
+    precondition {
+      condition     = contains(local.available_engine_env_names, local.engine_env_name)
+      error_message = "${local.engine_env_name} is not present in vllm engine env options; available: ${jsonencode(local.available_engine_env_names)}"
+    }
   }
 }
-`, preferredZone, preferredInstance, name, name, modelName, modelBucket, modelPath)
+`, preferredZone, preferredInstance, acceptanceEngineEnvName, acceptanceEngineEnvValue, name, name, modelName, modelBucket, modelPath)
 }
 
 func TestInferenceDeployment(t *testing.T) {
@@ -629,6 +726,7 @@ func TestInferenceDeployment(t *testing.T) {
 						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("id"), knownvalue.NotNull()),
 						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("organization_id"), knownvalue.NotNull()),
 						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("created_at"), knownvalue.NotNull()),
+						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("runtime").AtMapKey("engine_env").AtMapKey(acceptanceEngineEnvName), knownvalue.StringExact(acceptanceEngineEnvValue)),
 						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("autoscaling").AtMapKey("min"), knownvalue.Int64Exact(1)),
 						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("autoscaling").AtMapKey("max"), knownvalue.Int64Exact(2)),
 					},
@@ -639,6 +737,7 @@ func TestInferenceDeployment(t *testing.T) {
 						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("autoscaling").AtMapKey("min"), knownvalue.Int64Exact(2)),
 						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("autoscaling").AtMapKey("max"), knownvalue.Int64Exact(4)),
 						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("disabled"), knownvalue.Bool(true)),
+						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("runtime").AtMapKey("engine_env").AtMapKey(acceptanceEngineEnvName), knownvalue.StringExact(acceptanceEngineEnvValue)),
 						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("traffic").AtMapKey("weight"), knownvalue.Int64Exact(50)),
 					},
 				},
@@ -684,6 +783,11 @@ func TestInferenceDeploymentParameters(t *testing.T) {
 						statecheck.ExpectKnownValue(
 							"data.coreweave_inference_deployment_parameters.test",
 							tfjsonpath.New("instance_types"),
+							knownvalue.NotNull(),
+						),
+						statecheck.ExpectKnownValue(
+							"data.coreweave_inference_deployment_parameters.test",
+							tfjsonpath.New("engine_env_options"),
 							knownvalue.NotNull(),
 						),
 					},

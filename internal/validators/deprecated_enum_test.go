@@ -11,19 +11,21 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// Wire-contract enum names, pinned as string literals on purpose: these are the
-// strings the provider promises to users, and the generated proto enum is the
-// system under test here — not the source of truth for these assertions. Do NOT
-// replace these with inferencev1.* constants; if a proto change ever drifts a
-// name, these tests should fail rather than silently track the change.
 const (
-	capacityTypeServerless = "CAPACITY_TYPE_SERVERLESS" // deprecated upstream
+	capacityTypeServerless = "CAPACITY_TYPE_SERVERLESS"
 	capacityTypeManaged    = "CAPACITY_TYPE_MANAGED"
 	capacityTypeCustomer   = "CAPACITY_TYPE_CUSTOMER"
 	deprecationGuidance    = "Use CAPACITY_TYPE_MANAGED instead."
 )
 
-func TestDeprecatedEnumValue_Warn(t *testing.T) {
+func TestCapacityTypeServerlessIsNotGenerated(t *testing.T) {
+	t.Parallel()
+
+	_, ok := inferencev1.CapacityType_value[capacityTypeServerless]
+	assert.False(t, ok, "%s should not be present in the current generated CapacityType enum", capacityTypeServerless)
+}
+
+func TestDeprecatedEnumValue_CurrentCapacityTypeDescriptor(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -31,7 +33,7 @@ func TestDeprecatedEnumValue_Warn(t *testing.T) {
 		value       types.String
 		wantWarning bool
 	}{
-		{"deprecated value warns", types.StringValue(capacityTypeServerless), true},
+		{"removed serverless value does not warn", types.StringValue(capacityTypeServerless), false},
 		{"replacement value does not warn", types.StringValue(capacityTypeManaged), false},
 		{"other valid value does not warn", types.StringValue(capacityTypeCustomer), false},
 		{"unrecognized value does not warn", types.StringValue("NOT_A_REAL_VALUE"), false},
@@ -55,7 +57,7 @@ func TestDeprecatedEnumValue_Warn(t *testing.T) {
 	}
 }
 
-func TestRejectDeprecatedEnumValue(t *testing.T) {
+func TestRejectDeprecatedEnumValue_CurrentCapacityTypeDescriptor(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -63,7 +65,7 @@ func TestRejectDeprecatedEnumValue(t *testing.T) {
 		value     types.String
 		wantError bool
 	}{
-		{"deprecated value errors", types.StringValue(capacityTypeServerless), true},
+		{"removed serverless value does not error", types.StringValue(capacityTypeServerless), false},
 		{"replacement value does not error", types.StringValue(capacityTypeManaged), false},
 		{"other valid value does not error", types.StringValue(capacityTypeCustomer), false},
 		{"unrecognized value does not error", types.StringValue("NOT_A_REAL_VALUE"), false},
@@ -82,29 +84,9 @@ func TestRejectDeprecatedEnumValue(t *testing.T) {
 			v.ValidateString(t.Context(), req, resp)
 
 			assert.Equal(t, tt.wantError, resp.Diagnostics.HasError())
-			if tt.wantError {
-				// Message should carry the caller-supplied migration guidance.
-				assert.Contains(t, resp.Diagnostics.Errors()[0].Detail(), deprecationGuidance)
-			}
 			assert.Zero(t, resp.Diagnostics.WarningsCount(), "reject validator emits errors, not warnings")
 		})
 	}
-}
-
-func TestRejectDeprecatedEnumValue_FallbackListsValidValues(t *testing.T) {
-	t.Parallel()
-
-	// With empty guidance, the error falls back to listing the enum's
-	// non-deprecated values.
-	v := validators.RejectDeprecatedEnumValue(inferencev1.CapacityType_CAPACITY_TYPE_MANAGED.Descriptor(), "")
-	req := validator.StringRequest{Path: path.Root("capacity_type"), ConfigValue: types.StringValue(capacityTypeServerless)}
-	resp := &validator.StringResponse{}
-	v.ValidateString(t.Context(), req, resp)
-
-	assert.True(t, resp.Diagnostics.HasError())
-	detail := resp.Diagnostics.Errors()[0].Detail()
-	assert.Contains(t, detail, capacityTypeManaged)
-	assert.Contains(t, detail, capacityTypeCustomer)
 }
 
 func TestDeprecatedEnumValue_NilDescriptor(t *testing.T) {

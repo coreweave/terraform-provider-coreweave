@@ -112,6 +112,7 @@ type RuntimeModel struct {
 	Engine       types.String `tfsdk:"engine"`
 	Version      types.String `tfsdk:"version"`
 	EngineConfig types.Map    `tfsdk:"engine_config"`
+	EngineEnv    types.Map    `tfsdk:"engine_env"`
 }
 
 type ResourcesModel struct {
@@ -274,6 +275,11 @@ func (r *InferenceDeploymentResource) Schema(_ context.Context, _ resource.Schem
 						ElementType:         types.StringType,
 						Optional:            true,
 						MarkdownDescription: "Engine-specific configuration key/value pairs.",
+					},
+					"engine_env": schema.MapAttribute{
+						ElementType:         types.StringType,
+						Optional:            true,
+						MarkdownDescription: "Engine-specific environment variables to inject into the model runtime container. Variable names must come from the selected engine's server-side allow list, exposed by `data.coreweave_inference_deployment_parameters.<name>.engine_env_options[<engine>].allowed_names`; unsupported names are rejected by the API.",
 					},
 				},
 			},
@@ -712,6 +718,14 @@ func buildDeploymentFields(ctx context.Context, m *InferenceDeploymentResourceMo
 		}
 		f.Runtime.EngineConfig = ec
 	}
+	if !m.Runtime.EngineEnv.IsNull() && !m.Runtime.EngineEnv.IsUnknown() {
+		ee := map[string]string{}
+		diagnostics.Append(m.Runtime.EngineEnv.ElementsAs(ctx, &ee, false)...)
+		if diagnostics.HasError() {
+			return deploymentFields{}, diagnostics
+		}
+		f.Runtime.EngineEnv = ee
+	}
 	if !m.Autoscaling.Priority.IsNull() && !m.Autoscaling.Priority.IsUnknown() {
 		f.Autoscaling.Priority = uint32(m.Autoscaling.Priority.ValueInt64()) //nolint:gosec
 	}
@@ -779,7 +793,11 @@ func toUpdateRequest(ctx context.Context, m *InferenceDeploymentResourceModel) (
 // preservation checks in setFromDeployment behave correctly on first import.
 func ensureDeploymentNested(m *InferenceDeploymentResourceModel) {
 	if m.Runtime == nil {
-		m.Runtime = &RuntimeModel{Version: types.StringNull(), EngineConfig: types.MapNull(types.StringType)}
+		m.Runtime = &RuntimeModel{
+			Version:      types.StringNull(),
+			EngineConfig: types.MapNull(types.StringType),
+			EngineEnv:    types.MapNull(types.StringType),
+		}
 	}
 	if m.Resources == nil {
 		m.Resources = &ResourcesModel{}
@@ -797,6 +815,42 @@ func ensureDeploymentNested(m *InferenceDeploymentResourceModel) {
 	if m.Traffic == nil {
 		m.Traffic = &TrafficModel{Weight: types.Int64Null()}
 	}
+}
+
+func stringMapFromProtoPreservingNull(current types.Map, values map[string]string) (types.Map, diag.Diagnostics) {
+	var diagnostics diag.Diagnostics
+
+	if current.IsNull() && len(values) == 0 {
+		return types.MapNull(types.StringType), diagnostics
+	}
+
+	mapVals := make(map[string]attr.Value, len(values))
+	for k, v := range values {
+		mapVals[k] = types.StringValue(v)
+	}
+	result, diags := types.MapValue(types.StringType, mapVals)
+	diagnostics.Append(diags...)
+	return result, diagnostics
+}
+
+func setRuntimeFromDeployment(m *RuntimeModel, rt *inferencev1.DeploymentRuntime) (diagnostics diag.Diagnostics) {
+	m.Engine = types.StringValue(rt.GetEngine())
+
+	if (m.Version.IsNull() || m.Version.IsUnknown()) && rt.GetVersion() == "" {
+		m.Version = types.StringNull()
+	} else {
+		m.Version = types.StringValue(rt.GetVersion())
+	}
+
+	engineConfig, diags := stringMapFromProtoPreservingNull(m.EngineConfig, rt.GetEngineConfig())
+	diagnostics.Append(diags...)
+	m.EngineConfig = engineConfig
+
+	engineEnv, diags := stringMapFromProtoPreservingNull(m.EngineEnv, rt.GetEngineEnv())
+	diagnostics.Append(diags...)
+	m.EngineEnv = engineEnv
+
+	return diagnostics
 }
 
 // setFromDeployment populates all fields on the model from a proto Deployment response.
@@ -844,25 +898,7 @@ func setFromDeployment(m *InferenceDeploymentResourceModel, d *inferencev1.Deplo
 
 	// runtime
 	if rt := spec.GetRuntime(); rt != nil {
-		m.Runtime.Engine = types.StringValue(rt.GetEngine())
-
-		if (m.Runtime.Version.IsNull() || m.Runtime.Version.IsUnknown()) && rt.GetVersion() == "" {
-			m.Runtime.Version = types.StringNull()
-		} else {
-			m.Runtime.Version = types.StringValue(rt.GetVersion())
-		}
-
-		if m.Runtime.EngineConfig.IsNull() && len(rt.GetEngineConfig()) == 0 {
-			m.Runtime.EngineConfig = types.MapNull(types.StringType)
-		} else {
-			ecVals := make(map[string]attr.Value, len(rt.GetEngineConfig()))
-			for k, v := range rt.GetEngineConfig() {
-				ecVals[k] = types.StringValue(v)
-			}
-			ecMap, diags := types.MapValue(types.StringType, ecVals)
-			diagnostics.Append(diags...)
-			m.Runtime.EngineConfig = ecMap
-		}
+		diagnostics.Append(setRuntimeFromDeployment(m.Runtime, rt)...)
 	}
 
 	// resources
