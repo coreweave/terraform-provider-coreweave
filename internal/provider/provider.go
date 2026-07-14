@@ -209,6 +209,7 @@ func (p *CoreweaveProvider) Resources(ctx context.Context) []func() resource.Res
 		objectstorage.NewBucketResource,
 		objectstorage.NewOrganizationAccessPolicyResource,
 		objectstorage.NewBucketLifecycleResource,
+		objectstorage.NewBucketInventoryResource,
 		objectstorage.NewBucketVersioningResource,
 		objectstorage.NewBucketPolicyResource,
 		objectstorage.NewBucketSettingsResource,
