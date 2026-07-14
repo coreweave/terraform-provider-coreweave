@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.18.0](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.17.0...v0.18.0) (2026-07-14)
+
+
+### Features
+
+* **inference:** support runtime engine env ([#347](https://github.com/coreweave/terraform-provider-coreweave/issues/347)) ([46b4d00](https://github.com/coreweave/terraform-provider-coreweave/commit/46b4d0009ab9813253ab9ea043b203153df063d0))
+* **object_storage:** Add bucket inventory resource ([#345](https://github.com/coreweave/terraform-provider-coreweave/issues/345)) ([e311ef7](https://github.com/coreweave/terraform-provider-coreweave/commit/e311ef7e5306ffc7b71669a8a01c81c7adfde010))
+
+
+### Bug Fixes
+
+* **inference:** Preserve observed status fields across updates ([#344](https://github.com/coreweave/terraform-provider-coreweave/issues/344)) ([6001160](https://github.com/coreweave/terraform-provider-coreweave/commit/6001160ece4b712035c79413c0b1aa3a7363df29))
+
+
+### Documentation
+
+* **network:** updates from SME feedback ([#339](https://github.com/coreweave/terraform-provider-coreweave/issues/339)) ([a85c813](https://github.com/coreweave/terraform-provider-coreweave/commit/a85c813b85926c9c7ce30eab6c032dfa333e0a7c))
+
 ## [0.17.0](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.16.0...v0.17.0) (2026-07-01)
 
 
