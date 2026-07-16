@@ -7,6 +7,8 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework-jsontypes/jsontypes"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
+	"github.com/hashicorp/terraform-plugin-framework/path"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
@@ -331,5 +333,14 @@ func TestBuildUpdateRequest(t *testing.T) {
 			t.Error("expected nil kubelet when semantically unchanged")
 		}
 		expectMaskPaths(t, req.UpdateMask.Paths)
+	})
+
+	t.Run("empty object is rejected", func(t *testing.T) {
+		req := validator.StringRequest{Path: path.Root("kubelet"), ConfigValue: types.StringValue(`{}`)}
+		resp := &validator.StringResponse{}
+		kubeletValidator{}.ValidateString(ctx, req, resp)
+		if !resp.Diagnostics.HasError() {
+			t.Error("expected an error for an empty kubelet object, got none")
+		}
 	})
 }

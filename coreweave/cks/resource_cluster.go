@@ -565,10 +565,10 @@ func kubeletChanged(ctx context.Context, plan, state *ClusterResourceModel) bool
 	return !equal
 }
 
-// kubeletValidator ensures the kubelet attribute is a JSON object, matching the
-// google.protobuf.Struct shape the CKS API expects. jsontypes.Normalized already
-// guarantees the value is syntactically valid JSON; this rejects non-object JSON
-// (arrays, scalars) with a clear error at plan time.
+// kubeletValidator ensures the kubelet attribute is a non-empty JSON object,
+// matching the google.protobuf.Struct shape the CKS API expects. jsontypes.Normalized
+// already guarantees the value is syntactically valid JSON; this rejects non-object
+// JSON (arrays, scalars) and empty objects with a clear error at plan time.
 type kubeletValidator struct{}
 
 var _ validator.String = kubeletValidator{}
@@ -592,6 +592,15 @@ func (kubeletValidator) ValidateString(_ context.Context, req validator.StringRe
 			req.Path,
 			"Invalid kubelet configuration",
 			fmt.Sprintf("The kubelet value must be a JSON object of kubelet configuration overrides: %s", err),
+		)
+		return
+	}
+
+	if len(s.GetFields()) == 0 {
+		resp.Diagnostics.AddAttributeError(
+			req.Path,
+			"Invalid kubelet configuration",
+			"The kubelet value must be a non-empty JSON object of kubelet configuration overrides; remove the attribute instead of setting it to an empty object.",
 		)
 	}
 }
