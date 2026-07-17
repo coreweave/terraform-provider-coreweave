@@ -34,6 +34,7 @@ data "coreweave_cks_cluster" "default" {
 - `authz_webhook` (Attributes) The authorization webhook configuration of the cluster. (see [below for nested schema](#nestedatt--authz_webhook))
 - `internal_lb_cidr_names` (List of String) The internal load balancer CIDR names of the cluster.
 - `internal_lb_cidr_names_v6` (List of String) The IPv6 internal load balancer CIDR names of the cluster.
+- `kubelet` (String) Selective overrides applied to every cluster Node's kubelet configuration, as a JSON object.
 - `name` (String) The name of the cluster.
 - `node_port_range` (Attributes) The Kubernetes Service NodePort range. (see [below for nested schema](#nestedatt--node_port_range))
 - `oidc` (Attributes) The OIDC configuration of the cluster. (see [below for nested schema](#nestedatt--oidc))

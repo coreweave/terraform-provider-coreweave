@@ -5,7 +5,10 @@ import (
 	"sort"
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-framework-jsontypes/jsontypes"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
+	"github.com/hashicorp/terraform-plugin-framework/path"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
@@ -31,6 +34,7 @@ func TestBuildUpdateRequest(t *testing.T) {
 			}),
 			AuditPolicy:          types.StringNull(),
 			AdditionalServerSans: types.SetNull(types.StringType),
+			Kubelet:              jsontypes.NewNormalizedNull(),
 		}
 	}
 
@@ -276,5 +280,67 @@ func TestBuildUpdateRequest(t *testing.T) {
 			t.Error("expected nil network when only version/public/audit_policy changed")
 		}
 		expectMaskPaths(t, req.UpdateMask.Paths, "audit_policy", "public", "version")
+	})
+
+	t.Run("kubelet added", func(t *testing.T) {
+		state := baseModel()
+		plan := baseModel()
+		plan.Kubelet = jsontypes.NewNormalizedValue(`{"maxPods":256}`)
+		req := buildUpdateRequest(ctx, &plan, &state)
+		if req.Kubelet == nil {
+			t.Fatal("expected non-nil kubelet")
+		}
+		if got := req.Kubelet.GetFields()["maxPods"].GetNumberValue(); got != 256 {
+			t.Errorf("expected maxPods=256, got %v", got)
+		}
+		if req.Network != nil {
+			t.Error("expected nil network on kubelet-only change")
+		}
+		expectMaskPaths(t, req.UpdateMask.Paths, "kubelet")
+	})
+
+	t.Run("kubelet changed", func(t *testing.T) {
+		state := baseModel()
+		state.Kubelet = jsontypes.NewNormalizedValue(`{"maxPods":110}`)
+		plan := baseModel()
+		plan.Kubelet = jsontypes.NewNormalizedValue(`{"maxPods":256}`)
+		req := buildUpdateRequest(ctx, &plan, &state)
+		if req.Kubelet == nil {
+			t.Fatal("expected non-nil kubelet")
+		}
+		expectMaskPaths(t, req.UpdateMask.Paths, "kubelet")
+	})
+
+	t.Run("kubelet removed clears field but sets mask", func(t *testing.T) {
+		state := baseModel()
+		state.Kubelet = jsontypes.NewNormalizedValue(`{"maxPods":256}`)
+		plan := baseModel()
+		req := buildUpdateRequest(ctx, &plan, &state)
+		if req.Kubelet != nil {
+			t.Error("expected nil kubelet when removing overrides")
+		}
+		expectMaskPaths(t, req.UpdateMask.Paths, "kubelet")
+	})
+
+	t.Run("kubelet semantically equal produces no change", func(t *testing.T) {
+		state := baseModel()
+		state.Kubelet = jsontypes.NewNormalizedValue(`{"maxPods":256}`)
+		plan := baseModel()
+		// Same object, different key order/whitespace as the API might return.
+		plan.Kubelet = jsontypes.NewNormalizedValue(`{ "maxPods": 256 }`)
+		req := buildUpdateRequest(ctx, &plan, &state)
+		if req.Kubelet != nil {
+			t.Error("expected nil kubelet when semantically unchanged")
+		}
+		expectMaskPaths(t, req.UpdateMask.Paths)
+	})
+
+	t.Run("empty object is rejected", func(t *testing.T) {
+		req := validator.StringRequest{Path: path.Root("kubelet"), ConfigValue: types.StringValue(`{}`)}
+		resp := &validator.StringResponse{}
+		kubeletValidator{}.ValidateString(ctx, req, resp)
+		if !resp.Diagnostics.HasError() {
+			t.Error("expected an error for an empty kubelet object, got none")
+		}
 	})
 }

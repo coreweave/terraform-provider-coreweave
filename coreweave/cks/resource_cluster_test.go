@@ -19,6 +19,7 @@ import (
 	"github.com/coreweave/terraform-provider-coreweave/internal/provider"
 	"github.com/coreweave/terraform-provider-coreweave/internal/testutil"
 	"github.com/hashicorp/go-uuid"
+	"github.com/hashicorp/terraform-plugin-framework-jsontypes/jsontypes"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	fwresource "github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -829,6 +830,99 @@ func TestClusterResource_Tailscale(t *testing.T) {
 		{
 			PreConfig: func() {
 				t.Log("Beginning coreweave_cks_cluster import test (tailscale)")
+			},
+			ResourceName:      config.FullResourceName,
+			ImportState:       true,
+			ImportStateVerify: true,
+		},
+	}
+
+	resource.ParallelTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+		PreCheck: func() {
+			testutil.SetEnvDefaults()
+		},
+		Steps: steps,
+	})
+}
+
+func TestClusterResource_Kubelet(t *testing.T) {
+	config := generateResourceNames("cks-kubelet")
+	zone := testutil.AcceptanceTestZone
+	kubeVersion := testutil.AcceptanceTestKubeVersion
+
+	vpc := defaultVpc(config.ClusterName, zone)
+
+	base := &cks.ClusterResourceModel{
+		VpcId:               types.StringValue(fmt.Sprintf("coreweave_networking_vpc.%s.id", config.ResourceName)),
+		Name:                types.StringValue(config.ClusterName),
+		Zone:                types.StringValue(zone),
+		Version:             types.StringValue(kubeVersion),
+		Public:              types.BoolValue(false),
+		PodCidrName:         types.StringValue("pod-cidr"),
+		ServiceCidrName:     types.StringValue("service-cidr"),
+		InternalLBCidrNames: types.ListValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr")}),
+	}
+
+	withKubelet := with(*base, func(c *cks.ClusterResourceModel) {
+		c.Kubelet = jsontypes.NewNormalizedValue(`{"maxPods":256}`)
+	})
+
+	ctx := t.Context()
+
+	steps := []resource.TestStep{
+		// Step 1: create without kubelet overrides
+		createClusterTestStep(ctx, t, testStepConfig{
+			TestName: "create without kubelet",
+			ConfigPlanChecks: resource.ConfigPlanChecks{
+				PreApply: []plancheck.PlanCheck{
+					plancheck.ExpectResourceAction(config.FullResourceName, plancheck.ResourceActionCreate),
+				},
+			},
+			Resources: config,
+			cluster:   *base,
+			vpc:       *vpc,
+		}),
+		// Step 2: add kubelet overrides
+		createClusterTestStep(ctx, t, testStepConfig{
+			TestName: "add kubelet maxPods",
+			ConfigPlanChecks: resource.ConfigPlanChecks{
+				PreApply: []plancheck.PlanCheck{
+					plancheck.ExpectResourceAction(config.FullResourceName, plancheck.ResourceActionUpdate),
+				},
+			},
+			Resources: config,
+			cluster:   withKubelet,
+			vpc:       *vpc,
+		}),
+		// Step 3: reapply same config — expect noop (semantic JSON roundtrip)
+		{
+			PreConfig: func() {
+				t.Log("Reapplying kubelet config to verify noop (roundtrip)")
+			},
+			Config: networking.MustRenderVpcResource(ctx, config.ResourceName, vpc) + "\n" + cks.MustRenderClusterResource(ctx, config.ResourceName, &withKubelet),
+			ConfigPlanChecks: resource.ConfigPlanChecks{
+				PreApply: []plancheck.PlanCheck{
+					plancheck.ExpectResourceAction(config.FullResourceName, plancheck.ResourceActionNoop),
+				},
+			},
+		},
+		// Step 4: remove kubelet block
+		createClusterTestStep(ctx, t, testStepConfig{
+			TestName: "remove kubelet block",
+			ConfigPlanChecks: resource.ConfigPlanChecks{
+				PreApply: []plancheck.PlanCheck{
+					plancheck.ExpectResourceAction(config.FullResourceName, plancheck.ResourceActionUpdate),
+				},
+			},
+			Resources: config,
+			cluster:   *base,
+			vpc:       *vpc,
+		}),
+		// Step 5: import verify
+		{
+			PreConfig: func() {
+				t.Log("Beginning coreweave_cks_cluster import test (kubelet)")
 			},
 			ResourceName:      config.FullResourceName,
 			ImportState:       true,

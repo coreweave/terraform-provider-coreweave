@@ -10,6 +10,7 @@ import (
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/hashicorp/hcl/v2/hclwrite"
+	"github.com/hashicorp/terraform-plugin-framework-jsontypes/jsontypes"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -179,6 +180,11 @@ func (d *ClusterDataSource) Schema(ctx context.Context, req datasource.SchemaReq
 						Computed:            true,
 					},
 				},
+			},
+			"kubelet": schema.StringAttribute{
+				CustomType:          jsontypes.NormalizedType{},
+				MarkdownDescription: "Selective overrides applied to every cluster Node's kubelet configuration, as a JSON object.",
+				Computed:            true,
 			},
 		},
 	}
