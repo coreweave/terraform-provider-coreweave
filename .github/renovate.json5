@@ -14,6 +14,20 @@
   "postUpdateOptions": ["gomodTidy"],
   "rebaseWhen": "conflicted",
   "commitBodyTable": true,
+  "customManagers": [
+    {
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/^\\.github/actions/setup/action\\.yml$/"
+      ],
+      "matchStrings": [
+        "uses: jdx/mise-action@[^\\n]+\\n\\s+with:\\n\\s+version: (?<currentValue>v[0-9]+\\.[0-9]+\\.[0-9]+)"
+      ],
+      "datasourceTemplate": "github-releases",
+      "packageNameTemplate": "jdx/mise",
+      "versioningTemplate": "semver-coerced"
+    }
+  ],
   "packageRules": [
     { "matchUpdateTypes": ["major"], "labels": ["type/major"] },
     { "matchUpdateTypes": ["minor"], "labels": ["type/minor"] },
@@ -41,6 +55,12 @@
       "matchManagers": ["mise"],
       "semanticCommitType": "ci",
       "semanticCommitScope": "mise"
+    },
+    {
+      "matchPackageNames": ["jdx/mise"],
+      "commitMessagePrefix": "ci(mise):",
+      "commitMessageAction": "update",
+      "commitMessageTopic": "mise"
     },
     {
       // Ensure Go version range in go.mod is bumped rather than pinned.
