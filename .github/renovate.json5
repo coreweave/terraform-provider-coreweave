@@ -4,7 +4,8 @@
     "config:recommended",
     ":semanticCommits",
     ":disableRateLimiting",
-    "helpers:pinGitHubActionDigests"
+    "helpers:pinGitHubActionDigests",
+    "helpers:pinGitHubActionDigestsToSemver"
   ],
   "semanticCommitType": "deps",
   "commitMessageTopic": "{{depName}}",
