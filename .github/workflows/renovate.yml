@@ -7,8 +7,9 @@ on:
       runner:
         type: string
         description: "runner to use for non-reusable jobs"
+  # Run once a day at 3 AM UTC
   schedule:
-  - cron: "0 * * * *"  # run hourly
+    - cron: "0 3 * * *"
   push:
     branches:
     - main
