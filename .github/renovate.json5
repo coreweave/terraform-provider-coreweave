@@ -114,6 +114,11 @@
       "groupName": "hashicorp-tools",
       "semanticCommitType": "ci",
       "semanticCommitScope": "tools"
+    },
+    // Sampled run 30042197044 shows AWS SDK changelog generation dominating runtime before a GraphQL timeout.
+    {
+      "matchSourceUrls": ["https://github.com/aws/aws-sdk-go-v2"],
+      "fetchChangeLogs": "off"
     }
   ]
 }
