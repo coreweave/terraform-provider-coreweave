@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.19.0](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.18.0...v0.19.0) (2026-07-23)
+
+
+### Features
+
+* **cks:** add kubelet configuration overrides to cks_cluster ([#346](https://github.com/coreweave/terraform-provider-coreweave/issues/346)) ([662325d](https://github.com/coreweave/terraform-provider-coreweave/commit/662325d5ea6100bbda46bcabd589f9cedf550d62))
+
+
+### Bug Fixes
+
+* **object_storage:** isolate S3 client from AWS configuration ([#356](https://github.com/coreweave/terraform-provider-coreweave/issues/356)) ([728fc6b](https://github.com/coreweave/terraform-provider-coreweave/commit/728fc6b47d7d481a7acddff52cfc59f8ebe8ae0a))
+* **object_storage:** use `Current` (not `Latest`) for bucket inventory included_object_versions ([#359](https://github.com/coreweave/terraform-provider-coreweave/issues/359)) ([7af403d](https://github.com/coreweave/terraform-provider-coreweave/commit/7af403dc6015c5e1945b378aa10bc3ff12e52e9a))
+
 ## [0.18.0](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.17.0...v0.18.0) (2026-07-14)
 
 
