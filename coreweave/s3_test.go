@@ -240,6 +240,14 @@ endpoint_url = https://wrong.example.test
 				t.Errorf("dual-stack endpoint state = %d, want unset",
 					options.EndpointOptions.UseDualStackEndpoint)
 			}
+			if options.RequestChecksumCalculation != aws.RequestChecksumCalculationWhenSupported {
+				t.Errorf("request checksum calculation = %d, want when supported",
+					options.RequestChecksumCalculation)
+			}
+			if options.ResponseChecksumValidation != aws.ResponseChecksumValidationWhenSupported {
+				t.Errorf("response checksum validation = %d, want when supported",
+					options.ResponseChecksumValidation)
+			}
 
 			httpClient, ok := options.HTTPClient.(*http.Client)
 			if !ok {

@@ -67,9 +67,11 @@ func (c *Client) createS3Client(ctx context.Context, zone string) (*s3.Client, *
 			resp.Msg.SecretKey,
 			"",
 		)),
-		HTTPClient:   httpClient,
-		Region:       zone, // must be non-empty and a valid DNS subdomain
-		UsePathStyle: false,
+		HTTPClient:                 httpClient,
+		Region:                     zone, // must be non-empty and a valid DNS subdomain
+		RequestChecksumCalculation: aws.RequestChecksumCalculationWhenSupported,
+		ResponseChecksumValidation: aws.ResponseChecksumValidationWhenSupported,
+		UsePathStyle:               false,
 	})
 	return s3Client, resp.Msg, nil
 }
