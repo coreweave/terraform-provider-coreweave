@@ -135,6 +135,11 @@
       "groupName": "hashicorp-tools",
       "semanticCommitType": "ci",
       "semanticCommitScope": "tools"
+    },
+    // AWS SDK changelog generation repeatedly dominates run time and encounters GitHub GraphQL timeouts.
+    {
+      "matchSourceUrls": ["https://github.com/aws/aws-sdk-go-v2"],
+      "fetchChangeLogs": "off"
     }
   ]
 }
