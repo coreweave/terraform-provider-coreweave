@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand/v2"
+	"regexp"
 	"testing"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -103,7 +104,7 @@ func createInventoryTestStep(ctx context.Context, t *testing.T, opts inventoryTe
 //   - re-apply the changed config and assert an EMPTY plan again
 //   - import round-trip
 func TestBucketInventoryBasic(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 
 	randomInt := rand.IntN(100000)
 	bucket := objectstorage.BucketResourceModel{
@@ -121,7 +122,7 @@ func TestBucketInventoryBasic(t *testing.T) {
 	base := objectstorage.BucketInventoryResourceModel{
 		Name:                   types.StringValue("daily-report"),
 		Enabled:                types.BoolValue(true),
-		IncludedObjectVersions: types.StringValue("All"),
+		IncludedObjectVersions: types.StringValue("Current"),
 		OptionalFields: types.SetValueMust(types.StringType, []attr.Value{
 			types.StringValue("Size"),
 			types.StringValue("LastAccessedDate"),
@@ -218,11 +219,151 @@ func TestBucketInventoryBasic(t *testing.T) {
 	})
 }
 
+// TestBucketInventoryIncludedObjectVersions exercises both valid
+// included_object_versions values — "Current" and "All" — proving each is
+// accepted by the API and that switching between them is planned and applied as
+// an in-place update (the attribute is not RequiresReplace).
+func TestBucketInventoryIncludedObjectVersions(t *testing.T) {
+	ctx := t.Context()
+
+	randomInt := rand.IntN(100000)
+	bucket := objectstorage.BucketResourceModel{
+		Name: types.StringValue(fmt.Sprintf("%sinv-iov-%x", AcceptanceTestPrefix, randomInt)),
+		Zone: types.StringValue("US-EAST-04A"),
+	}
+
+	resourceName := "test_inv_iov"
+	rs := fmt.Sprintf("coreweave_object_storage_bucket_inventory.%s", resourceName)
+
+	destArn := fmt.Sprintf("arn:aws:s3:::%s", bucket.Name.ValueString())
+
+	// newInventory returns an otherwise-identical config so the only diff between
+	// steps is included_object_versions.
+	newInventory := func(versions string) objectstorage.BucketInventoryResourceModel {
+		return objectstorage.BucketInventoryResourceModel{
+			Name:                   types.StringValue("daily-report"),
+			Enabled:                types.BoolValue(true),
+			IncludedObjectVersions: types.StringValue(versions),
+			Schedule:               &objectstorage.ScheduleModel{Frequency: types.StringValue("Daily")},
+			Destination: &objectstorage.DestinationModel{
+				Bucket: &objectstorage.BucketModel{
+					BucketArn: types.StringValue(destArn),
+					Format:    types.StringValue("CSV"),
+				},
+			},
+		}
+	}
+
+	steps := []resource.TestStep{
+		// 1. create with "Current"
+		createInventoryTestStep(ctx, t, inventoryTestConfig{
+			name:         "create with Current",
+			resourceName: resourceName,
+			bucket:       bucket,
+			inventory:    newInventory("Current"),
+			configPlanChecks: resource.ConfigPlanChecks{
+				PreApply: []plancheck.PlanCheck{
+					plancheck.ExpectResourceAction(rs, plancheck.ResourceActionCreate),
+				},
+			},
+		}),
+		// 2. no-op: identical config must produce an EMPTY plan
+		createInventoryTestStep(ctx, t, inventoryTestConfig{
+			name:         "no-op after create with Current",
+			resourceName: resourceName,
+			bucket:       bucket,
+			inventory:    newInventory("Current"),
+			configPlanChecks: resource.ConfigPlanChecks{
+				PreApply: []plancheck.PlanCheck{
+					plancheck.ExpectEmptyPlan(),
+				},
+			},
+		}),
+		// 3. update "Current" -> "All": must plan and apply an in-place update
+		createInventoryTestStep(ctx, t, inventoryTestConfig{
+			name:         "update to All",
+			resourceName: resourceName,
+			bucket:       bucket,
+			inventory:    newInventory("All"),
+			configPlanChecks: resource.ConfigPlanChecks{
+				PreApply: []plancheck.PlanCheck{
+					plancheck.ExpectResourceAction(rs, plancheck.ResourceActionUpdate),
+				},
+			},
+		}),
+		// 4. no-op after update: still stable, no drift
+		createInventoryTestStep(ctx, t, inventoryTestConfig{
+			name:         "no-op after update to All",
+			resourceName: resourceName,
+			bucket:       bucket,
+			inventory:    newInventory("All"),
+			configPlanChecks: resource.ConfigPlanChecks{
+				PreApply: []plancheck.PlanCheck{
+					plancheck.ExpectEmptyPlan(),
+				},
+			},
+		}),
+	}
+
+	resource.ParallelTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+		CheckDestroy:             testAccCheckInventoryDestroy(ctx, t),
+		Steps:                    steps,
+	})
+}
+
+// TestBucketInventoryIncludedObjectVersionsInvalid confirms that an unsupported
+// included_object_versions value (e.g. "Latest") is rejected at plan time by the
+// schema validator, before any API call is made. The unit tests exercise the
+// validator directly; this is the acceptance-level guardrail requested in review.
+func TestBucketInventoryIncludedObjectVersionsInvalid(t *testing.T) {
+	ctx := t.Context()
+
+	randomInt := rand.IntN(100000)
+	bucket := objectstorage.BucketResourceModel{
+		Name: types.StringValue(fmt.Sprintf("%sinv-invalid-%x", AcceptanceTestPrefix, randomInt)),
+		Zone: types.StringValue("US-EAST-04A"),
+	}
+
+	destArn := fmt.Sprintf("arn:aws:s3:::%s", bucket.Name.ValueString())
+
+	inv := objectstorage.BucketInventoryResourceModel{
+		Bucket:                 types.StringValue(fmt.Sprintf("coreweave_object_storage_bucket.%s.name", "test_bucket")),
+		Name:                   types.StringValue("daily-report"),
+		Enabled:                types.BoolValue(true),
+		IncludedObjectVersions: types.StringValue("Latest"),
+		Schedule:               &objectstorage.ScheduleModel{Frequency: types.StringValue("Daily")},
+		Destination: &objectstorage.DestinationModel{
+			Bucket: &objectstorage.BucketModel{
+				BucketArn: types.StringValue(destArn),
+				Format:    types.StringValue("CSV"),
+			},
+		},
+	}
+
+	config := objectstorage.MustRenderBucketResource(ctx, "test_bucket", &bucket) +
+		objectstorage.MustRenderBucketInventoryResource(ctx, "test_inv_invalid", &inv)
+
+	resource.ParallelTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				// PlanOnly: the OneOf validator rejects "Latest" during plan, so the
+				// step fails before anything is created — no backend interaction and
+				// nothing to destroy.
+				Config:      config,
+				PlanOnly:    true,
+				ExpectError: regexp.MustCompile(`(?s)included_object_versions.*must be one of`),
+			},
+		},
+	})
+}
+
 // TestBucketInventoryDisappears verifies the Read path's drift detection: after
 // the config is deleted out-of-band, the next refresh must notice it is gone
 // (Read -> RemoveResource) and plan to recreate it, producing a non-empty plan.
 func TestBucketInventoryDisappears(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 
 	randomInt := rand.IntN(100000)
 	bucket := objectstorage.BucketResourceModel{

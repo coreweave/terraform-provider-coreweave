@@ -45,6 +45,17 @@ const (
 	ErrNoSuchInventoryConfiguration string = "NoSuchInventoryConfiguration"
 )
 
+// enumStrings converts an AWS SDK string-enum's Values() slice into the []string
+// form the OneOf validator expects, so the accepted values track the SDK enum
+// instead of being maintained as separate string literals.
+func enumStrings[T ~string](vals []T) []string {
+	out := make([]string, len(vals))
+	for i, v := range vals {
+		out[i] = string(v)
+	}
+	return out
+}
+
 // NewBucketInventoryResource returns a new resource instance.
 func NewBucketInventoryResource() resource.Resource {
 	return &BucketInventoryResource{}
@@ -114,8 +125,10 @@ func (r *BucketInventoryResource) Schema(ctx context.Context, req resource.Schem
 			},
 			"included_object_versions": schema.StringAttribute{
 				Required:            true,
-				MarkdownDescription: "Specifies which object versions are included in the inventory results. Valid values are `All` and `Latest`.",
-				Validators:          []validator.String{stringvalidator.OneOf("All", "Latest")},
+				MarkdownDescription: "Specifies which object versions are included in the inventory results. Valid values are `All` and `Current`.",
+				// Accepted values are sourced from the AWS SDK enum rather than
+				// hardcoded literals; see s3types.InventoryIncludedObjectVersions.
+				Validators: []validator.String{stringvalidator.OneOf(enumStrings(s3types.InventoryIncludedObjectVersions("").Values())...)},
 			},
 			"optional_fields": schema.SetAttribute{
 				Optional:            true,
