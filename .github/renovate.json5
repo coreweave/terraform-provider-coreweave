@@ -23,7 +23,7 @@
         "uses: jdx/mise-action@[^\\n]+\\n\\s+with:\\n\\s+version: (?<currentValue>v[0-9]+\\.[0-9]+\\.[0-9]+)"
       ],
       "datasourceTemplate": "github-releases",
-      "depNameTemplate": "jdx/mise",
+      "packageNameTemplate": "jdx/mise",
       "versioningTemplate": "semver-coerced"
     }
   ],
@@ -56,7 +56,7 @@
       "semanticCommitScope": "mise"
     },
     {
-      "matchDepNames": ["jdx/mise"],
+      "matchPackageNames": ["jdx/mise"],
       "commitMessagePrefix": "ci(mise):",
       "commitMessageAction": "update",
       "commitMessageTopic": "mise"
