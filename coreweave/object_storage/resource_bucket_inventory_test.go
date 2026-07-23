@@ -224,7 +224,7 @@ func TestBucketInventoryBasic(t *testing.T) {
 // accepted by the API and that switching between them is planned and applied as
 // an in-place update (the attribute is not RequiresReplace).
 func TestBucketInventoryIncludedObjectVersions(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 
 	randomInt := rand.IntN(100000)
 	bucket := objectstorage.BucketResourceModel{
@@ -363,7 +363,7 @@ func TestBucketInventoryIncludedObjectVersionsInvalid(t *testing.T) {
 // the config is deleted out-of-band, the next refresh must notice it is gone
 // (Read -> RemoveResource) and plan to recreate it, producing a non-empty plan.
 func TestBucketInventoryDisappears(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 
 	randomInt := rand.IntN(100000)
 	bucket := objectstorage.BucketResourceModel{
