@@ -11,7 +11,6 @@ import (
 	cwobjectv1 "buf.build/gen/go/coreweave/cwobject/protocolbuffers/go/cwobject/v1"
 	"connectrpc.com/connect"
 	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/smithy-go"
@@ -61,18 +60,18 @@ func (c *Client) createS3Client(ctx context.Context, zone string) (*s3.Client, *
 	}
 
 	httpClient := c.s3HttpClient()
-	awsConfig, err := config.LoadDefaultConfig(ctx,
-		config.WithHTTPClient(httpClient),
-		config.WithRegion(zone), // the zone specified here doesn't actually matter, as long as it's a valid DNS subdomain
-		config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(resp.Msg.AccessKeyId, resp.Msg.SecretKey, "")),
-	)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	s3Client := s3.NewFromConfig(awsConfig, func(o *s3.Options) {
-		o.UsePathStyle = false
-		o.BaseEndpoint = aws.String(c.s3Endpoint)
+	s3Client := s3.New(s3.Options{
+		BaseEndpoint: aws.String(c.s3Endpoint),
+		Credentials: aws.NewCredentialsCache(credentials.NewStaticCredentialsProvider(
+			resp.Msg.AccessKeyId,
+			resp.Msg.SecretKey,
+			"",
+		)),
+		HTTPClient:                 httpClient,
+		Region:                     zone, // must be non-empty and a valid DNS subdomain
+		RequestChecksumCalculation: aws.RequestChecksumCalculationWhenSupported,
+		ResponseChecksumValidation: aws.ResponseChecksumValidationWhenSupported,
+		UsePathStyle:               false,
 	})
 	return s3Client, resp.Msg, nil
 }
@@ -121,7 +120,7 @@ func (c *Client) S3Client(ctx context.Context, zone string) (*s3.Client, error) 
 	// expiry is within 5 minutes from now (or already expired), refresh the client
 	if time.Until(s3AccessKeyInfo.Expiry.AsTime()) <= 5*time.Minute {
 		tflog.Info(ctx, "refreshing s3 client because keys expire within the next 5 minutes or have already expired")
-		client, keyInfo, err := c.createS3Client(ctx, zone)
+		client, keyInfo, err := c.createS3Client(ctx, s3Zone)
 		if err != nil {
 			return nil, err
 		}
