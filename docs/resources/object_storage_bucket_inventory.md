@@ -57,7 +57,7 @@ resource "coreweave_object_storage_bucket_inventory" "default" {
 ### Required
 
 - `bucket` (String) Name of source bucket to which the inventory configuration applies
-- `included_object_versions` (String) Specifies which object versions are included in the inventory results. Valid values are `All` and `Latest`.
+- `included_object_versions` (String) Specifies which object versions are included in the inventory results. Valid values are `All` and `Current`.
 - `name` (String) Name of the inventory configuration. Must be unique within the bucket.
 
 ### Optional

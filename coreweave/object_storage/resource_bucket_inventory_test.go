@@ -121,7 +121,7 @@ func TestBucketInventoryBasic(t *testing.T) {
 	base := objectstorage.BucketInventoryResourceModel{
 		Name:                   types.StringValue("daily-report"),
 		Enabled:                types.BoolValue(true),
-		IncludedObjectVersions: types.StringValue("All"),
+		IncludedObjectVersions: types.StringValue("Current"),
 		OptionalFields: types.SetValueMust(types.StringType, []attr.Value{
 			types.StringValue("Size"),
 			types.StringValue("LastAccessedDate"),
@@ -209,6 +209,99 @@ func TestBucketInventoryBasic(t *testing.T) {
 				return nil
 			},
 		},
+	}
+
+	resource.ParallelTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+		CheckDestroy:             testAccCheckInventoryDestroy(ctx, t),
+		Steps:                    steps,
+	})
+}
+
+// TestBucketInventoryIncludedObjectVersions exercises both valid
+// included_object_versions values — "Current" and "All" — proving each is
+// accepted by the API and that switching between them is planned and applied as
+// an in-place update (the attribute is not RequiresReplace).
+func TestBucketInventoryIncludedObjectVersions(t *testing.T) {
+	ctx := context.Background()
+
+	randomInt := rand.IntN(100000)
+	bucket := objectstorage.BucketResourceModel{
+		Name: types.StringValue(fmt.Sprintf("%sinv-iov-%x", AcceptanceTestPrefix, randomInt)),
+		Zone: types.StringValue("US-EAST-04A"),
+	}
+
+	resourceName := "test_inv_iov"
+	rs := fmt.Sprintf("coreweave_object_storage_bucket_inventory.%s", resourceName)
+
+	destArn := fmt.Sprintf("arn:aws:s3:::%s", bucket.Name.ValueString())
+
+	// newInventory returns an otherwise-identical config so the only diff between
+	// steps is included_object_versions.
+	newInventory := func(versions string) objectstorage.BucketInventoryResourceModel {
+		return objectstorage.BucketInventoryResourceModel{
+			Name:                   types.StringValue("daily-report"),
+			Enabled:                types.BoolValue(true),
+			IncludedObjectVersions: types.StringValue(versions),
+			Schedule:               &objectstorage.ScheduleModel{Frequency: types.StringValue("Daily")},
+			Destination: &objectstorage.DestinationModel{
+				Bucket: &objectstorage.BucketModel{
+					BucketArn: types.StringValue(destArn),
+					Format:    types.StringValue("CSV"),
+				},
+			},
+		}
+	}
+
+	steps := []resource.TestStep{
+		// 1. create with "Current"
+		createInventoryTestStep(ctx, t, inventoryTestConfig{
+			name:         "create with Current",
+			resourceName: resourceName,
+			bucket:       bucket,
+			inventory:    newInventory("Current"),
+			configPlanChecks: resource.ConfigPlanChecks{
+				PreApply: []plancheck.PlanCheck{
+					plancheck.ExpectResourceAction(rs, plancheck.ResourceActionCreate),
+				},
+			},
+		}),
+		// 2. no-op: identical config must produce an EMPTY plan
+		createInventoryTestStep(ctx, t, inventoryTestConfig{
+			name:         "no-op after create with Current",
+			resourceName: resourceName,
+			bucket:       bucket,
+			inventory:    newInventory("Current"),
+			configPlanChecks: resource.ConfigPlanChecks{
+				PreApply: []plancheck.PlanCheck{
+					plancheck.ExpectEmptyPlan(),
+				},
+			},
+		}),
+		// 3. update "Current" -> "All": must plan and apply an in-place update
+		createInventoryTestStep(ctx, t, inventoryTestConfig{
+			name:         "update to All",
+			resourceName: resourceName,
+			bucket:       bucket,
+			inventory:    newInventory("All"),
+			configPlanChecks: resource.ConfigPlanChecks{
+				PreApply: []plancheck.PlanCheck{
+					plancheck.ExpectResourceAction(rs, plancheck.ResourceActionUpdate),
+				},
+			},
+		}),
+		// 4. no-op after update: still stable, no drift
+		createInventoryTestStep(ctx, t, inventoryTestConfig{
+			name:         "no-op after update to All",
+			resourceName: resourceName,
+			bucket:       bucket,
+			inventory:    newInventory("All"),
+			configPlanChecks: resource.ConfigPlanChecks{
+				PreApply: []plancheck.PlanCheck{
+					plancheck.ExpectEmptyPlan(),
+				},
+			},
+		}),
 	}
 
 	resource.ParallelTest(t, resource.TestCase{

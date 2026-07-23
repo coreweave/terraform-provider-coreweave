@@ -247,8 +247,8 @@ func TestInventorySchema_IncludedObjectVersionsValidator(t *testing.T) {
 		wantErr bool
 	}{
 		"All is valid":          {"All", false},
-		"Latest is valid":       {"Latest", false},
-		"Current is rejected":   {"Current", true}, // AWS enum value, not the documented CAIOS value
+		"Current is value":      {"Current", false},
+		"Latest is rejected":    {"Latest", true},
 		"arbitrary rejected":    {"Everything", true},
 		"empty string rejected": {"", true},
 	}

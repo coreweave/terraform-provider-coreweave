@@ -114,8 +114,8 @@ func (r *BucketInventoryResource) Schema(ctx context.Context, req resource.Schem
 			},
 			"included_object_versions": schema.StringAttribute{
 				Required:            true,
-				MarkdownDescription: "Specifies which object versions are included in the inventory results. Valid values are `All` and `Latest`.",
-				Validators:          []validator.String{stringvalidator.OneOf("All", "Latest")},
+				MarkdownDescription: "Specifies which object versions are included in the inventory results. Valid values are `All` and `Current`.",
+				Validators:          []validator.String{stringvalidator.OneOf("All", "Current")},
 			},
 			"optional_fields": schema.SetAttribute{
 				Optional:            true,
