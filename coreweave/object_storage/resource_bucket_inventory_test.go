@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand/v2"
+	"regexp"
 	"testing"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -103,7 +104,7 @@ func createInventoryTestStep(ctx context.Context, t *testing.T, opts inventoryTe
 //   - re-apply the changed config and assert an EMPTY plan again
 //   - import round-trip
 func TestBucketInventoryBasic(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 
 	randomInt := rand.IntN(100000)
 	bucket := objectstorage.BucketResourceModel{
@@ -308,6 +309,53 @@ func TestBucketInventoryIncludedObjectVersions(t *testing.T) {
 		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
 		CheckDestroy:             testAccCheckInventoryDestroy(ctx, t),
 		Steps:                    steps,
+	})
+}
+
+// TestBucketInventoryIncludedObjectVersionsInvalid confirms that an unsupported
+// included_object_versions value (e.g. "Latest") is rejected at plan time by the
+// schema validator, before any API call is made. The unit tests exercise the
+// validator directly; this is the acceptance-level guardrail requested in review.
+func TestBucketInventoryIncludedObjectVersionsInvalid(t *testing.T) {
+	ctx := t.Context()
+
+	randomInt := rand.IntN(100000)
+	bucket := objectstorage.BucketResourceModel{
+		Name: types.StringValue(fmt.Sprintf("%sinv-invalid-%x", AcceptanceTestPrefix, randomInt)),
+		Zone: types.StringValue("US-EAST-04A"),
+	}
+
+	destArn := fmt.Sprintf("arn:aws:s3:::%s", bucket.Name.ValueString())
+
+	inv := objectstorage.BucketInventoryResourceModel{
+		Bucket:                 types.StringValue(fmt.Sprintf("coreweave_object_storage_bucket.%s.name", "test_bucket")),
+		Name:                   types.StringValue("daily-report"),
+		Enabled:                types.BoolValue(true),
+		IncludedObjectVersions: types.StringValue("Latest"),
+		Schedule:               &objectstorage.ScheduleModel{Frequency: types.StringValue("Daily")},
+		Destination: &objectstorage.DestinationModel{
+			Bucket: &objectstorage.BucketModel{
+				BucketArn: types.StringValue(destArn),
+				Format:    types.StringValue("CSV"),
+			},
+		},
+	}
+
+	config := objectstorage.MustRenderBucketResource(ctx, "test_bucket", &bucket) +
+		objectstorage.MustRenderBucketInventoryResource(ctx, "test_inv_invalid", &inv)
+
+	resource.ParallelTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				// PlanOnly: the OneOf validator rejects "Latest" during plan, so the
+				// step fails before anything is created — no backend interaction and
+				// nothing to destroy.
+				Config:      config,
+				PlanOnly:    true,
+				ExpectError: regexp.MustCompile(`(?s)included_object_versions.*must be one of`),
+			},
+		},
 	})
 }
 
