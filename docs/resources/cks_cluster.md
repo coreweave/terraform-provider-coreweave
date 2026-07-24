@@ -173,7 +173,7 @@ Required:
 
 Read-Only:
 
-- `tailnet_domain` (String) The Tailscale Tailnet DNS name assigned to the cluster. Populated after the cluster becomes ready.
+- `tailnet_domain` (String) The Tailscale Tailnet DNS name assigned to the cluster. Populated by the Tailscale operator after the cluster becomes ready.
 
 ## Import
 
