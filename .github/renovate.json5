@@ -82,6 +82,14 @@
       "sourceUrl": "https://github.com/golang/go"
     },
     {
+      "matchManagers": ["gomod"],
+      "matchPackageNames": ["google.golang.org/genproto/googleapis/**"],
+      "matchDepTypes": ["require", "indirect"],
+      "enabled": true,
+      "groupName": "google.golang.org/genproto/googleapis",
+      "minimumGroupSize": 2
+    },
+    {
       "matchPackageNames": ["buf.build/gen/go/coreweave/cks/**"],
       "groupName": "buf.build/coreweave/cks",
       "semanticCommitType": "deps",
