@@ -84,7 +84,6 @@
     {
       "matchManagers": ["gomod"],
       "matchPackageNames": ["google.golang.org/genproto/googleapis/**"],
-      "matchDepTypes": ["require", "indirect"],
       "enabled": true,
       "groupName": "google.golang.org/genproto/googleapis",
       "minimumGroupSize": 2
