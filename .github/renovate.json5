@@ -14,6 +14,8 @@
   "postUpdateOptions": ["gomodTidy"],
   "rebaseWhen": "conflicted",
   "commitBodyTable": true,
+  "minimumReleaseAge": "7 days",
+  "internalChecksFilter": "strict",
   "customManagers": [
     {
       "customType": "regex",
@@ -140,6 +142,25 @@
     {
       "matchSourceUrls": ["https://github.com/aws/aws-sdk-go-v2"],
       "fetchChangeLogs": "off"
+    },
+    {
+      "matchDepNames": [
+        "ghcr.io/coreweave/**",
+        "buf.build/gen/go/coreweave/**"
+      ],
+      "minimumReleaseAge": "0 days"
+    },
+    {
+      "matchPackageNames": [
+        "ghcr.io/coreweave/**",
+        "buf.build/gen/go/coreweave/**"
+      ],
+      "minimumReleaseAge": "0 days"
+    },
+    {
+      "matchDatasources": ["docker", "golang-version"],
+      "matchPackageNames": ["go", "golang"],
+      "minimumReleaseAge": "0 days"
     }
   ]
 }
