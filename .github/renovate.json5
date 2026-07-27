@@ -161,6 +161,11 @@
       "matchDatasources": ["docker", "golang-version"],
       "matchPackageNames": ["go", "golang"],
       "minimumReleaseAge": "0 days"
+    },
+    {
+      "matchManagers": ["mise"],
+      "matchPackageNames": ["go"],
+      "minimumReleaseAge": "0 days"
     }
   ]
 }
