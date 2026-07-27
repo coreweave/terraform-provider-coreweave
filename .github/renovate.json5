@@ -158,13 +158,10 @@
       "minimumReleaseAge": "0 days"
     },
     {
-      "matchDatasources": ["docker", "golang-version"],
-      "matchPackageNames": ["go", "golang"],
-      "minimumReleaseAge": "0 days"
-    },
-    {
-      "matchManagers": ["mise"],
+      "matchManagers": ["gomod", "mise"],
       "matchPackageNames": ["go"],
+      "groupName": "go",
+      "minimumGroupSize": 3,
       "minimumReleaseAge": "0 days"
     }
   ]
