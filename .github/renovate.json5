@@ -144,13 +144,6 @@
       "fetchChangeLogs": "off"
     },
     {
-      "matchDepNames": [
-        "ghcr.io/coreweave/**",
-        "buf.build/gen/go/coreweave/**"
-      ],
-      "minimumReleaseAge": "0 days"
-    },
-    {
       "matchPackageNames": [
         "ghcr.io/coreweave/**",
         "buf.build/gen/go/coreweave/**"
@@ -159,9 +152,8 @@
     },
     {
       "matchManagers": ["gomod", "mise"],
-      "matchPackageNames": ["go"],
+      "matchPackageNames": ["go", "golang/go"],
       "groupName": "go",
-      "minimumGroupSize": 3,
       "minimumReleaseAge": "0 days"
     }
   ]
