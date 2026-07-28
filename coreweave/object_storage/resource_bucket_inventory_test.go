@@ -65,11 +65,11 @@ func createInventoryTestStep(ctx context.Context, t *testing.T, opts inventoryTe
 	rs := fmt.Sprintf("coreweave_object_storage_bucket_inventory.%s", opts.resourceName)
 
 	checks := []statecheck.StateCheck{
-		statecheck.ExpectKnownValue(rs, tfjsonpath.New("name"), knownvalue.StringExact(inv.Name.ValueString())),
+		statecheck.ExpectKnownValue(rs, tfjsonpath.New(schemaKeyName), knownvalue.StringExact(inv.Name.ValueString())),
 		statecheck.ExpectKnownValue(rs, tfjsonpath.New("included_object_versions"), knownvalue.StringExact(inv.IncludedObjectVersions.ValueString())),
 		statecheck.ExpectKnownValue(rs, tfjsonpath.New("enabled"), knownvalue.Bool(inv.Enabled.ValueBool())),
 		statecheck.ExpectKnownValue(rs, tfjsonpath.New("schedule").AtMapKey("frequency"), knownvalue.StringExact(inv.Schedule.Frequency.ValueString())),
-		statecheck.ExpectKnownValue(rs, tfjsonpath.New("destination").AtMapKey("bucket").AtMapKey("format"), knownvalue.StringExact(inv.Destination.Bucket.Format.ValueString())),
+		statecheck.ExpectKnownValue(rs, tfjsonpath.New("destination").AtMapKey(schemaKeyBucket).AtMapKey("format"), knownvalue.StringExact(inv.Destination.Bucket.Format.ValueString())),
 	}
 
 	// optional_fields (set) — assert exact membership, including LastAccessedDate.
@@ -124,8 +124,8 @@ func TestBucketInventoryBasic(t *testing.T) {
 		Enabled:                types.BoolValue(true),
 		IncludedObjectVersions: types.StringValue("Current"),
 		OptionalFields: types.SetValueMust(types.StringType, []attr.Value{
-			types.StringValue("Size"),
-			types.StringValue("LastAccessedDate"),
+			types.StringValue(inventoryOptionalFieldSize),
+			types.StringValue(inventoryOptionalFieldLastAccessedDate),
 		}),
 		Schedule: &objectstorage.ScheduleModel{Frequency: types.StringValue("Daily")},
 		Destination: &objectstorage.DestinationModel{
@@ -140,8 +140,8 @@ func TestBucketInventoryBasic(t *testing.T) {
 	// (adds ETag) to prove a real diff is detected and applied.
 	updated := base
 	updated.OptionalFields = types.SetValueMust(types.StringType, []attr.Value{
-		types.StringValue("Size"),
-		types.StringValue("LastAccessedDate"),
+		types.StringValue(inventoryOptionalFieldSize),
+		types.StringValue(inventoryOptionalFieldLastAccessedDate),
 		types.StringValue("ETag"),
 	})
 	updated.Schedule = &objectstorage.ScheduleModel{Frequency: types.StringValue("Weekly")}
@@ -203,7 +203,7 @@ func TestBucketInventoryBasic(t *testing.T) {
 			ResourceName:                         rs,
 			ImportState:                          true,
 			ImportStateVerify:                    true,
-			ImportStateVerifyIdentifierAttribute: "name",
+			ImportStateVerifyIdentifierAttribute: schemaKeyName,
 			ImportStateId:                        fmt.Sprintf("%s:%s", bucket.Name.ValueString(), updated.Name.ValueString()),
 			ImportStateCheck: func([]*terraform.InstanceState) error {
 				t.Logf("completed coreweave_object_storage_bucket_inventory import step")
@@ -381,7 +381,7 @@ func TestBucketInventoryDisappears(t *testing.T) {
 		Enabled:                types.BoolValue(true),
 		IncludedObjectVersions: types.StringValue("All"),
 		OptionalFields: types.SetValueMust(types.StringType, []attr.Value{
-			types.StringValue("LastAccessedDate"),
+			types.StringValue(inventoryOptionalFieldLastAccessedDate),
 		}),
 		Schedule: &objectstorage.ScheduleModel{Frequency: types.StringValue("Daily")},
 		Destination: &objectstorage.DestinationModel{
@@ -454,8 +454,8 @@ func testAccCheckInventoryDestroy(ctx context.Context, t *testing.T) resource.Te
 			if rs.Type != "coreweave_object_storage_bucket_inventory" {
 				continue
 			}
-			bucket := rs.Primary.Attributes["bucket"]
-			id := rs.Primary.Attributes["name"]
+			bucket := rs.Primary.Attributes[schemaKeyBucket]
+			id := rs.Primary.Attributes[schemaKeyName]
 
 			_, err := s3c.GetBucketInventoryConfiguration(ctx, &s3.GetBucketInventoryConfigurationInput{
 				Bucket: aws.String(bucket),

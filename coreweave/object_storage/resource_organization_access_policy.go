@@ -163,7 +163,7 @@ func (o *OrganizationAccessPolicyResource) Schema(ctx context.Context, req resou
 	resp.Schema = schema.Schema{
 		MarkdownDescription: "[Organization access policies](https://docs.coreweave.com/products/storage/object-storage/auth-access/organization-policies/about) enforce permissions for AI Object Storage across your entire CoreWeave organization, automatically covering every resource, bucket, and user in your account. At least one organization access policy must be in place before you can create a bucket.",
 		Attributes: map[string]schema.Attribute{
-			"name": schema.StringAttribute{
+			schemaKeyName: schema.StringAttribute{
 				Required:            true,
 				MarkdownDescription: "The name of the organization access policy, must be unique.",
 				PlanModifiers: []planmodifier.String{
@@ -178,11 +178,11 @@ func (o *OrganizationAccessPolicyResource) Schema(ctx context.Context, req resou
 				},
 				NestedObject: schema.NestedAttributeObject{
 					Attributes: map[string]schema.Attribute{
-						"name": schema.StringAttribute{
+						schemaKeyName: schema.StringAttribute{
 							Required:            true,
 							MarkdownDescription: "A short, human-readable identifier for this specific policy statement, similar to Sid in bucket access policies.",
 						},
-						"effect": schema.StringAttribute{
+						schemaKeyEffect: schema.StringAttribute{
 							Required:            true,
 							MarkdownDescription: "Must be either Allow or Deny (case-sensitive). Determines whether the statement grants or denies the specified actions on the listed resources for the designated principals. By default, all access is denied.",
 							Validators: []validator.String{
@@ -392,38 +392,38 @@ func MustRenderOrganizationAccessPolicy(ctx context.Context, resourceName string
 	resource := body.AppendNewBlock("resource", []string{"coreweave_object_storage_organization_access_policy", resourceName})
 	resourceBody := resource.Body()
 
-	resourceBody.SetAttributeValue("name", cty.StringVal(policy.Name.ValueString()))
+	resourceBody.SetAttributeValue(schemaKeyName, cty.StringVal(policy.Name.ValueString()))
 
-	statements := []cty.Value{}
-	for _, s := range policy.Statements {
+	statements := make([]cty.Value, len(policy.Statements))
+	for i, s := range policy.Statements {
 		actionsSlice := []string{}
 		s.Actions.ElementsAs(ctx, &actionsSlice, false)
-		actions := []cty.Value{}
-		for _, a := range actionsSlice {
-			actions = append(actions, cty.StringVal(a))
+		actions := make([]cty.Value, len(actionsSlice))
+		for i, a := range actionsSlice {
+			actions[i] = cty.StringVal(a)
 		}
 
 		resourcesSlice := []string{}
 		s.Resources.ElementsAs(ctx, &resourcesSlice, false)
-		resources := []cty.Value{}
-		for _, a := range resourcesSlice {
-			resources = append(resources, cty.StringVal(a))
+		resources := make([]cty.Value, len(resourcesSlice))
+		for i, a := range resourcesSlice {
+			resources[i] = cty.StringVal(a)
 		}
 
 		principalsSlice := []string{}
 		s.Principals.ElementsAs(ctx, &principalsSlice, false)
-		principals := []cty.Value{}
-		for _, a := range principalsSlice {
-			principals = append(principals, cty.StringVal(a))
+		principals := make([]cty.Value, len(principalsSlice))
+		for i, a := range principalsSlice {
+			principals[i] = cty.StringVal(a)
 		}
 
-		statements = append(statements, cty.ObjectVal(map[string]cty.Value{
-			"name":       cty.StringVal(s.Name.ValueString()),
-			"effect":     cty.StringVal(s.Effect.ValueString()),
-			"actions":    cty.SetVal(actions),
-			"resources":  cty.SetVal(resources),
-			"principals": cty.SetVal(principals),
-		}))
+		statements[i] = cty.ObjectVal(map[string]cty.Value{
+			schemaKeyName:   cty.StringVal(s.Name.ValueString()),
+			schemaKeyEffect: cty.StringVal(s.Effect.ValueString()),
+			"actions":       cty.SetVal(actions),
+			"resources":     cty.SetVal(resources),
+			"principals":    cty.SetVal(principals),
+		})
 	}
 
 	resourceBody.SetAttributeValue("statements", cty.ListVal(statements))

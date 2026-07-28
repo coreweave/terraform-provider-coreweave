@@ -94,11 +94,11 @@ func (d *ClusterDataSource) Schema(ctx context.Context, req datasource.SchemaReq
 				MarkdownDescription: "The Kubernetes Service NodePort range.",
 				Computed:            true,
 				Attributes: map[string]schema.Attribute{
-					"start": schema.Int32Attribute{
+					schemaKeyStart: schema.Int32Attribute{
 						MarkdownDescription: "Start of the NodePort range.",
 						Computed:            true,
 					},
-					"end": schema.Int32Attribute{
+					schemaKeyEnd: schema.Int32Attribute{
 						MarkdownDescription: "End of the NodePort range.",
 						Computed:            true,
 					},
@@ -112,11 +112,11 @@ func (d *ClusterDataSource) Schema(ctx context.Context, req datasource.SchemaReq
 				MarkdownDescription: "The OIDC configuration of the cluster.",
 				Computed:            true,
 				Attributes: map[string]schema.Attribute{
-					"issuer_url": schema.StringAttribute{
+					schemaKeyIssuerURL: schema.StringAttribute{
 						MarkdownDescription: "The issuer URL of the OIDC configuration.",
 						Computed:            true,
 					},
-					"client_id": schema.StringAttribute{
+					schemaKeyClientID: schema.StringAttribute{
 						MarkdownDescription: "The client ID of the OIDC configuration.",
 						Computed:            true,
 					},
@@ -126,7 +126,7 @@ func (d *ClusterDataSource) Schema(ctx context.Context, req datasource.SchemaReq
 				MarkdownDescription: "The authentication webhook configuration of the cluster.",
 				Computed:            true,
 				Attributes: map[string]schema.Attribute{
-					"server": schema.StringAttribute{
+					schemaKeyServer: schema.StringAttribute{
 						MarkdownDescription: "The server URL of the authentication webhook.",
 						Computed:            true,
 					},
@@ -140,7 +140,7 @@ func (d *ClusterDataSource) Schema(ctx context.Context, req datasource.SchemaReq
 				MarkdownDescription: "The authorization webhook configuration of the cluster.",
 				Computed:            true,
 				Attributes: map[string]schema.Attribute{
-					"server": schema.StringAttribute{
+					schemaKeyServer: schema.StringAttribute{
 						MarkdownDescription: "The server URL of the authorization webhook.",
 						Computed:            true,
 					},
@@ -175,7 +175,7 @@ func (d *ClusterDataSource) Schema(ctx context.Context, req datasource.SchemaReq
 				MarkdownDescription: "Tailscale configuration for the cluster. Enables cluster access over a Tailscale VPN.",
 				Computed:            true,
 				Attributes: map[string]schema.Attribute{
-					"client_id": schema.StringAttribute{
+					schemaKeyClientID: schema.StringAttribute{
 						MarkdownDescription: "The Tailscale Client ID for the federated identity.",
 						Computed:            true,
 					},

@@ -114,18 +114,18 @@ func TestInferenceDeployment_SetFromDeployment_NullPreservation(t *testing.T) {
 	// Build a minimal proto deployment with no optional fields set.
 	d := &inferencev1.Deployment{
 		Spec: &inferencev1.DeploymentSpec{
-			Id:   "test-id",
-			Name: "my-llm",
+			Id:   testDeploymentID,
+			Name: testDeploymentName,
 			Runtime: &inferencev1.DeploymentRuntime{
-				Engine:  "vllm",
+				Engine:  testDeploymentEngine,
 				Version: "",
 			},
 			Resources: &inferencev1.DeploymentResources{
-				InstanceType: "H100_80GB_SXM5",
+				InstanceType: testDeploymentInstanceType,
 				GpuCount:     1,
 			},
 			Model: &inferencev1.DeploymentModel{
-				Name:   "meta-llama/Llama-3.1-8B",
+				Name:   testDeploymentModelName,
 				Bucket: "my-bucket",
 				Path:   "models/llama",
 			},
@@ -190,7 +190,7 @@ func TestInferenceDeployment_SetFromDeployment_NullPreservation(t *testing.T) {
 	}
 
 	// Required fields should always be populated.
-	if m.ID.ValueString() != "test-id" {
+	if m.ID.ValueString() != testDeploymentID {
 		t.Errorf("ID: expected 'test-id', got %q", m.ID.ValueString())
 	}
 	if m.Resources.GpuCount.ValueInt64() != 1 {
@@ -213,11 +213,11 @@ func TestSetFromDeployment_PreserveStatusFields(t *testing.T) {
 	base := func(status inferencev1.Status, name, condReason string, updatedAt *timestamppb.Timestamp) *inferencev1.Deployment {
 		return &inferencev1.Deployment{
 			Spec: &inferencev1.DeploymentSpec{
-				Id:        "test-id",
+				Id:        testDeploymentID,
 				Name:      name,
-				Runtime:   &inferencev1.DeploymentRuntime{Engine: "vllm"},
-				Resources: &inferencev1.DeploymentResources{InstanceType: "H100_80GB_SXM5", GpuCount: 1},
-				Model:     &inferencev1.DeploymentModel{Name: "meta-llama/Llama-3.1-8B"},
+				Runtime:   &inferencev1.DeploymentRuntime{Engine: testDeploymentEngine},
+				Resources: &inferencev1.DeploymentResources{InstanceType: testDeploymentInstanceType, GpuCount: 1},
+				Model:     &inferencev1.DeploymentModel{Name: testDeploymentModelName},
 				Autoscaling: &inferencev1.DeploymentAutoscaling{
 					Min: 1,
 					Max: 4,
@@ -228,13 +228,13 @@ func TestSetFromDeployment_PreserveStatusFields(t *testing.T) {
 				Status:    status,
 				UpdatedAt: updatedAt,
 				Conditions: []*inferencev1.Condition{
-					{Type: "Ready", Status: inferencev1.Condition_STATUS_TRUE, Reason: condReason},
+					{Type: conditionTypeReady, Status: inferencev1.Condition_STATUS_TRUE, Reason: condReason},
 				},
 			},
 		}
 	}
 
-	prior := base(inferencev1.Status_STATUS_READY, "my-llm", "AsExpected", timestamppb.New(time.Unix(1000, 0).UTC()))
+	prior := base(inferencev1.Status_STATUS_READY, testDeploymentName, "AsExpected", timestamppb.New(time.Unix(1000, 0).UTC()))
 	fresh := base(inferencev1.Status_STATUS_UPDATING, "my-llm-renamed", "Reconciling", timestamppb.New(time.Unix(2000, 0).UTC()))
 
 	// Seed the model with prior-state values (what the plan holds on Update).
@@ -283,20 +283,20 @@ func TestInferenceDeployment_SetFromDeployment_RuntimeMaps(t *testing.T) {
 
 	d := &inferencev1.Deployment{
 		Spec: &inferencev1.DeploymentSpec{
-			Id:   "test-id",
-			Name: "my-llm",
+			Id:   testDeploymentID,
+			Name: testDeploymentName,
 			Runtime: &inferencev1.DeploymentRuntime{
-				Engine: "vllm",
+				Engine: testDeploymentEngine,
 				EngineEnv: map[string]string{
-					"VLLM_LOGGING_LEVEL": "INFO",
+					"VLLM_LOGGING_LEVEL": testLogLevelInfo,
 				},
 			},
 			Resources: &inferencev1.DeploymentResources{
-				InstanceType: "H100_80GB_SXM5",
+				InstanceType: testDeploymentInstanceType,
 				GpuCount:     1,
 			},
 			Model: &inferencev1.DeploymentModel{
-				Name:   "meta-llama/Llama-3.1-8B",
+				Name:   testDeploymentModelName,
 				Bucket: "my-bucket",
 				Path:   "models/llama",
 			},
@@ -330,7 +330,7 @@ func TestInferenceDeployment_SetFromDeployment_RuntimeMaps(t *testing.T) {
 	if diags.HasError() {
 		t.Fatalf("EngineEnv ElementsAs returned errors: %v", diags)
 	}
-	if got := engineEnv["VLLM_LOGGING_LEVEL"]; got != "INFO" {
+	if got := engineEnv["VLLM_LOGGING_LEVEL"]; got != testLogLevelInfo {
 		t.Errorf("Runtime.EngineEnv[\"VLLM_LOGGING_LEVEL\"]: got %q, want 'INFO'", got)
 	}
 }
@@ -342,21 +342,21 @@ func TestInferenceDeployment_ToCreateRequest_OptionalFields(t *testing.T) {
 	gwIds := types.SetValueMust(types.StringType, []attr.Value{types.StringValue("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")})
 
 	m := &inference.InferenceDeploymentResourceModel{
-		Name:       types.StringValue("my-llm"),
+		Name:       types.StringValue(testDeploymentName),
 		GatewayIds: gwIds,
 		Disabled:   types.BoolValue(false),
 		Runtime: &inference.RuntimeModel{
-			Engine:       types.StringValue("vllm"),
+			Engine:       types.StringValue(testDeploymentEngine),
 			Version:      types.StringNull(),
 			EngineConfig: types.MapNull(types.StringType),
 			EngineEnv:    types.MapNull(types.StringType),
 		},
 		Resources: &inference.ResourcesModel{
-			InstanceType: types.StringValue("H100_80GB_SXM5"),
+			InstanceType: types.StringValue(testDeploymentInstanceType),
 			GpuCount:     types.Int64Value(1),
 		},
 		Model: &inference.DeploymentModelConfig{
-			Name:   types.StringValue("meta-llama/Llama-3.1-8B"),
+			Name:   types.StringValue(testDeploymentModelName),
 			Bucket: types.StringValue("my-bucket"),
 			Path:   types.StringValue("models/llama"),
 		},
@@ -377,7 +377,7 @@ func TestInferenceDeployment_ToCreateRequest_OptionalFields(t *testing.T) {
 		t.Fatalf("ToCreateRequest returned errors: %v", diags)
 	}
 
-	if req.Name != "my-llm" {
+	if req.Name != testDeploymentName {
 		t.Errorf("Name: got %q, want 'my-llm'", req.Name)
 	}
 	if req.Runtime.Version != "" {
@@ -407,26 +407,26 @@ func TestInferenceDeployment_ToUpdateRequest_Fields(t *testing.T) {
 	gwIds := types.SetValueMust(types.StringType, []attr.Value{types.StringValue("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")})
 	ccList, _ := types.ListValueFrom(ctx, types.StringType, []string{"CAPACITY_CLASS_RESERVED"})
 	engineEnv := types.MapValueMust(types.StringType, map[string]attr.Value{
-		"VLLM_LOGGING_LEVEL": types.StringValue("INFO"),
+		"VLLM_LOGGING_LEVEL": types.StringValue(testLogLevelInfo),
 	})
 
 	m := &inference.InferenceDeploymentResourceModel{
 		ID:         types.StringValue("deploy-123"),
-		Name:       types.StringValue("my-llm"),
+		Name:       types.StringValue(testDeploymentName),
 		GatewayIds: gwIds,
 		Disabled:   types.BoolValue(true),
 		Runtime: &inference.RuntimeModel{
-			Engine:       types.StringValue("vllm"),
+			Engine:       types.StringValue(testDeploymentEngine),
 			Version:      types.StringValue("1.0.0"),
 			EngineConfig: types.MapNull(types.StringType),
 			EngineEnv:    engineEnv,
 		},
 		Resources: &inference.ResourcesModel{
-			InstanceType: types.StringValue("H100_80GB_SXM5"),
+			InstanceType: types.StringValue(testDeploymentInstanceType),
 			GpuCount:     types.Int64Value(2),
 		},
 		Model: &inference.DeploymentModelConfig{
-			Name:   types.StringValue("meta-llama/Llama-3.1-8B"),
+			Name:   types.StringValue(testDeploymentModelName),
 			Bucket: types.StringValue("my-bucket"),
 			Path:   types.StringValue("models/llama"),
 		},
@@ -450,7 +450,7 @@ func TestInferenceDeployment_ToUpdateRequest_Fields(t *testing.T) {
 	if req.Id != "deploy-123" {
 		t.Errorf("Id: got %q, want 'deploy-123'", req.Id)
 	}
-	if req.Name != "my-llm" {
+	if req.Name != testDeploymentName {
 		t.Errorf("Name: got %q, want 'my-llm'", req.Name)
 	}
 	if !req.Disabled {
@@ -459,7 +459,7 @@ func TestInferenceDeployment_ToUpdateRequest_Fields(t *testing.T) {
 	if req.Runtime.Version != "1.0.0" {
 		t.Errorf("Runtime.Version: got %q, want '1.0.0'", req.Runtime.Version)
 	}
-	if got := req.Runtime.EngineEnv["VLLM_LOGGING_LEVEL"]; got != "INFO" {
+	if got := req.Runtime.EngineEnv["VLLM_LOGGING_LEVEL"]; got != testLogLevelInfo {
 		t.Errorf("Runtime.EngineEnv[\"VLLM_LOGGING_LEVEL\"]: got %q, want 'INFO'", got)
 	}
 	if req.Resources.GpuCount != 2 {
@@ -721,7 +721,7 @@ func TestInferenceDeployment(t *testing.T) {
 					Config: inferenceDeploymentConfig(name, preferredZone, preferredInstance),
 					ConfigStateChecks: []statecheck.StateCheck{
 						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("name"), knownvalue.StringExact(name)),
-						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("status"), knownvalue.StringExact("STATUS_READY")),
+						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New(schemaKeyStatus), knownvalue.StringExact("STATUS_READY")),
 						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("disabled"), knownvalue.Bool(false)),
 						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("id"), knownvalue.NotNull()),
 						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("organization_id"), knownvalue.NotNull()),
@@ -759,7 +759,7 @@ func TestInferenceDeployment(t *testing.T) {
 					// Server-observed fields are intentionally not refreshed into state on
 					// Update (see setFromDeployment preserveStatusFields); a fresh import Read
 					// legitimately observes newer values, so they can't be verified here.
-					ImportStateVerifyIgnore: []string{"status", "updated_at", "conditions"},
+					ImportStateVerifyIgnore: []string{schemaKeyStatus, schemaKeyUpdatedAt, schemaKeyConditions},
 				},
 			},
 		})

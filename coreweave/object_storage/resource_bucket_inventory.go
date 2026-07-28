@@ -105,14 +105,14 @@ func (r *BucketInventoryResource) Schema(ctx context.Context, req resource.Schem
 	resp.Schema = schema.Schema{
 		MarkdownDescription: "Manages a Coreweave AI Object Storage bucket inventory configuration. [Learn more about inventory reporting](https://docs.coreweave.com/products/storage/object-storage)",
 		Attributes: map[string]schema.Attribute{
-			"bucket": schema.StringAttribute{
+			schemaKeyBucket: schema.StringAttribute{
 				Required:            true,
 				MarkdownDescription: "Name of source bucket to which the inventory configuration applies",
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
 				},
 			},
-			"name": schema.StringAttribute{
+			schemaKeyName: schema.StringAttribute{
 				Required:            true,
 				MarkdownDescription: "Name of the inventory configuration. Must be unique within the bucket.",
 				PlanModifiers:       []planmodifier.String{stringplanmodifier.RequiresReplace()},
@@ -136,7 +136,7 @@ func (r *BucketInventoryResource) Schema(ctx context.Context, req resource.Schem
 				MarkdownDescription: "List of optional fields to include in the inventory results",
 				Validators: []validator.Set{
 					setvalidator.SizeAtLeast(1),
-					setvalidator.ValueStringsAre(stringvalidator.OneOf("Size", "LastModifiedDate", "LastAccessedDate", "StorageClass", "ETag", "IsMultipartUploaded", "EncryptionStatus", "ChecksumAlgorithm")),
+					setvalidator.ValueStringsAre(stringvalidator.OneOf(inventoryOptionalFieldSize, "LastModifiedDate", inventoryOptionalFieldLastAccessedDate, "StorageClass", "ETag", "IsMultipartUploaded", "EncryptionStatus", "ChecksumAlgorithm")),
 				},
 			},
 		},
@@ -144,7 +144,7 @@ func (r *BucketInventoryResource) Schema(ctx context.Context, req resource.Schem
 			"filter": schema.SingleNestedBlock{
 				MarkdownDescription: "Limits the inventory report to objects matching a prefix.",
 				Attributes: map[string]schema.Attribute{
-					"prefix": schema.StringAttribute{
+					schemaKeyPrefix: schema.StringAttribute{
 						Optional:            true,
 						MarkdownDescription: "Source-object prefix to filter on.",
 					},
@@ -164,7 +164,7 @@ func (r *BucketInventoryResource) Schema(ctx context.Context, req resource.Schem
 			"destination": schema.SingleNestedBlock{
 				MarkdownDescription: "Where the inventory report is written. May be the same bucket as the source.",
 				Blocks: map[string]schema.Block{
-					"bucket": schema.SingleNestedBlock{
+					schemaKeyBucket: schema.SingleNestedBlock{
 						MarkdownDescription: "Destination bucket for the report (may equal the source bucket).",
 						Attributes: map[string]schema.Attribute{
 							"bucket_arn": schema.StringAttribute{
@@ -176,7 +176,7 @@ func (r *BucketInventoryResource) Schema(ctx context.Context, req resource.Schem
 								MarkdownDescription: "Output format: `CSV`, `TSV`, `JSON`, `ORC`, or `Parquet`.",
 								Validators:          []validator.String{stringvalidator.OneOf("CSV", "TSV", "JSON", "ORC", "Parquet")},
 							},
-							"prefix": schema.StringAttribute{
+							schemaKeyPrefix: schema.StringAttribute{
 								Optional:            true,
 								MarkdownDescription: "Prefix prepended to the report output path.",
 							},
@@ -384,9 +384,9 @@ func (r *BucketInventoryResource) Create(ctx context.Context, req resource.Creat
 		return
 	}
 	tflog.Debug(ctx, "creating inventory configuration for bucket", map[string]any{
-		"inventory": string(invJSON),
-		"bucket":    data.Bucket.ValueString(),
-		"id":        data.Name.ValueString(),
+		"inventory":     string(invJSON),
+		schemaKeyBucket: data.Bucket.ValueString(),
+		"id":            data.Name.ValueString(),
 	})
 
 	_, err = s3c.PutBucketInventoryConfiguration(ctx, &s3.PutBucketInventoryConfigurationInput{
@@ -662,7 +662,7 @@ func MustRenderBucketInventoryResource(ctx context.Context, name string, cfg *Bu
 	b := block.Body()
 
 	// bucket rendered as a raw reference token, not a quoted string.
-	b.SetAttributeRaw("bucket", hclwrite.Tokens{{Type: hclsyntax.TokenIdent, Bytes: []byte(cfg.Bucket.ValueString())}})
+	b.SetAttributeRaw(schemaKeyBucket, hclwrite.Tokens{{Type: hclsyntax.TokenIdent, Bytes: []byte(cfg.Bucket.ValueString())}})
 
 	// depends_on rendered as raw reference tokens (a list of resource addresses),
 	// so the destination bucket's policy is applied before the inventory service
@@ -679,7 +679,7 @@ func MustRenderBucketInventoryResource(ctx context.Context, name string, cfg *Bu
 		b.SetAttributeRaw("depends_on", toks)
 	}
 
-	b.SetAttributeValue("name", cty.StringVal(cfg.Name.ValueString()))
+	b.SetAttributeValue(schemaKeyName, cty.StringVal(cfg.Name.ValueString()))
 	if !cfg.Enabled.IsNull() {
 		b.SetAttributeValue("enabled", cty.BoolVal(cfg.Enabled.ValueBool()))
 	}
@@ -700,7 +700,7 @@ func MustRenderBucketInventoryResource(ctx context.Context, name string, cfg *Bu
 	if cfg.Filter != nil {
 		fb := b.AppendNewBlock("filter", nil).Body()
 		if !cfg.Filter.Prefix.IsNull() {
-			fb.SetAttributeValue("prefix", cty.StringVal(cfg.Filter.Prefix.ValueString()))
+			fb.SetAttributeValue(schemaKeyPrefix, cty.StringVal(cfg.Filter.Prefix.ValueString()))
 		}
 	}
 
@@ -711,12 +711,12 @@ func MustRenderBucketInventoryResource(ctx context.Context, name string, cfg *Bu
 
 	if cfg.Destination != nil && cfg.Destination.Bucket != nil {
 		db := b.AppendNewBlock("destination", nil).Body()
-		bb := db.AppendNewBlock("bucket", nil).Body()
+		bb := db.AppendNewBlock(schemaKeyBucket, nil).Body()
 		dest := cfg.Destination.Bucket
 		bb.SetAttributeValue("bucket_arn", cty.StringVal(dest.BucketArn.ValueString()))
 		bb.SetAttributeValue("format", cty.StringVal(dest.Format.ValueString()))
 		if !dest.Prefix.IsNull() {
-			bb.SetAttributeValue("prefix", cty.StringVal(dest.Prefix.ValueString()))
+			bb.SetAttributeValue(schemaKeyPrefix, cty.StringVal(dest.Prefix.ValueString()))
 		}
 		if !dest.AccountID.IsNull() {
 			bb.SetAttributeValue("account_id", cty.StringVal(dest.AccountID.ValueString()))

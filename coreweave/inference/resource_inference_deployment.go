@@ -63,11 +63,11 @@ var (
 	)
 
 	conditionAttrTypes = map[string]attr.Type{
-		"type":             types.StringType,
-		"status":           types.StringType,
-		"last_update_time": types.StringType,
-		"reason":           types.StringType,
-		"message":          types.StringType,
+		schemaKeyType:           types.StringType,
+		schemaKeyStatus:         types.StringType,
+		schemaKeyLastUpdateTime: types.StringType,
+		schemaKeyReason:         types.StringType,
+		schemaKeyMessage:        types.StringType,
 	}
 
 	errDeploymentFailed = errors.New("inference deployment entered a failed state")
@@ -84,11 +84,11 @@ func conditionsListFromStatus(conds []*inferencev1.Condition) (types.List, diag.
 			lastUpdate = c.GetLastUpdateTime().AsTime().Format(time.RFC3339)
 		}
 		condObj, diags := types.ObjectValue(conditionAttrTypes, map[string]attr.Value{
-			"type":             types.StringValue(c.GetType()),
-			"status":           types.StringValue(c.GetStatus().String()),
-			"last_update_time": types.StringValue(lastUpdate),
-			"reason":           types.StringValue(c.GetReason()),
-			"message":          types.StringValue(c.GetMessage()),
+			schemaKeyType:           types.StringValue(c.GetType()),
+			schemaKeyStatus:         types.StringValue(c.GetStatus().String()),
+			schemaKeyLastUpdateTime: types.StringValue(lastUpdate),
+			schemaKeyReason:         types.StringValue(c.GetReason()),
+			schemaKeyMessage:        types.StringValue(c.GetMessage()),
 		})
 		diagnostics.Append(diags...)
 		condVals[i] = condObj
@@ -179,56 +179,56 @@ func (r *InferenceDeploymentResource) Schema(_ context.Context, _ resource.Schem
 				MarkdownDescription: "The unique identifier of the deployment.",
 				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
-			"organization_id": schema.StringAttribute{
+			schemaKeyOrganizationID: schema.StringAttribute{
 				Computed:            true,
 				MarkdownDescription: "The organization ID that owns the deployment.",
 				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
-			"status": schema.StringAttribute{
+			schemaKeyStatus: schema.StringAttribute{
 				Computed:            true,
 				MarkdownDescription: "The current status of the deployment. See the [Inference API overview](https://docs.coreweave.com/products/inference/reference/api-overview) for status values.",
 				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
-			"created_at": schema.StringAttribute{
+			schemaKeyCreatedAt: schema.StringAttribute{
 				Computed:            true,
 				MarkdownDescription: "RFC3339 timestamp of when the deployment was created.",
 				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
-			"updated_at": schema.StringAttribute{
+			schemaKeyUpdatedAt: schema.StringAttribute{
 				Computed:            true,
 				MarkdownDescription: "RFC3339 timestamp of when the deployment was last updated.",
 				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
-			"conditions": schema.ListNestedAttribute{
+			schemaKeyConditions: schema.ListNestedAttribute{
 				Computed:            true,
 				MarkdownDescription: "Detailed status conditions for the deployment.",
 				PlanModifiers:       []planmodifier.List{listplanmodifier.UseStateForUnknown()},
 				NestedObject: schema.NestedAttributeObject{
 					Attributes: map[string]schema.Attribute{
-						"type": schema.StringAttribute{
+						schemaKeyType: schema.StringAttribute{
 							Computed:            true,
-							MarkdownDescription: "The condition type (e.g. `Ready`, `Progressing`).",
+							MarkdownDescription: conditionTypeDescription,
 						},
-						"status": schema.StringAttribute{
+						schemaKeyStatus: schema.StringAttribute{
 							Computed:            true,
-							MarkdownDescription: "The condition status (`True`, `False`, or `Unknown`).",
+							MarkdownDescription: conditionStatusDescription,
 						},
-						"last_update_time": schema.StringAttribute{
+						schemaKeyLastUpdateTime: schema.StringAttribute{
 							Computed:            true,
-							MarkdownDescription: "RFC3339 timestamp of the last condition transition.",
+							MarkdownDescription: lastTransitionTimeDescription,
 						},
-						"reason": schema.StringAttribute{
+						schemaKeyReason: schema.StringAttribute{
 							Computed:            true,
-							MarkdownDescription: "A short, machine-readable reason for the condition's last transition.",
+							MarkdownDescription: lastTransitionReasonDescription,
 						},
-						"message": schema.StringAttribute{
+						schemaKeyMessage: schema.StringAttribute{
 							Computed:            true,
-							MarkdownDescription: "A human-readable message about the condition's last transition.",
+							MarkdownDescription: lastTransitionMessageDescription,
 						},
 					},
 				},
 			},
-			"name": schema.StringAttribute{
+			schemaKeyName: schema.StringAttribute{
 				Required:            true,
 				MarkdownDescription: "The name of the deployment. Must be a valid hostname label.",
 				PlanModifiers:       []planmodifier.String{stringplanmodifier.RequiresReplace()},
@@ -304,7 +304,7 @@ func (r *InferenceDeploymentResource) Schema(_ context.Context, _ resource.Schem
 				Required:            true,
 				MarkdownDescription: "[Model](https://docs.coreweave.com/products/inference/models) configuration.",
 				Attributes: map[string]schema.Attribute{
-					"name": schema.StringAttribute{
+					schemaKeyName: schema.StringAttribute{
 						Required:            true,
 						MarkdownDescription: "The model name used in API requests (e.g. the `/models` endpoint). Length must be 4-63 characters.",
 						Validators: []validator.String{
@@ -371,12 +371,12 @@ func (r *InferenceDeploymentResource) Schema(_ context.Context, _ resource.Schem
 				Computed:            true,
 				MarkdownDescription: "Traffic configuration. Omit to accept the API default (weight 0, which normalizes to 100% when no other deployment shares the model name). After apply, `weight` is populated from the API.",
 				Default: objectdefault.StaticValue(types.ObjectValueMust(map[string]attr.Type{
-					"weight": types.Int64Type,
+					schemaKeyWeight: types.Int64Type,
 				}, map[string]attr.Value{
-					"weight": types.Int64Value(0),
+					schemaKeyWeight: types.Int64Value(0),
 				})),
 				Attributes: map[string]schema.Attribute{
-					"weight": schema.Int64Attribute{
+					schemaKeyWeight: schema.Int64Attribute{
 						Optional:            true,
 						Computed:            true,
 						MarkdownDescription: "Traffic weight (0-1000). Values are normalized into percentages across deployments with the same model name.",
@@ -452,7 +452,7 @@ func (r *InferenceDeploymentResource) Create(ctx context.Context, req resource.C
 				Id: deploymentID,
 			}))
 			if err != nil {
-				tflog.Error(ctx, "failed to poll deployment", map[string]interface{}{"error": err.Error()})
+				tflog.Error(ctx, "failed to poll deployment", map[string]interface{}{logKeyError: err.Error()})
 				return nil, inferencev1.Status_STATUS_UNSPECIFIED.String(), err
 			}
 			d := getResp.Msg.Deployment
@@ -556,7 +556,7 @@ func (r *InferenceDeploymentResource) Update(ctx context.Context, req resource.U
 				Id: deploymentID,
 			}))
 			if err != nil {
-				tflog.Error(ctx, "failed to poll deployment", map[string]interface{}{"error": err.Error()})
+				tflog.Error(ctx, "failed to poll deployment", map[string]interface{}{logKeyError: err.Error()})
 				return nil, inferencev1.Status_STATUS_UNSPECIFIED.String(), err
 			}
 			d := getResp.Msg.Deployment
@@ -633,7 +633,7 @@ func (r *InferenceDeploymentResource) Delete(ctx context.Context, req resource.D
 				if coreweave.IsNotFoundError(err) {
 					return struct{}{}, deletedState, nil
 				}
-				tflog.Error(ctx, "failed to poll deployment deletion", map[string]interface{}{"error": err.Error()})
+				tflog.Error(ctx, "failed to poll deployment deletion", map[string]interface{}{logKeyError: err.Error()})
 				return nil, inferencev1.Status_STATUS_UNSPECIFIED.String(), err
 			}
 			d := getResp.Msg.Deployment

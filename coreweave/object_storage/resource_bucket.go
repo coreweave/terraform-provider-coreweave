@@ -60,7 +60,7 @@ func (b *BucketResource) Schema(ctx context.Context, req resource.SchemaRequest,
 	resp.Schema = schema.Schema{
 		MarkdownDescription: "Buckets are the primary organizational containers for your data in CoreWeave AI Object Storage. Bucket names must be globally-unique and not begin with `cw-` or `vip-`, which are reserved for internal use. Learn more about [creating buckets](https://docs.coreweave.com/products/storage/object-storage/buckets/create-bucket).",
 		Attributes: map[string]schema.Attribute{
-			"name": schema.StringAttribute{
+			schemaKeyName: schema.StringAttribute{
 				Required:            true,
 				MarkdownDescription: "The bucket name. Must be globally unique and must not begin with `cw-` or `vip-`.",
 				PlanModifiers: []planmodifier.String{
@@ -596,7 +596,7 @@ func MustRenderBucketResource(ctx context.Context, resourceName string, bucket *
 	resource := body.AppendNewBlock("resource", []string{"coreweave_object_storage_bucket", resourceName})
 	resourceBody := resource.Body()
 
-	resourceBody.SetAttributeValue("name", cty.StringVal(bucket.Name.ValueString()))
+	resourceBody.SetAttributeValue(schemaKeyName, cty.StringVal(bucket.Name.ValueString()))
 	resourceBody.SetAttributeValue("zone", cty.StringVal(bucket.Zone.ValueString()))
 
 	if !bucket.Tags.IsNull() {

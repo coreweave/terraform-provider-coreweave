@@ -39,7 +39,7 @@ func createBucketVersioningTestStep(ctx context.Context, t *testing.T, opts buck
 
 	rs := fmt.Sprintf("coreweave_object_storage_bucket_versioning.%s", opts.resourceName)
 	checks := []statecheck.StateCheck{
-		statecheck.ExpectKnownValue(rs, tfjsonpath.New("bucket"), knownvalue.StringExact(opts.bucket.Name.ValueString())),
+		statecheck.ExpectKnownValue(rs, tfjsonpath.New(schemaKeyBucket), knownvalue.StringExact(opts.bucket.Name.ValueString())),
 		statecheck.ExpectKnownValue(rs, tfjsonpath.New("versioning_configuration").AtMapKey("status"), knownvalue.StringExact(opts.bucketVersioning.Status.ValueString())),
 	}
 
@@ -95,7 +95,7 @@ func TestBucketVersioningResource(t *testing.T) {
 			},
 			ResourceName:                         fmt.Sprintf("coreweave_object_storage_bucket_versioning.%s", resourceName),
 			ImportState:                          true,
-			ImportStateVerifyIdentifierAttribute: "name",
+			ImportStateVerifyIdentifierAttribute: schemaKeyName,
 			ImportStateId:                        bucket.Name.ValueString(),
 		},
 	}

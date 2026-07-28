@@ -33,7 +33,16 @@ import (
 const (
 	AcceptanceTestPrefix = "test-acc-vpc-"
 
-	defaultPrimaryHostPrefixName = "host primary"
+	defaultPrimaryHostPrefixName   = "host primary"
+	schemaKeyName                  = "name"
+	schemaKeyValue                 = "value"
+	schemaKeyType                  = "type"
+	schemaKeyPrefixes              = "prefixes"
+	schemaKeyIPAM                  = "ipam"
+	schemaKeyPrefixLength          = "prefix_length"
+	schemaKeyGatewayAddressPolicy  = "gateway_address_policy"
+	schemaKeyDisablePublicServices = "disable_public_services"
+	schemaKeyDisablePublicAccess   = "disable_public_access"
 )
 
 func init() {
@@ -178,19 +187,19 @@ func hostPrefixObjectExact(t *testing.T, hp networking.HostPrefixResourceModel) 
 	}
 
 	obj := map[string]knownvalue.Check{
-		"name":     knownvalue.StringExact(hp.Name.ValueString()),
-		"type":     knownvalue.StringExact(hp.Type.ValueString()),
-		"prefixes": knownvalue.ListExact(prefixes),
-		"ipam":     knownvalue.Null(),
+		schemaKeyName:     knownvalue.StringExact(hp.Name.ValueString()),
+		schemaKeyType:     knownvalue.StringExact(hp.Type.ValueString()),
+		schemaKeyPrefixes: knownvalue.ListExact(prefixes),
+		schemaKeyIPAM:     knownvalue.Null(),
 	}
 	if hp.IPAM != nil {
 		policy := networkingv1beta1.IPAddressManagementPolicy_UNSPECIFIED.String()
 		if !hp.IPAM.GatewayAddressPolicy.IsNull() && !hp.IPAM.GatewayAddressPolicy.IsUnknown() {
 			policy = hp.IPAM.GatewayAddressPolicy.ValueString()
 		}
-		obj["ipam"] = knownvalue.ObjectExact(map[string]knownvalue.Check{
-			"prefix_length":          knownvalue.Int32Exact(hp.IPAM.PrefixLength.ValueInt32()),
-			"gateway_address_policy": knownvalue.StringExact(policy),
+		obj[schemaKeyIPAM] = knownvalue.ObjectExact(map[string]knownvalue.Check{
+			schemaKeyPrefixLength:         knownvalue.Int32Exact(hp.IPAM.PrefixLength.ValueInt32()),
+			schemaKeyGatewayAddressPolicy: knownvalue.StringExact(policy),
 		})
 	}
 	return knownvalue.ObjectExact(obj)
@@ -208,7 +217,7 @@ func defaultExpectedValues(t *testing.T, resourceAddress string, m *networking.V
 	stateChecks = append(stateChecks,
 		statecheck.ExpectKnownValue(resourceAddress, tfjsonpath.New("id"), knownvalue.NotNull()),
 		statecheck.ExpectKnownValue(resourceAddress, tfjsonpath.New("zone"), knownvalue.StringExact(m.Zone.ValueString())),
-		statecheck.ExpectKnownValue(resourceAddress, tfjsonpath.New("name"), knownvalue.StringExact(m.Name.ValueString())),
+		statecheck.ExpectKnownValue(resourceAddress, tfjsonpath.New(schemaKeyName), knownvalue.StringExact(m.Name.ValueString())),
 	)
 
 	// NOTE: this uses a common pattern that validates attributes based on the definition of the correct behavior.
@@ -255,8 +264,8 @@ func defaultExpectedValues(t *testing.T, resourceAddress string, m *networking.V
 		setChecks := make([]knownvalue.Check, len(m.VpcPrefixes))
 		for i, vp := range m.VpcPrefixes {
 			setChecks[i] = knownvalue.ObjectExact(map[string]knownvalue.Check{
-				"name":  knownvalue.StringExact(vp.Name.ValueString()),
-				"value": knownvalue.StringExact(vp.Value.ValueString()),
+				schemaKeyName:  knownvalue.StringExact(vp.Name.ValueString()),
+				schemaKeyValue: knownvalue.StringExact(vp.Value.ValueString()),
 			})
 		}
 		stateChecks = append(stateChecks, statecheck.ExpectKnownValue(resourceAddress, tfjsonpath.New("vpc_prefixes"), knownvalue.SetExact(setChecks)))
@@ -265,18 +274,18 @@ func defaultExpectedValues(t *testing.T, resourceAddress string, m *networking.V
 	// Full ingress objects are validated for backwards compatibility.
 	expectedIngressObj := make(map[string]knownvalue.Check)
 	if m.Ingress == nil {
-		expectedIngressObj["disable_public_services"] = knownvalue.Bool(false)
+		expectedIngressObj[schemaKeyDisablePublicServices] = knownvalue.Bool(false)
 	} else {
-		expectedIngressObj["disable_public_services"] = knownvalue.Bool(m.Ingress.DisablePublicServices.ValueBool())
+		expectedIngressObj[schemaKeyDisablePublicServices] = knownvalue.Bool(m.Ingress.DisablePublicServices.ValueBool())
 	}
 	stateChecks = append(stateChecks, statecheck.ExpectKnownValue(resourceAddress, tfjsonpath.New("ingress"), knownvalue.ObjectExact(expectedIngressObj)))
 
 	// Full egress objects are validated for backwards compatibility.
 	expectedEgressObj := make(map[string]knownvalue.Check)
 	if m.Egress == nil {
-		expectedEgressObj["disable_public_access"] = knownvalue.Bool(false)
+		expectedEgressObj[schemaKeyDisablePublicAccess] = knownvalue.Bool(false)
 	} else {
-		expectedEgressObj["disable_public_access"] = knownvalue.Bool(m.Egress.DisablePublicAccess.ValueBool())
+		expectedEgressObj[schemaKeyDisablePublicAccess] = knownvalue.Bool(m.Egress.DisablePublicAccess.ValueBool())
 	}
 	stateChecks = append(stateChecks, statecheck.ExpectKnownValue(resourceAddress, tfjsonpath.New("egress"), knownvalue.ObjectExact(expectedEgressObj)))
 
@@ -418,25 +427,25 @@ func TestVpcResource(t *testing.T) {
 						},
 					},
 					Check: resource.ComposeAggregateTestCheckFunc(
-						resource.TestCheckResourceAttr(fullResourceName, "name", initial.Name.ValueString()),
+						resource.TestCheckResourceAttr(fullResourceName, schemaKeyName, initial.Name.ValueString()),
 						resource.TestCheckResourceAttr(fullResourceName, "zone", initial.Zone.ValueString()),
 					),
 					ConfigStateChecks: slices.Concat(defaultExpectedValues(t, fullResourceName, &initial), []statecheck.StateCheck{
 						// Assert that with() worked for the attached host prefix.
 						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("host_prefixes"), knownvalue.SetPartial([]knownvalue.Check{
 							knownvalue.ObjectExact(map[string]knownvalue.Check{
-								"ipam": knownvalue.ObjectExact(map[string]knownvalue.Check{
-									"prefix_length":          knownvalue.Int32Exact(64),
-									"gateway_address_policy": knownvalue.StringExact(networkingv1beta1.IPAddressManagementPolicy_FIRST_IP.String()),
+								schemaKeyIPAM: knownvalue.ObjectExact(map[string]knownvalue.Check{
+									schemaKeyPrefixLength:         knownvalue.Int32Exact(64),
+									schemaKeyGatewayAddressPolicy: knownvalue.StringExact(networkingv1beta1.IPAddressManagementPolicy_FIRST_IP.String()),
 								}),
-								"name":     knownvalue.NotNull(),
-								"type":     knownvalue.StringExact(networkingv1beta1.HostPrefix_ATTACHED.String()),
-								"prefixes": knownvalue.NotNull(),
+								schemaKeyName:     knownvalue.NotNull(),
+								schemaKeyType:     knownvalue.StringExact(networkingv1beta1.HostPrefix_ATTACHED.String()),
+								schemaKeyPrefixes: knownvalue.NotNull(),
 							}),
 						})),
 						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("vpc_prefixes"), knownvalue.SetSizeExact(3)),
-						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("ingress").AtMapKey("disable_public_services"), knownvalue.Bool(false)),
-						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("egress").AtMapKey("disable_public_access"), knownvalue.Bool(false)),
+						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("ingress").AtMapKey(schemaKeyDisablePublicServices), knownvalue.Bool(false)),
+						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("egress").AtMapKey(schemaKeyDisablePublicAccess), knownvalue.Bool(false)),
 					}),
 				},
 				{
@@ -471,12 +480,12 @@ func TestVpcResource(t *testing.T) {
 						},
 					},
 					Check: resource.ComposeAggregateTestCheckFunc(
-						resource.TestCheckResourceAttr(fullResourceName, "name", update.Name.ValueString()),
+						resource.TestCheckResourceAttr(fullResourceName, schemaKeyName, update.Name.ValueString()),
 						resource.TestCheckResourceAttr(fullResourceName, "zone", update.Zone.ValueString()),
 					),
 					ConfigStateChecks: slices.Concat(defaultExpectedValues(t, fullResourceName, &update), []statecheck.StateCheck{
-						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("ingress").AtMapKey("disable_public_services"), knownvalue.Bool(true)),
-						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("egress").AtMapKey("disable_public_access"), knownvalue.Bool(true)),
+						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("ingress").AtMapKey(schemaKeyDisablePublicServices), knownvalue.Bool(true)),
+						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("egress").AtMapKey(schemaKeyDisablePublicAccess), knownvalue.Bool(true)),
 						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("vpc_prefixes"), knownvalue.SetSizeExact(4)),
 					}),
 				},
@@ -759,27 +768,27 @@ resource "coreweave_networking_vpc" %q {
 						},
 					},
 					Check: resource.ComposeAggregateTestCheckFunc(
-						resource.TestCheckResourceAttr(fullResourceName, "name", vpcName),
+						resource.TestCheckResourceAttr(fullResourceName, schemaKeyName, vpcName),
 						resource.TestCheckResourceAttr(fullResourceName, "zone", zone),
 						resource.TestCheckResourceAttr(fullResourceName, "vpc_prefixes.#", "3"),
 					),
 					ConfigStateChecks: []statecheck.StateCheck{
 						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("id"), knownvalue.NotNull()),
-						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("name"), knownvalue.StringExact(vpcName)),
+						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New(schemaKeyName), knownvalue.StringExact(vpcName)),
 						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("zone"), knownvalue.StringExact(zone)),
 						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("vpc_prefixes"), knownvalue.SetSizeExact(3)),
 						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("vpc_prefixes"), knownvalue.SetPartial([]knownvalue.Check{
 							knownvalue.ObjectExact(map[string]knownvalue.Check{
-								"name":  knownvalue.StringExact("pod-cidr"),
-								"value": knownvalue.StringExact("10.244.0.0/16"),
+								schemaKeyName:  knownvalue.StringExact("pod-cidr"),
+								schemaKeyValue: knownvalue.StringExact("10.244.0.0/16"),
 							}),
 							knownvalue.ObjectExact(map[string]knownvalue.Check{
-								"name":  knownvalue.StringExact("service-cidr"),
-								"value": knownvalue.StringExact("10.96.0.0/16"),
+								schemaKeyName:  knownvalue.StringExact("service-cidr"),
+								schemaKeyValue: knownvalue.StringExact("10.96.0.0/16"),
 							}),
 							knownvalue.ObjectExact(map[string]knownvalue.Check{
-								"name":  knownvalue.StringExact("lb-cidr"),
-								"value": knownvalue.StringExact("10.20.0.0/22"),
+								schemaKeyName:  knownvalue.StringExact("lb-cidr"),
+								schemaKeyValue: knownvalue.StringExact("10.20.0.0/22"),
 							}),
 						})),
 					},
@@ -829,7 +838,7 @@ func TestHostPrefixReplace(t *testing.T) {
 						},
 					},
 					Check: resource.ComposeAggregateTestCheckFunc(
-						resource.TestCheckResourceAttr(fullResourceName, "name", initial.Name.ValueString()),
+						resource.TestCheckResourceAttr(fullResourceName, schemaKeyName, initial.Name.ValueString()),
 						resource.TestCheckResourceAttr(fullResourceName, "zone", initial.Zone.ValueString()),
 					),
 					ConfigStateChecks: slices.Concat(defaultExpectedValues(t, fullResourceName, initial), []statecheck.StateCheck{
@@ -847,7 +856,7 @@ func TestHostPrefixReplace(t *testing.T) {
 						},
 					},
 					Check: resource.ComposeAggregateTestCheckFunc(
-						resource.TestCheckResourceAttr(fullResourceName, "name", replace.Name.ValueString()),
+						resource.TestCheckResourceAttr(fullResourceName, schemaKeyName, replace.Name.ValueString()),
 						resource.TestCheckResourceAttr(fullResourceName, "zone", replace.Zone.ValueString()),
 					),
 					ConfigStateChecks: []statecheck.StateCheck{
@@ -891,19 +900,19 @@ func TestHostPrefixDefault(t *testing.T) {
 					},
 				},
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr(fullResourceName, "name", vpc.Name.ValueString()),
+					resource.TestCheckResourceAttr(fullResourceName, schemaKeyName, vpc.Name.ValueString()),
 					resource.TestCheckResourceAttr(fullResourceName, "zone", vpc.Zone.ValueString()),
 				),
 				ConfigStateChecks: slices.Concat(defaultExpectedValues(t, fullResourceName, vpc), []statecheck.StateCheck{
 					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("host_prefix"), knownvalue.NotNull()),
 					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("host_prefixes"), knownvalue.SetPartial([]knownvalue.Check{
 						knownvalue.ObjectExact(map[string]knownvalue.Check{
-							"name": knownvalue.StringExact(defaultPrimaryHostPrefixName),
-							"type": knownvalue.StringExact(networkingv1beta1.HostPrefix_PRIMARY.String()),
-							"prefixes": knownvalue.SetPartial([]knownvalue.Check{
+							schemaKeyName: knownvalue.StringExact(defaultPrimaryHostPrefixName),
+							schemaKeyType: knownvalue.StringExact(networkingv1beta1.HostPrefix_PRIMARY.String()),
+							schemaKeyPrefixes: knownvalue.SetPartial([]knownvalue.Check{
 								knownvalue.NotNull(),
 							}),
-							"ipam": knownvalue.Null(),
+							schemaKeyIPAM: knownvalue.Null(),
 						}),
 					})),
 				}),

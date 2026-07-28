@@ -58,7 +58,7 @@ func createBucketSettingsTestStep(ctx context.Context, t *testing.T, opts bucket
 
 	rs := fmt.Sprintf("coreweave_object_storage_bucket_settings.%s", opts.resourceName)
 	checks := []statecheck.StateCheck{
-		statecheck.ExpectKnownValue(rs, tfjsonpath.New("bucket"), knownvalue.StringExact(opts.bucket.Name.ValueString())),
+		statecheck.ExpectKnownValue(rs, tfjsonpath.New(schemaKeyBucket), knownvalue.StringExact(opts.bucket.Name.ValueString())),
 		statecheck.ExpectKnownValue(rs, tfjsonpath.New("audit_logging_enabled"), knownvalue.Bool(opts.settings.AuditLoggingEnabled.ValueBool())),
 	}
 
@@ -116,7 +116,7 @@ func TestBucketSettingsResource(t *testing.T) {
 			ResourceName:                         fmt.Sprintf("coreweave_object_storage_bucket_settings.%s", resourceName),
 			ImportState:                          true,
 			ImportStateId:                        bucket.Name.ValueString(),
-			ImportStateVerifyIdentifierAttribute: "bucket",
+			ImportStateVerifyIdentifierAttribute: schemaKeyBucket,
 			ImportStateVerify:                    true,
 		},
 	}

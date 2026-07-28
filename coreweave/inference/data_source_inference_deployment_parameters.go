@@ -34,15 +34,15 @@ type InferenceDeploymentParametersDataSourceModel struct {
 
 var (
 	runtimeVersionsAttrTypes = map[string]attr.Type{
-		"versions": types.ListType{ElemType: types.StringType},
+		schemaKeyVersions: types.ListType{ElemType: types.StringType},
 	}
 
 	runtimeConfigOptionsAttrTypes = map[string]attr.Type{
-		"allowed_keys": types.ListType{ElemType: types.StringType},
+		schemaKeyAllowedKeys: types.ListType{ElemType: types.StringType},
 	}
 
 	engineEnvOptionsAttrTypes = map[string]attr.Type{
-		"allowed_names": types.ListType{ElemType: types.StringType},
+		schemaKeyAllowedNames: types.ListType{ElemType: types.StringType},
 	}
 )
 
@@ -64,7 +64,7 @@ func (d *InferenceDeploymentParametersDataSource) Schema(_ context.Context, _ da
 				MarkdownDescription: "Available runtime versions per engine (keyed by engine name).",
 				NestedObject: schema.NestedAttributeObject{
 					Attributes: map[string]schema.Attribute{
-						"versions": schema.ListAttribute{
+						schemaKeyVersions: schema.ListAttribute{
 							Computed:            true,
 							ElementType:         types.StringType,
 							MarkdownDescription: "Available semver versions for the engine, sorted by the API.",
@@ -77,7 +77,7 @@ func (d *InferenceDeploymentParametersDataSource) Schema(_ context.Context, _ da
 				MarkdownDescription: "Available runtime config options per engine (keyed by engine name).",
 				NestedObject: schema.NestedAttributeObject{
 					Attributes: map[string]schema.Attribute{
-						"allowed_keys": schema.ListAttribute{
+						schemaKeyAllowedKeys: schema.ListAttribute{
 							Computed:            true,
 							ElementType:         types.StringType,
 							MarkdownDescription: "Configuration keys accepted by the engine's `engine_config` field.",
@@ -90,7 +90,7 @@ func (d *InferenceDeploymentParametersDataSource) Schema(_ context.Context, _ da
 				MarkdownDescription: "Available engine environment variable options per engine (keyed by engine name).",
 				NestedObject: schema.NestedAttributeObject{
 					Attributes: map[string]schema.Attribute{
-						"allowed_names": schema.ListAttribute{
+						schemaKeyAllowedNames: schema.ListAttribute{
 							Computed:            true,
 							ElementType:         types.StringType,
 							MarkdownDescription: "Environment variable names accepted by the engine's `engine_env` field.",
@@ -98,7 +98,7 @@ func (d *InferenceDeploymentParametersDataSource) Schema(_ context.Context, _ da
 					},
 				},
 			},
-			"instance_types": schema.SetAttribute{
+			schemaKeyInstanceTypes: schema.SetAttribute{
 				Computed:            true,
 				ElementType:         types.StringType,
 				MarkdownDescription: "Available instance types for deployments.",
@@ -151,7 +151,7 @@ func (d *InferenceDeploymentParametersDataSource) Read(ctx context.Context, _ da
 				versionVals[i] = types.StringValue(v)
 			}
 			obj, diags := types.ObjectValue(runtimeVersionsAttrTypes, map[string]attr.Value{
-				"versions": types.ListValueMust(types.StringType, versionVals),
+				schemaKeyVersions: types.ListValueMust(types.StringType, versionVals),
 			})
 			resp.Diagnostics.Append(diags...)
 			if resp.Diagnostics.HasError() {
@@ -171,7 +171,7 @@ func (d *InferenceDeploymentParametersDataSource) Read(ctx context.Context, _ da
 				keyVals[i] = types.StringValue(k)
 			}
 			obj, diags := types.ObjectValue(runtimeConfigOptionsAttrTypes, map[string]attr.Value{
-				"allowed_keys": types.ListValueMust(types.StringType, keyVals),
+				schemaKeyAllowedKeys: types.ListValueMust(types.StringType, keyVals),
 			})
 			resp.Diagnostics.Append(diags...)
 			if resp.Diagnostics.HasError() {
@@ -191,7 +191,7 @@ func (d *InferenceDeploymentParametersDataSource) Read(ctx context.Context, _ da
 				nameVals[i] = types.StringValue(name)
 			}
 			obj, diags := types.ObjectValue(engineEnvOptionsAttrTypes, map[string]attr.Value{
-				"allowed_names": types.ListValueMust(types.StringType, nameVals),
+				schemaKeyAllowedNames: types.ListValueMust(types.StringType, nameVals),
 			})
 			resp.Diagnostics.Append(diags...)
 			if resp.Diagnostics.HasError() {

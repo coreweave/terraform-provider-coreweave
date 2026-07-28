@@ -146,11 +146,11 @@ func TestInferenceReservedCapacity(t *testing.T) {
 					Config: inferenceIntegrationConfig(name, preferredZone, preferredInstance),
 					ConfigStateChecks: []statecheck.StateCheck{
 						statecheck.ExpectKnownValue(ccResource, tfjsonpath.New("id"), knownvalue.NotNull()),
-						statecheck.ExpectKnownValue(ccResource, tfjsonpath.New("status"), knownvalue.NotNull()),
+						statecheck.ExpectKnownValue(ccResource, tfjsonpath.New(schemaKeyStatus), knownvalue.NotNull()),
 						statecheck.ExpectKnownValue(ccResource, tfjsonpath.New("allocated_instances"), knownvalue.NotNull()),
 						statecheck.ExpectKnownValue(ccResource, tfjsonpath.New("resources").AtMapKey("capacity_type"), knownvalue.StringExact("CAPACITY_TYPE_CUSTOMER")),
 						statecheck.ExpectKnownValue(gwResource, tfjsonpath.New("id"), knownvalue.NotNull()),
-						statecheck.ExpectKnownValue(depResource, tfjsonpath.New("status"), knownvalue.StringExact("STATUS_READY")),
+						statecheck.ExpectKnownValue(depResource, tfjsonpath.New(schemaKeyStatus), knownvalue.StringExact("STATUS_READY")),
 						statecheck.ExpectKnownValue(depResource, tfjsonpath.New("autoscaling").AtMapKey("capacity_classes"), knownvalue.ListExact([]knownvalue.Check{knownvalue.StringExact("CAPACITY_CLASS_RESERVED")})),
 						statecheck.ExpectKnownValue(depResource, tfjsonpath.New("autoscaling").AtMapKey("priority"), knownvalue.Int64Exact(100)),
 						statecheck.ExpectKnownValue(depResource, tfjsonpath.New("traffic").AtMapKey("weight"), knownvalue.Int64Exact(0)),

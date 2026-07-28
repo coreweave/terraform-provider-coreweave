@@ -50,10 +50,11 @@ func createBucketTestStep(ctx context.Context, t *testing.T, opts bucketTestStep
 
 	fullResourceName := fmt.Sprintf("coreweave_object_storage_bucket.%s", opts.ResourceName)
 
-	statechecks := []statecheck.StateCheck{
-		statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("name"), knownvalue.StringExact(opts.Bucket.Name.ValueString())),
+	statechecks := make([]statecheck.StateCheck, 0, 3)
+	statechecks = append(statechecks,
+		statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New(schemaKeyName), knownvalue.StringExact(opts.Bucket.Name.ValueString())),
 		statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("zone"), knownvalue.StringExact(opts.Bucket.Zone.ValueString())),
-	}
+	)
 
 	tagCheck := statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("tags"), knownvalue.Null())
 
@@ -91,20 +92,20 @@ func TestBucketResource(t *testing.T) {
 		Steps: []resource.TestStep{
 			createBucketTestStep(ctx, t, bucketTestStep{
 				TestName:     "initial bucket no tags",
-				ResourceName: "test_acc_bucket",
+				ResourceName: testBucketResourceName,
 				Bucket: objectstorage.BucketResourceModel{
 					Name: types.StringValue(bucketName),
 					Zone: types.StringValue(zone),
 				},
 				ConfigPlanChecks: resource.ConfigPlanChecks{
 					PreApply: []plancheck.PlanCheck{
-						plancheck.ExpectResourceAction(fmt.Sprintf("coreweave_object_storage_bucket.%s", "test_acc_bucket"), plancheck.ResourceActionCreate),
+						plancheck.ExpectResourceAction(fmt.Sprintf("coreweave_object_storage_bucket.%s", testBucketResourceName), plancheck.ResourceActionCreate),
 					},
 				},
 			}),
 			createBucketTestStep(ctx, t, bucketTestStep{
 				TestName:     "update with tags",
-				ResourceName: "test_acc_bucket",
+				ResourceName: testBucketResourceName,
 				Bucket: objectstorage.BucketResourceModel{
 					Name: types.StringValue(bucketName),
 					Zone: types.StringValue(zone),
@@ -115,13 +116,13 @@ func TestBucketResource(t *testing.T) {
 				},
 				ConfigPlanChecks: resource.ConfigPlanChecks{
 					PreApply: []plancheck.PlanCheck{
-						plancheck.ExpectResourceAction(fmt.Sprintf("coreweave_object_storage_bucket.%s", "test_acc_bucket"), plancheck.ResourceActionUpdate),
+						plancheck.ExpectResourceAction(fmt.Sprintf("coreweave_object_storage_bucket.%s", testBucketResourceName), plancheck.ResourceActionUpdate),
 					},
 				},
 			}),
 			createBucketTestStep(ctx, t, bucketTestStep{
 				TestName:     "remove tags",
-				ResourceName: "test_acc_bucket",
+				ResourceName: testBucketResourceName,
 				Bucket: objectstorage.BucketResourceModel{
 					Name: types.StringValue(bucketName),
 					Zone: types.StringValue(zone),
@@ -129,33 +130,33 @@ func TestBucketResource(t *testing.T) {
 				},
 				ConfigPlanChecks: resource.ConfigPlanChecks{
 					PreApply: []plancheck.PlanCheck{
-						plancheck.ExpectResourceAction(fmt.Sprintf("coreweave_object_storage_bucket.%s", "test_acc_bucket"), plancheck.ResourceActionUpdate),
+						plancheck.ExpectResourceAction(fmt.Sprintf("coreweave_object_storage_bucket.%s", testBucketResourceName), plancheck.ResourceActionUpdate),
 					},
 				},
 			}),
 			createBucketTestStep(ctx, t, bucketTestStep{
 				TestName:     "requires replace zone",
-				ResourceName: "test_acc_bucket",
+				ResourceName: testBucketResourceName,
 				Bucket: objectstorage.BucketResourceModel{
 					Name: types.StringValue(bucketName),
 					Zone: types.StringValue("US-EAST-02A"),
 				},
 				ConfigPlanChecks: resource.ConfigPlanChecks{
 					PreApply: []plancheck.PlanCheck{
-						plancheck.ExpectResourceAction(fmt.Sprintf("coreweave_object_storage_bucket.%s", "test_acc_bucket"), plancheck.ResourceActionDestroyBeforeCreate),
+						plancheck.ExpectResourceAction(fmt.Sprintf("coreweave_object_storage_bucket.%s", testBucketResourceName), plancheck.ResourceActionDestroyBeforeCreate),
 					},
 				},
 			}),
 			createBucketTestStep(ctx, t, bucketTestStep{
 				TestName:     "requires replace name",
-				ResourceName: "test_acc_bucket",
+				ResourceName: testBucketResourceName,
 				Bucket: objectstorage.BucketResourceModel{
 					Name: types.StringValue(fmt.Sprintf("%srequires-replace-%d", AcceptanceTestPrefix, randomInt)),
 					Zone: types.StringValue("US-EAST-02A"),
 				},
 				ConfigPlanChecks: resource.ConfigPlanChecks{
 					PreApply: []plancheck.PlanCheck{
-						plancheck.ExpectResourceAction(fmt.Sprintf("coreweave_object_storage_bucket.%s", "test_acc_bucket"), plancheck.ResourceActionDestroyBeforeCreate),
+						plancheck.ExpectResourceAction(fmt.Sprintf("coreweave_object_storage_bucket.%s", testBucketResourceName), plancheck.ResourceActionDestroyBeforeCreate),
 					},
 				},
 			}),
@@ -163,9 +164,9 @@ func TestBucketResource(t *testing.T) {
 				PreConfig: func() {
 					t.Log("Beginning coreweave_object_storage_bucket import test")
 				},
-				ResourceName:                         fmt.Sprintf("coreweave_object_storage_bucket.%s", "test_acc_bucket"),
+				ResourceName:                         fmt.Sprintf("coreweave_object_storage_bucket.%s", testBucketResourceName),
 				ImportState:                          true,
-				ImportStateVerifyIdentifierAttribute: "name",
+				ImportStateVerifyIdentifierAttribute: schemaKeyName,
 				ImportStateId:                        fmt.Sprintf("%srequires-replace-%d", AcceptanceTestPrefix, randomInt),
 			},
 		},

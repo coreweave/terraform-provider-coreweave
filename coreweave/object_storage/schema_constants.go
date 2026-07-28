@@ -1,13 +1,10 @@
-package objectstorage_test
+package objectstorage
 
 const (
-	AcceptanceTestPrefix                   = "tf-acc-objs-"
 	schemaKeyName                          = "name"
 	schemaKeyBucket                        = "bucket"
 	schemaKeyPrefix                        = "prefix"
 	schemaKeyEffect                        = "effect"
 	inventoryOptionalFieldSize             = "Size"
 	inventoryOptionalFieldLastAccessedDate = "LastAccessedDate"
-	testBucketResourceName                 = "test_acc_bucket"
-	testPolicyResourceName                 = "policy"
 )

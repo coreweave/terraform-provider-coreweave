@@ -67,7 +67,7 @@ func (b *BucketPolicyResource) Schema(ctx context.Context, req resource.SchemaRe
 	resp.Schema = schema.Schema{
 		MarkdownDescription: "[Bucket access policies](https://docs.coreweave.com/products/storage/object-storage/auth-access/bucket-access/bucket-policies) allow you to define precise, S3-compatible access control for one bucket. These are optional, and are evaluated after organization access policies. See [Manage Bucket Policies](https://docs.coreweave.com/products/storage/object-storage/auth-access/bucket-access/manage-bucket-policies#example-policies) for examples and further information.",
 		Attributes: map[string]schema.Attribute{
-			"bucket": schema.StringAttribute{
+			schemaKeyBucket: schema.StringAttribute{
 				Required:            true,
 				MarkdownDescription: "The name of the bucket for which to apply this policy.",
 			},
@@ -304,7 +304,7 @@ func MustRenderBucketPolicyResource(_ context.Context, name string, cfg *BucketP
 	b := block.Body()
 
 	// bucket attribute
-	b.SetAttributeRaw("bucket", hclwrite.Tokens{{Type: hclsyntax.TokenIdent, Bytes: []byte(cfg.Bucket.ValueString())}})
+	b.SetAttributeRaw(schemaKeyBucket, hclwrite.Tokens{{Type: hclsyntax.TokenIdent, Bytes: []byte(cfg.Bucket.ValueString())}})
 	b.SetAttributeValue("policy", cty.StringVal(cfg.Policy.ValueString()))
 
 	var buf bytes.Buffer
@@ -327,7 +327,7 @@ func MustRenderBucketPolicyResourceWithDataSource(_ context.Context, name string
 	b := block.Body()
 
 	// bucket attribute
-	b.SetAttributeRaw("bucket", hclwrite.Tokens{{Type: hclsyntax.TokenIdent, Bytes: []byte(cfg.Bucket.ValueString())}})
+	b.SetAttributeRaw(schemaKeyBucket, hclwrite.Tokens{{Type: hclsyntax.TokenIdent, Bytes: []byte(cfg.Bucket.ValueString())}})
 	b.SetAttributeRaw("policy", hclwrite.Tokens{{Type: hclsyntax.TokenIdent, Bytes: []byte(cfg.Policy.ValueString())}})
 
 	var buf bytes.Buffer

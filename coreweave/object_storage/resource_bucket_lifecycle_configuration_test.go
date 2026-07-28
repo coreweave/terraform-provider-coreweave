@@ -69,9 +69,9 @@ func createLifecycleTestStep(
 		checks = append(checks, idCheck)
 
 		// prefix (optional)
-		prefixCheck := statecheck.ExpectKnownValue(rs, ruleBase.AtMapKey("prefix"), knownvalue.Null())
+		prefixCheck := statecheck.ExpectKnownValue(rs, ruleBase.AtMapKey(schemaKeyPrefix), knownvalue.Null())
 		if !r.Prefix.IsNull() {
-			prefixCheck = statecheck.ExpectKnownValue(rs, ruleBase.AtMapKey("prefix"), knownvalue.StringExact(r.Prefix.ValueString()))
+			prefixCheck = statecheck.ExpectKnownValue(rs, ruleBase.AtMapKey(schemaKeyPrefix), knownvalue.StringExact(r.Prefix.ValueString()))
 		}
 		checks = append(checks, prefixCheck)
 
@@ -136,9 +136,9 @@ func createLifecycleTestStep(
 		filterCheck := statecheck.ExpectKnownValue(rs, ruleBase.AtMapKey("filter"), knownvalue.Null())
 		if r.Filter != nil {
 			filterCheck = statecheck.ExpectKnownValue(rs, ruleBase.AtMapKey("filter"), knownvalue.NotNull())
-			filterPrefixCheck := statecheck.ExpectKnownValue(rs, ruleBase.AtMapKey("filter").AtMapKey("prefix"), knownvalue.StringExact(r.Filter.Prefix.ValueString()))
+			filterPrefixCheck := statecheck.ExpectKnownValue(rs, ruleBase.AtMapKey("filter").AtMapKey(schemaKeyPrefix), knownvalue.StringExact(r.Filter.Prefix.ValueString()))
 			if r.Filter.Prefix.IsNull() {
-				filterPrefixCheck = statecheck.ExpectKnownValue(rs, ruleBase.AtMapKey("filter").AtMapKey("prefix"), knownvalue.Null())
+				filterPrefixCheck = statecheck.ExpectKnownValue(rs, ruleBase.AtMapKey("filter").AtMapKey(schemaKeyPrefix), knownvalue.Null())
 			}
 			checks = append(checks, filterPrefixCheck)
 
@@ -157,7 +157,7 @@ func createLifecycleTestStep(
 			filterAndCheck := statecheck.ExpectKnownValue(rs, ruleBase.AtMapKey("filter").AtMapKey("and"), knownvalue.Null())
 			if r.Filter.And != nil {
 				filterAndCheck = statecheck.ExpectKnownValue(rs, ruleBase.AtMapKey("filter").AtMapKey("and"), knownvalue.NotNull())
-				checks = append(checks, statecheck.ExpectKnownValue(rs, ruleBase.AtMapKey("filter").AtMapKey("and").AtMapKey("prefix"), knownvalue.StringExact(r.Filter.And.Prefix.ValueString())))
+				checks = append(checks, statecheck.ExpectKnownValue(rs, ruleBase.AtMapKey("filter").AtMapKey("and").AtMapKey(schemaKeyPrefix), knownvalue.StringExact(r.Filter.And.Prefix.ValueString())))
 				checks = append(checks, statecheck.ExpectKnownValue(rs, ruleBase.AtMapKey("filter").AtMapKey("and").AtMapKey("object_size_less_than"), knownvalue.Int64Exact(r.Filter.And.ObjectSizeLessThan.ValueInt64())))
 				checks = append(checks, statecheck.ExpectKnownValue(rs, ruleBase.AtMapKey("filter").AtMapKey("and").AtMapKey("object_size_greater_than"), knownvalue.Int64Exact(r.Filter.And.ObjectSizeGreaterThan.ValueInt64())))
 				tagMap := map[string]string{}
@@ -414,7 +414,7 @@ func TestBucketLifecycleConfiguration(t *testing.T) {
 			},
 			ResourceName:                         fmt.Sprintf("coreweave_object_storage_bucket_lifecycle_configuration.%s", resourceName),
 			ImportState:                          true,
-			ImportStateVerifyIdentifierAttribute: "name",
+			ImportStateVerifyIdentifierAttribute: schemaKeyName,
 			ImportStateId:                        bucket.Name.ValueString(),
 		},
 	}

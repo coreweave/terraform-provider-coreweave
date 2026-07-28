@@ -81,51 +81,51 @@ func (r *InferenceCapacityClaimResource) Schema(_ context.Context, _ resource.Sc
 				MarkdownDescription: "The unique identifier of the capacity claim.",
 				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
-			"organization_id": schema.StringAttribute{
+			schemaKeyOrganizationID: schema.StringAttribute{
 				Computed:            true,
 				MarkdownDescription: "The organization ID that owns the capacity claim.",
 				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
-			"status": schema.StringAttribute{
+			schemaKeyStatus: schema.StringAttribute{
 				Computed:            true,
 				MarkdownDescription: "The current status of the capacity claim. See the [Inference API overview](https://docs.coreweave.com/products/inference/reference/api-overview#status-values) for status values.",
 				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
-			"created_at": schema.StringAttribute{
+			schemaKeyCreatedAt: schema.StringAttribute{
 				Computed:            true,
 				MarkdownDescription: "RFC3339 timestamp of when the capacity claim was created.",
 				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
-			"updated_at": schema.StringAttribute{
+			schemaKeyUpdatedAt: schema.StringAttribute{
 				Computed:            true,
 				MarkdownDescription: "RFC3339 timestamp of when the capacity claim was last updated.",
 				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
-			"conditions": schema.ListNestedAttribute{
+			schemaKeyConditions: schema.ListNestedAttribute{
 				Computed:            true,
 				MarkdownDescription: "Detailed status conditions for the capacity claim.",
 				PlanModifiers:       []planmodifier.List{listplanmodifier.UseStateForUnknown()},
 				NestedObject: schema.NestedAttributeObject{
 					Attributes: map[string]schema.Attribute{
-						"type": schema.StringAttribute{
+						schemaKeyType: schema.StringAttribute{
 							Computed:            true,
-							MarkdownDescription: "The condition type (e.g. `Ready`, `Progressing`).",
+							MarkdownDescription: conditionTypeDescription,
 						},
-						"status": schema.StringAttribute{
+						schemaKeyStatus: schema.StringAttribute{
 							Computed:            true,
-							MarkdownDescription: "The condition status (`True`, `False`, or `Unknown`).",
+							MarkdownDescription: conditionStatusDescription,
 						},
-						"last_update_time": schema.StringAttribute{
+						schemaKeyLastUpdateTime: schema.StringAttribute{
 							Computed:            true,
-							MarkdownDescription: "RFC3339 timestamp of the last condition transition.",
+							MarkdownDescription: lastTransitionTimeDescription,
 						},
-						"reason": schema.StringAttribute{
+						schemaKeyReason: schema.StringAttribute{
 							Computed:            true,
-							MarkdownDescription: "A short, machine-readable reason for the condition's last transition.",
+							MarkdownDescription: lastTransitionReasonDescription,
 						},
-						"message": schema.StringAttribute{
+						schemaKeyMessage: schema.StringAttribute{
 							Computed:            true,
-							MarkdownDescription: "A human-readable message about the condition's last transition.",
+							MarkdownDescription: lastTransitionMessageDescription,
 						},
 					},
 				},
@@ -140,7 +140,7 @@ func (r *InferenceCapacityClaimResource) Schema(_ context.Context, _ resource.Sc
 				MarkdownDescription: "The number of instances pending allocation.",
 				PlanModifiers:       []planmodifier.Int64{int64planmodifier.UseStateForUnknown()},
 			},
-			"name": schema.StringAttribute{
+			schemaKeyName: schema.StringAttribute{
 				Required:            true,
 				MarkdownDescription: "The name of the capacity claim. Must be a valid hostname label.",
 				PlanModifiers:       []planmodifier.String{stringplanmodifier.RequiresReplace()},
@@ -172,7 +172,7 @@ func (r *InferenceCapacityClaimResource) Schema(_ context.Context, _ resource.Sc
 							stringvalidator.OneOf(coreweave.EnumValues(inferencev1.CapacityType_name, true)...),
 						},
 					},
-					"zones": schema.SetAttribute{
+					schemaKeyZones: schema.SetAttribute{
 						ElementType:         types.StringType,
 						Required:            true,
 						MarkdownDescription: "The availability zones where the capacity claim may use resources from (e.g. `US-WEST-04A`). At least one is required.",
@@ -248,7 +248,7 @@ func (r *InferenceCapacityClaimResource) Create(ctx context.Context, req resourc
 				Id: claimID,
 			}))
 			if err != nil {
-				tflog.Error(ctx, "failed to poll capacity claim", map[string]interface{}{"error": err.Error()})
+				tflog.Error(ctx, "failed to poll capacity claim", map[string]interface{}{logKeyError: err.Error()})
 				return nil, inferencev1.Status_STATUS_UNSPECIFIED.String(), err
 			}
 			cc := getResp.Msg.GetCapacityClaim()
@@ -354,7 +354,7 @@ func (r *InferenceCapacityClaimResource) Update(ctx context.Context, req resourc
 				Id: claimID,
 			}))
 			if err != nil {
-				tflog.Error(ctx, "failed to poll capacity claim", map[string]interface{}{"error": err.Error()})
+				tflog.Error(ctx, "failed to poll capacity claim", map[string]interface{}{logKeyError: err.Error()})
 				return nil, inferencev1.Status_STATUS_UNSPECIFIED.String(), err
 			}
 			cc := getResp.Msg.GetCapacityClaim()
@@ -429,7 +429,7 @@ func (r *InferenceCapacityClaimResource) Delete(ctx context.Context, req resourc
 				if coreweave.IsNotFoundError(err) {
 					return struct{}{}, deletedState, nil
 				}
-				tflog.Error(ctx, "failed to poll capacity claim deletion", map[string]interface{}{"error": err.Error()})
+				tflog.Error(ctx, "failed to poll capacity claim deletion", map[string]interface{}{logKeyError: err.Error()})
 				return nil, inferencev1.Status_STATUS_UNSPECIFIED.String(), err
 			}
 			cc := getResp.Msg.GetCapacityClaim()

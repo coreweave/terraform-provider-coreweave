@@ -51,7 +51,7 @@ func (b *BucketVersioningResource) Schema(ctx context.Context, req resource.Sche
 	resp.Schema = schema.Schema{
 		MarkdownDescription: "Versioning protects your data by preserving all versions of objects and preventing permanent deletion. When objects are deleted, they are \"soft deleted\" with delete markers, allowing you to restore previous versions and recover data. After creating a versioned bucket with Terraform, [use `rclone` to manage versioned objects and delete markers](https://docs.coreweave.com/products/storage/object-storage/buckets/rclone-versioned-buckets).",
 		Attributes: map[string]schema.Attribute{
-			"bucket": schema.StringAttribute{
+			schemaKeyBucket: schema.StringAttribute{
 				Required:            true,
 				MarkdownDescription: "The bucket on which to enable or suspend versioning.",
 			},
@@ -296,7 +296,7 @@ func MustRenderBucketVersioningResource(_ context.Context, name string, bvc *Buc
 	resourceBody := resource.Body()
 
 	// bucket attribute
-	resourceBody.SetAttributeRaw("bucket", hclwrite.Tokens{{Type: hclsyntax.TokenIdent, Bytes: []byte(bvc.Bucket.ValueString())}})
+	resourceBody.SetAttributeRaw(schemaKeyBucket, hclwrite.Tokens{{Type: hclsyntax.TokenIdent, Bytes: []byte(bvc.Bucket.ValueString())}})
 
 	v := resourceBody.AppendNewBlock("versioning_configuration", nil).Body()
 	v.SetAttributeValue("status", cty.StringVal(bvc.VersioningConfiguration.Status.ValueString()))

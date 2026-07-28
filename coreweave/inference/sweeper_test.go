@@ -72,8 +72,8 @@ func inferenceModelPath() string {
 }
 
 func init() {
-	resource.AddTestSweepers("coreweave_inference_deployment", &resource.Sweeper{
-		Name:         "coreweave_inference_deployment",
+	resource.AddTestSweepers(inferenceDeploymentResourceType, &resource.Sweeper{
+		Name:         inferenceDeploymentResourceType,
 		Dependencies: []string{},
 		F: func(r string) error {
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
@@ -126,7 +126,7 @@ func init() {
 
 	resource.AddTestSweepers("coreweave_inference_capacity_claim", &resource.Sweeper{
 		Name:         "coreweave_inference_capacity_claim",
-		Dependencies: []string{"coreweave_inference_deployment"},
+		Dependencies: []string{inferenceDeploymentResourceType},
 		F: func(r string) error {
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 			defer cancel()
@@ -178,7 +178,7 @@ func init() {
 
 	resource.AddTestSweepers("coreweave_inference_gateway", &resource.Sweeper{
 		Name:         "coreweave_inference_gateway",
-		Dependencies: []string{"coreweave_inference_deployment"},
+		Dependencies: []string{inferenceDeploymentResourceType},
 		F: func(r string) error {
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 			defer cancel()

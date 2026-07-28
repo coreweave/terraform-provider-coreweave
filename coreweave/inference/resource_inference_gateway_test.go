@@ -43,10 +43,10 @@ func TestSetFromGateway_CoreWeaveAuth(t *testing.T) {
 
 	gw := &inferencev1.Gateway{
 		Spec: &inferencev1.GatewaySpec{
-			Id:             "gw-123",
+			Id:             testGatewayID,
 			Name:           "test-gw",
-			OrganizationId: "org-abc",
-			Zones:          []string{"US-EAST-04A"},
+			OrganizationId: testGatewayOrganizationID,
+			Zones:          []string{testGatewayZone},
 			Auth: &inferencev1.GatewaySpec_CoreWeaveAuth{
 				CoreWeaveAuth: &inferencev1.CoreWeaveAuth{},
 			},
@@ -73,8 +73,8 @@ func TestSetFromGateway_CoreWeaveAuth(t *testing.T) {
 	if m.Auth.WeightsAndBiases != nil {
 		t.Error("Auth.WeightsAndBiases: expected nil")
 	}
-	if m.ID.ValueString() != "gw-123" {
-		t.Errorf("ID: got %q, want %q", m.ID.ValueString(), "gw-123")
+	if m.ID.ValueString() != testGatewayID {
+		t.Errorf("ID: got %q, want %q", m.ID.ValueString(), testGatewayID)
 	}
 }
 
@@ -90,10 +90,10 @@ func TestSetFromGateway_PreserveStatusFields(t *testing.T) {
 	base := func(status inferencev1.Status, name, condReason string, updatedAt *timestamppb.Timestamp) *inferencev1.Gateway {
 		return &inferencev1.Gateway{
 			Spec: &inferencev1.GatewaySpec{
-				Id:             "gw-123",
+				Id:             testGatewayID,
 				Name:           name,
-				OrganizationId: "org-abc",
-				Zones:          []string{"US-EAST-04A"},
+				OrganizationId: testGatewayOrganizationID,
+				Zones:          []string{testGatewayZone},
 				Auth: &inferencev1.GatewaySpec_CoreWeaveAuth{
 					CoreWeaveAuth: &inferencev1.CoreWeaveAuth{},
 				},
@@ -107,7 +107,7 @@ func TestSetFromGateway_PreserveStatusFields(t *testing.T) {
 				Status:    status,
 				UpdatedAt: updatedAt,
 				Conditions: []*inferencev1.Condition{
-					{Type: "Ready", Status: inferencev1.Condition_STATUS_TRUE, Reason: condReason},
+					{Type: conditionTypeReady, Status: inferencev1.Condition_STATUS_TRUE, Reason: condReason},
 				},
 			},
 		}
@@ -164,12 +164,12 @@ func TestSetFromGateway_WeightsAndBiasesAuth(t *testing.T) {
 		Spec: &inferencev1.GatewaySpec{
 			Id:             "gw-456",
 			Name:           "wandb-gw",
-			OrganizationId: "org-abc",
-			Zones:          []string{"US-EAST-04A"},
+			OrganizationId: testGatewayOrganizationID,
+			Zones:          []string{testGatewayZone},
 			Auth: &inferencev1.GatewaySpec_WeightsAndBiasesAuth{
 				WeightsAndBiasesAuth: &inferencev1.WeightsAndBiasesAuth{
 					ApiKey:             "secret-key",
-					ServerUrl:          "https://wandb.example.com",
+					ServerUrl:          testWandBServerURL,
 					EnableUsageReports: true,
 					EnableRateLimiting: false,
 				},
@@ -211,8 +211,8 @@ func TestSetFromGateway_WeightsAndBiasesAuth(t *testing.T) {
 	if m.Auth.WeightsAndBiases.APIKey.ValueString() != "secret-key" {
 		t.Errorf("Auth.WeightsAndBiases.ApiKey: got %q, want %q", m.Auth.WeightsAndBiases.APIKey.ValueString(), "secret-key")
 	}
-	if m.Auth.WeightsAndBiases.ServerURL.ValueString() != "https://wandb.example.com" {
-		t.Errorf("Auth.WeightsAndBiases.ServerUrl: got %q, want %q", m.Auth.WeightsAndBiases.ServerURL.ValueString(), "https://wandb.example.com")
+	if m.Auth.WeightsAndBiases.ServerURL.ValueString() != testWandBServerURL {
+		t.Errorf("Auth.WeightsAndBiases.ServerUrl: got %q, want %q", m.Auth.WeightsAndBiases.ServerURL.ValueString(), testWandBServerURL)
 	}
 	if !m.Auth.WeightsAndBiases.EnableUsageReports.ValueBool() {
 		t.Error("Auth.WeightsAndBiases.EnableUsageReports: expected true")
@@ -229,8 +229,8 @@ func TestSetFromGateway_NullPreservation(t *testing.T) {
 		Spec: &inferencev1.GatewaySpec{
 			Id:             "gw-789",
 			Name:           "null-gw",
-			OrganizationId: "org-abc",
-			Zones:          []string{"US-EAST-04A"},
+			OrganizationId: testGatewayOrganizationID,
+			Zones:          []string{testGatewayZone},
 			Auth: &inferencev1.GatewaySpec_WeightsAndBiasesAuth{
 				WeightsAndBiasesAuth: &inferencev1.WeightsAndBiasesAuth{
 					// All zero values — should remain null in state.
@@ -297,7 +297,7 @@ func TestSetFromGateway_BodyBasedRouting(t *testing.T) {
 		Spec: &inferencev1.GatewaySpec{
 			Id:    "gw-body",
 			Name:  "body-gw",
-			Zones: []string{"US-EAST-04A"},
+			Zones: []string{testGatewayZone},
 			Auth: &inferencev1.GatewaySpec_CoreWeaveAuth{
 				CoreWeaveAuth: &inferencev1.CoreWeaveAuth{},
 			},
@@ -339,7 +339,7 @@ func TestSetFromGateway_HeaderBasedRouting(t *testing.T) {
 		Spec: &inferencev1.GatewaySpec{
 			Id:    "gw-header",
 			Name:  "header-gw",
-			Zones: []string{"US-EAST-04A"},
+			Zones: []string{testGatewayZone},
 			Auth: &inferencev1.GatewaySpec_CoreWeaveAuth{
 				CoreWeaveAuth: &inferencev1.CoreWeaveAuth{},
 			},
@@ -381,7 +381,7 @@ func TestSetFromGateway_PathBasedRouting(t *testing.T) {
 		Spec: &inferencev1.GatewaySpec{
 			Id:    "gw-path",
 			Name:  "path-gw",
-			Zones: []string{"US-EAST-04A"},
+			Zones: []string{testGatewayZone},
 			Auth: &inferencev1.GatewaySpec_CoreWeaveAuth{
 				CoreWeaveAuth: &inferencev1.CoreWeaveAuth{},
 			},
@@ -417,7 +417,7 @@ func TestToCreateGatewayRequest_CoreWeaveAuth(t *testing.T) {
 	ctx := t.Context()
 	m := &inference.InferenceGatewayResourceModel{
 		Name:  types.StringValue("cw-auth-gw"),
-		Zones: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("US-EAST-04A")}),
+		Zones: types.SetValueMust(types.StringType, []attr.Value{types.StringValue(testGatewayZone)}),
 		Auth: &inference.GatewayAuthModel{
 			CoreWeave: &inference.CoreWeaveAuthModel{},
 		},
@@ -452,11 +452,11 @@ func TestToCreateGatewayRequest_WandBAuth(t *testing.T) {
 	ctx := t.Context()
 	m := &inference.InferenceGatewayResourceModel{
 		Name:  types.StringValue("wandb-auth-gw"),
-		Zones: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("US-EAST-04A")}),
+		Zones: types.SetValueMust(types.StringType, []attr.Value{types.StringValue(testGatewayZone)}),
 		Auth: &inference.GatewayAuthModel{
 			WeightsAndBiases: &inference.WeightsAndBiasesAuthModel{
 				APIKey:             types.StringValue("my-api-key"),
-				ServerURL:          types.StringValue("https://wandb.example.com"),
+				ServerURL:          types.StringValue(testWandBServerURL),
 				EnableUsageReports: types.BoolValue(true),
 				EnableRateLimiting: types.BoolValue(false),
 			},
@@ -480,8 +480,8 @@ func TestToCreateGatewayRequest_WandBAuth(t *testing.T) {
 	if wbAuth.WeightsAndBiasesAuth.GetApiKey() != "my-api-key" {
 		t.Errorf("Auth.WandB.ApiKey: got %q, want %q", wbAuth.WeightsAndBiasesAuth.GetApiKey(), "my-api-key")
 	}
-	if wbAuth.WeightsAndBiasesAuth.GetServerUrl() != "https://wandb.example.com" {
-		t.Errorf("Auth.WandB.ServerUrl: got %q, want %q", wbAuth.WeightsAndBiasesAuth.GetServerUrl(), "https://wandb.example.com")
+	if wbAuth.WeightsAndBiasesAuth.GetServerUrl() != testWandBServerURL {
+		t.Errorf("Auth.WandB.ServerUrl: got %q, want %q", wbAuth.WeightsAndBiasesAuth.GetServerUrl(), testWandBServerURL)
 	}
 	if !wbAuth.WeightsAndBiasesAuth.GetEnableUsageReports() {
 		t.Error("Auth.WandB.EnableUsageReports: expected true")
@@ -501,7 +501,7 @@ func TestToCreateGatewayRequest_AllRoutingTypes(t *testing.T) {
 
 		m := &inference.InferenceGatewayResourceModel{
 			Name:  types.StringValue("body-gw"),
-			Zones: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("US-EAST-04A")}),
+			Zones: types.SetValueMust(types.StringType, []attr.Value{types.StringValue(testGatewayZone)}),
 			Auth: &inference.GatewayAuthModel{
 				CoreWeave: &inference.CoreWeaveAuthModel{},
 			},
@@ -531,7 +531,7 @@ func TestToCreateGatewayRequest_AllRoutingTypes(t *testing.T) {
 
 		m := &inference.InferenceGatewayResourceModel{
 			Name:  types.StringValue("header-gw"),
-			Zones: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("US-EAST-04A")}),
+			Zones: types.SetValueMust(types.StringType, []attr.Value{types.StringValue(testGatewayZone)}),
 			Auth: &inference.GatewayAuthModel{
 				CoreWeave: &inference.CoreWeaveAuthModel{},
 			},
@@ -561,7 +561,7 @@ func TestToCreateGatewayRequest_AllRoutingTypes(t *testing.T) {
 
 		m := &inference.InferenceGatewayResourceModel{
 			Name:  types.StringValue("path-gw"),
-			Zones: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("US-EAST-04A")}),
+			Zones: types.SetValueMust(types.StringType, []attr.Value{types.StringValue(testGatewayZone)}),
 			Auth: &inference.GatewayAuthModel{
 				CoreWeave: &inference.CoreWeaveAuthModel{},
 			},
@@ -736,7 +736,7 @@ func TestInferenceGateway(t *testing.T) {
 						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("name"), knownvalue.StringExact(name)),
 						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("id"), knownvalue.NotNull()),
 						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("organization_id"), knownvalue.NotNull()),
-						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("status"), knownvalue.NotNull()),
+						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New(schemaKeyStatus), knownvalue.NotNull()),
 						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("created_at"), knownvalue.NotNull()),
 						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("routing").AtMapKey("body_based").AtMapKey("api_type"), knownvalue.StringExact("API_TYPE_OPENAI")),
 					},
@@ -765,7 +765,7 @@ func TestInferenceGateway(t *testing.T) {
 					// Server-observed fields are intentionally not refreshed into state on
 					// Update (see setFromGateway preserveStatusFields); a fresh import Read
 					// legitimately observes newer values, so they can't be verified here.
-					ImportStateVerifyIgnore: []string{"status", "updated_at", "conditions"},
+					ImportStateVerifyIgnore: []string{schemaKeyStatus, schemaKeyUpdatedAt, schemaKeyConditions},
 				},
 			},
 		})

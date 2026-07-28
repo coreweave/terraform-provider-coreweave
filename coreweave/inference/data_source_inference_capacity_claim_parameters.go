@@ -29,7 +29,7 @@ type CapacityClaimParametersDataSourceModel struct {
 }
 
 var zoneInstanceTypesAttrTypes = map[string]attr.Type{
-	"instance_types": types.SetType{ElemType: types.StringType},
+	schemaKeyInstanceTypes: types.SetType{ElemType: types.StringType},
 }
 
 func (d *CapacityClaimParametersDataSource) Metadata(_ context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
@@ -45,7 +45,7 @@ func (d *CapacityClaimParametersDataSource) Schema(_ context.Context, _ datasour
 				MarkdownDescription: "Available instance types per zone (keyed by zone name).",
 				NestedObject: schema.NestedAttributeObject{
 					Attributes: map[string]schema.Attribute{
-						"instance_types": schema.SetAttribute{
+						schemaKeyInstanceTypes: schema.SetAttribute{
 							Computed:            true,
 							ElementType:         types.StringType,
 							MarkdownDescription: "Instance type IDs that can be claimed in this zone.",
@@ -93,7 +93,7 @@ func (d *CapacityClaimParametersDataSource) Read(ctx context.Context, _ datasour
 			typeVals[i] = types.StringValue(id)
 		}
 		obj, diags := types.ObjectValue(zoneInstanceTypesAttrTypes, map[string]attr.Value{
-			"instance_types": types.SetValueMust(types.StringType, typeVals),
+			schemaKeyInstanceTypes: types.SetValueMust(types.StringType, typeVals),
 		})
 		resp.Diagnostics.Append(diags...)
 		if resp.Diagnostics.HasError() {

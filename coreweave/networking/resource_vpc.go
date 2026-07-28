@@ -42,15 +42,15 @@ var (
 
 var hostPrefixObjectType = types.ObjectType{
 	AttrTypes: map[string]attr.Type{
-		"name": types.StringType,
-		"type": types.StringType,
-		"prefixes": types.ListType{
+		schemaKeyName: types.StringType,
+		schemaKeyType: types.StringType,
+		schemaKeyPrefixes: types.ListType{
 			ElemType: cidrtypes.IPPrefixType{},
 		},
-		"ipam": types.ObjectType{
+		schemaKeyIPAM: types.ObjectType{
 			AttrTypes: map[string]attr.Type{
-				"prefix_length":          types.Int32Type,
-				"gateway_address_policy": types.StringType,
+				schemaKeyPrefixLength:         types.Int32Type,
+				schemaKeyGatewayAddressPolicy: types.StringType,
 			},
 		},
 	},
@@ -444,7 +444,7 @@ func (r *VpcResource) Schema(ctx context.Context, req resource.SchemaRequest, re
 					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
-			"name": schema.StringAttribute{
+			schemaKeyName: schema.StringAttribute{
 				Required:            true,
 				MarkdownDescription: "The name of the VPC. Must not be longer than 30 characters.",
 				PlanModifiers: []planmodifier.String{
@@ -463,10 +463,10 @@ func (r *VpcResource) Schema(ctx context.Context, req resource.SchemaRequest, re
 				MarkdownDescription: "A list of additional prefixes associated with the VPC. For example, CKS clusters use these prefixes for Pod and service CIDR ranges.",
 				NestedObject: schema.NestedAttributeObject{
 					Attributes: map[string]schema.Attribute{
-						"name": schema.StringAttribute{
+						schemaKeyName: schema.StringAttribute{
 							Required: true,
 						},
-						"value": schema.StringAttribute{
+						schemaKeyValue: schema.StringAttribute{
 							Required: true,
 						},
 					},
@@ -495,28 +495,28 @@ func (r *VpcResource) Schema(ctx context.Context, req resource.SchemaRequest, re
 				},
 				NestedObject: schema.NestedAttributeObject{
 					Attributes: map[string]schema.Attribute{
-						"name": schema.StringAttribute{
+						schemaKeyName: schema.StringAttribute{
 							Required:            true,
 							MarkdownDescription: "The user-specified name of the host prefix.",
 						},
-						"type": schema.StringAttribute{
+						schemaKeyType: schema.StringAttribute{
 							Required:            true,
 							MarkdownDescription: fmt.Sprintf("Controls network connectivity from the prefix to the host. Must be one of: %s.", coreweave.EnumMarkdownValues(networkingv1beta1.HostPrefix_Type_name, true)),
 						},
-						"prefixes": schema.ListAttribute{
+						schemaKeyPrefixes: schema.ListAttribute{
 							Required:            true,
 							MarkdownDescription: "The VPC-wide aggregates from which host-specific prefixes are allocated. May be IPv4 or IPv6.",
 							ElementType:         cidrtypes.IPPrefixType{},
 						},
-						"ipam": schema.SingleNestedAttribute{
+						schemaKeyIPAM: schema.SingleNestedAttribute{
 							Optional:            true,
 							MarkdownDescription: "The configuration for a secondary host prefix.",
 							Attributes: map[string]schema.Attribute{
-								"prefix_length": schema.Int32Attribute{
+								schemaKeyPrefixLength: schema.Int32Attribute{
 									Required:            true,
 									MarkdownDescription: "The desired length for each Node's allocation from the VPC-wide aggregate prefix.",
 								},
-								"gateway_address_policy": schema.StringAttribute{
+								schemaKeyGatewayAddressPolicy: schema.StringAttribute{
 									Optional:            true,
 									Computed:            true,
 									Default:             stringdefault.StaticString(networkingv1beta1.IPAddressManagementPolicy_UNSPECIFIED.String()),
@@ -532,15 +532,15 @@ func (r *VpcResource) Schema(ctx context.Context, req resource.SchemaRequest, re
 				Computed:            true,
 				MarkdownDescription: "Settings affecting traffic entering the VPC.",
 				Attributes: map[string]schema.Attribute{
-					"disable_public_services": schema.BoolAttribute{
+					schemaKeyDisablePublicServices: schema.BoolAttribute{
 						Optional:            true,
 						MarkdownDescription: "Specifies whether the VPC should prevent public prefixes advertised from Nodes from being imported into public-facing networks, making them inaccessible from the Internet.",
 					},
 				},
 				Default: objectdefault.StaticValue(types.ObjectValueMust(map[string]attr.Type{
-					"disable_public_services": types.BoolType,
+					schemaKeyDisablePublicServices: types.BoolType,
 				}, map[string]attr.Value{
-					"disable_public_services": types.BoolValue(false),
+					schemaKeyDisablePublicServices: types.BoolValue(false),
 				})),
 			},
 			"egress": schema.SingleNestedAttribute{
@@ -548,15 +548,15 @@ func (r *VpcResource) Schema(ctx context.Context, req resource.SchemaRequest, re
 				Computed:            true,
 				MarkdownDescription: "Settings affecting traffic leaving the VPC.",
 				Attributes: map[string]schema.Attribute{
-					"disable_public_access": schema.BoolAttribute{
+					schemaKeyDisablePublicAccess: schema.BoolAttribute{
 						Optional:            true,
 						MarkdownDescription: "Specifies whether the VPC should be blocked from consuming public Internet.",
 					},
 				},
 				Default: objectdefault.StaticValue(types.ObjectValueMust(map[string]attr.Type{
-					"disable_public_access": types.BoolType,
+					schemaKeyDisablePublicAccess: types.BoolType,
 				}, map[string]attr.Value{
-					"disable_public_access": types.BoolValue(false),
+					schemaKeyDisablePublicAccess: types.BoolValue(false),
 				})),
 			},
 			"dhcp": schema.SingleNestedAttribute{
@@ -640,7 +640,7 @@ func (r *VpcResource) Create(ctx context.Context, req resource.CreateRequest, re
 			}))
 			if err != nil {
 				tflog.Error(ctx, "failed to fetch vpc resource", map[string]interface{}{
-					"error": err,
+					logKeyError: err,
 				})
 				return nil, networkingv1beta1.VPC_STATUS_UNSPECIFIED.String(), err
 			}
@@ -732,7 +732,7 @@ func (r *VpcResource) Update(ctx context.Context, req resource.UpdateRequest, re
 			}))
 			if err != nil {
 				tflog.Error(ctx, "failed to fetch vpc resource", map[string]interface{}{
-					"error": err.Error(),
+					logKeyError: err.Error(),
 				})
 				return nil, networkingv1beta1.VPC_STATUS_UNSPECIFIED.String(), err
 			}
@@ -801,7 +801,7 @@ func (r *VpcResource) Delete(ctx context.Context, req resource.DeleteRequest, re
 				}
 
 				tflog.Error(ctx, "failed to fetch vpc", map[string]interface{}{
-					"error": err.Error(),
+					logKeyError: err.Error(),
 				})
 				return nil, networkingv1beta1.VPC_STATUS_UNSPECIFIED.String(), err
 			}
@@ -830,22 +830,22 @@ func hostPrefixToCtyValue(hp HostPrefixResourceModel) cty.Value {
 	}
 
 	hpObj := map[string]cty.Value{
-		"name":     cty.StringVal(hp.Name.ValueString()),
-		"type":     cty.StringVal(hp.Type.ValueString()),
-		"prefixes": cty.SetVal(prefixValues),
+		schemaKeyName:     cty.StringVal(hp.Name.ValueString()),
+		schemaKeyType:     cty.StringVal(hp.Type.ValueString()),
+		schemaKeyPrefixes: cty.SetVal(prefixValues),
 	}
 
 	// Add IPAM only if present - omit null fields for cleaner HCL rendering, to accept them as "true nils"
 	if hp.IPAM != nil {
 		ipamObj := map[string]cty.Value{
-			"prefix_length": cty.NumberIntVal(int64(hp.IPAM.PrefixLength.ValueInt32())),
+			schemaKeyPrefixLength: cty.NumberIntVal(int64(hp.IPAM.PrefixLength.ValueInt32())),
 		}
 
 		if !hp.IPAM.GatewayAddressPolicy.IsNull() && !hp.IPAM.GatewayAddressPolicy.IsUnknown() {
-			ipamObj["gateway_address_policy"] = cty.StringVal(hp.IPAM.GatewayAddressPolicy.ValueString())
+			ipamObj[schemaKeyGatewayAddressPolicy] = cty.StringVal(hp.IPAM.GatewayAddressPolicy.ValueString())
 		}
 
-		hpObj["ipam"] = cty.ObjectVal(ipamObj)
+		hpObj[schemaKeyIPAM] = cty.ObjectVal(ipamObj)
 	}
 
 	return cty.ObjectVal(hpObj)
@@ -860,18 +860,18 @@ func MustRenderVpcResource(ctx context.Context, resourceName string, vpc *VpcRes
 	resource := body.AppendNewBlock("resource", []string{"coreweave_networking_vpc", resourceName})
 	resourceBody := resource.Body()
 
-	resourceBody.SetAttributeValue("name", cty.StringVal(vpc.Name.ValueString()))
+	resourceBody.SetAttributeValue(schemaKeyName, cty.StringVal(vpc.Name.ValueString()))
 	resourceBody.SetAttributeValue("zone", cty.StringVal(vpc.Zone.ValueString()))
 
 	if vpc.Ingress != nil {
 		resourceBody.SetAttributeValue("ingress", cty.ObjectVal(map[string]cty.Value{
-			"disable_public_services": cty.BoolVal(vpc.Ingress.DisablePublicServices.ValueBool()),
+			schemaKeyDisablePublicServices: cty.BoolVal(vpc.Ingress.DisablePublicServices.ValueBool()),
 		}))
 	}
 
 	if vpc.Egress != nil {
 		resourceBody.SetAttributeValue("egress", cty.ObjectVal(map[string]cty.Value{
-			"disable_public_access": cty.BoolVal(vpc.Egress.DisablePublicAccess.ValueBool()),
+			schemaKeyDisablePublicAccess: cty.BoolVal(vpc.Egress.DisablePublicAccess.ValueBool()),
 		}))
 	}
 
@@ -901,8 +901,8 @@ func MustRenderVpcResource(ctx context.Context, resourceName string, vpc *VpcRes
 	vpcPrefixes := make([]cty.Value, len(vpc.VpcPrefixes))
 	for i, p := range vpc.VpcPrefixes {
 		vpcPrefixes[i] = cty.ObjectVal(map[string]cty.Value{
-			"name":  cty.StringVal(p.Name.ValueString()),
-			"value": cty.StringVal(p.Value.ValueString()),
+			schemaKeyName:  cty.StringVal(p.Name.ValueString()),
+			schemaKeyValue: cty.StringVal(p.Value.ValueString()),
 		})
 	}
 

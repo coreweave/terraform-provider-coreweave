@@ -1,0 +1,26 @@
+package inference
+
+const (
+	schemaKeyInstanceTypes           = "instance_types"
+	schemaKeyAllowedKeys             = "allowed_keys"
+	schemaKeyAllowedNames            = "allowed_names"
+	schemaKeyVersions                = "versions"
+	schemaKeyZones                   = "zones"
+	schemaKeyWeight                  = "weight"
+	schemaKeyOrganizationID          = "organization_id"
+	schemaKeyStatus                  = "status"
+	schemaKeyCreatedAt               = "created_at"
+	schemaKeyUpdatedAt               = "updated_at"
+	schemaKeyConditions              = "conditions"
+	schemaKeyType                    = "type"
+	schemaKeyLastUpdateTime          = "last_update_time"
+	schemaKeyReason                  = "reason"
+	schemaKeyMessage                 = "message"
+	schemaKeyName                    = "name"
+	logKeyError                      = "error"
+	conditionTypeDescription         = "The condition type (e.g. `Ready`, `Progressing`)."
+	conditionStatusDescription       = "The condition status (`True`, `False`, or `Unknown`)."
+	lastTransitionTimeDescription    = "RFC3339 timestamp of the last condition transition."
+	lastTransitionReasonDescription  = "A short, machine-readable reason for the condition's last transition."
+	lastTransitionMessageDescription = "A human-readable message about the condition's last transition."
+)

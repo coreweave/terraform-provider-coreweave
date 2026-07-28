@@ -158,7 +158,7 @@ func (b *BucketSettingsResource) Schema(ctx context.Context, req resource.Schema
 	resp.Schema = schema.Schema{
 		Description: "Manage settings for a CoreWeave AI Object Storage bucket.",
 		Attributes: map[string]schema.Attribute{
-			"bucket": schema.StringAttribute{
+			schemaKeyBucket: schema.StringAttribute{
 				Description: "The name of the bucket to manage settings for.",
 				Required:    true,
 				PlanModifiers: []planmodifier.String{
@@ -228,7 +228,7 @@ func MustRenderBucketSettingsResource(_ context.Context, name string, settings *
 	resourceBody := resource.Body()
 
 	// bucket attribute
-	resourceBody.SetAttributeRaw("bucket", hclwrite.Tokens{{Type: hclsyntax.TokenIdent, Bytes: []byte(settings.Bucket.ValueString())}})
+	resourceBody.SetAttributeRaw(schemaKeyBucket, hclwrite.Tokens{{Type: hclsyntax.TokenIdent, Bytes: []byte(settings.Bucket.ValueString())}})
 
 	// audit_logging_enabled attribute
 	if !settings.AuditLoggingEnabled.IsNull() {

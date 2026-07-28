@@ -231,7 +231,7 @@ func (d *BucketPolicyDocumentDataSource) Schema(ctx context.Context, req datasou
 							Optional:            true,
 							MarkdownDescription: "An optional statement identifier",
 						},
-						"effect": schema.StringAttribute{
+						schemaKeyEffect: schema.StringAttribute{
 							Optional:            true,
 							MarkdownDescription: "`Allow` or `Deny`",
 						},
@@ -370,12 +370,12 @@ func MustRenderBucketPolicyDocument(_ context.Context, name string, cfg *BucketP
 			sb.SetAttributeValue("sid", cty.StringVal(s.Sid.ValueString()))
 		}
 		if !s.Effect.IsNull() {
-			sb.SetAttributeValue("effect", cty.StringVal(s.Effect.ValueString()))
+			sb.SetAttributeValue(schemaKeyEffect, cty.StringVal(s.Effect.ValueString()))
 		}
 
 		// action list
 		if !s.Action.IsNull() {
-			var vals []cty.Value
+			vals := make([]cty.Value, 0, len(s.Action.Elements()))
 			for _, v := range s.Action.Elements() {
 				str := v.(types.String).ValueString()
 				vals = append(vals, cty.StringVal(str))
@@ -385,7 +385,7 @@ func MustRenderBucketPolicyDocument(_ context.Context, name string, cfg *BucketP
 
 		// resource list
 		if !s.Resource.IsNull() {
-			var vals []cty.Value
+			vals := make([]cty.Value, 0, len(s.Resource.Elements()))
 			for _, v := range s.Resource.Elements() {
 				str := v.(types.String).ValueString()
 				vals = append(vals, cty.StringVal(str))
@@ -399,7 +399,7 @@ func MustRenderBucketPolicyDocument(_ context.Context, name string, cfg *BucketP
 			for key, val := range s.Principal.Elements() {
 				// val is types.List
 				list := val.(types.List)
-				var elems []cty.Value
+				elems := make([]cty.Value, 0, len(list.Elements()))
 				for _, ev := range list.Elements() {
 					elems = append(elems, cty.StringVal(ev.(types.String).ValueString()))
 				}

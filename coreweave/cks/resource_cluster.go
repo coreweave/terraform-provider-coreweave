@@ -248,27 +248,27 @@ func (c *ClusterResourceModel) Set(cluster *cksv1beta1.Cluster) {
 		if !nodePortEmpty(cluster.Network.ServiceNodePortRange) {
 			c.NodePortRange = types.ObjectValueMust(
 				map[string]attr.Type{
-					"start": types.Int32Type,
-					"end":   types.Int32Type,
+					schemaKeyStart: types.Int32Type,
+					schemaKeyEnd:   types.Int32Type,
 				},
 				map[string]attr.Value{
-					"start": types.Int32Value(cluster.Network.ServiceNodePortRange.Start),
-					"end":   types.Int32Value(cluster.Network.ServiceNodePortRange.End),
+					schemaKeyStart: types.Int32Value(cluster.Network.ServiceNodePortRange.Start),
+					schemaKeyEnd:   types.Int32Value(cluster.Network.ServiceNodePortRange.End),
 				},
 			)
 		} else {
 			// if the plan value is null/unknown & the API returns empty, preserve null
 			// otherwise set to null based on API response
 			c.NodePortRange = types.ObjectNull(map[string]attr.Type{
-				"start": types.Int32Type,
-				"end":   types.Int32Type,
+				schemaKeyStart: types.Int32Type,
+				schemaKeyEnd:   types.Int32Type,
 			})
 		}
 	} else {
 		// if network is nil, ensure node_port_range is properly null
 		c.NodePortRange = types.ObjectNull(map[string]attr.Type{
-			"start": types.Int32Type,
-			"end":   types.Int32Type,
+			schemaKeyStart: types.Int32Type,
+			schemaKeyEnd:   types.Int32Type,
 		})
 	}
 
@@ -423,8 +423,8 @@ func (c *ClusterResourceModel) NodePorts() *cksv1beta1.PortRange {
 		return nil
 	}
 	attrs := c.NodePortRange.Attributes()
-	startAttr, okStart := attrs["start"].(types.Int32)
-	endAttr, okEnd := attrs["end"].(types.Int32)
+	startAttr, okStart := attrs[schemaKeyStart].(types.Int32)
+	endAttr, okEnd := attrs[schemaKeyEnd].(types.Int32)
 	if !okStart || !okEnd {
 		return nil
 	}
@@ -773,10 +773,10 @@ func requireReplaceIfNodePortRangeShrink(ctx context.Context, req planmodifier.O
 	sAttrs := stateObj.Attributes()
 	pAttrs := planObj.Attributes()
 
-	sStart, sStartOK := sAttrs["start"].(types.Int32)
-	sEnd, sEndOK := sAttrs["end"].(types.Int32)
-	pStart, pStartOK := pAttrs["start"].(types.Int32)
-	pEnd, pEndOK := pAttrs["end"].(types.Int32)
+	sStart, sStartOK := sAttrs[schemaKeyStart].(types.Int32)
+	sEnd, sEndOK := sAttrs[schemaKeyEnd].(types.Int32)
+	pStart, pStartOK := pAttrs[schemaKeyStart].(types.Int32)
+	pEnd, pEndOK := pAttrs[schemaKeyEnd].(types.Int32)
 	if !sStartOK || !sEndOK || !pStartOK || !pEndOK {
 		return
 	}
@@ -931,11 +931,11 @@ func (r *ClusterResource) Schema(ctx context.Context, req resource.SchemaRequest
 					objectplanmodifier.RequiresReplaceIf(requireReplaceIfNodePortRangeShrink, "", "Field `node_port_range` only requires replacement when the planned range shrinks the existing range."),
 				},
 				Attributes: map[string]schema.Attribute{
-					"start": schema.Int32Attribute{
+					schemaKeyStart: schema.Int32Attribute{
 						Computed: true,
 						Optional: true,
 					},
-					"end": schema.Int32Attribute{
+					schemaKeyEnd: schema.Int32Attribute{
 						Computed: true,
 						Optional: true,
 					},
@@ -949,7 +949,7 @@ func (r *ClusterResource) Schema(ctx context.Context, req resource.SchemaRequest
 				Optional:            true,
 				MarkdownDescription: "Authentication webhook configuration for the cluster.",
 				Attributes: map[string]schema.Attribute{
-					"server": schema.StringAttribute{
+					schemaKeyServer: schema.StringAttribute{
 						Required:            true,
 						MarkdownDescription: "The URL of the webhook server.",
 					},
@@ -963,7 +963,7 @@ func (r *ClusterResource) Schema(ctx context.Context, req resource.SchemaRequest
 				Optional:            true,
 				MarkdownDescription: "Authorization webhook configuration for the cluster.",
 				Attributes: map[string]schema.Attribute{
-					"server": schema.StringAttribute{
+					schemaKeyServer: schema.StringAttribute{
 						Required:            true,
 						MarkdownDescription: "The URL of the webhook server.",
 					},
@@ -977,11 +977,11 @@ func (r *ClusterResource) Schema(ctx context.Context, req resource.SchemaRequest
 				MarkdownDescription: "OpenID Connect (OIDC) configuration for authentication to the api-server.",
 				Optional:            true,
 				Attributes: map[string]schema.Attribute{
-					"issuer_url": schema.StringAttribute{
+					schemaKeyIssuerURL: schema.StringAttribute{
 						Required:            true,
 						MarkdownDescription: "The URL of the OIDC issuer.",
 					},
-					"client_id": schema.StringAttribute{
+					schemaKeyClientID: schema.StringAttribute{
 						Required:            true,
 						MarkdownDescription: "The client ID for the OIDC client.",
 					},
@@ -1064,7 +1064,7 @@ func (r *ClusterResource) Schema(ctx context.Context, req resource.SchemaRequest
 				Optional:            true,
 				MarkdownDescription: "Tailscale configuration for the cluster. Enables cluster access via a Tailscale VPN.",
 				Attributes: map[string]schema.Attribute{
-					"client_id": schema.StringAttribute{
+					schemaKeyClientID: schema.StringAttribute{
 						Required:            true,
 						MarkdownDescription: "The Tailscale Client ID for the federated identity.",
 						Validators: []validator.String{
@@ -1140,7 +1140,7 @@ func (r *ClusterResource) Create(ctx context.Context, req resource.CreateRequest
 			}))
 			if err != nil {
 				tflog.Error(ctx, "failed to fetch cluster resource", map[string]interface{}{
-					"error": err,
+					logKeyError: err,
 				})
 				return nil, cksv1beta1.Cluster_STATUS_UNSPECIFIED.String(), err
 			}
@@ -1242,7 +1242,7 @@ func (r *ClusterResource) Update(ctx context.Context, req resource.UpdateRequest
 			}))
 			if err != nil {
 				tflog.Error(ctx, "failed to fetch cluster resource", map[string]interface{}{
-					"error": err.Error(),
+					logKeyError: err.Error(),
 				})
 				return nil, cksv1beta1.Cluster_STATUS_UNSPECIFIED.String(), err
 			}
@@ -1307,7 +1307,7 @@ func (r *ClusterResource) Delete(ctx context.Context, req resource.DeleteRequest
 				}
 
 				tflog.Error(ctx, "failed to fetch cluster resource", map[string]interface{}{
-					"error": err.Error(),
+					logKeyError: err.Error(),
 				})
 				return nil, cksv1beta1.Cluster_STATUS_UNSPECIFIED.String(), err
 			}
@@ -1373,12 +1373,12 @@ func MustRenderClusterResource(ctx context.Context, resourceName string, cluster
 
 	if !cluster.NodePortRange.IsNull() && !cluster.NodePortRange.IsUnknown() {
 		attrs := cluster.NodePortRange.Attributes()
-		startAttr, okStart := attrs["start"].(types.Int32)
-		endAttr, okEnd := attrs["end"].(types.Int32)
+		startAttr, okStart := attrs[schemaKeyStart].(types.Int32)
+		endAttr, okEnd := attrs[schemaKeyEnd].(types.Int32)
 		if okStart && okEnd {
 			resourceBody.SetAttributeValue("node_port_range", cty.ObjectVal(map[string]cty.Value{
-				"start": cty.NumberIntVal(int64(startAttr.ValueInt32())),
-				"end":   cty.NumberIntVal(int64(endAttr.ValueInt32())),
+				schemaKeyStart: cty.NumberIntVal(int64(startAttr.ValueInt32())),
+				schemaKeyEnd:   cty.NumberIntVal(int64(endAttr.ValueInt32())),
 			}))
 		}
 	}
@@ -1389,15 +1389,15 @@ func MustRenderClusterResource(ctx context.Context, resourceName string, cluster
 	// authn/authz webhooks
 	if cluster.AuthNWebhook != nil {
 		resourceBody.SetAttributeValue("authn_webhook", cty.ObjectVal(map[string]cty.Value{
-			"server": cty.StringVal(cluster.AuthNWebhook.Server.ValueString()),
-			"ca":     stringOrNull(cluster.AuthNWebhook.CA),
+			schemaKeyServer: cty.StringVal(cluster.AuthNWebhook.Server.ValueString()),
+			"ca":            stringOrNull(cluster.AuthNWebhook.CA),
 		}))
 	}
 
 	if cluster.AuthZWebhook != nil {
 		resourceBody.SetAttributeValue("authz_webhook", cty.ObjectVal(map[string]cty.Value{
-			"server": cty.StringVal(cluster.AuthZWebhook.Server.ValueString()),
-			"ca":     stringOrNull(cluster.AuthZWebhook.CA),
+			schemaKeyServer: cty.StringVal(cluster.AuthZWebhook.Server.ValueString()),
+			"ca":            stringOrNull(cluster.AuthZWebhook.CA),
 		}))
 	}
 
@@ -1407,7 +1407,7 @@ func MustRenderClusterResource(ctx context.Context, resourceName string, cluster
 
 	if cluster.Tailscale != nil {
 		resourceBody.SetAttributeValue("tailscale", cty.ObjectVal(map[string]cty.Value{
-			"client_id": cty.StringVal(cluster.Tailscale.ClientID.ValueString()),
+			schemaKeyClientID: cty.StringVal(cluster.Tailscale.ClientID.ValueString()),
 		}))
 	}
 
@@ -1490,8 +1490,8 @@ func setOIDCAttrIfPresent(ctx context.Context, b *hclwrite.Body, oidc *OidcResou
 	}
 
 	b.SetAttributeValue("oidc", cty.ObjectVal(map[string]cty.Value{
-		"issuer_url":          stringOrNull(oidc.IssuerURL),
-		"client_id":           stringOrNull(oidc.ClientID),
+		schemaKeyIssuerURL:    stringOrNull(oidc.IssuerURL),
+		schemaKeyClientID:     stringOrNull(oidc.ClientID),
 		"username_claim":      stringOrNull(oidc.UsernameClaim),
 		"username_prefix":     stringOrNull(oidc.UsernamePrefix),
 		"groups_claim":        stringOrNull(oidc.GroupsClaim),

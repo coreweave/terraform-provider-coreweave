@@ -35,6 +35,11 @@ const (
 	AuditPolicyB64       = "ewogICJhcGlWZXJzaW9uIjogImF1ZGl0Lms4cy5pby92MSIsCiAgImtpbmQiOiAiUG9saWN5IiwKICAib21pdFN0YWdlcyI6IFsKICAgICJSZXF1ZXN0UmVjZWl2ZWQiCiAgXSwKICAicnVsZXMiOiBbCiAgICB7CiAgICAgICJsZXZlbCI6ICJSZXF1ZXN0UmVzcG9uc2UiLAogICAgICAicmVzb3VyY2VzIjogWwogICAgICAgIHsKICAgICAgICAgICJncm91cCI6ICIiLAogICAgICAgICAgInJlc291cmNlcyI6IFsKICAgICAgICAgICAgInBvZHMiCiAgICAgICAgICBdCiAgICAgICAgfQogICAgICBdCiAgICB9LAogICAgewogICAgICAibGV2ZWwiOiAiTWV0YWRhdGEiLAogICAgICAicmVzb3VyY2VzIjogWwogICAgICAgIHsKICAgICAgICAgICJncm91cCI6ICIiLAogICAgICAgICAgInJlc291cmNlcyI6IFsKICAgICAgICAgICAgInBvZHMvbG9nIiwKICAgICAgICAgICAgInBvZHMvc3RhdHVzIgogICAgICAgICAgXQogICAgICAgIH0KICAgICAgXQogICAgfSwKICAgIHsKICAgICAgImxldmVsIjogIk5vbmUiLAogICAgICAicmVzb3VyY2VzIjogWwogICAgICAgIHsKICAgICAgICAgICJncm91cCI6ICIiLAogICAgICAgICAgInJlc291cmNlcyI6IFsKICAgICAgICAgICAgImNvbmZpZ21hcHMiCiAgICAgICAgICBdLAogICAgICAgICAgInJlc291cmNlTmFtZXMiOiBbCiAgICAgICAgICAgICJjb250cm9sbGVyLWxlYWRlciIKICAgICAgICAgIF0KICAgICAgICB9CiAgICAgIF0KICAgIH0sCiAgICB7CiAgICAgICJsZXZlbCI6ICJOb25lIiwKICAgICAgInVzZXJzIjogWwogICAgICAgICJzeXN0ZW06a3ViZS1wcm94eSIKICAgICAgXSwKICAgICAgInZlcmJzIjogWwogICAgICAgICJ3YXRjaCIKICAgICAgXSwKICAgICAgInJlc291cmNlcyI6IFsKICAgICAgICB7CiAgICAgICAgICAiZ3JvdXAiOiAiIiwKICAgICAgICAgICJyZXNvdXJjZXMiOiBbCiAgICAgICAgICAgICJlbmRwb2ludHMiLAogICAgICAgICAgICAic2VydmljZXMiCiAgICAgICAgICBdCiAgICAgICAgfQogICAgICBdCiAgICB9LAogICAgewogICAgICAibGV2ZWwiOiAiTm9uZSIsCiAgICAgICJ1c2VyR3JvdXBzIjogWwogICAgICAgICJzeXN0ZW06YXV0aGVudGljYXRlZCIKICAgICAgXSwKICAgICAgIm5vblJlc291cmNlVVJMcyI6IFsKICAgICAgICAiL2FwaSoiLAogICAgICAgICIvdmVyc2lvbiIKICAgICAgXQogICAgfSwKICAgIHsKICAgICAgImxldmVsIjogIlJlcXVlc3QiLAogICAgICAicmVzb3VyY2VzIjogWwogICAgICAgIHsKICAgICAgICAgICJncm91cCI6ICIiLAogICAgICAgICAgInJlc291cmNlcyI6IFsKICAgICAgICAgICAgImNvbmZpZ21hcHMiCiAgICAgICAgICBdCiAgICAgICAgfQogICAgICBdLAogICAgICAibmFtZXNwYWNlcyI6IFsKICAgICAgICAia3ViZS1zeXN0ZW0iCiAgICAgIF0KICAgIH0sCiAgICB7CiAgICAgICJsZXZlbCI6ICJNZXRhZGF0YSIsCiAgICAgICJyZXNvdXJjZXMiOiBbCiAgICAgICAgewogICAgICAgICAgImdyb3VwIjogIiIsCiAgICAgICAgICAicmVzb3VyY2VzIjogWwogICAgICAgICAgICAic2VjcmV0cyIsCiAgICAgICAgICAgICJjb25maWdtYXBzIgogICAgICAgICAgXQogICAgICAgIH0KICAgICAgXQogICAgfSwKICAgIHsKICAgICAgImxldmVsIjogIlJlcXVlc3QiLAogICAgICAicmVzb3VyY2VzIjogWwogICAgICAgIHsKICAgICAgICAgICJncm91cCI6ICIiCiAgICAgICAgfSwKICAgICAgICB7CiAgICAgICAgICAiZ3JvdXAiOiAiZXh0ZW5zaW9ucyIKICAgICAgICB9CiAgICAgIF0KICAgIH0sCiAgICB7CiAgICAgICJsZXZlbCI6ICJNZXRhZGF0YSIsCiAgICAgICJvbWl0U3RhZ2VzIjogWwogICAgICAgICJSZXF1ZXN0UmVjZWl2ZWQiCiAgICAgIF0KICAgIH0KICBdCn0K"
 	ExampleCAB64         = "LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSURnekNDQW11Z0F3SUJBZ0lRVGhhQitUNmdtdVVYN3dXZi9XUitmekFOQmdrcWhraUc5dzBCQVFzRkFEQUEKTUI0WERUSTBNRFl5TlRJeE1UY3pNVm9YRFRJME1Ea3lNekl4TVRjek1Wb3dBRENDQVNJd0RRWUpLb1pJaHZjTgpBUUVCQlFBRGdnRVBBRENDQVFvQ2dnRUJBT240VkVpRWJoL29GRkoxcG1QZXZxb1pBbWtVUjRqeWd5Y0MvRFhCCmVEWjYxd1NzV1FPU21peFg1bDZDd1FXNzdkV3NRVGhsU0RqN003RytxYjZCWHBSUWcrMndJOFVsVHp6Y0NpM0UKN1pib2M2LzI1YXd3NVpLOW1GVWVGWlBWemI4ZHNuVUFkbmFNa2V2ckFGQXNoL0NmSEh0cThzSUZnOVF2SWJnUApNRFJJcnZnSmlGY1NLS1E5clgxOWkzcFY3ZE9UaGxaYW11UWRGUjhGSVgyQ3BVQithajdSWkdMTFFra3AzMzhUCjFTRk5hK3V1THk3Mlh6MldIdEdqOTE5OFVENFFTRzByd2JUYXEvQVdxNjcvblhRS2FOQ2xHYzlGajNRSjU2NEUKK3cvWXBvK1krc053OXY0M1NVSVdyQXRMNGRicHNadlBEK0FKS1RDRXArUExZWlVDQXdFQUFhT0IrRENCOVRBTwpCZ05WSFE4QkFmOEVCQU1DQmFBd0RBWURWUjBUQVFIL0JBSXdBRENCMUFZRFZSMFJBUUgvQklISk1JSEdnaVJsCmVHVmpkWFJ2Y2kxcllYUmhiRzluTFdWNFpXTjFkRzl5TFhKbFkyOXVZMmxzWlhLQ0xHVjRaV04xZEc5eUxXdGgKZEdGc2IyY3RaWGhsWTNWMGIzSXRjbVZqYjI1amFXeGxjaTVyWVhSaGJHOW5nakJsZUdWamRYUnZjaTFyWVhSaApiRzluTFdWNFpXTjFkRzl5TFhKbFkyOXVZMmxzWlhJdWEyRjBZV3h2Wnk1emRtT0NQbVY0WldOMWRHOXlMV3RoCmRHRnNiMmN0WlhobFkzVjBiM0l0Y21WamIyNWphV3hsY2k1cllYUmhiRzluTG5OMll5NWpiSFZ6ZEdWeUxteHYKWTJGc01BMEdDU3FHU0liM0RRRUJDd1VBQTRJQkFRQlEvQ2JBdEFCQkZORUE5d1hYaE9vYUNrRFY1dTc3VFlzMQpFV2FJcFJFNjV5QmVtTDc2eXpYeEtoc2RmR3RJSmJ0THBWS1lUYlpBVTQrem9IS1NVTWs4REY4bXN0dGhOMWQ5CnR6a1d4ZXZ3UGViL2NtMVZVWlBzWkxvNnFRblJRUFJCUXc0dFpWdkhTWmtsSjBVb2lvVk5zOWJJY3ZQZ2Z4UW0KNkhDU3NEWU9sWnlPRHlrY045U21nbFZtVWFNeVkxMGcrL3BWRzg4WkRyLy9zdUI1ZERPaktUcDNGbjRPSGR0VwpnRmpuY3RVOEV4Zk5YNTR1Yndja2ZTMGdiOXRtejcyaHN3OU5KaTV2QXlMS2ZIcmxNNTJTeWhwUVZKbkpPYzF6ClhqQVlLTHE1M1E1TGt3RXBZMXpkL21XdVhkRWswWldZcHlXemk3WWN4UXQreUJkWVNJQzEKLS0tLS1FTkQgQ0VSVElGSUNBVEUtLS0tLQo="
 	AcceptanceTestPrefix = "test-acc-"
+	schemaKeyStart       = "start"
+	schemaKeyEnd         = "end"
+	schemaKeyIssuerURL   = "issuer_url"
+	schemaKeyClientID    = "client_id"
+	schemaKeyServer      = "server"
 )
 
 func deleteCluster(ctx context.Context, client *coreweave.Client, cluster *cksv1beta1.Cluster) error {
@@ -299,8 +304,9 @@ func createClusterTestStep(ctx context.Context, t *testing.T, config testStepCon
 		}
 
 		// internal lb cidrs
-		internalLbCidrs := []knownvalue.Check{}
-		for _, c := range config.cluster.InternalLbCidrNames(ctx) {
+		internalLbCidrNames := config.cluster.InternalLbCidrNames(ctx)
+		internalLbCidrs := make([]knownvalue.Check, 0, len(internalLbCidrNames))
+		for _, c := range internalLbCidrNames {
 			internalLbCidrs = append(internalLbCidrs, knownvalue.StringExact(c))
 		}
 		statechecks = append(statechecks, statecheck.ExpectKnownValue(config.Resources.FullResourceName, tfjsonpath.New("internal_lb_cidr_names"), knownvalue.ListExact(internalLbCidrs)))
@@ -308,8 +314,8 @@ func createClusterTestStep(ctx context.Context, t *testing.T, config testStepCon
 		// oidc
 		if config.cluster.Oidc != nil {
 			oidc := map[string]knownvalue.Check{
-				"issuer_url":          stringOrNull(config.cluster.Oidc.IssuerURL),
-				"client_id":           stringOrNull(config.cluster.Oidc.ClientID),
+				schemaKeyIssuerURL:    stringOrNull(config.cluster.Oidc.IssuerURL),
+				schemaKeyClientID:     stringOrNull(config.cluster.Oidc.ClientID),
 				"username_claim":      stringOrNull(config.cluster.Oidc.UsernameClaim),
 				"username_prefix":     stringOrNull(config.cluster.Oidc.UsernamePrefix),
 				"groups_claim":        stringOrNull(config.cluster.Oidc.GroupsClaim),
@@ -327,7 +333,7 @@ func createClusterTestStep(ctx context.Context, t *testing.T, config testStepCon
 					t.FailNow()
 				}
 
-				checks := []knownvalue.Check{}
+				checks := make([]knownvalue.Check, 0, len(algs))
 				for _, a := range algs {
 					checks = append(checks, knownvalue.StringExact(a.ValueString()))
 				}
@@ -339,16 +345,16 @@ func createClusterTestStep(ctx context.Context, t *testing.T, config testStepCon
 		// webhooks
 		if config.cluster.AuthNWebhook != nil {
 			authn := map[string]knownvalue.Check{
-				"server": knownvalue.StringExact(config.cluster.AuthNWebhook.Server.ValueString()),
-				"ca":     stringOrNull(config.cluster.AuthNWebhook.CA),
+				schemaKeyServer: knownvalue.StringExact(config.cluster.AuthNWebhook.Server.ValueString()),
+				"ca":            stringOrNull(config.cluster.AuthNWebhook.CA),
 			}
 			statechecks = append(statechecks, statecheck.ExpectKnownValue(config.Resources.FullResourceName, tfjsonpath.New("authn_webhook"), knownvalue.ObjectExact(authn)))
 		}
 
 		if config.cluster.AuthZWebhook != nil {
 			authz := map[string]knownvalue.Check{
-				"server": knownvalue.StringExact(config.cluster.AuthZWebhook.Server.ValueString()),
-				"ca":     stringOrNull(config.cluster.AuthZWebhook.CA),
+				schemaKeyServer: knownvalue.StringExact(config.cluster.AuthZWebhook.Server.ValueString()),
+				"ca":            stringOrNull(config.cluster.AuthZWebhook.CA),
 			}
 			statechecks = append(statechecks, statecheck.ExpectKnownValue(config.Resources.FullResourceName, tfjsonpath.New("authz_webhook"), knownvalue.ObjectExact(authz)))
 		}
@@ -356,11 +362,11 @@ func createClusterTestStep(ctx context.Context, t *testing.T, config testStepCon
 		// node_port_range
 		if !config.cluster.NodePortRange.IsNull() && !config.cluster.NodePortRange.IsUnknown() {
 			attrs := config.cluster.NodePortRange.Attributes()
-			if s, ok := attrs["start"].(types.Int32); ok && !s.IsNull() && !s.IsUnknown() {
-				statechecks = append(statechecks, statecheck.ExpectKnownValue(config.Resources.FullResourceName, tfjsonpath.New("node_port_range").AtMapKey("start"), knownvalue.Int64Exact(int64(s.ValueInt32()))))
+			if s, ok := attrs[schemaKeyStart].(types.Int32); ok && !s.IsNull() && !s.IsUnknown() {
+				statechecks = append(statechecks, statecheck.ExpectKnownValue(config.Resources.FullResourceName, tfjsonpath.New("node_port_range").AtMapKey(schemaKeyStart), knownvalue.Int64Exact(int64(s.ValueInt32()))))
 			}
-			if e, ok := attrs["end"].(types.Int32); ok && !e.IsNull() && !e.IsUnknown() {
-				statechecks = append(statechecks, statecheck.ExpectKnownValue(config.Resources.FullResourceName, tfjsonpath.New("node_port_range").AtMapKey("end"), knownvalue.Int64Exact(int64(e.ValueInt32()))))
+			if e, ok := attrs[schemaKeyEnd].(types.Int32); ok && !e.IsNull() && !e.IsUnknown() {
+				statechecks = append(statechecks, statecheck.ExpectKnownValue(config.Resources.FullResourceName, tfjsonpath.New("node_port_range").AtMapKey(schemaKeyEnd), knownvalue.Int64Exact(int64(e.ValueInt32()))))
 			}
 		}
 
@@ -380,7 +386,7 @@ func createClusterTestStep(ctx context.Context, t *testing.T, config testStepCon
 
 		// tailscale
 		if config.cluster.Tailscale != nil {
-			statechecks = append(statechecks, statecheck.ExpectKnownValue(config.Resources.FullResourceName, tfjsonpath.New("tailscale").AtMapKey("client_id"), knownvalue.StringExact(config.cluster.Tailscale.ClientID.ValueString())))
+			statechecks = append(statechecks, statecheck.ExpectKnownValue(config.Resources.FullResourceName, tfjsonpath.New("tailscale").AtMapKey(schemaKeyClientID), knownvalue.StringExact(config.cluster.Tailscale.ClientID.ValueString())))
 		} else {
 			statechecks = append(statechecks, statecheck.ExpectKnownValue(config.Resources.FullResourceName, tfjsonpath.New("tailscale"), knownvalue.Null()))
 		}
@@ -415,22 +421,22 @@ func TestClusterResource(t *testing.T) {
 
 	vpc := defaultVpc(config.ClusterName, zone)
 	npTypes := map[string]attr.Type{
-		"start": types.Int32Type,
-		"end":   types.Int32Type,
+		schemaKeyStart: types.Int32Type,
+		schemaKeyEnd:   types.Int32Type,
 	}
 	npVals := map[string]attr.Value{
-		"start": types.Int32Value(30000),
-		"end":   types.Int32Value(39534),
+		schemaKeyStart: types.Int32Value(30000),
+		schemaKeyEnd:   types.Int32Value(39534),
 	}
 	np, _ := types.ObjectValue(npTypes, npVals)
 	npLargeVals := map[string]attr.Value{
-		"start": types.Int32Value(30000),
-		"end":   types.Int32Value(60000),
+		schemaKeyStart: types.Int32Value(30000),
+		schemaKeyEnd:   types.Int32Value(60000),
 	}
 	npLarge, _ := types.ObjectValue(npTypes, npLargeVals)
 	npSmallVals := map[string]attr.Value{
-		"start": types.Int32Value(30000),
-		"end":   types.Int32Value(34534),
+		schemaKeyStart: types.Int32Value(30000),
+		schemaKeyEnd:   types.Int32Value(34534),
 	}
 	npSmall, _ := types.ObjectValue(npTypes, npSmallVals)
 	// Non-lexicographic order (lex would be: internal-lb-cidr, internal-lb-cidr-0, internal-lb-cidr-2)
@@ -575,8 +581,8 @@ func TestClusterResource(t *testing.T) {
 				statecheck.ExpectKnownValue(config.FullDataSourceName, tfjsonpath.New("public"), knownvalue.Bool(initial.Public.ValueBool())),
 				statecheck.ExpectKnownValue(config.FullDataSourceName, tfjsonpath.New("pod_cidr_name"), knownvalue.StringExact(initial.PodCidrName.ValueString())),
 				statecheck.ExpectKnownValue(config.FullDataSourceName, tfjsonpath.New("service_cidr_name"), knownvalue.StringExact(initial.ServiceCidrName.ValueString())),
-				statecheck.ExpectKnownValue(config.FullDataSourceName, tfjsonpath.New("node_port_range").AtMapKey("start"), knownvalue.NotNull()),
-				statecheck.ExpectKnownValue(config.FullDataSourceName, tfjsonpath.New("node_port_range").AtMapKey("end"), knownvalue.NotNull()),
+				statecheck.ExpectKnownValue(config.FullDataSourceName, tfjsonpath.New("node_port_range").AtMapKey(schemaKeyStart), knownvalue.NotNull()),
+				statecheck.ExpectKnownValue(config.FullDataSourceName, tfjsonpath.New("node_port_range").AtMapKey(schemaKeyEnd), knownvalue.NotNull()),
 			},
 		},
 		createClusterTestStep(ctx, t, testStepConfig{
@@ -654,12 +660,12 @@ func TestClusterResource_V6FieldsCreateOnly(t *testing.T) {
 		},
 	)
 	npTypes := map[string]attr.Type{
-		"start": types.Int32Type,
-		"end":   types.Int32Type,
+		schemaKeyStart: types.Int32Type,
+		schemaKeyEnd:   types.Int32Type,
 	}
 	npVals := map[string]attr.Value{
-		"start": types.Int32Value(30000),
-		"end":   types.Int32Value(39534),
+		schemaKeyStart: types.Int32Value(30000),
+		schemaKeyEnd:   types.Int32Value(39534),
 	}
 	np, _ := types.ObjectValue(npTypes, npVals)
 

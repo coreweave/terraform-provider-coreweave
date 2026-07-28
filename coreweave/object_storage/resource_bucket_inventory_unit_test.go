@@ -26,8 +26,8 @@ func fullInventoryModel() *BucketInventoryResourceModel {
 		Enabled:                types.BoolValue(true),
 		IncludedObjectVersions: types.StringValue("All"),
 		OptionalFields: types.SetValueMust(types.StringType, []attr.Value{
-			types.StringValue("Size"),
-			types.StringValue("LastAccessedDate"),
+			types.StringValue(inventoryOptionalFieldSize),
+			types.StringValue(inventoryOptionalFieldLastAccessedDate),
 		}),
 		Filter:   &InventoryFilterModel{Prefix: types.StringValue("logs/")},
 		Schedule: &ScheduleModel{Frequency: types.StringValue("Daily")},
@@ -75,7 +75,7 @@ func TestExpandInventoryConfiguration(t *testing.T) {
 	for _, f := range got.OptionalFields {
 		gotFields = append(gotFields, string(f))
 	}
-	require.ElementsMatch(t, []string{"Size", "LastAccessedDate"}, gotFields)
+	require.ElementsMatch(t, []string{inventoryOptionalFieldSize, inventoryOptionalFieldLastAccessedDate}, gotFields)
 }
 
 func TestExpandInventoryConfiguration_OmitsOptionalFieldsWhenNull(t *testing.T) {
@@ -111,7 +111,7 @@ func TestFlattenInventoryConfiguration(t *testing.T) {
 				AccountId: aws.String("123456789012"),
 			},
 		},
-		OptionalFields: []s3types.InventoryOptionalField{"Size", "LastAccessedDate"},
+		OptionalFields: []s3types.InventoryOptionalField{inventoryOptionalFieldSize, inventoryOptionalFieldLastAccessedDate},
 	}
 
 	// Bucket is not part of the API payload; simulate that it was already in state
@@ -140,7 +140,7 @@ func TestFlattenInventoryConfiguration(t *testing.T) {
 
 	var fields []string
 	require.False(t, data.OptionalFields.ElementsAs(ctx, &fields, false).HasError())
-	require.ElementsMatch(t, []string{"Size", "LastAccessedDate"}, fields)
+	require.ElementsMatch(t, []string{inventoryOptionalFieldSize, inventoryOptionalFieldLastAccessedDate}, fields)
 }
 
 func TestFlattenInventoryConfiguration_EmptyOptionalFieldsIsNull(t *testing.T) {
@@ -283,10 +283,10 @@ func TestInventorySchema_OptionalFieldsValidator(t *testing.T) {
 		wantErr bool
 	}{
 		// LastAccessedDate must be accepted — this is the crux of CFR-178.
-		"LastAccessedDate accepted":        {setOf("LastAccessedDate"), false},
-		"full superset accepted":           {setOf("Size", "LastModifiedDate", "LastAccessedDate", "StorageClass", "ETag", "IsMultipartUploaded", "EncryptionStatus", "ChecksumAlgorithm"), false},
+		"LastAccessedDate accepted":        {setOf(inventoryOptionalFieldLastAccessedDate), false},
+		"full superset accepted":           {setOf(inventoryOptionalFieldSize, "LastModifiedDate", inventoryOptionalFieldLastAccessedDate, "StorageClass", "ETag", "IsMultipartUploaded", "EncryptionStatus", "ChecksumAlgorithm"), false},
 		"unknown field rejected":           {setOf("Bogus"), true},
-		"one invalid among valid rejected": {setOf("Size", "NotAField"), true},
+		"one invalid among valid rejected": {setOf(inventoryOptionalFieldSize, "NotAField"), true},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -329,7 +329,7 @@ func TestInventorySchema_DestinationFormatValidator(t *testing.T) {
 	// format lives at destination.bucket.format (two levels of SingleNestedBlock).
 	destBlock, ok := inventorySchema(t).Blocks["destination"].(schema.SingleNestedBlock)
 	require.True(t, ok, "destination is not a SingleNestedBlock")
-	bucketBlock, ok := destBlock.Blocks["bucket"].(schema.SingleNestedBlock)
+	bucketBlock, ok := destBlock.Blocks[schemaKeyBucket].(schema.SingleNestedBlock)
 	require.True(t, ok, "destination.bucket is not a SingleNestedBlock")
 	formatAttr, ok := bucketBlock.Attributes["format"].(schema.StringAttribute)
 	require.True(t, ok, "destination.bucket.format is not a StringAttribute")

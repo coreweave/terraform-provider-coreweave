@@ -49,40 +49,41 @@ func createOrgAccessPolicyTestStep(ctx context.Context, t *testing.T, opts orgAc
 	t.Helper()
 
 	fullResourceName := fmt.Sprintf("coreweave_object_storage_organization_access_policy.%s", opts.ResourceName)
-	statechecks := []statecheck.StateCheck{
-		statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("name"), knownvalue.StringExact(opts.Policy.Name.ValueString())),
-	}
+	statechecks := make([]statecheck.StateCheck, 0, 2)
+	statechecks = append(statechecks,
+		statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New(schemaKeyName), knownvalue.StringExact(opts.Policy.Name.ValueString())),
+	)
 
-	statements := []knownvalue.Check{}
-	for _, s := range opts.Policy.Statements {
+	statements := make([]knownvalue.Check, len(opts.Policy.Statements))
+	for i, s := range opts.Policy.Statements {
 		actions := []string{}
 		s.Actions.ElementsAs(ctx, &actions, false)
-		actionValues := []knownvalue.Check{}
-		for _, a := range actions {
-			actionValues = append(actionValues, knownvalue.StringExact(a))
+		actionValues := make([]knownvalue.Check, len(actions))
+		for i, a := range actions {
+			actionValues[i] = knownvalue.StringExact(a)
 		}
 
 		principals := []string{}
 		s.Principals.ElementsAs(ctx, &principals, false)
-		principalValues := []knownvalue.Check{}
-		for _, p := range principals {
-			principalValues = append(principalValues, knownvalue.StringExact(p))
+		principalValues := make([]knownvalue.Check, len(principals))
+		for i, p := range principals {
+			principalValues[i] = knownvalue.StringExact(p)
 		}
 
 		resources := []string{}
 		s.Resources.ElementsAs(ctx, &resources, false)
-		resourceValues := []knownvalue.Check{}
-		for _, r := range resources {
-			resourceValues = append(resourceValues, knownvalue.StringExact(r))
+		resourceValues := make([]knownvalue.Check, len(resources))
+		for i, r := range resources {
+			resourceValues[i] = knownvalue.StringExact(r)
 		}
 
-		statements = append(statements, knownvalue.ObjectExact(map[string]knownvalue.Check{
-			"name":       knownvalue.StringExact(s.Name.ValueString()),
-			"effect":     knownvalue.StringExact(s.Effect.ValueString()),
-			"actions":    knownvalue.SetExact(actionValues),
-			"principals": knownvalue.SetExact(principalValues),
-			"resources":  knownvalue.SetExact(resourceValues),
-		}))
+		statements[i] = knownvalue.ObjectExact(map[string]knownvalue.Check{
+			schemaKeyName:   knownvalue.StringExact(s.Name.ValueString()),
+			schemaKeyEffect: knownvalue.StringExact(s.Effect.ValueString()),
+			"actions":       knownvalue.SetExact(actionValues),
+			"principals":    knownvalue.SetExact(principalValues),
+			"resources":     knownvalue.SetExact(resourceValues),
+		})
 	}
 
 	statechecks = append(statechecks, statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("statements"), knownvalue.SetExact(statements)))
@@ -107,10 +108,10 @@ func TestOrganizationAccessPolicyResource(t *testing.T) {
 		Steps: []resource.TestStep{
 			createOrgAccessPolicyTestStep(ctx, t, orgAccessPolicyTestStep{
 				TestName:     "create initial policy",
-				ResourceName: "policy",
+				ResourceName: testPolicyResourceName,
 				ConfigPlanChecks: resource.ConfigPlanChecks{
 					PreApply: []plancheck.PlanCheck{
-						plancheck.ExpectResourceAction(fmt.Sprintf("coreweave_object_storage_organization_access_policy.%s", "policy"), plancheck.ResourceActionCreate),
+						plancheck.ExpectResourceAction(fmt.Sprintf("coreweave_object_storage_organization_access_policy.%s", testPolicyResourceName), plancheck.ResourceActionCreate),
 					},
 				},
 				Policy: objectstorage.OrganizationAccessPolicyResourceModel{
@@ -134,10 +135,10 @@ func TestOrganizationAccessPolicyResource(t *testing.T) {
 			}),
 			createOrgAccessPolicyTestStep(ctx, t, orgAccessPolicyTestStep{
 				TestName:     "add statement",
-				ResourceName: "policy",
+				ResourceName: testPolicyResourceName,
 				ConfigPlanChecks: resource.ConfigPlanChecks{
 					PreApply: []plancheck.PlanCheck{
-						plancheck.ExpectResourceAction(fmt.Sprintf("coreweave_object_storage_organization_access_policy.%s", "policy"), plancheck.ResourceActionUpdate),
+						plancheck.ExpectResourceAction(fmt.Sprintf("coreweave_object_storage_organization_access_policy.%s", testPolicyResourceName), plancheck.ResourceActionUpdate),
 					},
 				},
 				Policy: objectstorage.OrganizationAccessPolicyResourceModel{
@@ -174,10 +175,10 @@ func TestOrganizationAccessPolicyResource(t *testing.T) {
 			}),
 			createOrgAccessPolicyTestStep(ctx, t, orgAccessPolicyTestStep{
 				TestName:     "remove statement",
-				ResourceName: "policy",
+				ResourceName: testPolicyResourceName,
 				ConfigPlanChecks: resource.ConfigPlanChecks{
 					PreApply: []plancheck.PlanCheck{
-						plancheck.ExpectResourceAction(fmt.Sprintf("coreweave_object_storage_organization_access_policy.%s", "policy"), plancheck.ResourceActionUpdate),
+						plancheck.ExpectResourceAction(fmt.Sprintf("coreweave_object_storage_organization_access_policy.%s", testPolicyResourceName), plancheck.ResourceActionUpdate),
 					},
 				},
 				Policy: objectstorage.OrganizationAccessPolicyResourceModel{
@@ -201,10 +202,10 @@ func TestOrganizationAccessPolicyResource(t *testing.T) {
 			}),
 			createOrgAccessPolicyTestStep(ctx, t, orgAccessPolicyTestStep{
 				TestName:     "change statement",
-				ResourceName: "policy",
+				ResourceName: testPolicyResourceName,
 				ConfigPlanChecks: resource.ConfigPlanChecks{
 					PreApply: []plancheck.PlanCheck{
-						plancheck.ExpectResourceAction(fmt.Sprintf("coreweave_object_storage_organization_access_policy.%s", "policy"), plancheck.ResourceActionUpdate),
+						plancheck.ExpectResourceAction(fmt.Sprintf("coreweave_object_storage_organization_access_policy.%s", testPolicyResourceName), plancheck.ResourceActionUpdate),
 					},
 				},
 				Policy: objectstorage.OrganizationAccessPolicyResourceModel{
@@ -228,10 +229,10 @@ func TestOrganizationAccessPolicyResource(t *testing.T) {
 			}),
 			createOrgAccessPolicyTestStep(ctx, t, orgAccessPolicyTestStep{
 				TestName:     "require replace",
-				ResourceName: "policy",
+				ResourceName: testPolicyResourceName,
 				ConfigPlanChecks: resource.ConfigPlanChecks{
 					PreApply: []plancheck.PlanCheck{
-						plancheck.ExpectResourceAction(fmt.Sprintf("coreweave_object_storage_organization_access_policy.%s", "policy"), plancheck.ResourceActionDestroyBeforeCreate),
+						plancheck.ExpectResourceAction(fmt.Sprintf("coreweave_object_storage_organization_access_policy.%s", testPolicyResourceName), plancheck.ResourceActionDestroyBeforeCreate),
 					},
 				},
 				Policy: objectstorage.OrganizationAccessPolicyResourceModel{
@@ -257,9 +258,9 @@ func TestOrganizationAccessPolicyResource(t *testing.T) {
 				PreConfig: func() {
 					t.Log("Beginning coreweave_object_storage_organization_access_policy import test")
 				},
-				ResourceName:                         fmt.Sprintf("coreweave_object_storage_organization_access_policy.%s", "policy"),
+				ResourceName:                         fmt.Sprintf("coreweave_object_storage_organization_access_policy.%s", testPolicyResourceName),
 				ImportState:                          true,
-				ImportStateVerifyIdentifierAttribute: "name",
+				ImportStateVerifyIdentifierAttribute: schemaKeyName,
 				ImportStateId:                        fmt.Sprintf("%s-require-replace", policyName),
 			},
 		},

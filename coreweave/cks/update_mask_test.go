@@ -29,8 +29,8 @@ func TestBuildUpdateRequest(t *testing.T) {
 				types.StringValue("cidr-1"),
 			}),
 			NodePortRange: types.ObjectNull(map[string]attr.Type{
-				"start": types.Int32Type,
-				"end":   types.Int32Type,
+				schemaKeyStart: types.Int32Type,
+				schemaKeyEnd:   types.Int32Type,
 			}),
 			AuditPolicy:          types.StringNull(),
 			AdditionalServerSans: types.SetNull(types.StringType),

@@ -49,9 +49,9 @@ func TestSetFromCapacityClaim_Fields(t *testing.T) {
 
 	cc := (inferencev1.CapacityClaim_builder{
 		Spec: (inferencev1.CapacityClaimSpec_builder{
-			Id:             "cc-123",
+			Id:             testCapacityClaimID,
 			Name:           "my-capacity-claim",
-			OrganizationId: "org-456",
+			OrganizationId: testCapacityClaimOrganizationID,
 			Resources: (inferencev1.CapacityClaimResources_builder{
 				InstanceId:    testInstanceType,
 				InstanceCount: 3,
@@ -67,7 +67,7 @@ func TestSetFromCapacityClaim_Fields(t *testing.T) {
 			PendingInstances:   1,
 			Conditions: []*inferencev1.Condition{
 				(inferencev1.Condition_builder{
-					Type:           "Ready",
+					Type:           conditionTypeReady,
 					Status:         inferencev1.Condition_STATUS_TRUE,
 					LastUpdateTime: now,
 					Reason:         "AllAllocated",
@@ -83,14 +83,14 @@ func TestSetFromCapacityClaim_Fields(t *testing.T) {
 		t.Fatalf("SetFromCapacityClaim returned errors: %v", diags)
 	}
 
-	if m.ID.ValueString() != "cc-123" {
-		t.Errorf("ID: got %q, want %q", m.ID.ValueString(), "cc-123")
+	if m.ID.ValueString() != testCapacityClaimID {
+		t.Errorf("ID: got %q, want %q", m.ID.ValueString(), testCapacityClaimID)
 	}
 	if m.Name.ValueString() != "my-capacity-claim" {
 		t.Errorf("Name: got %q, want %q", m.Name.ValueString(), "my-capacity-claim")
 	}
-	if m.OrganizationID.ValueString() != "org-456" {
-		t.Errorf("OrganizationID: got %q, want %q", m.OrganizationID.ValueString(), "org-456")
+	if m.OrganizationID.ValueString() != testCapacityClaimOrganizationID {
+		t.Errorf("OrganizationID: got %q, want %q", m.OrganizationID.ValueString(), testCapacityClaimOrganizationID)
 	}
 	if m.Status.ValueString() != inferencev1.Status_STATUS_UNSPECIFIED.String() {
 		t.Errorf("Status: got %q, want %q", m.Status.ValueString(), inferencev1.Status_STATUS_UNSPECIFIED.String())
@@ -150,9 +150,9 @@ func TestSetFromCapacityClaim_PreserveStatusFields(t *testing.T) {
 	base := func(status inferencev1.Status, name, condReason string, allocated, pending uint32, updatedAt *timestamppb.Timestamp) *inferencev1.CapacityClaim {
 		return (inferencev1.CapacityClaim_builder{
 			Spec: (inferencev1.CapacityClaimSpec_builder{
-				Id:             "cc-123",
+				Id:             testCapacityClaimID,
 				Name:           name,
-				OrganizationId: "org-456",
+				OrganizationId: testCapacityClaimOrganizationID,
 				Resources: (inferencev1.CapacityClaimResources_builder{
 					InstanceId:    testInstanceType,
 					InstanceCount: 3,
@@ -167,7 +167,7 @@ func TestSetFromCapacityClaim_PreserveStatusFields(t *testing.T) {
 				PendingInstances:   pending,
 				Conditions: []*inferencev1.Condition{
 					(inferencev1.Condition_builder{
-						Type:   "Ready",
+						Type:   conditionTypeReady,
 						Status: inferencev1.Condition_STATUS_TRUE,
 						Reason: condReason,
 					}).Build(),
@@ -380,7 +380,7 @@ func TestInferenceCapacityClaim(t *testing.T) {
 						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("name"), knownvalue.StringExact(name)),
 						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("id"), knownvalue.NotNull()),
 						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("organization_id"), knownvalue.NotNull()),
-						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("status"), knownvalue.NotNull()),
+						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New(schemaKeyStatus), knownvalue.NotNull()),
 						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("created_at"), knownvalue.NotNull()),
 						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("allocated_instances"), knownvalue.NotNull()),
 						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("pending_instances"), knownvalue.NotNull()),
@@ -414,7 +414,7 @@ func TestInferenceCapacityClaim(t *testing.T) {
 					// Server-observed fields are intentionally not refreshed into state on
 					// Update (see setFromCapacityClaim preserveStatusFields); a fresh import
 					// Read legitimately observes newer values, so they can't be verified here.
-					ImportStateVerifyIgnore: []string{"status", "updated_at", "conditions", "allocated_instances", "pending_instances"},
+					ImportStateVerifyIgnore: []string{schemaKeyStatus, schemaKeyUpdatedAt, schemaKeyConditions, "allocated_instances", "pending_instances"},
 				},
 			},
 		})

@@ -109,51 +109,51 @@ func (r *InferenceGatewayResource) Schema(_ context.Context, _ resource.SchemaRe
 				MarkdownDescription: "The unique identifier of the gateway.",
 				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
-			"organization_id": schema.StringAttribute{
+			schemaKeyOrganizationID: schema.StringAttribute{
 				Computed:            true,
 				MarkdownDescription: "The organization ID that owns the gateway.",
 				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
-			"status": schema.StringAttribute{
+			schemaKeyStatus: schema.StringAttribute{
 				Computed:            true,
 				MarkdownDescription: "The current status of the gateway. See the [Inference API overview](https://docs.coreweave.com/products/inference/reference/api-overview) for status values.",
 				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
-			"created_at": schema.StringAttribute{
+			schemaKeyCreatedAt: schema.StringAttribute{
 				Computed:            true,
 				MarkdownDescription: "RFC3339 timestamp of when the gateway was created.",
 				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
-			"updated_at": schema.StringAttribute{
+			schemaKeyUpdatedAt: schema.StringAttribute{
 				Computed:            true,
 				MarkdownDescription: "RFC3339 timestamp of when the gateway was last updated.",
 				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
-			"conditions": schema.ListNestedAttribute{
+			schemaKeyConditions: schema.ListNestedAttribute{
 				Computed:            true,
 				MarkdownDescription: "Detailed status conditions for the gateway.",
 				PlanModifiers:       []planmodifier.List{listplanmodifier.UseStateForUnknown()},
 				NestedObject: schema.NestedAttributeObject{
 					Attributes: map[string]schema.Attribute{
-						"type": schema.StringAttribute{
+						schemaKeyType: schema.StringAttribute{
 							Computed:            true,
-							MarkdownDescription: "The condition type (e.g. `Ready`, `Progressing`).",
+							MarkdownDescription: conditionTypeDescription,
 						},
-						"status": schema.StringAttribute{
+						schemaKeyStatus: schema.StringAttribute{
 							Computed:            true,
-							MarkdownDescription: "The condition status (`True`, `False`, or `Unknown`).",
+							MarkdownDescription: conditionStatusDescription,
 						},
-						"last_update_time": schema.StringAttribute{
+						schemaKeyLastUpdateTime: schema.StringAttribute{
 							Computed:            true,
-							MarkdownDescription: "RFC3339 timestamp of the last condition transition.",
+							MarkdownDescription: lastTransitionTimeDescription,
 						},
-						"reason": schema.StringAttribute{
+						schemaKeyReason: schema.StringAttribute{
 							Computed:            true,
-							MarkdownDescription: "A short, machine-readable reason for the condition's last transition.",
+							MarkdownDescription: lastTransitionReasonDescription,
 						},
-						"message": schema.StringAttribute{
+						schemaKeyMessage: schema.StringAttribute{
 							Computed:            true,
-							MarkdownDescription: "A human-readable message about the condition's last transition.",
+							MarkdownDescription: lastTransitionMessageDescription,
 						},
 					},
 				},
@@ -163,12 +163,12 @@ func (r *InferenceGatewayResource) Schema(_ context.Context, _ resource.SchemaRe
 				ElementType:         types.StringType,
 				MarkdownDescription: "The endpoint URIs for the gateway.",
 			},
-			"name": schema.StringAttribute{
+			schemaKeyName: schema.StringAttribute{
 				Required:            true,
 				MarkdownDescription: "The human-readable name of the gateway.",
 				PlanModifiers:       []planmodifier.String{stringplanmodifier.RequiresReplace()},
 			},
-			"zones": schema.SetAttribute{
+			schemaKeyZones: schema.SetAttribute{
 				ElementType:         types.StringType,
 				Required:            true,
 				MarkdownDescription: "The zones to make the gateway available in. Limits where deployments associated with the gateway may exist.",
@@ -338,7 +338,7 @@ func (r *InferenceGatewayResource) Create(ctx context.Context, req resource.Crea
 				Id: gatewayID,
 			}))
 			if err != nil {
-				tflog.Error(ctx, "failed to poll gateway", map[string]interface{}{"error": err.Error()})
+				tflog.Error(ctx, "failed to poll gateway", map[string]interface{}{logKeyError: err.Error()})
 				return nil, inferencev1.Status_STATUS_UNSPECIFIED.String(), err
 			}
 			gw := getResp.Msg.Gateway
@@ -442,7 +442,7 @@ func (r *InferenceGatewayResource) Update(ctx context.Context, req resource.Upda
 				Id: gatewayID,
 			}))
 			if err != nil {
-				tflog.Error(ctx, "failed to poll gateway", map[string]interface{}{"error": err.Error()})
+				tflog.Error(ctx, "failed to poll gateway", map[string]interface{}{logKeyError: err.Error()})
 				return nil, inferencev1.Status_STATUS_UNSPECIFIED.String(), err
 			}
 			gw := getResp.Msg.Gateway
@@ -519,7 +519,7 @@ func (r *InferenceGatewayResource) Delete(ctx context.Context, req resource.Dele
 				if coreweave.IsNotFoundError(err) {
 					return struct{}{}, deletedState, nil
 				}
-				tflog.Error(ctx, "failed to poll gateway deletion", map[string]interface{}{"error": err.Error()})
+				tflog.Error(ctx, "failed to poll gateway deletion", map[string]interface{}{logKeyError: err.Error()})
 				return nil, inferencev1.Status_STATUS_UNSPECIFIED.String(), err
 			}
 			gw := getResp.Msg.Gateway

@@ -74,7 +74,7 @@ func createBucketPolicyTestStep(ctx context.Context, t *testing.T, opts bucketPo
 	fullConfig := bucketConfig + policyConfig + dataSourceConfig
 	rs := fmt.Sprintf("coreweave_object_storage_bucket_policy.%s", opts.resourceName)
 	checks := []statecheck.StateCheck{
-		statecheck.ExpectKnownValue(rs, tfjsonpath.New("bucket"), knownvalue.StringExact(opts.bucket.Name.ValueString())),
+		statecheck.ExpectKnownValue(rs, tfjsonpath.New(schemaKeyBucket), knownvalue.StringExact(opts.bucket.Name.ValueString())),
 		statecheck.ExpectKnownValue(rs, tfjsonpath.New("policy"), policyCheck),
 	}
 
@@ -127,7 +127,7 @@ func TestBucketPolicyResourceRaw(t *testing.T) {
 			},
 			ResourceName:                         fmt.Sprintf("coreweave_object_storage_bucket_policy.%s", resourceName),
 			ImportState:                          true,
-			ImportStateVerifyIdentifierAttribute: "name",
+			ImportStateVerifyIdentifierAttribute: schemaKeyName,
 			ImportStateId:                        bucket.Name.ValueString(),
 		},
 	}
@@ -236,7 +236,7 @@ func TestBucketPolicyResourceDocument(t *testing.T) {
 			},
 			ResourceName:                         fmt.Sprintf("coreweave_object_storage_bucket_policy.%s", resourceName),
 			ImportState:                          true,
-			ImportStateVerifyIdentifierAttribute: "name",
+			ImportStateVerifyIdentifierAttribute: schemaKeyName,
 			ImportStateId:                        bucket.Name.ValueString(),
 		},
 	}

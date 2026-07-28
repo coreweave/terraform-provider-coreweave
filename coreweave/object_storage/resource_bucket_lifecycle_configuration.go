@@ -133,7 +133,7 @@ func (r *BucketLifecycleResource) Schema(ctx context.Context, req resource.Schem
 	resp.Schema = schema.Schema{
 		MarkdownDescription: "Lifecycle configurations automate object management by defining actions applied to objects over time, such as expiring objects after a specified period or transitioning them to different storage tiers. This helps optimize storage costs and maintain data hygiene. [Learn more about S3-compatible lifecycle bucket configurations](https://docs.coreweave.com/products/storage/object-storage/reference/object-storage-s3#bucket-lifecycles).",
 		Attributes: map[string]schema.Attribute{
-			"bucket": schema.StringAttribute{
+			schemaKeyBucket: schema.StringAttribute{
 				Required:            true,
 				MarkdownDescription: "Name of the bucket to apply lifecycle configuration to",
 				PlanModifiers: []planmodifier.String{
@@ -153,7 +153,7 @@ func (r *BucketLifecycleResource) Schema(ctx context.Context, req resource.Schem
 								stringplanmodifier.UseStateForUnknown(),
 							},
 						},
-						"prefix": schema.StringAttribute{
+						schemaKeyPrefix: schema.StringAttribute{
 							Optional:            true,
 							MarkdownDescription: "Deprecated. Object key prefix to which the rule applies. CoreWeave AI Object Storage rejects requests that set this field; use `filter.prefix` instead.",
 							DeprecationMessage:  "Use filter.prefix instead. CoreWeave AI Object Storage now rejects PutBucketLifecycleConfiguration requests that include this deprecated S3 field, so the provider no longer sends it on the wire. Any value set here is retained in state for backwards compatibility (the rule's id is used to match a rule to its preserved value across refreshes; rules without an id rely on positional alignment) but is otherwise ignored.",
@@ -206,7 +206,7 @@ func (r *BucketLifecycleResource) Schema(ctx context.Context, req resource.Schem
 								"and": schema.SingleNestedBlock{
 									MarkdownDescription: "Configuration block used to apply a logical AND to two or more predicates. The Lifecycle Rule will apply to any object matching all the predicates configured inside the and block.",
 									Attributes: map[string]schema.Attribute{
-										"prefix": schema.StringAttribute{
+										schemaKeyPrefix: schema.StringAttribute{
 											Optional:            true,
 											MarkdownDescription: "Prefix identifying one or more objects to which the rule applies.",
 										},
@@ -227,7 +227,7 @@ func (r *BucketLifecycleResource) Schema(ctx context.Context, req resource.Schem
 								},
 							},
 							Attributes: map[string]schema.Attribute{
-								"prefix": schema.StringAttribute{
+								schemaKeyPrefix: schema.StringAttribute{
 									Optional:            true,
 									MarkdownDescription: "Prefix filter",
 								},
@@ -613,7 +613,7 @@ func (r *BucketLifecycleResource) Create(ctx context.Context, req resource.Creat
 		resp.Diagnostics.AddError("Failed to marshal lifecycle rules to JSON", err.Error())
 		return
 	}
-	tflog.Debug(ctx, "creating lifecycle rules for bucket", map[string]any{"rules": string(rulesJSON), "bucket": data.Bucket.ValueString()})
+	tflog.Debug(ctx, "creating lifecycle rules for bucket", map[string]any{"rules": string(rulesJSON), schemaKeyBucket: data.Bucket.ValueString()})
 	lifecycleConfig := &s3types.BucketLifecycleConfiguration{
 		Rules: rules,
 	}
@@ -911,7 +911,7 @@ func MustRenderBucketLifecycleConfigurationResource(ctx context.Context, name st
 	b := block.Body()
 
 	// bucket attribute
-	b.SetAttributeRaw("bucket", hclwrite.Tokens{{Type: hclsyntax.TokenIdent, Bytes: []byte(cfg.Bucket.ValueString())}})
+	b.SetAttributeRaw(schemaKeyBucket, hclwrite.Tokens{{Type: hclsyntax.TokenIdent, Bytes: []byte(cfg.Bucket.ValueString())}})
 
 	// rule blocks
 	for _, rule := range cfg.Rule {
@@ -922,7 +922,7 @@ func MustRenderBucketLifecycleConfigurationResource(ctx context.Context, name st
 			rb.SetAttributeValue("id", cty.StringVal(rule.ID.ValueString()))
 		}
 		if !rule.Prefix.IsNull() {
-			rb.SetAttributeValue("prefix", cty.StringVal(rule.Prefix.ValueString()))
+			rb.SetAttributeValue(schemaKeyPrefix, cty.StringVal(rule.Prefix.ValueString()))
 		}
 		rb.SetAttributeValue("status", cty.StringVal(rule.Status.ValueString()))
 
@@ -973,7 +973,7 @@ func MustRenderBucketLifecycleConfigurationResource(ctx context.Context, name st
 
 			// filter attrs
 			if !rule.Filter.Prefix.IsNull() {
-				fb.SetAttributeValue("prefix", cty.StringVal(rule.Filter.Prefix.ValueString()))
+				fb.SetAttributeValue(schemaKeyPrefix, cty.StringVal(rule.Filter.Prefix.ValueString()))
 			}
 			if !rule.Filter.ObjectSizeGreaterThan.IsNull() {
 				fb.SetAttributeValue("object_size_greater_than",
@@ -998,7 +998,7 @@ func MustRenderBucketLifecycleConfigurationResource(ctx context.Context, name st
 				and := fb.AppendNewBlock("and", nil).Body()
 
 				if !rule.Filter.And.Prefix.IsNull() {
-					and.SetAttributeValue("prefix", cty.StringVal(rule.Filter.And.Prefix.ValueString()))
+					and.SetAttributeValue(schemaKeyPrefix, cty.StringVal(rule.Filter.And.Prefix.ValueString()))
 				}
 
 				// tags as a map
