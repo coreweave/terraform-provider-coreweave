@@ -1,3 +1,11 @@
+terraform {
+  required_providers {
+    coreweave = {
+      source = "coreweave/coreweave"
+    }
+  }
+}
+
 variable "bucket_name" {
   type        = string
   description = "Name of the bucket to allow access to."

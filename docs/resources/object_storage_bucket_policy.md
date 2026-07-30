@@ -15,6 +15,14 @@ description: |-
 ```terraform
 ## Example using jsonencode to pass a raw JSON string to the policy attribute
 
+terraform {
+  required_providers {
+    coreweave = {
+      source = "coreweave/coreweave"
+    }
+  }
+}
+
 variable "org_id" {
   type        = string
   description = "CoreWeave organization ID to match in the bucket policy condition."
