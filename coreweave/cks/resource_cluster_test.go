@@ -299,8 +299,9 @@ func createClusterTestStep(ctx context.Context, t *testing.T, config testStepCon
 		}
 
 		// internal lb cidrs
-		internalLbCidrs := []knownvalue.Check{}
-		for _, c := range config.cluster.InternalLbCidrNames(ctx) {
+		internalLbCidrNames := config.cluster.InternalLbCidrNames(ctx)
+		internalLbCidrs := make([]knownvalue.Check, 0, len(internalLbCidrNames))
+		for _, c := range internalLbCidrNames {
 			internalLbCidrs = append(internalLbCidrs, knownvalue.StringExact(c))
 		}
 		statechecks = append(statechecks, statecheck.ExpectKnownValue(config.Resources.FullResourceName, tfjsonpath.New("internal_lb_cidr_names"), knownvalue.ListExact(internalLbCidrs)))
@@ -327,7 +328,7 @@ func createClusterTestStep(ctx context.Context, t *testing.T, config testStepCon
 					t.FailNow()
 				}
 
-				checks := []knownvalue.Check{}
+				checks := make([]knownvalue.Check, 0, len(algs))
 				for _, a := range algs {
 					checks = append(checks, knownvalue.StringExact(a.ValueString()))
 				}

@@ -50,10 +50,11 @@ func createBucketTestStep(ctx context.Context, t *testing.T, opts bucketTestStep
 
 	fullResourceName := fmt.Sprintf("coreweave_object_storage_bucket.%s", opts.ResourceName)
 
-	statechecks := []statecheck.StateCheck{
+	statechecks := make([]statecheck.StateCheck, 0, 3)
+	statechecks = append(statechecks,
 		statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("name"), knownvalue.StringExact(opts.Bucket.Name.ValueString())),
 		statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("zone"), knownvalue.StringExact(opts.Bucket.Zone.ValueString())),
-	}
+	)
 
 	tagCheck := statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("tags"), knownvalue.Null())
 
