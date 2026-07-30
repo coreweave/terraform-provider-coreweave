@@ -375,8 +375,9 @@ func MustRenderBucketPolicyDocument(_ context.Context, name string, cfg *BucketP
 
 		// action list
 		if !s.Action.IsNull() {
-			var vals []cty.Value
-			for _, v := range s.Action.Elements() {
+			elements := s.Action.Elements()
+			vals := make([]cty.Value, 0, len(elements))
+			for _, v := range elements {
 				str := v.(types.String).ValueString()
 				vals = append(vals, cty.StringVal(str))
 			}
@@ -385,8 +386,9 @@ func MustRenderBucketPolicyDocument(_ context.Context, name string, cfg *BucketP
 
 		// resource list
 		if !s.Resource.IsNull() {
-			var vals []cty.Value
-			for _, v := range s.Resource.Elements() {
+			elements := s.Resource.Elements()
+			vals := make([]cty.Value, 0, len(elements))
+			for _, v := range elements {
 				str := v.(types.String).ValueString()
 				vals = append(vals, cty.StringVal(str))
 			}
@@ -399,8 +401,9 @@ func MustRenderBucketPolicyDocument(_ context.Context, name string, cfg *BucketP
 			for key, val := range s.Principal.Elements() {
 				// val is types.List
 				list := val.(types.List)
-				var elems []cty.Value
-				for _, ev := range list.Elements() {
+				elements := list.Elements()
+				elems := make([]cty.Value, 0, len(elements))
+				for _, ev := range elements {
 					elems = append(elems, cty.StringVal(ev.(types.String).ValueString()))
 				}
 				m[key] = cty.ListVal(elems)

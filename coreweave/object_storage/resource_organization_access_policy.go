@@ -394,25 +394,25 @@ func MustRenderOrganizationAccessPolicy(ctx context.Context, resourceName string
 
 	resourceBody.SetAttributeValue("name", cty.StringVal(policy.Name.ValueString()))
 
-	statements := []cty.Value{}
+	statements := make([]cty.Value, 0, len(policy.Statements))
 	for _, s := range policy.Statements {
 		actionsSlice := []string{}
 		s.Actions.ElementsAs(ctx, &actionsSlice, false)
-		actions := []cty.Value{}
+		actions := make([]cty.Value, 0, len(actionsSlice))
 		for _, a := range actionsSlice {
 			actions = append(actions, cty.StringVal(a))
 		}
 
 		resourcesSlice := []string{}
 		s.Resources.ElementsAs(ctx, &resourcesSlice, false)
-		resources := []cty.Value{}
+		resources := make([]cty.Value, 0, len(resourcesSlice))
 		for _, a := range resourcesSlice {
 			resources = append(resources, cty.StringVal(a))
 		}
 
 		principalsSlice := []string{}
 		s.Principals.ElementsAs(ctx, &principalsSlice, false)
-		principals := []cty.Value{}
+		principals := make([]cty.Value, 0, len(principalsSlice))
 		for _, a := range principalsSlice {
 			principals = append(principals, cty.StringVal(a))
 		}

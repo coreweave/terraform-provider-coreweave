@@ -23,7 +23,7 @@ linters:
     - revive
     - makezero
     - nakedret
-    # - prealloc
+    - prealloc
     - nolintlint
     - staticcheck
     - thelper
@@ -123,3 +123,4 @@ linters:
           - dupl
           - gosec
           - gocritic
+          - prealloc
