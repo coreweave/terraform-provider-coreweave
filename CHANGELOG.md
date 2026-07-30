@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.1](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.19.0...v0.19.1) (2026-07-30)
+
+
+### Dependency Updates
+
+* update Go to 1.26.5 ([#377](https://github.com/coreweave/terraform-provider-coreweave/issues/377)) ([1e39f7a](https://github.com/coreweave/terraform-provider-coreweave/commit/1e39f7a20934cac47c56b22038b822653a6e323e))
+
 ## [0.19.0](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.18.0...v0.19.0) (2026-07-23)
 
 
