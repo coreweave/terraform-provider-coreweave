@@ -49,30 +49,29 @@ func createOrgAccessPolicyTestStep(ctx context.Context, t *testing.T, opts orgAc
 	t.Helper()
 
 	fullResourceName := fmt.Sprintf("coreweave_object_storage_organization_access_policy.%s", opts.ResourceName)
-	statechecks := make([]statecheck.StateCheck, 0, 2)
-	statechecks = append(statechecks,
+	statechecks := []statecheck.StateCheck{
 		statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("name"), knownvalue.StringExact(opts.Policy.Name.ValueString())),
-	)
+	}
 
-	statements := make([]knownvalue.Check, 0, len(opts.Policy.Statements))
+	statements := []knownvalue.Check{}
 	for _, s := range opts.Policy.Statements {
 		actions := []string{}
 		s.Actions.ElementsAs(ctx, &actions, false)
-		actionValues := make([]knownvalue.Check, 0, len(actions))
+		actionValues := []knownvalue.Check{}
 		for _, a := range actions {
 			actionValues = append(actionValues, knownvalue.StringExact(a))
 		}
 
 		principals := []string{}
 		s.Principals.ElementsAs(ctx, &principals, false)
-		principalValues := make([]knownvalue.Check, 0, len(principals))
+		principalValues := []knownvalue.Check{}
 		for _, p := range principals {
 			principalValues = append(principalValues, knownvalue.StringExact(p))
 		}
 
 		resources := []string{}
 		s.Resources.ElementsAs(ctx, &resources, false)
-		resourceValues := make([]knownvalue.Check, 0, len(resources))
+		resourceValues := []knownvalue.Check{}
 		for _, r := range resources {
 			resourceValues = append(resourceValues, knownvalue.StringExact(r))
 		}
