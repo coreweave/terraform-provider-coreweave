@@ -10,19 +10,23 @@ import (
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/hashicorp/hcl/v2/hclwrite"
+	"github.com/hashicorp/terraform-plugin-framework-validators/int32validator"
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/zclconf/go-cty/cty"
 	"google.golang.org/protobuf/types/known/wrapperspb"
 )
 
 var (
-	_ resource.ResourceWithConfigure   = &BucketSettingsResource{}
-	_ resource.ResourceWithImportState = &BucketSettingsResource{}
+	_ resource.ResourceWithConfigure      = &BucketSettingsResource{}
+	_ resource.ResourceWithImportState    = &BucketSettingsResource{}
+	_ resource.ResourceWithValidateConfig = &BucketSettingsResource{}
 )
 
 func NewBucketSettingsResource() resource.Resource {
@@ -35,8 +39,10 @@ type BucketSettingsResource struct {
 }
 
 type BucketSettingsModel struct {
-	Bucket              types.String `tfsdk:"bucket"`
-	AuditLoggingEnabled types.Bool   `tfsdk:"audit_logging_enabled"`
+	Bucket                     types.String `tfsdk:"bucket"`
+	AuditLoggingEnabled        types.Bool   `tfsdk:"audit_logging_enabled"`
+	ArchiveEnabled             types.Bool   `tfsdk:"archive_enabled"`
+	ArchiveAfterLastAccessDays types.Int32  `tfsdk:"archive_after_last_access_days"`
 }
 
 // BucketSettingsResourceModel is an alias for BucketSettingsModel for consistency with other resources
@@ -52,12 +58,33 @@ func (s *BucketSettingsModel) Set(settings *cwobjectv1.CWObjectBucketSettings) {
 	} else {
 		s.AuditLoggingEnabled = types.BoolNull()
 	}
+
+	if settings.ArchiveEnabled != nil {
+		s.ArchiveEnabled = types.BoolValue(settings.ArchiveEnabled.Value)
+	} else {
+		s.ArchiveEnabled = types.BoolNull()
+	}
+
+	if settings.ArchiveAfterLastAccessDays != nil {
+		s.ArchiveAfterLastAccessDays = types.Int32Value(settings.ArchiveAfterLastAccessDays.Value)
+	} else {
+		s.ArchiveAfterLastAccessDays = types.Int32Null()
+	}
 }
 
 func (s *BucketSettingsModel) ToProtoObject() *cwobjectv1.CWObjectBucketSettings {
+	// Unknown values must be skipped as well as null ones: ValueBool/ValueInt32
+	// return the zero value for an unknown, which would send a meaningless 0 the
+	// API validates and rejects rather than omitting the field.
 	settings := cwobjectv1.CWObjectBucketSettings{}
-	if !s.AuditLoggingEnabled.IsNull() {
+	if !s.AuditLoggingEnabled.IsNull() && !s.AuditLoggingEnabled.IsUnknown() {
 		settings.SetAuditLoggingEnabled(wrapperspb.Bool(s.AuditLoggingEnabled.ValueBool()))
+	}
+	if !s.ArchiveEnabled.IsNull() && !s.ArchiveEnabled.IsUnknown() {
+		settings.SetArchiveEnabled(wrapperspb.Bool(s.ArchiveEnabled.ValueBool()))
+	}
+	if !s.ArchiveAfterLastAccessDays.IsNull() && !s.ArchiveAfterLastAccessDays.IsUnknown() {
+		settings.SetArchiveAfterLastAccessDays(wrapperspb.Int32(s.ArchiveAfterLastAccessDays.ValueInt32()))
 	}
 	return &settings
 }
@@ -98,7 +125,7 @@ func (b *BucketSettingsResource) Create(ctx context.Context, req resource.Create
 
 	_, err := b.client.SetBucketSettings(ctx, connect.NewRequest(&setReq))
 	if err != nil {
-		resp.Diagnostics.AddError("Error creating bucket settings", err.Error())
+		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
 		return
 	}
 
@@ -119,6 +146,7 @@ func (b *BucketSettingsResource) Delete(ctx context.Context, req resource.Delete
 		BucketName: data.Bucket.ValueString(),
 		Settings: &cwobjectv1.CWObjectBucketSettings{
 			AuditLoggingEnabled: wrapperspb.Bool(false),
+			ArchiveEnabled:      wrapperspb.Bool(false),
 		},
 	}
 
@@ -171,7 +199,47 @@ func (b *BucketSettingsResource) Schema(ctx context.Context, req resource.Schema
 				Computed:    true,
 				Default:     booldefault.StaticBool(false),
 			},
+			"archive_enabled": schema.BoolAttribute{
+				Description: "When true, idle STANDARD objects are archived to STANDARD_IA after `archive_after_last_access_days` without access. Your organization must be entitled to configure this setting.",
+				Optional:    true,
+				Computed:    true,
+				Default:     booldefault.StaticBool(false),
+			},
+			// Deliberately not Computed: a Computed attribute with no default is
+			// planned as unknown when omitted from config, and Create/Update copy
+			// the plan straight into state. Leaving it Optional-only means omitting
+			// it yields a null the API request can skip entirely.
+			"archive_after_last_access_days": schema.Int32Attribute{
+				Description: "Days since last access (or creation if never accessed) before a STANDARD object version is archived to STANDARD_IA. The default minimum is 60; your organization's entitlement may permit a different minimum, so the effective floor is validated server-side. Required when `archive_enabled` is true; ignored otherwise.",
+				Optional:    true,
+				Validators: []validator.Int32{
+					int32validator.AtLeast(1),
+				},
+			},
 		},
+	}
+}
+
+func (b *BucketSettingsResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
+	var data BucketSettingsModel
+	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	// archive_after_last_access_days is required when archive is enabled. Skip
+	// validation while either value is unknown (e.g. derived from another
+	// resource) since it cannot be evaluated until apply.
+	if data.ArchiveEnabled.IsUnknown() || data.ArchiveAfterLastAccessDays.IsUnknown() {
+		return
+	}
+
+	if data.ArchiveEnabled.ValueBool() && data.ArchiveAfterLastAccessDays.IsNull() {
+		resp.Diagnostics.AddAttributeError(
+			path.Root("archive_after_last_access_days"),
+			"Missing archive_after_last_access_days",
+			"archive_after_last_access_days must be set when archive_enabled is true.",
+		)
 	}
 }
 
@@ -189,7 +257,7 @@ func (b *BucketSettingsResource) Update(ctx context.Context, req resource.Update
 
 	_, err := b.client.SetBucketSettings(ctx, connect.NewRequest(&setReq))
 	if err != nil {
-		resp.Diagnostics.AddError("Error updating bucket settings", err.Error())
+		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
 		return
 	}
 
@@ -233,6 +301,16 @@ func MustRenderBucketSettingsResource(_ context.Context, name string, settings *
 	// audit_logging_enabled attribute
 	if !settings.AuditLoggingEnabled.IsNull() {
 		resourceBody.SetAttributeValue("audit_logging_enabled", cty.BoolVal(settings.AuditLoggingEnabled.ValueBool()))
+	}
+
+	// archive_enabled attribute
+	if !settings.ArchiveEnabled.IsNull() {
+		resourceBody.SetAttributeValue("archive_enabled", cty.BoolVal(settings.ArchiveEnabled.ValueBool()))
+	}
+
+	// archive_after_last_access_days attribute
+	if !settings.ArchiveAfterLastAccessDays.IsNull() {
+		resourceBody.SetAttributeValue("archive_after_last_access_days", cty.NumberIntVal(int64(settings.ArchiveAfterLastAccessDays.ValueInt32())))
 	}
 
 	var buf bytes.Buffer
