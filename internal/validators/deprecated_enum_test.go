@@ -14,7 +14,6 @@ import (
 const (
 	capacityTypeServerless = "CAPACITY_TYPE_SERVERLESS"
 	capacityTypeManaged    = "CAPACITY_TYPE_MANAGED"
-	capacityTypeCustomer   = "CAPACITY_TYPE_CUSTOMER"
 	deprecationGuidance    = "Use CAPACITY_TYPE_MANAGED instead."
 )
 
@@ -35,7 +34,6 @@ func TestDeprecatedEnumValue_CurrentCapacityTypeDescriptor(t *testing.T) {
 	}{
 		{"removed serverless value does not warn", types.StringValue(capacityTypeServerless), false},
 		{"replacement value does not warn", types.StringValue(capacityTypeManaged), false},
-		{"other valid value does not warn", types.StringValue(capacityTypeCustomer), false},
 		{"unrecognized value does not warn", types.StringValue("NOT_A_REAL_VALUE"), false},
 		{"null does not warn", types.StringNull(), false},
 		{"unknown does not warn", types.StringUnknown(), false},
@@ -67,7 +65,6 @@ func TestRejectDeprecatedEnumValue_CurrentCapacityTypeDescriptor(t *testing.T) {
 	}{
 		{"removed serverless value does not error", types.StringValue(capacityTypeServerless), false},
 		{"replacement value does not error", types.StringValue(capacityTypeManaged), false},
-		{"other valid value does not error", types.StringValue(capacityTypeCustomer), false},
 		{"unrecognized value does not error", types.StringValue("NOT_A_REAL_VALUE"), false},
 		{"null does not error", types.StringNull(), false},
 		{"unknown does not error", types.StringUnknown(), false},

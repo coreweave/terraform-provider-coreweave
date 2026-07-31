@@ -35,6 +35,8 @@ var (
 	errCapacityClaimFailed = errors.New("inference capacity claim entered a failed state")
 )
 
+const capacityTypeManaged = "CAPACITY_TYPE_MANAGED"
+
 func NewInferenceCapacityClaimResource() resource.Resource {
 	return &InferenceCapacityClaimResource{}
 }
@@ -166,10 +168,10 @@ func (r *InferenceCapacityClaimResource) Schema(_ context.Context, _ resource.Sc
 					},
 					"capacity_type": schema.StringAttribute{
 						Required:            true,
-						MarkdownDescription: fmt.Sprintf("The [capacity type](https://docs.coreweave.com/products/inference/scaling#capacity-claims) for the capacity claim. Must be one of: %s.", coreweave.EnumMarkdownValuesExcludingDeprecated(inferencev1.CapacityType_CAPACITY_TYPE_MANAGED.Descriptor())),
+						MarkdownDescription: fmt.Sprintf("The [capacity type](https://docs.coreweave.com/products/inference/scaling#capacity-claims) for the capacity claim. Must be `%s`.", capacityTypeManaged),
 						PlanModifiers:       []planmodifier.String{stringplanmodifier.RequiresReplace()},
 						Validators: []validator.String{
-							stringvalidator.OneOf(coreweave.EnumValues(inferencev1.CapacityType_name, true)...),
+							stringvalidator.OneOf(capacityTypeManaged),
 						},
 					},
 					"zones": schema.SetAttribute{
@@ -471,9 +473,8 @@ func buildCapacityClaimFields(ctx context.Context, m *InferenceCapacityClaimReso
 	}
 
 	capacityTypeStr := m.Resources.CapacityType.ValueString()
-	capacityTypeVal, ok := inferencev1.CapacityType_value[capacityTypeStr]
-	if !ok {
-		diagnostics.AddError("Invalid capacity_type", fmt.Sprintf("Invalid capacity_type: %s. Must be one of: %s.", capacityTypeStr, coreweave.EnumMarkdownValues(inferencev1.CapacityType_name, true)))
+	if capacityTypeStr != capacityTypeManaged {
+		diagnostics.AddError("Invalid capacity_type", fmt.Sprintf("Invalid capacity_type: %s. Must be %s.", capacityTypeStr, capacityTypeManaged))
 		return capacityClaimFields{}, diagnostics
 	}
 
@@ -482,7 +483,7 @@ func buildCapacityClaimFields(ctx context.Context, m *InferenceCapacityClaimReso
 		Resources: &inferencev1.CapacityClaimResources{
 			InstanceId:    m.Resources.InstanceType.ValueString(),
 			InstanceCount: uint32(m.Resources.InstanceCount.ValueInt64()), //nolint:gosec
-			CapacityType:  inferencev1.CapacityType(capacityTypeVal),
+			CapacityType:  inferencev1.CapacityType_CAPACITY_TYPE_MANAGED,
 			Zones:         zones,
 		},
 	}

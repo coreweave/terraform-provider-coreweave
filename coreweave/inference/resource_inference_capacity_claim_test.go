@@ -275,6 +275,30 @@ func TestToCreateCapacityClaimRequest_Fields(t *testing.T) {
 	}
 }
 
+func TestToCreateCapacityClaimRequest_RejectsCustomerCapacityType(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	zones := types.SetValueMust(types.StringType, []attr.Value{
+		types.StringValue("US-WEST-04A"),
+	})
+
+	m := &inference.InferenceCapacityClaimResourceModel{
+		Name: types.StringValue("my-claim"),
+		Resources: &inference.CapacityClaimResourcesModel{
+			InstanceType:  types.StringValue(testInstanceType),
+			InstanceCount: types.Int64Value(5),
+			CapacityType:  types.StringValue("CAPACITY_TYPE_CUSTOMER"),
+			Zones:         zones,
+		},
+	}
+
+	_, diags := inference.ToCreateCapacityClaimRequest(ctx, m)
+	if !diags.HasError() {
+		t.Fatalf("ToCreateCapacityClaimRequest should error for %s", "CAPACITY_TYPE_CUSTOMER")
+	}
+}
+
 func TestToUpdateCapacityClaimRequest_Fields(t *testing.T) {
 	t.Parallel()
 
@@ -316,6 +340,31 @@ func TestToUpdateCapacityClaimRequest_Fields(t *testing.T) {
 	// The proto field is Id + Resources only.
 	if req.GetResources().GetInstanceId() != testInstanceType {
 		t.Errorf("InstanceType: got %q, want %q", req.GetResources().GetInstanceId(), testInstanceType)
+	}
+}
+
+func TestToUpdateCapacityClaimRequest_RejectsCustomerCapacityType(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	zones := types.SetValueMust(types.StringType, []attr.Value{
+		types.StringValue("US-WEST-04A"),
+	})
+
+	m := &inference.InferenceCapacityClaimResourceModel{
+		ID:   types.StringValue("cc-789"),
+		Name: types.StringValue("my-claim"),
+		Resources: &inference.CapacityClaimResourcesModel{
+			InstanceType:  types.StringValue(testInstanceType),
+			InstanceCount: types.Int64Value(10),
+			CapacityType:  types.StringValue("CAPACITY_TYPE_CUSTOMER"),
+			Zones:         zones,
+		},
+	}
+
+	_, diags := inference.ToUpdateCapacityClaimRequest(ctx, m)
+	if !diags.HasError() {
+		t.Fatalf("ToUpdateCapacityClaimRequest should error for %s", "CAPACITY_TYPE_CUSTOMER")
 	}
 }
 
