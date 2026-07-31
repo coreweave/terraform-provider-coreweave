@@ -115,6 +115,8 @@ linters:
 
   exclusions:
     rules:
+      # Terraform schema and path strings are intentional inline vocabulary;
+      # extracting them into constants would make their definitions harder to read.
       - path: ^coreweave/[^/]+/(data_source|resource)_[^/]+\.go$
         linters:
           - goconst
