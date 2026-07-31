@@ -123,3 +123,4 @@ linters:
           - dupl
           - gosec
           - gocritic
+          - prealloc

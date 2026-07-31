@@ -57,7 +57,7 @@ SUITES?=cks networking object_storage inference
 
 testacc-sweep:
 	@for suite in $(SUITES); do \
-		go test -v -timeout 10m ./coreweave/$$suite -sweep='$(TEST_ACC_SWEEP_ZONE)'; \
+		go test -v -timeout 30m ./coreweave/$$suite -sweep='$(TEST_ACC_SWEEP_ZONE)'; \
 	done
 
 testacc:
