@@ -115,6 +115,12 @@ linters:
 
   exclusions:
     rules:
+      - path: ^coreweave/[^/]+/(data_source|resource)_[^/]+\.go$
+        linters:
+          - goconst
+      - path: ^coreweave/cks/update_mask_test\.go$
+        linters:
+          - goconst
       # Exclude some linters from running on tests files.
       - path: _test\.go
         linters:
