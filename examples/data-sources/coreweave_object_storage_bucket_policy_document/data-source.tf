@@ -19,7 +19,7 @@ variable "org_id" {
 data "coreweave_object_storage_bucket_policy_document" "default" {
   version = "2012-10-17"
   statement {
-    sid    = "AllowAllInOrg"
+    sid    = "AllowUserAndGroup"
     effect = "Allow"
     action = ["s3:*"]
     resource = [
@@ -27,7 +27,8 @@ data "coreweave_object_storage_bucket_policy_document" "default" {
       "arn:aws:s3:::${var.bucket_name}/*",
     ]
     principal = {
-      "CW" : ["*"]
+      "CW"  = ["arn:aws:iam::[ORG-ID]:coreweave/[USER-ID]"]
+      "AWS" = ["arn:aws:iam::[ORG-ID]:saml/[SAML-GROUP-ID]"]
     }
     condition = {
       "StringEquals" : {

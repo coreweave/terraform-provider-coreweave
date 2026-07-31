@@ -33,10 +33,11 @@ locals {
     Version = "2012-10-17"
     Statement = [
       {
-        Sid    = "AllowAllInOrg"
+        Sid    = "AllowUserAndGroup"
         Effect = "Allow"
         Principal = {
-          "CW" : ["*"]
+          "CW"  = ["arn:aws:iam::[ORG-ID]:coreweave/[USER-ID]"]
+          "AWS" = ["arn:aws:iam::[ORG-ID]:saml/[SAML-GROUP-ID]"]
         }
         Action = ["s3:*"]
         Resource = [
@@ -73,7 +74,7 @@ resource "coreweave_object_storage_bucket" "doc" {
 data "coreweave_object_storage_bucket_policy_document" "doc" {
   version = "2012-10-17"
   statement {
-    sid    = "AllowAllInOrg"
+    sid    = "AllowUserAndGroup"
     effect = "Allow"
     action = ["s3:*"]
     resource = [
@@ -81,7 +82,8 @@ data "coreweave_object_storage_bucket_policy_document" "doc" {
       "arn:aws:s3:::${coreweave_object_storage_bucket.doc.name}/*",
     ]
     principal = {
-      "CW" : ["*"]
+      "CW"  = ["arn:aws:iam::[ORG-ID]:coreweave/[USER-ID]"]
+      "AWS" = ["arn:aws:iam::[ORG-ID]:saml/[SAML-GROUP-ID]"]
     }
     condition = {
       "StringEquals" : {
@@ -96,7 +98,8 @@ data "coreweave_object_storage_bucket_policy_document" "doc" {
     action   = ["s3:ListBucket"]
     resource = ["arn:aws:s3:::${coreweave_object_storage_bucket.doc.name}"]
     principal = {
-      "CW" : ["*"]
+      "CW"  = ["arn:aws:iam::[ORG-ID]:coreweave/[USER-ID]"]
+      "AWS" = ["arn:aws:iam::[ORG-ID]:saml/[SAML-GROUP-ID]"]
     }
     condition = {
       "StringNotEquals" : {
