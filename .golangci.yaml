@@ -115,6 +115,14 @@ linters:
 
   exclusions:
     rules:
+      # Terraform schema and path strings are intentional inline vocabulary;
+      # extracting them into constants would make their definitions harder to read.
+      - path: ^coreweave/[^/]+/(data_source|resource)_[^/]+\.go$
+        linters:
+          - goconst
+      - path: ^coreweave/cks/update_mask_test\.go$
+        linters:
+          - goconst
       # Exclude some linters from running on tests files.
       - path: _test\.go
         linters:
