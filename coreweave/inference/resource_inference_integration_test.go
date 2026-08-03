@@ -43,7 +43,7 @@ resource "coreweave_inference_capacity_claim" "test" {
   resources = {
     instance_type  = local.instance
     instance_count = 1
-    capacity_type  = "CAPACITY_TYPE_CUSTOMER"
+    capacity_type  = %q
     zones          = [local.zone]
   }
 
@@ -114,7 +114,7 @@ resource "coreweave_inference_deployment" "test" {
 
   depends_on = [coreweave_inference_capacity_claim.test]
 }
-`, preferredZone, preferredInstance, name, name, name, modelName, modelBucket, modelPath)
+`, preferredZone, preferredInstance, name, capacityTypeManaged, name, name, modelName, modelBucket, modelPath)
 }
 
 // TestInferenceReservedCapacity exercises the full reserved-capacity chain —
@@ -148,7 +148,7 @@ func TestInferenceReservedCapacity(t *testing.T) {
 						statecheck.ExpectKnownValue(ccResource, tfjsonpath.New("id"), knownvalue.NotNull()),
 						statecheck.ExpectKnownValue(ccResource, tfjsonpath.New("status"), knownvalue.NotNull()),
 						statecheck.ExpectKnownValue(ccResource, tfjsonpath.New("allocated_instances"), knownvalue.NotNull()),
-						statecheck.ExpectKnownValue(ccResource, tfjsonpath.New("resources").AtMapKey("capacity_type"), knownvalue.StringExact("CAPACITY_TYPE_CUSTOMER")),
+						statecheck.ExpectKnownValue(ccResource, tfjsonpath.New("resources").AtMapKey("capacity_type"), knownvalue.StringExact(capacityTypeManaged)),
 						statecheck.ExpectKnownValue(gwResource, tfjsonpath.New("id"), knownvalue.NotNull()),
 						statecheck.ExpectKnownValue(depResource, tfjsonpath.New("status"), knownvalue.StringExact("STATUS_READY")),
 						statecheck.ExpectKnownValue(depResource, tfjsonpath.New("autoscaling").AtMapKey("capacity_classes"), knownvalue.ListExact([]knownvalue.Check{knownvalue.StringExact("CAPACITY_CLASS_RESERVED")})),
