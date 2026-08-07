@@ -38,7 +38,7 @@ resource "coreweave_object_storage_bucket_settings" "default" {
 
 ### Optional
 
-- `archive_after_last_access_days` (Number) Days since last access (or creation if never accessed) before a STANDARD object version is archived to STANDARD_IA. The default minimum is 60; your organization's entitlement may permit a different minimum, so the effective floor is validated server-side. Required when `archive_enabled` is true; ignored otherwise.
+- `archive_after_last_access_days` (Number) Days since last access (or creation if never accessed) before a STANDARD object version is archived to STANDARD_IA. The default minimum is 60; your organization's entitlement may permit a different minimum, so the effective floor is validated server-side. Required when `archive_enabled` is true, and rejected otherwise.
 - `archive_enabled` (Boolean) When true, idle STANDARD objects are archived to STANDARD_IA after `archive_after_last_access_days` without access. Your organization must be entitled to configure this setting.
 - `audit_logging_enabled` (Boolean) Whether audit logging is enabled for the bucket. Contact support to enable audit logging for your organization before enabling this setting.
 

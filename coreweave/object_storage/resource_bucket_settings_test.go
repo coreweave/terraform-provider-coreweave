@@ -158,6 +158,18 @@ func TestBucketSettingsResource(t *testing.T) {
 				}),
 			ExpectError: regexp.MustCompile(`must be at least 1`),
 		},
+		{
+			PreConfig: func() {
+				t.Log("beginning coreweave_object_storage_bucket_settings retention without archive test")
+			},
+			Config: objectstorage.MustRenderBucketResource(ctx, "test_bucket", &bucket) +
+				objectstorage.MustRenderBucketSettingsResource(ctx, resourceName, &objectstorage.BucketSettingsResourceModel{
+					Bucket:                     types.StringValue("coreweave_object_storage_bucket.test_bucket.name"),
+					ArchiveEnabled:             types.BoolValue(false),
+					ArchiveAfterLastAccessDays: types.Int32Value(90),
+				}),
+			ExpectError: regexp.MustCompile(`Unexpected archive_after_last_access_days`),
+		},
 		createBucketSettingsTestStep(ctx, t, bucketSettingsTestConfig{
 			name:         "archive enabled",
 			resourceName: resourceName,
@@ -210,9 +222,10 @@ func TestBucketSettingsResource(t *testing.T) {
 			bucket:       bucket,
 			settings: objectstorage.BucketSettingsResourceModel{
 				AuditLoggingEnabled: types.BoolValue(true),
-				ArchiveEnabled:      types.BoolValue(false),
-				// Retained in config while archive is off; the API ignores it.
-				ArchiveAfterLastAccessDays: types.Int32Value(90),
+				// archive_after_last_access_days is deliberately omitted: disabling
+				// archive nulls the retention server-side, so pairing the two is a
+				// config error.
+				ArchiveEnabled: types.BoolValue(false),
 			},
 			configPlanChecks: resource.ConfigPlanChecks{
 				PreApply: []plancheck.PlanCheck{
