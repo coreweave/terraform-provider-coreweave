@@ -1,0 +1,1 @@
+terraform import coreweave_arca_advanced_mode.platform cw1234-github

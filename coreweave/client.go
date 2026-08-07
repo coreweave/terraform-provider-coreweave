@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"buf.build/gen/go/coreweave/arca/connectrpc/go/coreweave/arca/v1beta1/arcav1beta1connect"
 	"buf.build/gen/go/coreweave/cks/connectrpc/go/coreweave/cks/v1beta1/cksv1beta1connect"
 	"buf.build/gen/go/coreweave/cwobject/connectrpc/go/cwobject/v1/cwobjectv1connect"
 	"buf.build/gen/go/coreweave/inference/connectrpc/go/coreweave/inference/v1alpha1/inferencev1alpha1connect"
@@ -33,8 +34,11 @@ func NewClient(endpoint string, s3Endpoint string, timeout time.Duration, interc
 
 	return &Client{
 		ClusterServiceClient: cksv1beta1connect.NewClusterServiceClient(c, endpoint, connect.WithInterceptors(interceptors...)),
-		VPCServiceClient:     networkingv1beta1connect.NewVPCServiceClient(c, endpoint, connect.WithInterceptors(interceptors...)),
-		CWObjectClient:       cwobjectv1connect.NewCWObjectClient(c, endpoint, connect.WithInterceptors(interceptors...)),
+		Arca: &ArcaClient{
+			ArcaAdvancedModeServiceClient: arcav1beta1connect.NewArcaAdvancedModeServiceClient(c, endpoint, connect.WithInterceptors(interceptors...)),
+		},
+		VPCServiceClient: networkingv1beta1connect.NewVPCServiceClient(c, endpoint, connect.WithInterceptors(interceptors...)),
+		CWObjectClient:   cwobjectv1connect.NewCWObjectClient(c, endpoint, connect.WithInterceptors(interceptors...)),
 		Inference: &InferenceClient{
 			DeploymentServiceClient:    inferencev1alpha1connect.NewDeploymentServiceClient(c, endpoint, connect.WithInterceptors(interceptors...)),
 			CapacityClaimServiceClient: inferencev1alpha1connect.NewCapacityClaimServiceClient(c, endpoint, connect.WithInterceptors(interceptors...)),
@@ -51,12 +55,18 @@ type InferenceClient struct {
 	inferencev1alpha1connect.GatewayServiceClient
 }
 
+// ArcaClient groups all Arca service clients.
+type ArcaClient struct {
+	arcav1beta1connect.ArcaAdvancedModeServiceClient
+}
+
 type Client struct {
 	cksv1beta1connect.ClusterServiceClient
 	networkingv1beta1connect.VPCServiceClient
 	cwobjectv1connect.CWObjectClient
 
 	Inference *InferenceClient
+	Arca      *ArcaClient
 
 	s3Endpoint string
 }
