@@ -93,3 +93,4 @@ Read-Only:
 Read-Only:
 
 - `client_id` (String) The Tailscale Client ID for the federated identity.
+- `tailnet_domain` (String) The Tailscale Tailnet DNS name assigned to the cluster. Populated by the Tailscale operator after the cluster becomes ready.
