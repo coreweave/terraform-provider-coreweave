@@ -169,7 +169,7 @@ func (r *InferenceCapacityClaimResource) Schema(_ context.Context, _ resource.Sc
 						MarkdownDescription: fmt.Sprintf("The [capacity type](https://docs.coreweave.com/products/inference/scaling#capacity-claims) for the capacity claim. Must be one of: %s.", coreweave.EnumMarkdownValuesExcludingDeprecated(inferencev1.CapacityType_CAPACITY_TYPE_MANAGED.Descriptor())),
 						PlanModifiers:       []planmodifier.String{stringplanmodifier.RequiresReplace()},
 						Validators: []validator.String{
-							stringvalidator.OneOf(coreweave.EnumValues(inferencev1.CapacityType_name, true)...),
+							stringvalidator.OneOf(coreweave.EnumValuesExcludingDeprecated(inferencev1.CapacityType_CAPACITY_TYPE_MANAGED.Descriptor())...),
 						},
 					},
 					"zones": schema.SetAttribute{
@@ -473,7 +473,7 @@ func buildCapacityClaimFields(ctx context.Context, m *InferenceCapacityClaimReso
 	capacityTypeStr := m.Resources.CapacityType.ValueString()
 	capacityTypeVal, ok := inferencev1.CapacityType_value[capacityTypeStr]
 	if !ok {
-		diagnostics.AddError("Invalid capacity_type", fmt.Sprintf("Invalid capacity_type: %s. Must be one of: %s.", capacityTypeStr, coreweave.EnumMarkdownValues(inferencev1.CapacityType_name, true)))
+		diagnostics.AddError("Invalid capacity_type", fmt.Sprintf("Invalid capacity_type: %s. Must be one of: %s.", capacityTypeStr, coreweave.EnumMarkdownValuesExcludingDeprecated(inferencev1.CapacityType_CAPACITY_TYPE_MANAGED.Descriptor())))
 		return capacityClaimFields{}, diagnostics
 	}
 
