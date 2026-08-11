@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"sort"
+	"strings"
 	"time"
 
 	inferencev1 "buf.build/gen/go/coreweave/inference/protocolbuffers/go/coreweave/inference/v1alpha1"
@@ -48,6 +50,7 @@ const (
 var (
 	_ resource.Resource                = &InferenceDeploymentResource{}
 	_ resource.ResourceWithImportState = &InferenceDeploymentResource{}
+	_ resource.ResourceWithModifyPlan  = &InferenceDeploymentResource{}
 
 	hostnamePattern = regexp.MustCompile(`^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?$`)
 	semverPattern   = regexp.MustCompile(
@@ -258,9 +261,6 @@ func (r *InferenceDeploymentResource) Schema(_ context.Context, _ resource.Schem
 					"engine": schema.StringAttribute{
 						Required:            true,
 						MarkdownDescription: "The inference engine to use.",
-						Validators: []validator.String{
-							stringvalidator.OneOf("vllm", "dynamo-vllm"),
-						},
 					},
 					"version": schema.StringAttribute{
 						Optional:            true,
@@ -408,6 +408,77 @@ func (r *InferenceDeploymentResource) Configure(_ context.Context, req resource.
 	}
 
 	r.client = client.Inference
+}
+
+// ModifyPlan validates runtime.engine against the engines the API server
+// currently advertises, instead of a hardcoded list that can drift from the
+// platform's runtime-engines source of truth. The available engines are the
+// keys of RuntimeParameters.RuntimeVersions returned by GetDeploymentParameters
+// — the same data the coreweave_inference_deployment_parameters data source
+// exposes. Adding an engine server-side thus makes it usable here with no
+// provider release.
+func (r *InferenceDeploymentResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
+	// No planned config on destroy — nothing to validate.
+	if req.Plan.Raw.IsNull() {
+		return
+	}
+	// `terraform validate` and other offline phases run before Configure; the
+	// API-backed check is simply skipped when no client is available.
+	if r.client == nil {
+		return
+	}
+
+	var engine types.String
+	resp.Diagnostics.Append(req.Plan.GetAttribute(ctx, path.Root("runtime").AtName("engine"), &engine)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	// Unknown (interpolated) or null values can't be checked here; the API
+	// enforces the final value on apply.
+	if engine.IsUnknown() || engine.IsNull() {
+		return
+	}
+
+	resp.Diagnostics.Append(r.validateEngineAvailable(ctx, engine.ValueString())...)
+}
+
+// validateEngineAvailable checks engine against the engines the API server
+// advertises (the keys of DeploymentRuntimeParameters.RuntimeVersions). It
+// returns no diagnostics when the engine is advertised, or when the server
+// advertises no engines at all — an unexpected empty response bypasses the
+// check and lets the server be the authority on apply. An unadvertised engine
+// yields an attribute error listing the sorted allowed values. Split out from
+// ModifyPlan so it can be unit-tested with a stub GetDeploymentParameters
+// rather than a live API.
+func (r *InferenceDeploymentResource) validateEngineAvailable(ctx context.Context, engine string) diag.Diagnostics {
+	var diags diag.Diagnostics
+
+	paramsResp, err := r.client.GetDeploymentParameters(ctx, connect.NewRequest(&inferencev1.GetDeploymentParametersRequest{}))
+	if err != nil {
+		coreweave.HandleAPIError(ctx, err, &diags)
+		return diags
+	}
+
+	runtimeVersions := paramsResp.Msg.GetRuntimeParameters().GetRuntimeVersions()
+	if len(runtimeVersions) == 0 {
+		return diags
+	}
+
+	engines := make([]string, 0, len(runtimeVersions))
+	for e := range runtimeVersions {
+		if e == engine {
+			return diags
+		}
+		engines = append(engines, e)
+	}
+	sort.Strings(engines)
+
+	diags.AddAttributeError(
+		path.Root("runtime").AtName("engine"),
+		"Invalid inference engine",
+		fmt.Sprintf("engine %q is not available; must be one of: %s", engine, strings.Join(engines, ", ")),
+	)
+	return diags
 }
 
 func (r *InferenceDeploymentResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
