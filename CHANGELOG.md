@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.20.0](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.19.0...v0.20.0) (2026-08-14)
+
+
+### Features
+
+* **inference:** Validate engine against API-advertised engines instead of a hardcoded list ([#389](https://github.com/coreweave/terraform-provider-coreweave/issues/389)) ([81d9a65](https://github.com/coreweave/terraform-provider-coreweave/commit/81d9a6550ecaf3be14902c332a656679e6e3db58))
+
+
+### Dependency Updates
+
+* update Go to 1.26.5 ([#377](https://github.com/coreweave/terraform-provider-coreweave/issues/377)) ([1e39f7a](https://github.com/coreweave/terraform-provider-coreweave/commit/1e39f7a20934cac47c56b22038b822653a6e323e))
+
 ## [0.19.0](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.18.0...v0.19.0) (2026-07-23)
 
 
