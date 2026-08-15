@@ -9,6 +9,7 @@ import (
 
 	"connectrpc.com/connect"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
+	"github.com/coreweave/terraform-provider-coreweave/coreweave/arca"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave/cks"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave/inference"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave/networking"
@@ -216,6 +217,7 @@ func (p *CoreweaveProvider) Resources(ctx context.Context) []func() resource.Res
 		inference.NewInferenceDeploymentResource,
 		inference.NewInferenceCapacityClaimResource,
 		inference.NewInferenceGatewayResource,
+		arca.NewAdvancedModeResource,
 	}
 }
 
