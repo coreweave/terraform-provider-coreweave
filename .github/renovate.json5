@@ -124,7 +124,6 @@
         "github.com/hashicorp/terraform-plugin-framework-nettypes",
         "github.com/hashicorp/terraform-plugin-go",
         "github.com/hashicorp/terraform-plugin-log",
-        "github.com/hashicorp/terraform-plugin-testing",
         "github.com/hashicorp/terraform-plugin-sdk/v2",
         "github.com/zclconf/go-cty"
       ],
@@ -136,6 +135,15 @@
       "matchPackageNames": ["github.com/aws/smithy-go"],
       "groupName": "aws-sdk-go-v2-monorepo",
       "semanticCommitType": "deps",
+      "semanticCommitScope": null
+    },
+    {
+      "matchManagers": ["gomod"],
+      "matchPackageNames": [
+        "github.com/hashicorp/terraform-plugin-testing",
+        "github.com/stretchr/testify"
+      ],
+      "semanticCommitType": "test",
       "semanticCommitScope": null
     },
     {
