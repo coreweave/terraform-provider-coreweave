@@ -48,4 +48,4 @@ jobs:
 
       - name: Validate ${{ inputs.suite }} acceptance tests
         run: |
-          make testacc SUITES='${{ inputs.suite }}'
+          make testacc SUITES='${{ inputs.suite }}' ${{ inputs.suite == 'cks' && 'TEST_ACC_PARALLEL=3 TEST_ACC_TIMEOUT=60m' || '' }}

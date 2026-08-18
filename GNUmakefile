@@ -14,6 +14,8 @@ BINARY_NAME := terraform-provider-$(PROVIDER_NAME)_v$(VERSION)
 # This is valuable for limiting the sweeps to known-good resources, and for forcing an ordering.
 TEST_ACC_PACKAGES?=./coreweave/cks ./coreweave/networking
 TEST_ACC_SWEEP_ZONE?=US-LAB-01A
+TEST_ACC_PARALLEL?=
+TEST_ACC_TIMEOUT?=45m
 
 export CGO_ENABLED?=0
 
@@ -62,7 +64,7 @@ testacc-sweep:
 
 testacc:
 	@for suite in $(SUITES); do \
-		TF_ACC=1 go test -v -cover -timeout=45m ./coreweave/$$suite; \
+		TF_ACC=1 go test -v -cover -timeout=$(TEST_ACC_TIMEOUT) $(if $(TEST_ACC_PARALLEL),-parallel=$(TEST_ACC_PARALLEL)) ./coreweave/$$suite; \
 	done
 
 .PHONY: debug fmt lint test testacc testacc-sweep build install generate clean
