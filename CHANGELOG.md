@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.21.0](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.20.0...v0.21.0) (2026-08-18)
+
+
+### Features
+
+* **object_storage:** add support for bucket archive settings ([#381](https://github.com/coreweave/terraform-provider-coreweave/issues/381)) ([9b5acc0](https://github.com/coreweave/terraform-provider-coreweave/commit/9b5acc0a01c92da8f7d6325df083a677642fd7ce))
+
+
+### Dependency Updates
+
+* update go ( 1.26.5 → 1.26.6 ) ([#392](https://github.com/coreweave/terraform-provider-coreweave/issues/392)) ([2b5e9f3](https://github.com/coreweave/terraform-provider-coreweave/commit/2b5e9f3de2a8c3772ee59c8ab245f518dc3b41de))
+* update google.golang.org/genproto/googleapis ( 8636f87 → ec0a776 ) ([#370](https://github.com/coreweave/terraform-provider-coreweave/issues/370)) ([789038b](https://github.com/coreweave/terraform-provider-coreweave/commit/789038beca27c28c04d616880169e8e796a82209))
+
 ## [0.20.0](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.19.0...v0.20.0) (2026-08-14)
 
 
