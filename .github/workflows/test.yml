@@ -37,8 +37,9 @@ jobs:
       - run: make generate
       - name: git diff
         run: |
+          git add -N docs/ # make untracked generated docs visible to git diff
           git diff --compact-summary --exit-code || \
-            (echo; echo "Unexpected difference in directories after code generation. Run 'make generate' command and commit."; exit 1)
+            (echo; echo "Unexpected difference in directories after code generation (including new files). Run 'make generate' command and commit."; exit 1)
 
   snapshot-build:
     uses: ./.github/workflows/build.yml
