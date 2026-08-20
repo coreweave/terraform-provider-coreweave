@@ -2,7 +2,7 @@
 # https://github.com/jdx/mise/discussions/6578
 # https://github.com/jdx/mise/pull/6231
 [tools]
-go = "1.26.6"
+go = "1.27.0"
 golangci-lint = "2.9.0"
 terraform = "1.15.8"
 
