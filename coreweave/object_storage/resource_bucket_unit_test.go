@@ -22,10 +22,15 @@ func (s bucketHeadCheckerStub) HeadBucket(_ context.Context, _ *s3.HeadBucketInp
 
 func responseError(t *testing.T, statusCode int) error {
 	t.Helper()
+	return responseErrorWithCause(t, statusCode, errors.New("request failed"))
+}
+
+func responseErrorWithCause(t *testing.T, statusCode int, err error) error {
+	t.Helper()
 
 	return &smithyhttp.ResponseError{
 		Response: &smithyhttp.Response{Response: &standardhttp.Response{StatusCode: statusCode}},
-		Err:      errors.New("request failed"),
+		Err:      err,
 	}
 }
 
@@ -55,6 +60,9 @@ func TestIsMissingBucketTagSetError(t *testing.T) {
 		"different API error": {
 			err: &smithy.GenericAPIError{Code: ErrNoSuchBucket},
 		},
+		"different API error with HTTP 404": {
+			err: responseErrorWithCause(t, standardhttp.StatusNotFound, &smithy.GenericAPIError{Code: ErrNoSuchBucket}),
+		},
 		"HTTP 500": {
 			err: responseError(t, standardhttp.StatusInternalServerError),
 		},
@@ -78,6 +86,7 @@ func TestBucketExists(t *testing.T) {
 	t.Parallel()
 
 	headNotFound := fmt.Errorf("head bucket: %w", responseError(t, standardhttp.StatusNotFound))
+	headNoSuchBucket := fmt.Errorf("head bucket: %w", &smithy.GenericAPIError{Code: ErrNoSuchBucket})
 	headFailure := responseError(t, standardhttp.StatusInternalServerError)
 
 	tests := []struct {
@@ -88,6 +97,7 @@ func TestBucketExists(t *testing.T) {
 	}{
 		{name: "success confirms existence", wantExists: true},
 		{name: "404 confirms absence", err: headNotFound},
+		{name: "NoSuchBucket confirms absence", err: headNoSuchBucket},
 		{name: "other error is propagated", err: headFailure, wantErr: headFailure},
 	}
 

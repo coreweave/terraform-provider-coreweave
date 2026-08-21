@@ -153,8 +153,8 @@ func handleS3Error(
 
 func isMissingBucketTagSetError(err error) bool {
 	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) && apiErr.ErrorCode() == errNoSuchTagSet {
-		return true
+	if errors.As(err, &apiErr) {
+		return apiErr.ErrorCode() == errNoSuchTagSet
 	}
 
 	return isHTTPNotFoundError(err)
@@ -173,6 +173,11 @@ func bucketExists(ctx context.Context, client s3.HeadBucketAPIClient, bucket str
 		return true, nil
 	}
 	if isHTTPNotFoundError(err) {
+		return false, nil
+	}
+
+	var apiErr smithy.APIError
+	if errors.As(err, &apiErr) && apiErr.ErrorCode() == ErrNoSuchBucket {
 		return false, nil
 	}
 
