@@ -151,9 +151,16 @@ func handleS3Error(
 	)
 }
 
-func isNoSuchTagSetError(err error) bool {
+func isMissingBucketTagSetError(err error) bool {
 	var apiErr smithy.APIError
-	return errors.As(err, &apiErr) && apiErr.ErrorCode() == errNoSuchTagSet
+	if errors.As(err, &apiErr) && apiErr.ErrorCode() == errNoSuchTagSet {
+		return true
+	}
+
+	var httpErr *http.ResponseError
+	return errors.As(err, &httpErr) &&
+		httpErr.Response != nil &&
+		httpErr.Response.StatusCode == 404
 }
 
 // waitForBucket polls HeadBucket every 'interval' until the bucket
@@ -398,18 +405,9 @@ func (b *BucketResource) Read(ctx context.Context, req resource.ReadRequest, res
 		Bucket: aws.String(data.Name.ValueString()),
 	})
 	if err != nil {
-		if isNoSuchTagSetError(err) {
+		if isMissingBucketTagSetError(err) {
 			tagSet = &s3.GetBucketTaggingOutput{}
 		} else {
-			var httpErr *http.ResponseError
-			if errors.As(err, &httpErr) && httpErr.Response != nil {
-				// if we get a 404 back from the client, the bucket does not exist & can be removed from state
-				if httpErr.Response.StatusCode == 404 {
-					resp.State.RemoveResource(ctx)
-					return
-				}
-			}
-
 			handleS3Error(err, &resp.Diagnostics, data.Name.ValueString())
 			return
 		}
