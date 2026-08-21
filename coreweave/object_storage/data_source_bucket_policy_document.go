@@ -9,6 +9,7 @@ import (
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/zclconf/go-cty/cty"
 )
@@ -268,7 +269,9 @@ func (d *BucketPolicyDocumentDataSource) Schema(ctx context.Context, req datasou
 	}
 }
 
-func BuildPolicyDocument(ctx context.Context, bm BucketPolicyDocumentModel) PolicyDocument {
+func BuildPolicyDocument(ctx context.Context, bm BucketPolicyDocumentModel) (PolicyDocument, diag.Diagnostics) {
+	var diagnostics diag.Diagnostics
+
 	// Build the reusable PolicyDocument
 	pd := PolicyDocument{
 		Version: bm.Version.ValueString(),
@@ -281,14 +284,20 @@ func BuildPolicyDocument(ctx context.Context, bm BucketPolicyDocumentModel) Poli
 		pr := map[string][]string{}
 		if !sm.Principal.IsNull() {
 			var tmp map[string][]string
-			sm.Principal.ElementsAs(ctx, &tmp, false)
+			diagnostics.Append(sm.Principal.ElementsAs(ctx, &tmp, false)...)
+			if diagnostics.HasError() {
+				return PolicyDocument{}, diagnostics
+			}
 			pr = tmp
 		}
 		// condition
 		cond := Condition{}
 		if !sm.Condition.IsNull() {
 			var tmp scalarCondition
-			sm.Condition.ElementsAs(ctx, &tmp, false)
+			diagnostics.Append(sm.Condition.ElementsAs(ctx, &tmp, false)...)
+			if diagnostics.HasError() {
+				return PolicyDocument{}, diagnostics
+			}
 			for op, values := range tmp {
 				cond[op] = make(map[string][]string, len(values))
 				for key, value := range values {
@@ -300,14 +309,20 @@ func BuildPolicyDocument(ctx context.Context, bm BucketPolicyDocumentModel) Poli
 		acts := make([]string, 0)
 		if !sm.Action.IsNull() {
 			var tmp []string
-			sm.Action.ElementsAs(ctx, &tmp, false)
+			diagnostics.Append(sm.Action.ElementsAs(ctx, &tmp, false)...)
+			if diagnostics.HasError() {
+				return PolicyDocument{}, diagnostics
+			}
 			acts = tmp
 		}
 		// resources
 		res := make([]string, 0)
 		if !sm.Resource.IsNull() {
 			var tmp []string
-			sm.Resource.ElementsAs(ctx, &tmp, false)
+			diagnostics.Append(sm.Resource.ElementsAs(ctx, &tmp, false)...)
+			if diagnostics.HasError() {
+				return PolicyDocument{}, diagnostics
+			}
 			res = tmp
 		}
 
@@ -323,7 +338,7 @@ func BuildPolicyDocument(ctx context.Context, bm BucketPolicyDocumentModel) Poli
 		})
 	}
 
-	return pd
+	return pd, diagnostics
 }
 
 func (d *BucketPolicyDocumentDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
@@ -334,7 +349,11 @@ func (d *BucketPolicyDocumentDataSource) Read(ctx context.Context, req datasourc
 	}
 
 	// Translate the Terraform data model to the JSON schema represented by PolicyDocument
-	pd := BuildPolicyDocument(ctx, bm)
+	pd, diags := BuildPolicyDocument(ctx, bm)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 	// Marshal the document
 	bytes, err := json.Marshal(pd)
 	if err != nil {
