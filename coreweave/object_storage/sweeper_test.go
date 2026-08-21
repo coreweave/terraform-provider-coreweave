@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -20,17 +21,93 @@ import (
 	"github.com/coreweave/terraform-provider-coreweave/internal/provider"
 	"github.com/coreweave/terraform-provider-coreweave/internal/testutil"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-func TestMain(m *testing.M) {
-	resource.TestMain(m)
+const (
+	bucketSweeperName          = "coreweave_object_storage_bucket"
+	orgAccessPolicySweeperName = "coreweave_object_storage_organization_access_policy"
+	nonAcceptanceTestName      = "production"
+)
+
+func normalizeObjectStorageSweepRegion(region string) (string, error) {
+	region = strings.TrimSpace(region)
+	if region == "" {
+		return "", errors.New("object storage sweep region must not be empty")
+	}
+	return region, nil
 }
 
-func init() {
-	resource.AddTestSweepers("coreweave_object_storage_bucket", &resource.Sweeper{
-		Name:         "coreweave_object_storage_bucket",
+func newBucketSweepConfig(client *coreweave.Client, zone string) (testutil.SweepConfig[*cwobjectv1.BucketInfo], error) {
+	zone, err := normalizeObjectStorageSweepRegion(zone)
+	if err != nil {
+		return testutil.SweepConfig[*cwobjectv1.BucketInfo]{}, err
+	}
+
+	return testutil.SweepConfig[*cwobjectv1.BucketInfo]{
+		ResourceType: bucketSweeperName,
+		List: func(ctx context.Context) ([]*cwobjectv1.BucketInfo, error) {
+			response, err := client.ListBucketInfo(ctx, connect.NewRequest(&cwobjectv1.ListBucketInfoRequest{}))
+			if err != nil {
+				return nil, fmt.Errorf("failed to list buckets: %w", err)
+			}
+			return response.Msg.GetInfo(), nil
+		},
+		Name: func(info *cwobjectv1.BucketInfo) string { return info.GetName() },
+		Match: func(info *cwobjectv1.BucketInfo) bool {
+			return strings.HasPrefix(info.GetName(), AcceptanceTestPrefix) && info.GetLocation() == zone
+		},
+		Delete: func(ctx context.Context, info *cwobjectv1.BucketInfo) error {
+			if err := deleteBucket(ctx, client, info.GetName(), info.GetLocation()); err != nil {
+				return fmt.Errorf("failed to delete bucket %s: %w", info.GetName(), err)
+			}
+			return nil
+		},
+	}, nil
+}
+
+func newOrgAccessPolicySweepConfig(client *coreweave.Client) testutil.SweepConfig[*cwobjectv1.CWObjectPolicy] {
+	return testutil.SweepConfig[*cwobjectv1.CWObjectPolicy]{
+		ResourceType: orgAccessPolicySweeperName,
+		List: func(ctx context.Context) ([]*cwobjectv1.CWObjectPolicy, error) {
+			response, err := client.ListAccessPolicies(ctx, connect.NewRequest(&cwobjectv1.ListAccessPoliciesRequest{}))
+			if err != nil {
+				return nil, fmt.Errorf("failed to list org access policies: %w", err)
+			}
+			return response.Msg.GetPolicies(), nil
+		},
+		Name: func(policy *cwobjectv1.CWObjectPolicy) string { return policy.GetName() },
+		Match: func(policy *cwobjectv1.CWObjectPolicy) bool {
+			return strings.HasPrefix(policy.GetName(), AcceptanceTestPrefix)
+		},
+		Delete: func(ctx context.Context, policy *cwobjectv1.CWObjectPolicy) error {
+			_, err := client.DeleteAccessPolicy(ctx, connect.NewRequest(&cwobjectv1.DeleteAccessPolicyRequest{Name: policy.GetName()}))
+			if coreweave.IsNotFoundError(err) {
+				return nil
+			}
+			if err != nil {
+				return fmt.Errorf("failed to delete org access policy %s: %w", policy.GetName(), err)
+			}
+			return nil
+		},
+	}
+}
+
+func newBucketSweeper() *resource.Sweeper {
+	return &resource.Sweeper{
+		Name:         bucketSweeperName,
 		Dependencies: []string{},
 		F: func(zone string) error {
+			zone, err := normalizeObjectStorageSweepRegion(zone)
+			if err != nil {
+				return err
+			}
+			runtime, err := testutil.SweepRuntimeFromEnv()
+			if err != nil {
+				return err
+			}
+
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 			defer cancel()
 
@@ -39,47 +116,28 @@ func init() {
 			if err != nil {
 				return fmt.Errorf("failed to build client: %w", err)
 			}
-
-			listResp, err := client.ListBucketInfo(ctx, connect.NewRequest(&cwobjectv1.ListBucketInfoRequest{}))
+			config, err := newBucketSweepConfig(client, zone)
 			if err != nil {
-				return fmt.Errorf("failed to list buckets: %w", err)
+				return err
 			}
-
-			for _, info := range listResp.Msg.GetInfo() {
-				name := info.GetName()
-				location := info.GetLocation()
-
-				if !strings.HasPrefix(name, AcceptanceTestPrefix) {
-					log.Printf("skipping bucket %s because it does not have prefix %s", name, AcceptanceTestPrefix)
-					continue
-				}
-				if location != zone {
-					log.Printf("skipping bucket %s in zone %s because it does not match sweep zone %s", name, location, zone)
-					continue
-				}
-
-				log.Printf("sweeping bucket %s (zone %s)", name, location)
-				if testutil.SweepDryRun() {
-					log.Printf("skipping bucket %s because of dry-run mode", name)
-					continue
-				}
-
-				if err := deleteBucket(ctx, client, name, location); err != nil {
-					return fmt.Errorf("failed to delete bucket %s: %w", name, err)
-				}
-			}
-
-			return nil
+			return testutil.Sweep(ctx, runtime, config)
 		},
-	})
+	}
+}
 
-	// Organization access policies are org-scoped (not zone-scoped). Sweep them
-	// unconditionally on any zone sweep — the prefix filter keeps the blast
-	// radius limited to acceptance-test artifacts.
-	resource.AddTestSweepers("coreweave_object_storage_organization_access_policy", &resource.Sweeper{
-		Name:         "coreweave_object_storage_organization_access_policy",
+func newOrgAccessPolicySweeper() *resource.Sweeper {
+	return &resource.Sweeper{
+		Name:         orgAccessPolicySweeperName,
 		Dependencies: []string{},
-		F: func(_ string) error {
+		F: func(region string) error {
+			if _, err := normalizeObjectStorageSweepRegion(region); err != nil {
+				return err
+			}
+			runtime, err := testutil.SweepRuntimeFromEnv()
+			if err != nil {
+				return err
+			}
+
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 			defer cancel()
 
@@ -88,38 +146,93 @@ func init() {
 			if err != nil {
 				return fmt.Errorf("failed to build client: %w", err)
 			}
-
-			listResp, err := client.ListAccessPolicies(ctx, connect.NewRequest(&cwobjectv1.ListAccessPoliciesRequest{}))
-			if err != nil {
-				return fmt.Errorf("failed to list org access policies: %w", err)
-			}
-
-			for _, policy := range listResp.Msg.GetPolicies() {
-				name := policy.GetName()
-				if !strings.HasPrefix(name, AcceptanceTestPrefix) {
-					log.Printf("skipping org access policy %s because it does not have prefix %s", name, AcceptanceTestPrefix)
-					continue
-				}
-
-				log.Printf("sweeping org access policy %s", name)
-				if testutil.SweepDryRun() {
-					log.Printf("skipping org access policy %s because of dry-run mode", name)
-					continue
-				}
-
-				_, err := client.DeleteAccessPolicy(ctx, connect.NewRequest(&cwobjectv1.DeleteAccessPolicyRequest{Name: name}))
-				if err != nil {
-					if coreweave.IsNotFoundError(err) {
-						log.Printf("org access policy %s already deleted", name)
-						continue
-					}
-					return fmt.Errorf("failed to delete org access policy %s: %w", name, err)
-				}
-			}
-
-			return nil
+			return testutil.Sweep(ctx, runtime, newOrgAccessPolicySweepConfig(client))
 		},
-	})
+	}
+}
+
+func TestMain(m *testing.M) {
+	resource.TestMain(m)
+}
+
+func init() {
+	resource.AddTestSweepers(bucketSweeperName, newBucketSweeper())
+
+	// Organization access policies are org-scoped (not zone-scoped). Sweep them
+	// unconditionally on any zone sweep — the prefix filter keeps the blast
+	// radius limited to acceptance-test artifacts.
+	resource.AddTestSweepers(orgAccessPolicySweeperName, newOrgAccessPolicySweeper())
+}
+
+func TestObjectStorageSweeperRegistrations(t *testing.T) {
+	tests := []struct {
+		name    string
+		sweeper *resource.Sweeper
+	}{
+		{name: bucketSweeperName, sweeper: newBucketSweeper()},
+		{name: orgAccessPolicySweeperName, sweeper: newOrgAccessPolicySweeper()},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.name, tt.sweeper.Name)
+			assert.Empty(t, tt.sweeper.Dependencies)
+			assert.NotNil(t, tt.sweeper.F)
+		})
+	}
+}
+
+func TestObjectStorageSweeperValidationPrecedesSetup(t *testing.T) {
+	t.Setenv(provider.CoreweaveApiTokenEnvVar, "")
+	t.Setenv(provider.CoreweaveApiEndpointEnvVar, "restored by testing")
+	require.NoError(t, os.Unsetenv(provider.CoreweaveApiEndpointEnvVar))
+	t.Setenv("TEST_ACC_SWEEP_PARALLEL", "invalid")
+
+	tests := []struct {
+		name      string
+		callback  func(string) error
+		selector  string
+		wantError string
+	}{
+		{name: "bucket/blank selector", callback: newBucketSweeper().F, selector: " \t\n", wantError: "object storage sweep region must not be empty"},
+		{name: "bucket/invalid runtime", callback: newBucketSweeper().F, selector: "zone-a", wantError: "parse TEST_ACC_SWEEP_PARALLEL as integer"},
+		{name: "org policy/blank selector", callback: newOrgAccessPolicySweeper().F, selector: " \t\n", wantError: "object storage sweep region must not be empty"},
+		{name: "org policy/invalid runtime", callback: newOrgAccessPolicySweeper().F, selector: "zone-a", wantError: "parse TEST_ACC_SWEEP_PARALLEL as integer"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.ErrorContains(t, tt.callback(tt.selector), tt.wantError)
+		})
+	}
+
+	_, found := os.LookupEnv(provider.CoreweaveApiEndpointEnvVar)
+	require.False(t, found, "client setup must not run before region and runtime validation")
+}
+
+func TestBucketSweepConfigMatch(t *testing.T) {
+	const zone = "zone-a"
+	config, err := newBucketSweepConfig(nil, " \t"+zone+"\n")
+	require.NoError(t, err)
+
+	tests := []struct {
+		name string
+		info *cwobjectv1.BucketInfo
+		want bool
+	}{
+		{name: "acceptance prefix and zone", info: &cwobjectv1.BucketInfo{Name: AcceptanceTestPrefix + "selected", Location: zone}, want: true},
+		{name: "non-acceptance prefix", info: &cwobjectv1.BucketInfo{Name: nonAcceptanceTestName, Location: zone}},
+		{name: "different zone", info: &cwobjectv1.BucketInfo{Name: AcceptanceTestPrefix + "other-zone", Location: "zone-b"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, config.Match(tt.info))
+		})
+	}
+}
+
+func TestOrgAccessPolicySweepConfigMatch(t *testing.T) {
+	config := newOrgAccessPolicySweepConfig(nil)
+	assert.True(t, config.Match(&cwobjectv1.CWObjectPolicy{Name: AcceptanceTestPrefix + "policy"}))
+	assert.False(t, config.Match(&cwobjectv1.CWObjectPolicy{Name: nonAcceptanceTestName}))
 }
 
 // deleteBucket empties a bucket (all object versions, delete markers, and
