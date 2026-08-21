@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.21.1](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.21.0...v0.21.1) (2026-08-21)
+
+
+### Bug Fixes
+
+* **object_storage:** preserve bucket policy conditions ([#409](https://github.com/coreweave/terraform-provider-coreweave/issues/409)) ([4d1103c](https://github.com/coreweave/terraform-provider-coreweave/commit/4d1103c48fa1f59a5996be274d13e752cbd0df20))
+* **object_storage:** propagate policy conversion diagnostics ([#415](https://github.com/coreweave/terraform-provider-coreweave/issues/415)) ([e4db5a5](https://github.com/coreweave/terraform-provider-coreweave/commit/e4db5a5c4de607df7adeb6f59c7fe6a29300a066))
+
 ## [0.21.0](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.20.0...v0.21.0) (2026-08-18)
 
 
