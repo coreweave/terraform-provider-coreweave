@@ -3,17 +3,11 @@ package cks_test
 import (
 	"context"
 	"fmt"
-	"log"
 	"math/rand/v2"
 	"regexp"
 	"strings"
 	"testing"
-	"time"
 
-	cksv1beta1 "buf.build/gen/go/coreweave/cks/protocolbuffers/go/coreweave/cks/v1beta1"
-
-	"connectrpc.com/connect"
-	"github.com/coreweave/terraform-provider-coreweave/coreweave"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave/cks"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave/networking"
 	"github.com/coreweave/terraform-provider-coreweave/internal/provider"
@@ -32,110 +26,12 @@ import (
 )
 
 const (
-	AuditPolicyB64       = "ewogICJhcGlWZXJzaW9uIjogImF1ZGl0Lms4cy5pby92MSIsCiAgImtpbmQiOiAiUG9saWN5IiwKICAib21pdFN0YWdlcyI6IFsKICAgICJSZXF1ZXN0UmVjZWl2ZWQiCiAgXSwKICAicnVsZXMiOiBbCiAgICB7CiAgICAgICJsZXZlbCI6ICJSZXF1ZXN0UmVzcG9uc2UiLAogICAgICAicmVzb3VyY2VzIjogWwogICAgICAgIHsKICAgICAgICAgICJncm91cCI6ICIiLAogICAgICAgICAgInJlc291cmNlcyI6IFsKICAgICAgICAgICAgInBvZHMiCiAgICAgICAgICBdCiAgICAgICAgfQogICAgICBdCiAgICB9LAogICAgewogICAgICAibGV2ZWwiOiAiTWV0YWRhdGEiLAogICAgICAicmVzb3VyY2VzIjogWwogICAgICAgIHsKICAgICAgICAgICJncm91cCI6ICIiLAogICAgICAgICAgInJlc291cmNlcyI6IFsKICAgICAgICAgICAgInBvZHMvbG9nIiwKICAgICAgICAgICAgInBvZHMvc3RhdHVzIgogICAgICAgICAgXQogICAgICAgIH0KICAgICAgXQogICAgfSwKICAgIHsKICAgICAgImxldmVsIjogIk5vbmUiLAogICAgICAicmVzb3VyY2VzIjogWwogICAgICAgIHsKICAgICAgICAgICJncm91cCI6ICIiLAogICAgICAgICAgInJlc291cmNlcyI6IFsKICAgICAgICAgICAgImNvbmZpZ21hcHMiCiAgICAgICAgICBdLAogICAgICAgICAgInJlc291cmNlTmFtZXMiOiBbCiAgICAgICAgICAgICJjb250cm9sbGVyLWxlYWRlciIKICAgICAgICAgIF0KICAgICAgICB9CiAgICAgIF0KICAgIH0sCiAgICB7CiAgICAgICJsZXZlbCI6ICJOb25lIiwKICAgICAgInVzZXJzIjogWwogICAgICAgICJzeXN0ZW06a3ViZS1wcm94eSIKICAgICAgXSwKICAgICAgInZlcmJzIjogWwogICAgICAgICJ3YXRjaCIKICAgICAgXSwKICAgICAgInJlc291cmNlcyI6IFsKICAgICAgICB7CiAgICAgICAgICAiZ3JvdXAiOiAiIiwKICAgICAgICAgICJyZXNvdXJjZXMiOiBbCiAgICAgICAgICAgICJlbmRwb2ludHMiLAogICAgICAgICAgICAic2VydmljZXMiCiAgICAgICAgICBdCiAgICAgICAgfQogICAgICBdCiAgICB9LAogICAgewogICAgICAibGV2ZWwiOiAiTm9uZSIsCiAgICAgICJ1c2VyR3JvdXBzIjogWwogICAgICAgICJzeXN0ZW06YXV0aGVudGljYXRlZCIKICAgICAgXSwKICAgICAgIm5vblJlc291cmNlVVJMcyI6IFsKICAgICAgICAiL2FwaSoiLAogICAgICAgICIvdmVyc2lvbiIKICAgICAgXQogICAgfSwKICAgIHsKICAgICAgImxldmVsIjogIlJlcXVlc3QiLAogICAgICAicmVzb3VyY2VzIjogWwogICAgICAgIHsKICAgICAgICAgICJncm91cCI6ICIiLAogICAgICAgICAgInJlc291cmNlcyI6IFsKICAgICAgICAgICAgImNvbmZpZ21hcHMiCiAgICAgICAgICBdCiAgICAgICAgfQogICAgICBdLAogICAgICAibmFtZXNwYWNlcyI6IFsKICAgICAgICAia3ViZS1zeXN0ZW0iCiAgICAgIF0KICAgIH0sCiAgICB7CiAgICAgICJsZXZlbCI6ICJNZXRhZGF0YSIsCiAgICAgICJyZXNvdXJjZXMiOiBbCiAgICAgICAgewogICAgICAgICAgImdyb3VwIjogIiIsCiAgICAgICAgICAicmVzb3VyY2VzIjogWwogICAgICAgICAgICAic2VjcmV0cyIsCiAgICAgICAgICAgICJjb25maWdtYXBzIgogICAgICAgICAgXQogICAgICAgIH0KICAgICAgXQogICAgfSwKICAgIHsKICAgICAgImxldmVsIjogIlJlcXVlc3QiLAogICAgICAicmVzb3VyY2VzIjogWwogICAgICAgIHsKICAgICAgICAgICJncm91cCI6ICIiCiAgICAgICAgfSwKICAgICAgICB7CiAgICAgICAgICAiZ3JvdXAiOiAiZXh0ZW5zaW9ucyIKICAgICAgICB9CiAgICAgIF0KICAgIH0sCiAgICB7CiAgICAgICJsZXZlbCI6ICJNZXRhZGF0YSIsCiAgICAgICJvbWl0U3RhZ2VzIjogWwogICAgICAgICJSZXF1ZXN0UmVjZWl2ZWQiCiAgICAgIF0KICAgIH0KICBdCn0K"
-	ExampleCAB64         = "LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSURnekNDQW11Z0F3SUJBZ0lRVGhhQitUNmdtdVVYN3dXZi9XUitmekFOQmdrcWhraUc5dzBCQVFzRkFEQUEKTUI0WERUSTBNRFl5TlRJeE1UY3pNVm9YRFRJME1Ea3lNekl4TVRjek1Wb3dBRENDQVNJd0RRWUpLb1pJaHZjTgpBUUVCQlFBRGdnRVBBRENDQVFvQ2dnRUJBT240VkVpRWJoL29GRkoxcG1QZXZxb1pBbWtVUjRqeWd5Y0MvRFhCCmVEWjYxd1NzV1FPU21peFg1bDZDd1FXNzdkV3NRVGhsU0RqN003RytxYjZCWHBSUWcrMndJOFVsVHp6Y0NpM0UKN1pib2M2LzI1YXd3NVpLOW1GVWVGWlBWemI4ZHNuVUFkbmFNa2V2ckFGQXNoL0NmSEh0cThzSUZnOVF2SWJnUApNRFJJcnZnSmlGY1NLS1E5clgxOWkzcFY3ZE9UaGxaYW11UWRGUjhGSVgyQ3BVQithajdSWkdMTFFra3AzMzhUCjFTRk5hK3V1THk3Mlh6MldIdEdqOTE5OFVENFFTRzByd2JUYXEvQVdxNjcvblhRS2FOQ2xHYzlGajNRSjU2NEUKK3cvWXBvK1krc053OXY0M1NVSVdyQXRMNGRicHNadlBEK0FKS1RDRXArUExZWlVDQXdFQUFhT0IrRENCOVRBTwpCZ05WSFE4QkFmOEVCQU1DQmFBd0RBWURWUjBUQVFIL0JBSXdBRENCMUFZRFZSMFJBUUgvQklISk1JSEdnaVJsCmVHVmpkWFJ2Y2kxcllYUmhiRzluTFdWNFpXTjFkRzl5TFhKbFkyOXVZMmxzWlhLQ0xHVjRaV04xZEc5eUxXdGgKZEdGc2IyY3RaWGhsWTNWMGIzSXRjbVZqYjI1amFXeGxjaTVyWVhSaGJHOW5nakJsZUdWamRYUnZjaTFyWVhSaApiRzluTFdWNFpXTjFkRzl5TFhKbFkyOXVZMmxzWlhJdWEyRjBZV3h2Wnk1emRtT0NQbVY0WldOMWRHOXlMV3RoCmRHRnNiMmN0WlhobFkzVjBiM0l0Y21WamIyNWphV3hsY2k1cllYUmhiRzluTG5OMll5NWpiSFZ6ZEdWeUxteHYKWTJGc01BMEdDU3FHU0liM0RRRUJDd1VBQTRJQkFRQlEvQ2JBdEFCQkZORUE5d1hYaE9vYUNrRFY1dTc3VFlzMQpFV2FJcFJFNjV5QmVtTDc2eXpYeEtoc2RmR3RJSmJ0THBWS1lUYlpBVTQrem9IS1NVTWs4REY4bXN0dGhOMWQ5CnR6a1d4ZXZ3UGViL2NtMVZVWlBzWkxvNnFRblJRUFJCUXc0dFpWdkhTWmtsSjBVb2lvVk5zOWJJY3ZQZ2Z4UW0KNkhDU3NEWU9sWnlPRHlrY045U21nbFZtVWFNeVkxMGcrL3BWRzg4WkRyLy9zdUI1ZERPaktUcDNGbjRPSGR0VwpnRmpuY3RVOEV4Zk5YNTR1Yndja2ZTMGdiOXRtejcyaHN3OU5KaTV2QXlMS2ZIcmxNNTJTeWhwUVZKbkpPYzF6ClhqQVlLTHE1M1E1TGt3RXBZMXpkL21XdVhkRWswWldZcHlXemk3WWN4UXQreUJkWVNJQzEKLS0tLS1FTkQgQ0VSVElGSUNBVEUtLS0tLQo="
-	AcceptanceTestPrefix = "test-acc-"
+	AuditPolicyB64                  = "ewogICJhcGlWZXJzaW9uIjogImF1ZGl0Lms4cy5pby92MSIsCiAgImtpbmQiOiAiUG9saWN5IiwKICAib21pdFN0YWdlcyI6IFsKICAgICJSZXF1ZXN0UmVjZWl2ZWQiCiAgXSwKICAicnVsZXMiOiBbCiAgICB7CiAgICAgICJsZXZlbCI6ICJSZXF1ZXN0UmVzcG9uc2UiLAogICAgICAicmVzb3VyY2VzIjogWwogICAgICAgIHsKICAgICAgICAgICJncm91cCI6ICIiLAogICAgICAgICAgInJlc291cmNlcyI6IFsKICAgICAgICAgICAgInBvZHMiCiAgICAgICAgICBdCiAgICAgICAgfQogICAgICBdCiAgICB9LAogICAgewogICAgICAibGV2ZWwiOiAiTWV0YWRhdGEiLAogICAgICAicmVzb3VyY2VzIjogWwogICAgICAgIHsKICAgICAgICAgICJncm91cCI6ICIiLAogICAgICAgICAgInJlc291cmNlcyI6IFsKICAgICAgICAgICAgInBvZHMvbG9nIiwKICAgICAgICAgICAgInBvZHMvc3RhdHVzIgogICAgICAgICAgXQogICAgICAgIH0KICAgICAgXQogICAgfSwKICAgIHsKICAgICAgImxldmVsIjogIk5vbmUiLAogICAgICAicmVzb3VyY2VzIjogWwogICAgICAgIHsKICAgICAgICAgICJncm91cCI6ICIiLAogICAgICAgICAgInJlc291cmNlcyI6IFsKICAgICAgICAgICAgImNvbmZpZ21hcHMiCiAgICAgICAgICBdLAogICAgICAgICAgInJlc291cmNlTmFtZXMiOiBbCiAgICAgICAgICAgICJjb250cm9sbGVyLWxlYWRlciIKICAgICAgICAgIF0KICAgICAgICB9CiAgICAgIF0KICAgIH0sCiAgICB7CiAgICAgICJsZXZlbCI6ICJOb25lIiwKICAgICAgInVzZXJzIjogWwogICAgICAgICJzeXN0ZW06a3ViZS1wcm94eSIKICAgICAgXSwKICAgICAgInZlcmJzIjogWwogICAgICAgICJ3YXRjaCIKICAgICAgXSwKICAgICAgInJlc291cmNlcyI6IFsKICAgICAgICB7CiAgICAgICAgICAiZ3JvdXAiOiAiIiwKICAgICAgICAgICJyZXNvdXJjZXMiOiBbCiAgICAgICAgICAgICJlbmRwb2ludHMiLAogICAgICAgICAgICAic2VydmljZXMiCiAgICAgICAgICBdCiAgICAgICAgfQogICAgICBdCiAgICB9LAogICAgewogICAgICAibGV2ZWwiOiAiTm9uZSIsCiAgICAgICJ1c2VyR3JvdXBzIjogWwogICAgICAgICJzeXN0ZW06YXV0aGVudGljYXRlZCIKICAgICAgXSwKICAgICAgIm5vblJlc291cmNlVVJMcyI6IFsKICAgICAgICAiL2FwaSoiLAogICAgICAgICIvdmVyc2lvbiIKICAgICAgXQogICAgfSwKICAgIHsKICAgICAgImxldmVsIjogIlJlcXVlc3QiLAogICAgICAicmVzb3VyY2VzIjogWwogICAgICAgIHsKICAgICAgICAgICJncm91cCI6ICIiLAogICAgICAgICAgInJlc291cmNlcyI6IFsKICAgICAgICAgICAgImNvbmZpZ21hcHMiCiAgICAgICAgICBdCiAgICAgICAgfQogICAgICBdLAogICAgICAibmFtZXNwYWNlcyI6IFsKICAgICAgICAia3ViZS1zeXN0ZW0iCiAgICAgIF0KICAgIH0sCiAgICB7CiAgICAgICJsZXZlbCI6ICJNZXRhZGF0YSIsCiAgICAgICJyZXNvdXJjZXMiOiBbCiAgICAgICAgewogICAgICAgICAgImdyb3VwIjogIiIsCiAgICAgICAgICAicmVzb3VyY2VzIjogWwogICAgICAgICAgICAic2VjcmV0cyIsCiAgICAgICAgICAgICJjb25maWdtYXBzIgogICAgICAgICAgXQogICAgICAgIH0KICAgICAgXQogICAgfSwKICAgIHsKICAgICAgImxldmVsIjogIlJlcXVlc3QiLAogICAgICAicmVzb3VyY2VzIjogWwogICAgICAgIHsKICAgICAgICAgICJncm91cCI6ICIiCiAgICAgICAgfSwKICAgICAgICB7CiAgICAgICAgICAiZ3JvdXAiOiAiZXh0ZW5zaW9ucyIKICAgICAgICB9CiAgICAgIF0KICAgIH0sCiAgICB7CiAgICAgICJsZXZlbCI6ICJNZXRhZGF0YSIsCiAgICAgICJvbWl0U3RhZ2VzIjogWwogICAgICAgICJSZXF1ZXN0UmVjZWl2ZWQiCiAgICAgIF0KICAgIH0KICBdCn0K"
+	ExampleCAB64                    = "LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSURnekNDQW11Z0F3SUJBZ0lRVGhhQitUNmdtdVVYN3dXZi9XUitmekFOQmdrcWhraUc5dzBCQVFzRkFEQUEKTUI0WERUSTBNRFl5TlRJeE1UY3pNVm9YRFRJME1Ea3lNekl4TVRjek1Wb3dBRENDQVNJd0RRWUpLb1pJaHZjTgpBUUVCQlFBRGdnRVBBRENDQVFvQ2dnRUJBT240VkVpRWJoL29GRkoxcG1QZXZxb1pBbWtVUjRqeWd5Y0MvRFhCCmVEWjYxd1NzV1FPU21peFg1bDZDd1FXNzdkV3NRVGhsU0RqN003RytxYjZCWHBSUWcrMndJOFVsVHp6Y0NpM0UKN1pib2M2LzI1YXd3NVpLOW1GVWVGWlBWemI4ZHNuVUFkbmFNa2V2ckFGQXNoL0NmSEh0cThzSUZnOVF2SWJnUApNRFJJcnZnSmlGY1NLS1E5clgxOWkzcFY3ZE9UaGxaYW11UWRGUjhGSVgyQ3BVQithajdSWkdMTFFra3AzMzhUCjFTRk5hK3V1THk3Mlh6MldIdEdqOTE5OFVENFFTRzByd2JUYXEvQVdxNjcvblhRS2FOQ2xHYzlGajNRSjU2NEUKK3cvWXBvK1krc053OXY0M1NVSVdyQXRMNGRicHNadlBEK0FKS1RDRXArUExZWlVDQXdFQUFhT0IrRENCOVRBTwpCZ05WSFE4QkFmOEVCQU1DQmFBd0RBWURWUjBUQVFIL0JBSXdBRENCMUFZRFZSMFJBUUgvQklISk1JSEdnaVJsCmVHVmpkWFJ2Y2kxcllYUmhiRzluTFdWNFpXTjFkRzl5TFhKbFkyOXVZMmxzWlhLQ0xHVjRaV04xZEc5eUxXdGgKZEdGc2IyY3RaWGhsWTNWMGIzSXRjbVZqYjI1amFXeGxjaTVyWVhSaGJHOW5nakJsZUdWamRYUnZjaTFyWVhSaApiRzluTFdWNFpXTjFkRzl5TFhKbFkyOXVZMmxzWlhJdWEyRjBZV3h2Wnk1emRtT0NQbVY0WldOMWRHOXlMV3RoCmRHRnNiMmN0WlhobFkzVjBiM0l0Y21WamIyNWphV3hsY2k1cllYUmhiRzluTG5OMll5NWpiSFZ6ZEdWeUxteHYKWTJGc01BMEdDU3FHU0liM0RRRUJDd1VBQTRJQkFRQlEvQ2JBdEFCQkZORUE5d1hYaE9vYUNrRFY1dTc3VFlzMQpFV2FJcFJFNjV5QmVtTDc2eXpYeEtoc2RmR3RJSmJ0THBWS1lUYlpBVTQrem9IS1NVTWs4REY4bXN0dGhOMWQ5CnR6a1d4ZXZ3UGViL2NtMVZVWlBzWkxvNnFRblJRUFJCUXc0dFpWdkhTWmtsSjBVb2lvVk5zOWJJY3ZQZ2Z4UW0KNkhDU3NEWU9sWnlPRHlrY045U21nbFZtVWFNeVkxMGcrL3BWRzg4WkRyLy9zdUI1ZERPaktUcDNGbjRPSGR0VwpnRmpuY3RVOEV4Zk5YNTR1Yndja2ZTMGdiOXRtejcyaHN3OU5KaTV2QXlMS2ZIcmxNNTJTeWhwUVZKbkpPYzF6ClhqQVlLTHE1M1E1TGt3RXBZMXpkL21XdVhkRWswWldZcHlXemk3WWN4UXQreUJkWVNJQzEKLS0tLS1FTkQgQ0VSVElGSUNBVEUtLS0tLQo="
+	AcceptanceTestPrefix            = "test-acc-"
+	cksVPCNamePrefix                = "test-acc-cks-vpc-"
+	maxAcceptanceResourceNameLength = 30
 )
-
-func deleteCluster(ctx context.Context, client *coreweave.Client, cluster *cksv1beta1.Cluster) error {
-	retryDelay := 30 * time.Second
-	for {
-		if cluster.Status == cksv1beta1.Cluster_STATUS_CREATING || cluster.Status == cksv1beta1.Cluster_STATUS_UPDATING || cluster.Status == cksv1beta1.Cluster_STATUS_DELETING {
-			log.Printf("cluster %s is in creating or updating state, waiting before deletion", cluster.Name)
-			select {
-			case <-ctx.Done():
-				return fmt.Errorf("timed out waiting for cluster %s to reach stable state: %w", cluster.Name, ctx.Err())
-			case <-time.After(retryDelay):
-			}
-			clusterResp, err := client.GetCluster(ctx, connect.NewRequest(&cksv1beta1.GetClusterRequest{
-				Id: cluster.Id,
-			}))
-			if connect.CodeOf(err) == connect.CodeNotFound {
-				log.Printf("cluster %s has already been deleted", cluster.Name)
-				return nil
-			} else if err != nil {
-				return fmt.Errorf("failed to get cluster %s: %w", cluster.Name, err)
-			}
-
-			cluster = clusterResp.Msg.Cluster
-		} else {
-			_, err := client.DeleteCluster(ctx, connect.NewRequest(&cksv1beta1.DeleteClusterRequest{
-				Id: cluster.Id,
-			}))
-			if err == nil {
-				return nil
-			} else if connect.CodeOf(err) == connect.CodeNotFound {
-				log.Printf("cluster %s has already been deleted", cluster.Name)
-				return nil
-			} else {
-				return fmt.Errorf("failed to delete cluster %s: %w", cluster.Name, err)
-			}
-		}
-
-		select {
-		case <-ctx.Done():
-			return fmt.Errorf("timed out waiting to delete cluster %s: %w", cluster.Name, ctx.Err())
-		case <-time.After(retryDelay):
-			continue
-		}
-	}
-}
-
-func init() {
-	resource.AddTestSweepers("coreweave_cks_cluster", &resource.Sweeper{
-		Name:         "coreweave_cks_cluster",
-		Dependencies: []string{}, // left as a placeholder; more types are likely to be added that would need to be torn down first.
-		F: func(r string) error {
-			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
-			defer cancel()
-
-			testutil.SetEnvDefaults()
-			client, err := provider.BuildClient(ctx, provider.CoreweaveProviderModel{}, "", "")
-			if err != nil {
-				return fmt.Errorf("failed to build client: %w", err)
-			}
-
-			listResp, err := client.ListClusters(ctx, &connect.Request[cksv1beta1.ListClustersRequest]{})
-			if err != nil {
-				return fmt.Errorf("failed to list clusters: %w", err)
-			}
-			for _, cluster := range listResp.Msg.Items {
-				if !strings.HasPrefix(cluster.Name, AcceptanceTestPrefix) {
-					log.Printf("skipping cluster %s because it does not have prefix %s", cluster.Name, AcceptanceTestPrefix)
-					continue
-				}
-
-				if cluster.GetZone() != r {
-					log.Printf("skipping cluster %s in zone %s because it does not match sweep zone %s", cluster.Name, cluster.Zone, r)
-					continue
-				}
-
-				log.Printf("sweeping cluster %s", cluster.Name)
-				if testutil.SweepDryRun() {
-					log.Printf("skipping Cluster %s because of dry-run mode", cluster.Name)
-					continue
-				}
-
-				deleteCtx, deleteCancel := context.WithTimeout(ctx, 30*time.Minute)
-				defer deleteCancel()
-
-				if err := deleteCluster(deleteCtx, client, cluster); err != nil {
-					return fmt.Errorf("failed to delete cluster %s: %w", cluster.Name, err)
-				}
-
-				waitCtx, waitCancel := context.WithTimeout(ctx, 10*time.Minute)
-				defer waitCancel()
-				if err := testutil.WaitForDelete(waitCtx, 5*time.Minute, 15*time.Second, client.GetCluster, &cksv1beta1.GetClusterRequest{
-					Id: cluster.Id,
-				}); err != nil {
-					return fmt.Errorf("failed to wait for cluster %s to be deleted: %w", cluster.Name, err)
-				}
-			}
-
-			return nil
-		},
-	})
-}
 
 func TestClusterSchema(t *testing.T) {
 	ctx := context.Background()
@@ -157,7 +53,7 @@ func TestClusterSchema(t *testing.T) {
 }
 
 func defaultVpc(name, zone string) *networking.VpcResourceModel { //nolint:unparam
-	if len(name) > 30 {
+	if len(name) > maxAcceptanceResourceNameLength {
 		// Bail on the tests as early as possible; this is a test definition failure.
 		panic("Vpc name must be 30 characters or less")
 	}
@@ -193,6 +89,7 @@ func defaultVpc(name, zone string) *networking.VpcResourceModel { //nolint:unpar
 
 type resourceNames struct {
 	ClusterName        string
+	VPCName            string
 	ResourceName       string
 	FullResourceName   string
 	FullDataSourceName string
@@ -203,16 +100,23 @@ func with[T any](obj T, fn func(*T)) T {
 	return obj
 }
 
-func generateResourceNames(clusterNamePrefix string) resourceNames {
-	randomInt := rand.IntN(100)
+func generateResourceNames(t *testing.T, clusterNamePrefix string) resourceNames {
+	t.Helper()
 
-	clusterName := fmt.Sprintf("%s%s-%x", AcceptanceTestPrefix, clusterNamePrefix, randomInt)
-	resourceName := fmt.Sprintf("test_acc_cks_cluster_%s_%x", clusterNamePrefix, randomInt)
+	suffix := fmt.Sprintf("%05x", rand.IntN(1<<20))
+
+	clusterName := fmt.Sprintf("%s%s-%s", AcceptanceTestPrefix, clusterNamePrefix, suffix)
+	vpcName := cksVPCNamePrefix + suffix
+	if len(clusterName) > maxAcceptanceResourceNameLength || len(vpcName) > maxAcceptanceResourceNameLength {
+		panic("acceptance-test cluster and VPC names must be 30 characters or less")
+	}
+	resourceName := fmt.Sprintf("test_acc_cks_cluster_%s_%s", clusterNamePrefix, suffix)
 	fullResourceName := fmt.Sprintf("coreweave_cks_cluster.%s", resourceName)
 	fullDataSourceName := fmt.Sprintf("data.coreweave_cks_cluster.%s", resourceName)
 
 	return resourceNames{
 		ClusterName:        clusterName,
+		VPCName:            vpcName,
 		ResourceName:       resourceName,
 		FullResourceName:   fullResourceName,
 		FullDataSourceName: fullDataSourceName,
@@ -409,11 +313,11 @@ func createClusterTestStep(ctx context.Context, t *testing.T, config testStepCon
 }
 
 func TestClusterResource(t *testing.T) {
-	config := generateResourceNames("cks-cluster")
+	config := generateResourceNames(t, "cks-cluster")
 	zone := testutil.AcceptanceTestZone
 	kubeVersion := testutil.AcceptanceTestKubeVersion
 
-	vpc := defaultVpc(config.ClusterName, zone)
+	vpc := defaultVpc(config.VPCName, zone)
 	npTypes := map[string]attr.Type{
 		"start": types.Int32Type,
 		"end":   types.Int32Type,
@@ -634,11 +538,11 @@ func TestClusterResource(t *testing.T) {
 }
 
 func TestClusterResource_V6FieldsCreateOnly(t *testing.T) {
-	config := generateResourceNames("cks-cluster-v6")
+	config := generateResourceNames(t, "cks-cluster-v6")
 	zone := testutil.AcceptanceTestZone
 	kubeVersion := testutil.AcceptanceTestKubeVersion
 
-	vpc := defaultVpc(config.ClusterName, zone)
+	vpc := defaultVpc(config.VPCName, zone)
 	vpc.VpcPrefixes = append(vpc.VpcPrefixes,
 		networking.VpcPrefixResourceModel{
 			Name:  types.StringValue("pod-cidr-v6"),
@@ -752,11 +656,11 @@ func TestClusterResource_V6FieldsCreateOnly(t *testing.T) {
 }
 
 func TestClusterResource_Tailscale(t *testing.T) {
-	config := generateResourceNames("cks-tailscale")
+	config := generateResourceNames(t, "cks-tailscale")
 	zone := testutil.AcceptanceTestZone
 	kubeVersion := testutil.AcceptanceTestKubeVersion
 
-	vpc := defaultVpc(config.ClusterName, zone)
+	vpc := defaultVpc(config.VPCName, zone)
 
 	base := &cks.ClusterResourceModel{
 		VpcId:               types.StringValue(fmt.Sprintf("coreweave_networking_vpc.%s.id", config.ResourceName)),
@@ -847,11 +751,11 @@ func TestClusterResource_Tailscale(t *testing.T) {
 }
 
 func TestClusterResource_Kubelet(t *testing.T) {
-	config := generateResourceNames("cks-kubelet")
+	config := generateResourceNames(t, "cks-kubelet")
 	zone := testutil.AcceptanceTestZone
 	kubeVersion := testutil.AcceptanceTestKubeVersion
 
-	vpc := defaultVpc(config.ClusterName, zone)
+	vpc := defaultVpc(config.VPCName, zone)
 
 	base := &cks.ClusterResourceModel{
 		VpcId:               types.StringValue(fmt.Sprintf("coreweave_networking_vpc.%s.id", config.ResourceName)),
@@ -940,11 +844,11 @@ func TestClusterResource_Kubelet(t *testing.T) {
 }
 
 func TestPartialOidcConfig(t *testing.T) {
-	config := generateResourceNames("partial-oidc")
+	config := generateResourceNames(t, "partial-oidc")
 	zone := testutil.AcceptanceTestZone
 	kubeVersion := testutil.AcceptanceTestKubeVersion
 
-	vpc := defaultVpc(config.ClusterName, zone)
+	vpc := defaultVpc(config.VPCName, zone)
 
 	initial := &cks.ClusterResourceModel{
 		VpcId:               types.StringValue(fmt.Sprintf("coreweave_networking_vpc.%s.id", config.ResourceName)),
@@ -1075,11 +979,11 @@ func TestPartialOidcConfig(t *testing.T) {
 }
 
 func TestPartialWebhookConfig(t *testing.T) {
-	config := generateResourceNames("partial-webhook")
+	config := generateResourceNames(t, "partial-webhook")
 	zone := testutil.AcceptanceTestZone
 	kubeVersion := testutil.AcceptanceTestKubeVersion
 
-	vpc := defaultVpc(config.ClusterName, zone)
+	vpc := defaultVpc(config.VPCName, zone)
 
 	initial := &cks.ClusterResourceModel{
 		VpcId:               types.StringValue(fmt.Sprintf("coreweave_networking_vpc.%s.id", config.ResourceName)),
@@ -1181,11 +1085,11 @@ func TestPartialWebhookConfig(t *testing.T) {
 }
 
 func TestEmptyAuditPolicy(t *testing.T) {
-	config := generateResourceNames("audit-policy")
+	config := generateResourceNames(t, "audit-policy")
 	zone := testutil.AcceptanceTestZone
 	kubeVersion := testutil.AcceptanceTestKubeVersion
 
-	vpc := defaultVpc(config.ClusterName, zone)
+	vpc := defaultVpc(config.VPCName, zone)
 	cluster := &cks.ClusterResourceModel{
 		VpcId:               types.StringValue(fmt.Sprintf("coreweave_networking_vpc.%s.id", config.ResourceName)),
 		Name:                types.StringValue(config.ClusterName),
@@ -1220,8 +1124,8 @@ func TestSharedStorage(t *testing.T) {
 	kubeVersion := testutil.AcceptanceTestKubeVersion
 	ctx := t.Context()
 	// Create base (original/source) cluster that is sharing it's storage
-	baseConfig1 := generateResourceNames("shared")
-	baseVpc1 := defaultVpc(baseConfig1.ClusterName, zone)
+	baseConfig1 := generateResourceNames(t, "shared")
+	baseVpc1 := defaultVpc(baseConfig1.VPCName, zone)
 	baseCluster1 := &cks.ClusterResourceModel{
 		VpcId:               types.StringValue(fmt.Sprintf("coreweave_networking_vpc.%s.id", baseConfig1.ResourceName)),
 		Name:                types.StringValue(baseConfig1.ClusterName),
@@ -1234,8 +1138,8 @@ func TestSharedStorage(t *testing.T) {
 	}
 
 	// Create migrated cluster which is taking over it's storage
-	dependentConfig := generateResourceNames("migrated")
-	dependentVpc := defaultVpc(dependentConfig.ClusterName, zone)
+	dependentConfig := generateResourceNames(t, "migrated")
+	dependentVpc := defaultVpc(dependentConfig.VPCName, zone)
 
 	dependentClusterInitial := &cks.ClusterResourceModel{
 		VpcId:                  types.StringValue(fmt.Sprintf("coreweave_networking_vpc.%s.id", dependentConfig.ResourceName)),
@@ -1295,11 +1199,11 @@ func TestSharedStorage(t *testing.T) {
 }
 
 func TestClusterResource_AdditionalServerSANs(t *testing.T) {
-	config := generateResourceNames("cks-sans")
+	config := generateResourceNames(t, "cks-sans")
 	zone := testutil.AcceptanceTestZone
 	kubeVersion := testutil.AcceptanceTestKubeVersion
 
-	vpc := defaultVpc(config.ClusterName, zone)
+	vpc := defaultVpc(config.VPCName, zone)
 	ctx := t.Context()
 
 	base := cks.ClusterResourceModel{
