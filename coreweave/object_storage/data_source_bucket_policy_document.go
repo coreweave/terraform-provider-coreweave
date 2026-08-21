@@ -286,7 +286,7 @@ func BuildPolicyDocument(ctx context.Context, bm BucketPolicyDocumentModel) (Pol
 			var tmp map[string][]string
 			diagnostics.Append(sm.Principal.ElementsAs(ctx, &tmp, false)...)
 			if diagnostics.HasError() {
-				return pd, diagnostics
+				return PolicyDocument{}, diagnostics
 			}
 			pr = tmp
 		}
@@ -296,7 +296,7 @@ func BuildPolicyDocument(ctx context.Context, bm BucketPolicyDocumentModel) (Pol
 			var tmp scalarCondition
 			diagnostics.Append(sm.Condition.ElementsAs(ctx, &tmp, false)...)
 			if diagnostics.HasError() {
-				return pd, diagnostics
+				return PolicyDocument{}, diagnostics
 			}
 			for op, values := range tmp {
 				cond[op] = make(map[string][]string, len(values))
@@ -311,7 +311,7 @@ func BuildPolicyDocument(ctx context.Context, bm BucketPolicyDocumentModel) (Pol
 			var tmp []string
 			diagnostics.Append(sm.Action.ElementsAs(ctx, &tmp, false)...)
 			if diagnostics.HasError() {
-				return pd, diagnostics
+				return PolicyDocument{}, diagnostics
 			}
 			acts = tmp
 		}
@@ -321,7 +321,7 @@ func BuildPolicyDocument(ctx context.Context, bm BucketPolicyDocumentModel) (Pol
 			var tmp []string
 			diagnostics.Append(sm.Resource.ElementsAs(ctx, &tmp, false)...)
 			if diagnostics.HasError() {
-				return pd, diagnostics
+				return PolicyDocument{}, diagnostics
 			}
 			res = tmp
 		}

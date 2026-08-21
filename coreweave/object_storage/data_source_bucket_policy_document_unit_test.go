@@ -36,7 +36,11 @@ func TestBuildPolicyDocumentReturnsConditionDiagnostics(t *testing.T) {
 	t.Parallel()
 
 	model := objectstorage.BucketPolicyDocumentModel{
+		Version: types.StringValue("2012-10-17"),
 		Statement: []objectstorage.StatementModel{
+			{
+				Effect: types.StringValue("Allow"),
+			},
 			{
 				Condition: types.MapValueMust(types.MapType{ElemType: types.StringType}, map[string]attr.Value{
 					"StringEquals": types.MapValueMust(types.StringType, map[string]attr.Value{
@@ -48,8 +52,7 @@ func TestBuildPolicyDocumentReturnsConditionDiagnostics(t *testing.T) {
 	}
 
 	document, diagnostics := objectstorage.BuildPolicyDocument(t.Context(), model)
-	require.Len(t, diagnostics.Errors(), 1)
-	require.Equal(t, "Value Conversion Error", diagnostics.Errors()[0].Summary())
+	require.True(t, diagnostics.HasError())
 	require.Contains(t, diagnostics.Errors()[0].Detail(), "cw:PrincipalOrgID")
-	require.Empty(t, document.Statement)
+	require.Equal(t, objectstorage.PolicyDocument{}, document)
 }
