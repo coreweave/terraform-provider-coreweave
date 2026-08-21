@@ -25,8 +25,31 @@ func TestBuildPolicyDocumentPreservesCondition(t *testing.T) {
 		},
 	}
 
-	document := objectstorage.BuildPolicyDocument(t.Context(), model)
+	document, diagnostics := objectstorage.BuildPolicyDocument(t.Context(), model)
+	require.False(t, diagnostics.HasError(), diagnostics.Errors())
 	conditionJSON, err := json.Marshal(document.Statement[0].Condition)
 	require.NoError(t, err)
 	require.JSONEq(t, `{"StringEquals":{"cw:PrincipalOrgID":["test-org-id"]}}`, string(conditionJSON))
+}
+
+func TestBuildPolicyDocumentReturnsConditionDiagnostics(t *testing.T) {
+	t.Parallel()
+
+	model := objectstorage.BucketPolicyDocumentModel{
+		Statement: []objectstorage.StatementModel{
+			{
+				Condition: types.MapValueMust(types.MapType{ElemType: types.StringType}, map[string]attr.Value{
+					"StringEquals": types.MapValueMust(types.StringType, map[string]attr.Value{
+						"cw:PrincipalOrgID": types.StringNull(),
+					}),
+				}),
+			},
+		},
+	}
+
+	document, diagnostics := objectstorage.BuildPolicyDocument(t.Context(), model)
+	require.Len(t, diagnostics.Errors(), 1)
+	require.Equal(t, "Value Conversion Error", diagnostics.Errors()[0].Summary())
+	require.Contains(t, diagnostics.Errors()[0].Detail(), "cw:PrincipalOrgID")
+	require.Empty(t, document.Statement)
 }

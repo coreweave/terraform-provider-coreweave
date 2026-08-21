@@ -59,7 +59,10 @@ func createBucketPolicyTestStep(ctx context.Context, t *testing.T, opts bucketPo
 		dataSourceConfig = objectstorage.MustRenderBucketPolicyDocument(ctx, opts.resourceName, opts.policyDoc)
 
 		// generate the JSON that is expected to be stored in state
-		pd := objectstorage.BuildPolicyDocument(ctx, *opts.policyDoc)
+		pd, diags := objectstorage.BuildPolicyDocument(ctx, *opts.policyDoc)
+		if diags.HasError() {
+			panic(fmt.Sprintf("failed to build policy document: %v", diags))
+		}
 		rawJSON, err := json.Marshal(pd)
 		if err != nil {
 			panic(fmt.Sprintf("failed to marshal policy document json: %v", err))
