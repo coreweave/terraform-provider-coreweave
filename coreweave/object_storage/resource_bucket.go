@@ -35,6 +35,7 @@ var (
 
 const (
 	ErrNoSuchBucket string = "NoSuchBucket"
+	errNoSuchTagSet string = "NoSuchTagSet"
 )
 
 func NewBucketResource() resource.Resource {
@@ -148,6 +149,11 @@ func handleS3Error(
 		fmt.Sprintf("Unexpected error with bucket %q", bucketName),
 		err.Error(),
 	)
+}
+
+func isNoSuchTagSetError(err error) bool {
+	var apiErr smithy.APIError
+	return errors.As(err, &apiErr) && apiErr.ErrorCode() == errNoSuchTagSet
 }
 
 // waitForBucket polls HeadBucket every 'interval' until the bucket
@@ -392,17 +398,21 @@ func (b *BucketResource) Read(ctx context.Context, req resource.ReadRequest, res
 		Bucket: aws.String(data.Name.ValueString()),
 	})
 	if err != nil {
-		var httpErr *http.ResponseError
-		if errors.As(err, &httpErr) && httpErr.Response != nil {
-			// if we get a 404 back from the client, the bucket does not exist & can be removed from state
-			if httpErr.Response.StatusCode == 404 {
-				resp.State.RemoveResource(ctx)
-				return
+		if isNoSuchTagSetError(err) {
+			tagSet = &s3.GetBucketTaggingOutput{}
+		} else {
+			var httpErr *http.ResponseError
+			if errors.As(err, &httpErr) && httpErr.Response != nil {
+				// if we get a 404 back from the client, the bucket does not exist & can be removed from state
+				if httpErr.Response.StatusCode == 404 {
+					resp.State.RemoveResource(ctx)
+					return
+				}
 			}
-		}
 
-		handleS3Error(err, &resp.Diagnostics, data.Name.ValueString())
-		return
+			handleS3Error(err, &resp.Diagnostics, data.Name.ValueString())
+			return
+		}
 	}
 
 	location, err := s3Client.GetBucketLocation(ctx, &s3.GetBucketLocationInput{
