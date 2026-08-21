@@ -35,6 +35,7 @@ var (
 
 const (
 	ErrNoSuchBucket string = "NoSuchBucket"
+	errNoSuchTagSet string = "NoSuchTagSet"
 )
 
 func NewBucketResource() resource.Resource {
@@ -148,6 +149,39 @@ func handleS3Error(
 		fmt.Sprintf("Unexpected error with bucket %q", bucketName),
 		err.Error(),
 	)
+}
+
+func isMissingBucketTagSetError(err error) bool {
+	var apiErr smithy.APIError
+	if errors.As(err, &apiErr) {
+		return apiErr.ErrorCode() == errNoSuchTagSet
+	}
+
+	return isHTTPNotFoundError(err)
+}
+
+func isHTTPNotFoundError(err error) bool {
+	var httpErr *http.ResponseError
+	return errors.As(err, &httpErr) &&
+		httpErr.Response != nil &&
+		httpErr.Response.StatusCode == 404
+}
+
+func bucketExists(ctx context.Context, client s3.HeadBucketAPIClient, bucket string) (bool, error) {
+	_, err := client.HeadBucket(ctx, &s3.HeadBucketInput{Bucket: aws.String(bucket)})
+	if err == nil {
+		return true, nil
+	}
+	if isHTTPNotFoundError(err) {
+		return false, nil
+	}
+
+	var apiErr smithy.APIError
+	if errors.As(err, &apiErr) && apiErr.ErrorCode() == ErrNoSuchBucket {
+		return false, nil
+	}
+
+	return false, err
 }
 
 // waitForBucket polls HeadBucket every 'interval' until the bucket
@@ -392,34 +426,34 @@ func (b *BucketResource) Read(ctx context.Context, req resource.ReadRequest, res
 		Bucket: aws.String(data.Name.ValueString()),
 	})
 	if err != nil {
-		var httpErr *http.ResponseError
-		if errors.As(err, &httpErr) && httpErr.Response != nil {
-			// if we get a 404 back from the client, the bucket does not exist & can be removed from state
-			if httpErr.Response.StatusCode == 404 {
-				resp.State.RemoveResource(ctx)
-				return
-			}
+		if isMissingBucketTagSetError(err) {
+			tagSet = &s3.GetBucketTaggingOutput{}
+		} else {
+			handleS3Error(err, &resp.Diagnostics, data.Name.ValueString())
+			return
 		}
-
-		handleS3Error(err, &resp.Diagnostics, data.Name.ValueString())
-		return
 	}
 
 	location, err := s3Client.GetBucketLocation(ctx, &s3.GetBucketLocationInput{
 		Bucket: aws.String(data.Name.ValueString()),
 	})
 	if err != nil {
-		var httpErr *http.ResponseError
-		if errors.As(err, &httpErr) && httpErr.Response != nil {
-			// if we get a 404 back from the client, the bucket does not exist & can be removed from state
-			if httpErr.Response.StatusCode == 404 {
-				resp.State.RemoveResource(ctx)
-				return
-			}
+		if !isHTTPNotFoundError(err) {
+			handleS3Error(err, &resp.Diagnostics, data.Name.ValueString())
+			return
 		}
 
-		handleS3Error(err, &resp.Diagnostics, data.Name.ValueString())
-		return
+		exists, err := bucketExists(ctx, s3Client, data.Name.ValueString())
+		if err != nil {
+			handleS3Error(err, &resp.Diagnostics, data.Name.ValueString())
+			return
+		}
+		if !exists {
+			resp.State.RemoveResource(ctx)
+			return
+		}
+	} else {
+		data.Zone = types.StringValue(string(location.LocationConstraint))
 	}
 
 	tags := types.MapNull(types.StringType)
@@ -437,7 +471,6 @@ func (b *BucketResource) Read(ctx context.Context, req resource.ReadRequest, res
 		tags = tagMapValue
 	}
 
-	data.Zone = types.StringValue(string(location.LocationConstraint))
 	data.Tags = tags
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
