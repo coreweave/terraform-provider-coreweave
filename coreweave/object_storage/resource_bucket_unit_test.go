@@ -1,25 +1,36 @@
 package objectstorage
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	standardhttp "net/http"
 	"testing"
 
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/smithy-go"
 	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
+type bucketHeadCheckerStub struct {
+	err error
+}
+
+func (s bucketHeadCheckerStub) HeadBucket(_ context.Context, _ *s3.HeadBucketInput, _ ...func(*s3.Options)) (*s3.HeadBucketOutput, error) {
+	return &s3.HeadBucketOutput{}, s.err
+}
+
+func responseError(t *testing.T, statusCode int) error {
+	t.Helper()
+
+	return &smithyhttp.ResponseError{
+		Response: &smithyhttp.Response{Response: &standardhttp.Response{StatusCode: statusCode}},
+		Err:      errors.New("request failed"),
+	}
+}
+
 func TestIsMissingBucketTagSetError(t *testing.T) {
 	t.Parallel()
-
-	httpError := func(statusCode int) error {
-		t.Helper()
-		return &smithyhttp.ResponseError{
-			Response: &smithyhttp.Response{Response: &standardhttp.Response{StatusCode: statusCode}},
-			Err:      errors.New("request failed"),
-		}
-	}
 
 	tests := map[string]struct {
 		err  error
@@ -34,18 +45,18 @@ func TestIsMissingBucketTagSetError(t *testing.T) {
 			want: true,
 		},
 		"HTTP 404": {
-			err:  httpError(standardhttp.StatusNotFound),
+			err:  responseError(t, standardhttp.StatusNotFound),
 			want: true,
 		},
 		"wrapped HTTP 404": {
-			err:  fmt.Errorf("get bucket tagging: %w", httpError(standardhttp.StatusNotFound)),
+			err:  fmt.Errorf("get bucket tagging: %w", responseError(t, standardhttp.StatusNotFound)),
 			want: true,
 		},
 		"different API error": {
 			err: &smithy.GenericAPIError{Code: ErrNoSuchBucket},
 		},
 		"HTTP 500": {
-			err: httpError(standardhttp.StatusInternalServerError),
+			err: responseError(t, standardhttp.StatusInternalServerError),
 		},
 		"non-API error": {
 			err: errors.New("request failed"),
@@ -58,6 +69,38 @@ func TestIsMissingBucketTagSetError(t *testing.T) {
 
 			if got := isMissingBucketTagSetError(tt.err); got != tt.want {
 				t.Errorf("isMissingBucketTagSetError() = %t, want %t", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestBucketExists(t *testing.T) {
+	t.Parallel()
+
+	headNotFound := fmt.Errorf("head bucket: %w", responseError(t, standardhttp.StatusNotFound))
+	headFailure := responseError(t, standardhttp.StatusInternalServerError)
+
+	tests := []struct {
+		name       string
+		err        error
+		wantExists bool
+		wantErr    error
+	}{
+		{name: "success confirms existence", wantExists: true},
+		{name: "404 confirms absence", err: headNotFound},
+		{name: "other error is propagated", err: headFailure, wantErr: headFailure},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			exists, err := bucketExists(t.Context(), bucketHeadCheckerStub{err: tt.err}, "test-bucket")
+			if !errors.Is(err, tt.wantErr) {
+				t.Fatalf("bucketExists() error = %v, want %v", err, tt.wantErr)
+			}
+			if exists != tt.wantExists {
+				t.Errorf("bucketExists() = %t, want %t", exists, tt.wantExists)
 			}
 		})
 	}
