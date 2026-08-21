@@ -123,6 +123,8 @@ func (sl StringList) MarshalJSON() ([]byte, error) {
 // Single‐string values get normalized into a slice of length 1.
 type Condition map[string]map[string][]string
 
+type scalarCondition map[string]map[string]string
+
 func (c *Condition) UnmarshalJSON(b []byte) error {
 	// First unmarshal into a generic map[string]json.RawMessage
 	var rawOps map[string]json.RawMessage
@@ -285,10 +287,13 @@ func BuildPolicyDocument(ctx context.Context, bm BucketPolicyDocumentModel) Poli
 		// condition
 		cond := Condition{}
 		if !sm.Condition.IsNull() {
-			var tmp Condition
+			var tmp scalarCondition
 			sm.Condition.ElementsAs(ctx, &tmp, false)
-			for op, raw := range tmp {
-				cond[op] = raw
+			for op, values := range tmp {
+				cond[op] = make(map[string][]string, len(values))
+				for key, value := range values {
+					cond[op][key] = []string{value}
+				}
 			}
 		}
 		// actions
