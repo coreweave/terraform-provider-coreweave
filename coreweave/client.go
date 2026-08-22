@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"time"
 
 	"buf.build/gen/go/coreweave/cks/connectrpc/go/coreweave/cks/v1beta1/cksv1beta1connect"
@@ -18,7 +19,7 @@ import (
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
 )
 
-func NewClient(endpoint string, s3Endpoint string, timeout time.Duration, interceptors ...connect.Interceptor) *Client {
+func NewClient(endpoint string, s3Endpoint string, timeout time.Duration, token string, userAgent string, interceptors ...connect.Interceptor) *Client {
 	rc := retryablehttp.NewClient()
 	rc.HTTPClient.Timeout = timeout
 	rc.RetryMax = 10
@@ -40,7 +41,11 @@ func NewClient(endpoint string, s3Endpoint string, timeout time.Duration, interc
 			CapacityClaimServiceClient: inferencev1alpha1connect.NewCapacityClaimServiceClient(c, endpoint, connect.WithInterceptors(interceptors...)),
 			GatewayServiceClient:       inferencev1alpha1connect.NewGatewayServiceClient(c, endpoint, connect.WithInterceptors(interceptors...)),
 		},
-		s3Endpoint: s3Endpoint,
+		apiEndpoint: endpoint,
+		httpClient:  c,
+		s3Endpoint:  s3Endpoint,
+		token:       token,
+		userAgent:   userAgent,
 	}
 }
 
@@ -58,7 +63,11 @@ type Client struct {
 
 	Inference *InferenceClient
 
-	s3Endpoint string
+	apiEndpoint string
+	httpClient  *http.Client
+	s3Endpoint  string
+	token       string
+	userAgent   string
 }
 
 func IsNotFoundError(err error) bool {

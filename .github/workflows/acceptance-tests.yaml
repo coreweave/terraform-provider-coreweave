@@ -27,7 +27,7 @@ jobs:
         id: changes
         run: |
           # Available test suites - add new suites here
-          ALL_SUITES="cks networking object_storage inference"
+          ALL_SUITES="caller_identity cks networking object_storage inference"
 
           get_suite_dir() {
             echo "coreweave/$1"
