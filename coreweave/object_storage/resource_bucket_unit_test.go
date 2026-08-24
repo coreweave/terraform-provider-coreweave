@@ -7,6 +7,7 @@ import (
 	standardhttp "net/http"
 	"testing"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/smithy-go"
 	smithyhttp "github.com/aws/smithy-go/transport/http"
@@ -50,12 +51,10 @@ func TestIsMissingBucketTagSetError(t *testing.T) {
 			want: true,
 		},
 		"HTTP 404": {
-			err:  responseError(t, standardhttp.StatusNotFound),
-			want: true,
+			err: responseError(t, standardhttp.StatusNotFound),
 		},
 		"wrapped HTTP 404": {
-			err:  fmt.Errorf("get bucket tagging: %w", responseError(t, standardhttp.StatusNotFound)),
-			want: true,
+			err: fmt.Errorf("get bucket tagging: %w", responseError(t, standardhttp.StatusNotFound)),
 		},
 		"different API error": {
 			err: &smithy.GenericAPIError{Code: ErrNoSuchBucket},
@@ -79,6 +78,29 @@ func TestIsMissingBucketTagSetError(t *testing.T) {
 				t.Errorf("isMissingBucketTagSetError() = %t, want %t", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestWithBucketReadRetry(t *testing.T) {
+	t.Parallel()
+
+	options := s3.Options{Retryer: aws.NopRetryer{}}
+	withBucketReadRetry(&options)
+
+	if got := options.Retryer.MaxAttempts(); got != bucketReadMaxAttempts {
+		t.Errorf("MaxAttempts() = %d, want %d", got, bucketReadMaxAttempts)
+	}
+	if !options.Retryer.IsErrorRetryable(&smithy.GenericAPIError{Code: ErrNoSuchBucket}) {
+		t.Error("NoSuchBucket should be retryable")
+	}
+	if !options.Retryer.IsErrorRetryable(&smithy.GenericAPIError{Code: errNotFound}) {
+		t.Error("NotFound should be retryable")
+	}
+	if !options.Retryer.IsErrorRetryable(responseError(t, standardhttp.StatusNotFound)) {
+		t.Error("HTTP 404 should be retryable")
+	}
+	if options.Retryer.IsErrorRetryable(&smithy.GenericAPIError{Code: errNoSuchTagSet}) {
+		t.Error("NoSuchTagSet should not be retryable")
 	}
 }
 
