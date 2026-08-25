@@ -11,6 +11,7 @@ import (
 	"buf.build/gen/go/coreweave/cwobject/connectrpc/go/cwobject/v1/cwobjectv1connect"
 	"buf.build/gen/go/coreweave/inference/connectrpc/go/coreweave/inference/v1alpha1/inferencev1alpha1connect"
 	"buf.build/gen/go/coreweave/networking/connectrpc/go/coreweave/networking/v1beta1/networkingv1beta1connect"
+	"buf.build/gen/go/coreweave/workload-federation/connectrpc/go/coreweave/workload_federation/control_plane/v1beta1/control_planev1beta1connect"
 	"connectrpc.com/connect"
 
 	retryablehttp "github.com/hashicorp/go-retryablehttp"
@@ -35,7 +36,12 @@ func NewClient(endpoint string, s3Endpoint string, timeout time.Duration, token 
 	return &Client{
 		ClusterServiceClient: cksv1beta1connect.NewClusterServiceClient(c, endpoint, connect.WithInterceptors(interceptors...)),
 		VPCServiceClient:     networkingv1beta1connect.NewVPCServiceClient(c, endpoint, connect.WithInterceptors(interceptors...)),
-		CWObjectClient:       cwobjectv1connect.NewCWObjectClient(c, endpoint, connect.WithInterceptors(interceptors...)),
+		WFControlPlaneServiceClient: control_planev1beta1connect.NewWFControlPlaneServiceClient(
+			c,
+			endpoint,
+			connect.WithInterceptors(interceptors...),
+		),
+		CWObjectClient: cwobjectv1connect.NewCWObjectClient(c, endpoint, connect.WithInterceptors(interceptors...)),
 		Inference: &InferenceClient{
 			DeploymentServiceClient:    inferencev1alpha1connect.NewDeploymentServiceClient(c, endpoint, connect.WithInterceptors(interceptors...)),
 			CapacityClaimServiceClient: inferencev1alpha1connect.NewCapacityClaimServiceClient(c, endpoint, connect.WithInterceptors(interceptors...)),
@@ -59,6 +65,7 @@ type InferenceClient struct {
 type Client struct {
 	cksv1beta1connect.ClusterServiceClient
 	networkingv1beta1connect.VPCServiceClient
+	control_planev1beta1connect.WFControlPlaneServiceClient
 	cwobjectv1connect.CWObjectClient
 
 	Inference *InferenceClient
