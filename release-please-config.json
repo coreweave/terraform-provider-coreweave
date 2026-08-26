@@ -1,5 +1,6 @@
 {
     "pull-request-title-pattern": "chore: release ${version}",
+    "always-update": true,
     "include-component-in-tag": false,
     "include-v-in-tag": true,
     "initial-version": "v0.1.0",
