@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.22.0](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.21.0...v0.22.0) (2026-08-26)
+
+
+### Features
+
+* add caller identity data source ([#416](https://github.com/coreweave/terraform-provider-coreweave/issues/416)) ([56a5d2a](https://github.com/coreweave/terraform-provider-coreweave/commit/56a5d2abb377c090cb3575b3804f49c9e94187fa))
+
+
+### Bug Fixes
+
+* **inference:** Drop support for customer capacity claim type ([#376](https://github.com/coreweave/terraform-provider-coreweave/issues/376)) ([88844b1](https://github.com/coreweave/terraform-provider-coreweave/commit/88844b1da8fab76317950025eec8685c16b137a2))
+* **object_storage:** preserve bucket policy conditions ([#409](https://github.com/coreweave/terraform-provider-coreweave/issues/409)) ([4d1103c](https://github.com/coreweave/terraform-provider-coreweave/commit/4d1103c48fa1f59a5996be274d13e752cbd0df20))
+* **object_storage:** propagate policy conversion diagnostics ([#415](https://github.com/coreweave/terraform-provider-coreweave/issues/415)) ([e4db5a5](https://github.com/coreweave/terraform-provider-coreweave/commit/e4db5a5c4de607df7adeb6f59c7fe6a29300a066))
+
 ## [0.21.0](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.20.0...v0.21.0) (2026-08-18)
 
 
