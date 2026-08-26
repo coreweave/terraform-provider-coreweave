@@ -60,7 +60,7 @@ resource "coreweave_object_storage_bucket_inventory" "default" {
     }
   }
 
-  # The destination bucket policy must exist before the inventory configuration,
-  # or the inventory service cannot write reports to the destination bucket.
+  # Create the destination bucket policy first. PutBucketInventoryConfiguration
+  # is rejected if the inventory service cannot PutObject to the destination.
   depends_on = [coreweave_object_storage_bucket_policy.destination]
 }
