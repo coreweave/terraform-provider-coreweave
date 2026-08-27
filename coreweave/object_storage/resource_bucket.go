@@ -35,6 +35,10 @@ var (
 )
 
 const (
+	errInvalidRegion               = "InvalidRegion"
+	postCreateTaggingRetryInterval = 5 * time.Second
+	postCreateTaggingRetryTimeout  = time.Minute
+
 	ErrNoSuchBucket       string = "NoSuchBucket"
 	errNotFound           string = "NotFound"
 	errNoSuchTagSet       string = "NoSuchTagSet"
@@ -316,6 +320,43 @@ func waitForBucketTags(parentCtx context.Context, client *s3.Client, bucket stri
 	})
 }
 
+// putBucketTagsAfterCreate retries InvalidRegion while the new bucket's location propagates.
+func putBucketTagsAfterCreate(parentCtx context.Context, client *s3.Client, bucket string, tags []s3types.Tag) error {
+	input := &s3.PutBucketTaggingInput{
+		Bucket: aws.String(bucket),
+		Tagging: &s3types.Tagging{
+			TagSet: tags,
+		},
+	}
+
+	putTags := func(ctx context.Context) (bool, error) {
+		_, err := client.PutBucketTagging(ctx, input)
+		if err == nil {
+			return true, nil
+		}
+
+		var apiErr smithy.APIError
+		if errors.As(err, &apiErr) && apiErr.ErrorCode() == errInvalidRegion {
+			return false, nil
+		}
+
+		return false, err
+	}
+
+	tagged, err := putTags(parentCtx)
+	if err != nil || tagged {
+		return err
+	}
+
+	return coreweave.PollUntil(
+		"bucket tagging after creation",
+		parentCtx,
+		postCreateTaggingRetryInterval,
+		postCreateTaggingRetryTimeout,
+		putTags,
+	)
+}
+
 func (b *BucketResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var data BucketResourceModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
@@ -408,13 +449,7 @@ func (b *BucketResource) Create(ctx context.Context, req resource.CreateRequest,
 			})
 		}
 
-		_, err = s3Client.PutBucketTagging(ctx, &s3.PutBucketTaggingInput{
-			Bucket: data.Name.ValueStringPointer(),
-			Tagging: &s3types.Tagging{
-				TagSet: tags,
-			},
-		})
-		if err != nil {
+		if err := putBucketTagsAfterCreate(ctx, s3Client, data.Name.ValueString(), tags); err != nil {
 			handleS3Error(err, &resp.Diagnostics, data.Name.ValueString())
 			return
 		}
