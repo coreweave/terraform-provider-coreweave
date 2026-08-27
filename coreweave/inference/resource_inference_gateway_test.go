@@ -12,6 +12,7 @@ import (
 	"github.com/coreweave/terraform-provider-coreweave/coreweave/inference"
 	"github.com/coreweave/terraform-provider-coreweave/internal/provider"
 	"github.com/coreweave/terraform-provider-coreweave/internal/testutil"
+	"github.com/hashicorp/terraform-plugin-framework-nettypes/cidrtypes"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	fwresource "github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -584,6 +585,192 @@ func TestToCreateGatewayRequest_AllRoutingTypes(t *testing.T) {
 			t.Error("Routing.PathBased: expected non-nil")
 		}
 	})
+}
+
+func TestToCreateGatewayRequest_EndpointConfiguration(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	m := &inference.InferenceGatewayResourceModel{
+		Name:  types.StringValue("edge-gw"),
+		Zones: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("US-EAST-04A")}),
+		Auth: &inference.GatewayAuthModel{
+			CoreWeave: &inference.CoreWeaveAuthModel{},
+		},
+		Routing: &inference.GatewayRoutingModel{
+			PathBased: &inference.PathBasedRoutingModel{},
+		},
+		EndpointConfiguration: &inference.EndpointConfigurationModel{
+			AdditionalDNS: types.SetNull(types.StringType),
+			EdgeProxyMode: types.StringValue("EDGE_PROXY_MODE_DIRECT"),
+			AllowedSourceIPRanges: types.SetValueMust(cidrtypes.IPPrefixType{}, []attr.Value{
+				cidrtypes.NewIPPrefixValue("203.0.113.0/24"),
+				cidrtypes.NewIPPrefixValue("2001:db8::/32"),
+			}),
+		},
+	}
+
+	req, diags := inference.ToCreateGatewayRequest(ctx, m)
+	if diags.HasError() {
+		t.Fatalf("ToCreateGatewayRequest returned errors: %v", diags)
+	}
+
+	ec := req.GetEndpointConfiguration()
+	if ec == nil {
+		t.Fatal("EndpointConfiguration: expected non-nil")
+	}
+	if got, want := ec.GetEdgeProxyMode(), inferencev1.EdgeProxyMode_EDGE_PROXY_MODE_DIRECT; got != want {
+		t.Errorf("EdgeProxyMode: got %v, want %v", got, want)
+	}
+	got := ec.GetAllowedSourceIpRanges()
+	if len(got) != 2 {
+		t.Fatalf("AllowedSourceIpRanges: got %d entries, want 2: %v", len(got), got)
+	}
+	want := map[string]bool{"203.0.113.0/24": true, "2001:db8::/32": true}
+	for _, r := range got {
+		if !want[r] {
+			t.Errorf("AllowedSourceIpRanges: unexpected entry %q", r)
+		}
+		delete(want, r)
+	}
+	if len(want) != 0 {
+		t.Errorf("AllowedSourceIpRanges: missing entries %v", want)
+	}
+}
+
+func TestSetFromGateway_EndpointConfiguration(t *testing.T) {
+	t.Parallel()
+
+	t.Run("populated", func(t *testing.T) {
+		t.Parallel()
+
+		gw := &inferencev1.Gateway{
+			Spec: &inferencev1.GatewaySpec{
+				Id:    "gw-ec",
+				Name:  "ec-gw",
+				Zones: []string{"US-EAST-04A"},
+				Auth: &inferencev1.GatewaySpec_CoreWeaveAuth{
+					CoreWeaveAuth: &inferencev1.CoreWeaveAuth{},
+				},
+				Routing: &inferencev1.GatewaySpec_PathBasedRouting{
+					PathBasedRouting: &inferencev1.PathBasedRouting{},
+				},
+				EndpointConfiguration: &inferencev1.EndpointConfiguration{
+					EdgeProxyMode:         inferencev1.EdgeProxyMode_EDGE_PROXY_MODE_DIRECT,
+					AllowedSourceIpRanges: []string{"203.0.113.0/24"},
+				},
+			},
+			Status: &inferencev1.GatewayStatus{Status: inferencev1.Status_STATUS_READY},
+		}
+
+		m := &inference.InferenceGatewayResourceModel{}
+		diags := inference.SetFromGateway(m, gw, false)
+		if diags.HasError() {
+			t.Fatalf("SetFromGateway returned errors: %v", diags)
+		}
+
+		if m.EndpointConfiguration == nil {
+			t.Fatal("EndpointConfiguration: expected non-nil")
+		}
+		if got := m.EndpointConfiguration.EdgeProxyMode.ValueString(); got != "EDGE_PROXY_MODE_DIRECT" {
+			t.Errorf("EdgeProxyMode: got %q, want %q", got, "EDGE_PROXY_MODE_DIRECT")
+		}
+		elems := m.EndpointConfiguration.AllowedSourceIPRanges.Elements()
+		if len(elems) != 1 {
+			t.Fatalf("AllowedSourceIPRanges: got %d entries, want 1", len(elems))
+		}
+		if p, ok := elems[0].(cidrtypes.IPPrefix); !ok || p.ValueString() != "203.0.113.0/24" {
+			t.Errorf("AllowedSourceIPRanges[0]: got %v, want 203.0.113.0/24", elems[0])
+		}
+	})
+
+	t.Run("all-zero endpoint config stays nil", func(t *testing.T) {
+		t.Parallel()
+
+		gw := &inferencev1.Gateway{
+			Spec: &inferencev1.GatewaySpec{
+				Id:    "gw-ec-zero",
+				Name:  "ec-zero-gw",
+				Zones: []string{"US-EAST-04A"},
+				Auth: &inferencev1.GatewaySpec_CoreWeaveAuth{
+					CoreWeaveAuth: &inferencev1.CoreWeaveAuth{},
+				},
+				Routing: &inferencev1.GatewaySpec_PathBasedRouting{
+					PathBasedRouting: &inferencev1.PathBasedRouting{},
+				},
+				EndpointConfiguration: &inferencev1.EndpointConfiguration{},
+			},
+			Status: &inferencev1.GatewayStatus{Status: inferencev1.Status_STATUS_READY},
+		}
+
+		m := &inference.InferenceGatewayResourceModel{EndpointConfiguration: nil}
+		diags := inference.SetFromGateway(m, gw, false)
+		if diags.HasError() {
+			t.Fatalf("SetFromGateway returned errors: %v", diags)
+		}
+		if m.EndpointConfiguration != nil {
+			t.Errorf("EndpointConfiguration: expected nil when API returns an all-zero config, got %v", m.EndpointConfiguration)
+		}
+	})
+}
+
+// TestInferenceGateway_EndpointConfigurationValidation pins the client-side
+// validation for the edge proxy mode enum and the source IP range CIDRs.
+func TestInferenceGateway_EndpointConfigurationValidation(t *testing.T) {
+	// A non-empty token lets the provider configure so a plan-only create can be
+	// computed; no API call is made during plan.
+	t.Setenv("COREWEAVE_API_TOKEN", "CW-SECRET-unit-test")
+
+	t.Run("valid edge_proxy_mode and CIDR", func(t *testing.T) {
+		resource.UnitTest(t, resource.TestCase{
+			ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+			Steps: []resource.TestStep{
+				{
+					Config: gatewayEndpointConfig(`edge_proxy_mode          = "EDGE_PROXY_MODE_DIRECT"
+    allowed_source_ip_ranges = ["203.0.113.0/24", "2001:db8::/32"]`),
+					PlanOnly:           true,
+					ExpectNonEmptyPlan: true,
+				},
+			},
+		})
+	})
+
+	t.Run("invalid edge_proxy_mode is rejected", func(t *testing.T) {
+		resource.UnitTest(t, resource.TestCase{
+			ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+			Steps: []resource.TestStep{
+				{
+					Config:      gatewayEndpointConfig(`edge_proxy_mode = "EDGE_PROXY_MODE_BOGUS"`),
+					PlanOnly:    true,
+					ExpectError: regexp.MustCompile(`value must be one of`),
+				},
+			},
+		})
+	})
+}
+
+// gatewayEndpointConfig renders a minimal gateway whose endpoint_configuration
+// block contains only the attributes in ecAttrs. Zones are hardcoded (no data
+// source) so the plan stays local and never reaches the API.
+func gatewayEndpointConfig(ecAttrs string) string {
+	return fmt.Sprintf(`
+resource "coreweave_inference_gateway" "test" {
+  name  = "unit-test-ec"
+  zones = ["US-EAST-04A"]
+
+  auth = {
+    coreweave = {}
+  }
+
+  routing = {
+    path_based = {}
+  }
+
+  endpoint_configuration = {
+    %s
+  }
+}
+`, ecAttrs)
 }
 
 // wandbAuthGatewayConfig renders a minimal gateway whose W&B auth block contains
