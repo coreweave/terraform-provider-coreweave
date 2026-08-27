@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"sort"
@@ -436,9 +437,13 @@ func decodeSweepLogs(t *testing.T, logs *bytes.Buffer) []sweepLogRecord {
 	t.Helper()
 	var records []sweepLogRecord
 	decoder := json.NewDecoder(logs)
-	for decoder.More() {
+	for {
 		var record sweepLogRecord
-		require.NoError(t, decoder.Decode(&record))
+		err := decoder.Decode(&record)
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		require.NoError(t, err)
 		records = append(records, record)
 	}
 	return records
