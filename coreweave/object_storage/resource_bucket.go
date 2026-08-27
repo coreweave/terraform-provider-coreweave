@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	awsretry "github.com/aws/aws-sdk-go-v2/aws/retry"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/smithy-go"
 	"github.com/aws/smithy-go/transport/http"
@@ -38,7 +39,10 @@ const (
 	postCreateTaggingRetryInterval = 5 * time.Second
 	postCreateTaggingRetryTimeout  = time.Minute
 
-	ErrNoSuchBucket string = "NoSuchBucket"
+	ErrNoSuchBucket       string = "NoSuchBucket"
+	errNotFound           string = "NotFound"
+	errNoSuchTagSet       string = "NoSuchTagSet"
+	bucketReadMaxAttempts        = 8
 )
 
 func NewBucketResource() resource.Resource {
@@ -151,6 +155,63 @@ func handleS3Error(
 	diags.AddError(
 		fmt.Sprintf("Unexpected error with bucket %q", bucketName),
 		err.Error(),
+	)
+}
+
+func isMissingBucketTagSetError(err error) bool {
+	var apiErr smithy.APIError
+	return errors.As(err, &apiErr) && apiErr.ErrorCode() == errNoSuchTagSet
+}
+
+func isHTTPNotFoundError(err error) bool {
+	var httpErr *http.ResponseError
+	return errors.As(err, &httpErr) &&
+		httpErr.Response != nil &&
+		httpErr.Response.StatusCode == 404
+}
+
+func bucketExists(ctx context.Context, client s3.HeadBucketAPIClient, bucket string) (bool, error) {
+	_, err := client.HeadBucket(ctx, &s3.HeadBucketInput{Bucket: aws.String(bucket)}, withBucketReadRetry)
+	if err == nil {
+		return true, nil
+	}
+
+	if isBucketNotFoundError(err) {
+		return false, nil
+	}
+
+	return false, err
+}
+
+func isBucketNotFoundError(err error) bool {
+	var apiErr smithy.APIError
+	if errors.As(err, &apiErr) {
+		return apiErr.ErrorCode() == ErrNoSuchBucket || apiErr.ErrorCode() == errNotFound
+	}
+
+	return isHTTPNotFoundError(err)
+}
+
+type bucketReadRetryer struct {
+	aws.Retryer
+}
+
+func (r bucketReadRetryer) IsErrorRetryable(err error) bool {
+	return isBucketNotFoundError(err) || r.Retryer.IsErrorRetryable(err)
+}
+
+func (r bucketReadRetryer) GetAttemptToken(ctx context.Context) (func(error) error, error) {
+	if retryer, ok := r.Retryer.(aws.RetryerV2); ok {
+		return retryer.GetAttemptToken(ctx)
+	}
+
+	return r.GetInitialToken(), nil
+}
+
+func withBucketReadRetry(options *s3.Options) {
+	options.Retryer = awsretry.AddWithMaxAttempts(
+		bucketReadRetryer{Retryer: options.Retryer},
+		bucketReadMaxAttempts,
 	)
 }
 
@@ -423,38 +484,50 @@ func (b *BucketResource) Read(ctx context.Context, req resource.ReadRequest, res
 		return
 	}
 
-	tagSet, err := s3Client.GetBucketTagging(ctx, &s3.GetBucketTaggingInput{
-		Bucket: aws.String(data.Name.ValueString()),
-	})
-	if err != nil {
-		var httpErr *http.ResponseError
-		if errors.As(err, &httpErr) && httpErr.Response != nil {
-			// if we get a 404 back from the client, the bucket does not exist & can be removed from state
-			if httpErr.Response.StatusCode == 404 {
-				resp.State.RemoveResource(ctx)
-				return
-			}
-		}
-
-		handleS3Error(err, &resp.Diagnostics, data.Name.ValueString())
-		return
-	}
-
 	location, err := s3Client.GetBucketLocation(ctx, &s3.GetBucketLocationInput{
 		Bucket: aws.String(data.Name.ValueString()),
-	})
+	}, withBucketReadRetry)
 	if err != nil {
-		var httpErr *http.ResponseError
-		if errors.As(err, &httpErr) && httpErr.Response != nil {
-			// if we get a 404 back from the client, the bucket does not exist & can be removed from state
-			if httpErr.Response.StatusCode == 404 {
-				resp.State.RemoveResource(ctx)
-				return
-			}
+		if !isBucketNotFoundError(err) {
+			handleS3Error(err, &resp.Diagnostics, data.Name.ValueString())
+			return
 		}
 
-		handleS3Error(err, &resp.Diagnostics, data.Name.ValueString())
-		return
+		exists, err := bucketExists(ctx, s3Client, data.Name.ValueString())
+		if err != nil {
+			handleS3Error(err, &resp.Diagnostics, data.Name.ValueString())
+			return
+		}
+		if !exists {
+			resp.State.RemoveResource(ctx)
+			return
+		}
+	} else {
+		data.Zone = types.StringValue(string(location.LocationConstraint))
+	}
+
+	tagSet, err := s3Client.GetBucketTagging(ctx, &s3.GetBucketTaggingInput{
+		Bucket: aws.String(data.Name.ValueString()),
+	}, withBucketReadRetry)
+	if err != nil {
+		if isMissingBucketTagSetError(err) {
+			tagSet = &s3.GetBucketTaggingOutput{}
+		} else {
+			if isBucketNotFoundError(err) {
+				exists, existsErr := bucketExists(ctx, s3Client, data.Name.ValueString())
+				if existsErr != nil {
+					handleS3Error(existsErr, &resp.Diagnostics, data.Name.ValueString())
+					return
+				}
+				if !exists {
+					resp.State.RemoveResource(ctx)
+					return
+				}
+			}
+
+			handleS3Error(err, &resp.Diagnostics, data.Name.ValueString())
+			return
+		}
 	}
 
 	tags := types.MapNull(types.StringType)
@@ -472,7 +545,6 @@ func (b *BucketResource) Read(ctx context.Context, req resource.ReadRequest, res
 		tags = tagMapValue
 	}
 
-	data.Zone = types.StringValue(string(location.LocationConstraint))
 	data.Tags = tags
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
