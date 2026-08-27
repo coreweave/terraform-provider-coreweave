@@ -47,7 +47,7 @@ func TestOIDCConfigModelToCreateRequest(t *testing.T) {
 		Name:        types.StringValue("hcp-terraform"),
 		Description: types.StringValue("HCP Terraform workload identity"),
 		IssuerURL:   types.StringValue("https://app.terraform.io"),
-		Audience:    types.StringValue("coreweave.workload.identity"),
+		Audience:    types.StringValue("https://coreweave.com/iam"),
 		Active:      types.BoolValue(false),
 	}
 
@@ -56,7 +56,7 @@ func TestOIDCConfigModelToCreateRequest(t *testing.T) {
 	assert.Equal(t, "HCP Terraform workload identity", request.GetDescription())
 	assert.True(t, request.HasDescription())
 	assert.Equal(t, "https://app.terraform.io", request.GetIssuerUrl())
-	assert.Equal(t, "coreweave.workload.identity", request.GetAudience())
+	assert.Equal(t, "https://coreweave.com/iam", request.GetAudience())
 	assert.True(t, request.HasActive())
 	assert.False(t, request.GetActive())
 }
@@ -73,7 +73,7 @@ func TestOIDCConfigModelSetFromProto(t *testing.T) {
 		Name:          "github-actions",
 		Description:   proto.String("CI workloads"),
 		IssuerUrl:     "https://token.actions.githubusercontent.com",
-		Audience:      "coreweave.workload.identity",
+		Audience:      "https://coreweave.com/iam",
 		DeactivatedAt: timestamppb.New(deactivatedAt),
 		CreatedAt:     timestamppb.New(createdAt),
 		UpdatedAt:     timestamppb.New(updatedAt),
