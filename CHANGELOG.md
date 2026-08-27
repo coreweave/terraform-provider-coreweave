@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.22.1](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.22.0...v0.22.1) (2026-08-27)
+
+
+### Bug Fixes
+
+* **object_storage:** preserve untagged buckets in state ([#407](https://github.com/coreweave/terraform-provider-coreweave/issues/407)) ([d0982a5](https://github.com/coreweave/terraform-provider-coreweave/commit/d0982a5eb5ea449541dadd4f38dab09b9fa05bf1))
+* **object_storage:** retry InvalidRegion after creating tagged buckets ([56c9c62](https://github.com/coreweave/terraform-provider-coreweave/commit/56c9c62663c1b2109b34dc5eeb370d692864e2ae))
+
 ## [0.22.0](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.21.0...v0.22.0) (2026-08-26)
 
 
