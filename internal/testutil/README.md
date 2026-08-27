@@ -199,7 +199,7 @@ The Make controls are:
 
 | Control | Default | Meaning |
 | --- | --- | --- |
-| `SUITES` | `cks networking object_storage inference` | Space-separated Go package suffixes. The Make target invokes each suite sequentially as `./coreweave/<suite>`. Do not comma-separate this value. |
+| `SUITES` | `caller_identity cks networking object_storage inference` | Space-separated Go package suffixes. The Make target invokes each suite sequentially as `./coreweave/<suite>`. Do not comma-separate this value. |
 | `TEST_ACC_SWEEP_RUN` | empty | Optional value passed to `go test -sweep-run`. It is a comma-separated list of case-insensitive substring filters; use one full registry key for the narrowest practical selection. Dependencies are included automatically. Empty runs all registered sweepers, a no-match typo succeeds without running one, and any empty token in a non-empty list matches every key. |
 | `TEST_ACC_SWEEP_ALLOW_FAILURES` | `false` | Passed to `-sweep-allow-failures`. `true` lets the framework continue after a failure and can run a dependent sweeper even though its blocker failed; failures are still reported and the suite invocation remains unsuccessful. Keep `false` for dependency-gated cleanup. |
 | `TEST_ACC_SWEEP_PARALLEL` | `4` | Maximum concurrent `Delete` callbacks within each `testutil.Sweep` call. Must be a positive integer. |
