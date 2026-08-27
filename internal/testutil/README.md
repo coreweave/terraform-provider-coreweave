@@ -203,7 +203,7 @@ make testacc-sweep \
 
 Quiesce acceptance creation, review every selected name, recheck the endpoint/account/scope/suite/zone preflight, then repeat promptly with `SWEEP_DRY_RUN=false` to delete. Remember that the real run re-lists resources and can select a different set. Because the selected CKS VPC sweeper declares the cluster dependency, that invocation includes the CKS cluster sweeper first.
 
-The provider defaults below are defined in the [`GNUmakefile`](../../GNUmakefile#L14-L19). [`SweepRuntimeFromEnv`](sweepers.go#L14-L49) defines the dry-run and worker-parallelism behavior, and the [reusable acceptance workflow](../../.github/workflows/acceptance-test.yaml#L21-L25) supplies suite-specific timeout and zone overrides in CI. The `-sweep-run` and `-sweep-allow-failures` semantics come from the upstream [`resource.TestMain`](https://pkg.go.dev/github.com/hashicorp/terraform-plugin-testing@v1.11.0/helper/resource#TestMain) runner.
+The provider defaults below come from the `GNUmakefile` [sweeper variables](../../GNUmakefile#L14-L19) and [suite loop](../../GNUmakefile#L61-L66). [`SweepRuntimeFromEnv`](sweepers.go#L14-L49) defines the dry-run and worker-parallelism behavior, and the [reusable acceptance workflow](../../.github/workflows/acceptance-test.yaml#L21-L25) supplies suite-specific timeout and zone overrides in CI. The `-sweep-run` and `-sweep-allow-failures` semantics come from the upstream [`resource.TestMain`](https://pkg.go.dev/github.com/hashicorp/terraform-plugin-testing@v1.11.0/helper/resource#TestMain) runner.
 
 The Make controls are:
 
