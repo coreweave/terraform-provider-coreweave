@@ -35,7 +35,7 @@ resource "coreweave_inference_gateway" "example" {
 ### Required
 
 - `auth` (Attributes) The [authentication configuration](https://docs.coreweave.com/products/inference/gateways) for the gateway. Exactly one of `coreweave` or `weights_and_biases` must be specified. (see [below for nested schema](#nestedatt--auth))
-- `name` (String) The human-readable name of the gateway.
+- `name` (String) The human-readable name of the gateway. Capped at 38 characters so the derived public FQDN fits within the 64-character X.509 Common Name limit.
 - `routing` (Attributes) The [routing configuration](https://docs.coreweave.com/products/inference/gateways) for the gateway. Exactly one of `body_based`, `header_based`, or `path_based` must be specified. (see [below for nested schema](#nestedatt--routing))
 - `zones` (Set of String) The zones to make the gateway available in. Limits where deployments associated with the gateway may exist.
 

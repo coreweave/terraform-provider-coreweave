@@ -156,7 +156,7 @@ func (r *InferenceCapacityClaimResource) Schema(_ context.Context, _ resource.Sc
 				Attributes: map[string]schema.Attribute{
 					"instance_type": schema.StringAttribute{
 						Required:            true,
-						MarkdownDescription: "The instance type to reserve (e.g. `gb200-4x`).",
+						MarkdownDescription: "The instance type to reserve (e.g. `gb200-4x`). Case-sensitive.",
 						PlanModifiers:       []planmodifier.String{stringplanmodifier.RequiresReplace()},
 					},
 					"instance_count": schema.Int64Attribute{
@@ -177,7 +177,7 @@ func (r *InferenceCapacityClaimResource) Schema(_ context.Context, _ resource.Sc
 					"zones": schema.SetAttribute{
 						ElementType:         types.StringType,
 						Required:            true,
-						MarkdownDescription: "The availability zones where the capacity claim may use resources from (e.g. `US-WEST-04A`). At least one is required.",
+						MarkdownDescription: "The availability zones where the capacity claim may use resources from (e.g. `US-WEST-04A`), case-sensitive. At least one is required.",
 						PlanModifiers:       []planmodifier.Set{setplanmodifier.RequiresReplace()},
 						Validators: []validator.Set{
 							setvalidator.SizeAtLeast(1),

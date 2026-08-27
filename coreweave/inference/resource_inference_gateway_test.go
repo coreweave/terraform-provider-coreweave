@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math/rand/v2"
 	"regexp"
+	"strings"
 	"testing"
 	"time"
 
@@ -640,6 +641,62 @@ func TestInferenceGateway_WandBAuthValidation(t *testing.T) {
 					Config:      wandbAuthGatewayConfig(`api_key = "wandb-key"`),
 					PlanOnly:    true,
 					ExpectError: regexp.MustCompile(`server_url" must be specified when`),
+				},
+			},
+		})
+	})
+}
+
+// gatewayNameConfig renders a minimal gateway with the given name. Zones are
+// hardcoded (no data source) so the plan stays local and never reaches the API.
+func gatewayNameConfig(name string) string {
+	return fmt.Sprintf(`
+resource "coreweave_inference_gateway" "test" {
+  name  = %q
+  zones = ["US-EAST-04A"]
+
+  auth = {
+    coreweave = {}
+  }
+
+  routing = {
+    body_based = {
+      api_type = "API_TYPE_OPENAI"
+    }
+  }
+}
+`, name)
+}
+
+// TestInferenceGateway_NameLengthValidation pins the 38-character cap on the
+// gateway name, matching the proto max_len that keeps the derived FQDN within
+// the 64-character X.509 Common Name limit.
+func TestInferenceGateway_NameLengthValidation(t *testing.T) {
+	// A non-empty token lets the provider configure so a plan-only create can be
+	// computed; no API call is made during plan.
+	t.Setenv("COREWEAVE_API_TOKEN", "CW-SECRET-unit-test")
+
+	t.Run("38-character name is valid", func(t *testing.T) {
+		resource.UnitTest(t, resource.TestCase{
+			ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+			Steps: []resource.TestStep{
+				{
+					Config:             gatewayNameConfig(strings.Repeat("a", 38)),
+					PlanOnly:           true,
+					ExpectNonEmptyPlan: true,
+				},
+			},
+		})
+	})
+
+	t.Run("39-character name is invalid", func(t *testing.T) {
+		resource.UnitTest(t, resource.TestCase{
+			ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+			Steps: []resource.TestStep{
+				{
+					Config:      gatewayNameConfig(strings.Repeat("a", 39)),
+					PlanOnly:    true,
+					ExpectError: regexp.MustCompile(`string length must be at most 38`),
 				},
 			},
 		})

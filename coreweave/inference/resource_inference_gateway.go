@@ -165,8 +165,11 @@ func (r *InferenceGatewayResource) Schema(_ context.Context, _ resource.SchemaRe
 			},
 			"name": schema.StringAttribute{
 				Required:            true,
-				MarkdownDescription: "The human-readable name of the gateway.",
+				MarkdownDescription: "The human-readable name of the gateway. Capped at 38 characters so the derived public FQDN fits within the 64-character X.509 Common Name limit.",
 				PlanModifiers:       []planmodifier.String{stringplanmodifier.RequiresReplace()},
+				Validators: []validator.String{
+					stringvalidator.LengthAtMost(38),
+				},
 			},
 			"zones": schema.SetAttribute{
 				ElementType:         types.StringType,
