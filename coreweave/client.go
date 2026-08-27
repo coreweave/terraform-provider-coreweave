@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"sync/atomic"
 	"time"
 
 	"buf.build/gen/go/coreweave/cks/connectrpc/go/coreweave/cks/v1beta1/cksv1beta1connect"
@@ -15,6 +16,7 @@ import (
 	"connectrpc.com/connect"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/coreweave/terraform-provider-coreweave/internal/auth"
 	retryablehttp "github.com/hashicorp/go-retryablehttp"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
@@ -25,19 +27,35 @@ type ClientOptions struct {
 	S3AttemptTimeout time.Duration
 }
 
-func NewClient(endpoint string, s3Endpoint string, timeout time.Duration, token string, userAgent string, interceptors ...connect.Interceptor) *Client {
-	return NewClientWithOptions(endpoint, s3Endpoint, timeout, token, userAgent, ClientOptions{}, interceptors...)
+var nextClientIdentity atomic.Uint64
+
+type cacheIdentityTokenSource interface {
+	CacheIdentity() string
+}
+
+func tokenSourceCacheIdentity(source AccessTokenSource) string {
+	if identified, ok := source.(cacheIdentityTokenSource); ok {
+		if identity := identified.CacheIdentity(); identity != "" {
+			return identity
+		}
+	}
+	return fmt.Sprintf("%T:%d", source, nextClientIdentity.Add(1))
+}
+
+// NewClient constructs a client that resolves a token for each HTTP attempt.
+func NewClient(endpoint string, s3Endpoint string, timeout time.Duration, tokenSource AccessTokenSource, userAgent string, interceptors ...connect.Interceptor) (*Client, error) {
+	return NewClientWithOptions(endpoint, s3Endpoint, timeout, tokenSource, userAgent, ClientOptions{}, interceptors...)
 }
 
 func NewClientWithOptions(
 	endpoint string,
 	s3Endpoint string,
 	timeout time.Duration,
-	token string,
+	tokenSource AccessTokenSource,
 	userAgent string,
 	options ClientOptions,
 	interceptors ...connect.Interceptor,
-) *Client {
+) (*Client, error) {
 	rc := retryablehttp.NewClient()
 	rc.HTTPClient.Timeout = timeout
 	rc.RetryMax = 10
@@ -49,29 +67,36 @@ func NewClientWithOptions(
 	// than 501 while rejecting permanent request and certificate failures.
 	rc.CheckRetry = RetryPolicy
 
+	authenticatedTransport, err := auth.NewTransport(rc.HTTPClient.Transport, tokenSource, endpoint)
+	if err != nil {
+		return nil, err
+	}
+	rc.HTTPClient.Transport = authenticatedTransport
+
 	c := rc.StandardClient()
+	authenticatedInterceptors := append([]connect.Interceptor{auth.NewConnectErrorInterceptor()}, interceptors...)
 
 	return &Client{
-		ClusterServiceClient: cksv1beta1connect.NewClusterServiceClient(c, endpoint, connect.WithInterceptors(interceptors...)),
-		VPCServiceClient:     networkingv1beta1connect.NewVPCServiceClient(c, endpoint, connect.WithInterceptors(interceptors...)),
+		ClusterServiceClient: cksv1beta1connect.NewClusterServiceClient(c, endpoint, connect.WithInterceptors(authenticatedInterceptors...)),
+		VPCServiceClient:     networkingv1beta1connect.NewVPCServiceClient(c, endpoint, connect.WithInterceptors(authenticatedInterceptors...)),
 		WFControlPlaneServiceClient: control_planev1beta1connect.NewWFControlPlaneServiceClient(
 			c,
 			endpoint,
-			connect.WithInterceptors(interceptors...),
+			connect.WithInterceptors(authenticatedInterceptors...),
 		),
-		CWObjectClient: cwobjectv1connect.NewCWObjectClient(c, endpoint, connect.WithInterceptors(interceptors...)),
+		CWObjectClient: cwobjectv1connect.NewCWObjectClient(c, endpoint, connect.WithInterceptors(authenticatedInterceptors...)),
 		Inference: &InferenceClient{
-			DeploymentServiceClient:    inferencev1alpha1connect.NewDeploymentServiceClient(c, endpoint, connect.WithInterceptors(interceptors...)),
-			CapacityClaimServiceClient: inferencev1alpha1connect.NewCapacityClaimServiceClient(c, endpoint, connect.WithInterceptors(interceptors...)),
-			GatewayServiceClient:       inferencev1alpha1connect.NewGatewayServiceClient(c, endpoint, connect.WithInterceptors(interceptors...)),
+			DeploymentServiceClient:    inferencev1alpha1connect.NewDeploymentServiceClient(c, endpoint, connect.WithInterceptors(authenticatedInterceptors...)),
+			CapacityClaimServiceClient: inferencev1alpha1connect.NewCapacityClaimServiceClient(c, endpoint, connect.WithInterceptors(authenticatedInterceptors...)),
+			GatewayServiceClient:       inferencev1alpha1connect.NewGatewayServiceClient(c, endpoint, connect.WithInterceptors(authenticatedInterceptors...)),
 		},
 		apiEndpoint:      endpoint,
 		httpClient:       c,
 		s3Endpoint:       s3Endpoint,
 		s3AttemptTimeout: options.S3AttemptTimeout,
-		token:            token,
+		s3CacheIdentity:  tokenSourceCacheIdentity(tokenSource),
 		userAgent:        userAgent,
-	}
+	}, nil
 }
 
 // InferenceClient groups all inference service clients.
@@ -96,7 +121,7 @@ type Client struct {
 	s3HTTPTransport  http.RoundTripper
 	s3Retryer        func() aws.Retryer
 	s3Now            func() time.Time
-	token            string
+	s3CacheIdentity  string
 	userAgent        string
 }
 
@@ -201,6 +226,24 @@ func HandleAPIError(ctx context.Context, err error, diagnostics *diag.Diagnostic
 	case connect.CodeUnauthenticated:
 		diagnostics.AddError(
 			"Unauthenticated",
+			connectErr.Error(),
+		)
+
+	case connect.CodeCanceled:
+		diagnostics.AddError(
+			"Request Canceled",
+			connectErr.Error(),
+		)
+
+	case connect.CodeDeadlineExceeded:
+		diagnostics.AddError(
+			"Request Timed Out",
+			connectErr.Error(),
+		)
+
+	case connect.CodeUnavailable:
+		diagnostics.AddError(
+			"Service Unavailable",
 			connectErr.Error(),
 		)
 

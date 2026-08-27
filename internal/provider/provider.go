@@ -15,6 +15,7 @@ import (
 	"github.com/coreweave/terraform-provider-coreweave/coreweave/networking"
 	objectstorage "github.com/coreweave/terraform-provider-coreweave/coreweave/object_storage"
 	workloadfederation "github.com/coreweave/terraform-provider-coreweave/coreweave/workload_federation"
+	"github.com/coreweave/terraform-provider-coreweave/internal/auth"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/function"
 	"github.com/hashicorp/terraform-plugin-framework/provider"
@@ -206,10 +207,10 @@ func BuildClient(ctx context.Context, model CoreweaveProviderModel, tfVersion, p
 	tflog.Debug(ctx, fmt.Sprintf("using http client timeout: %v", timeout))
 	userAgent := fmt.Sprintf("Terraform/%s terraform-provider-coreweave/%s (+https://github.com/coreweave/terraform-provider-coreweave)", tfVersion, providerVersion)
 
-	headerInterceptor := connect.UnaryInterceptorFunc(
+	tokenSource := auth.NewStaticTokenSource(token)
+	userAgentInterceptor := connect.UnaryInterceptorFunc(
 		func(next connect.UnaryFunc) connect.UnaryFunc {
 			return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
-				req.Header().Add("Authorization", fmt.Sprintf("Bearer %s", token))
 				req.Header().Set("User-Agent", userAgent)
 				return next(ctx, req)
 			}
@@ -220,12 +221,12 @@ func BuildClient(ctx context.Context, model CoreweaveProviderModel, tfVersion, p
 		endpoint,
 		s3Endpoint,
 		timeout,
-		token,
+		tokenSource,
 		userAgent,
 		coreweave.ClientOptions{S3AttemptTimeout: s3Timeout},
-		headerInterceptor,
+		userAgentInterceptor,
 		coreweave.TFLogInterceptor(),
-	), nil
+	)
 }
 
 func (p *CoreweaveProvider) Resources(ctx context.Context) []func() resource.Resource {

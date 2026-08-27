@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+
+	"github.com/coreweave/terraform-provider-coreweave/internal/auth"
 )
 
 var (
@@ -102,8 +104,14 @@ func RetryPolicy(ctx context.Context, resp *http.Response, err error) (bool, err
 		return true, ctx.Err()
 	}
 
+	// Retry an attempt-level timeout with a freshly resolved token.
 	if errors.Is(err, context.DeadlineExceeded) {
 		return true, err
+	}
+
+	// Token sources own their retry policy; do not retry their other failures.
+	if auth.IsTokenSourceError(err) {
+		return false, err
 	}
 
 	return baseRetryPolicy(resp, err)

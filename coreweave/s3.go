@@ -38,7 +38,7 @@ type s3ClientCache struct {
 	accessKeyInfo  *cwobjectv1.CreateAccessKeyFromJWTResponse
 	apiEndpoint    string
 	endpoint       string
-	token          string
+	authIdentity   string
 	attemptTimeout time.Duration
 	refresh        *s3ClientRefresh
 }
@@ -172,7 +172,7 @@ func (c *Client) S3Client(ctx context.Context, zone string) (*s3.Client, error) 
 		sharedS3ClientCache.mu.Lock()
 		identityMatches := sharedS3ClientCache.apiEndpoint == c.apiEndpoint &&
 			sharedS3ClientCache.endpoint == c.s3Endpoint &&
-			sharedS3ClientCache.token == c.token &&
+			sharedS3ClientCache.authIdentity == c.s3CacheIdentity &&
 			sharedS3ClientCache.attemptTimeout == c.effectiveS3AttemptTimeout()
 		if sharedS3ClientCache.refresh != nil && !identityMatches {
 			refresh := sharedS3ClientCache.refresh
@@ -187,7 +187,7 @@ func (c *Client) S3Client(ctx context.Context, zone string) (*s3.Client, error) 
 			sharedS3ClientCache.accessKeyInfo = nil
 			sharedS3ClientCache.apiEndpoint = c.apiEndpoint
 			sharedS3ClientCache.endpoint = c.s3Endpoint
-			sharedS3ClientCache.token = c.token
+			sharedS3ClientCache.authIdentity = c.s3CacheIdentity
 			sharedS3ClientCache.attemptTimeout = c.effectiveS3AttemptTimeout()
 		}
 
@@ -306,7 +306,7 @@ func resetS3ClientCache() {
 	sharedS3ClientCache.accessKeyInfo = nil
 	sharedS3ClientCache.apiEndpoint = ""
 	sharedS3ClientCache.endpoint = ""
-	sharedS3ClientCache.token = ""
+	sharedS3ClientCache.authIdentity = ""
 	sharedS3ClientCache.attemptTimeout = 0
 	sharedS3ClientCache.refresh = nil
 }

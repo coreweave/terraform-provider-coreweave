@@ -433,10 +433,10 @@ func TestS3ClientWaitersShareRefreshFailure(t *testing.T) {
 		err:     refreshErr,
 	}
 	client := &Client{
-		CWObjectClient: stub,
-		apiEndpoint:    "https://api.example.test",
-		s3Endpoint:     "https://objects.example.test",
-		token:          "test-token",
+		CWObjectClient:  stub,
+		apiEndpoint:     "https://api.example.test",
+		s3Endpoint:      "https://objects.example.test",
+		s3CacheIdentity: "test-token",
 	}
 
 	type result struct {
@@ -498,7 +498,7 @@ func TestS3ClientCanceledLeaderDoesNotFailHealthyWaiter(t *testing.T) {
 		apiEndpoint:     "https://api.example.test",
 		s3Endpoint:      "https://objects.example.test",
 		s3HTTPTransport: successfulListBucketsRoundTripper{},
-		token:           "test-token",
+		s3CacheIdentity: "test-token",
 	}
 	type result struct {
 		client *s3.Client
@@ -565,7 +565,7 @@ func TestS3ClientServesUnexpiredClientDuringRefresh(t *testing.T) {
 	}
 	sharedS3ClientCache.apiEndpoint = "https://api.example.test"
 	sharedS3ClientCache.endpoint = "https://objects.example.test"
-	sharedS3ClientCache.token = "test-token"
+	sharedS3ClientCache.authIdentity = "test-token"
 	sharedS3ClientCache.attemptTimeout = DefaultS3AttemptTimeout
 	sharedS3ClientCache.mu.Unlock()
 
@@ -575,11 +575,11 @@ func TestS3ClientServesUnexpiredClientDuringRefresh(t *testing.T) {
 		err:     errors.New("refresh failed"),
 	}
 	client := &Client{
-		CWObjectClient: stub,
-		apiEndpoint:    "https://api.example.test",
-		s3Endpoint:     "https://objects.example.test",
-		token:          "test-token",
-		s3Now:          func() time.Time { return now },
+		CWObjectClient:  stub,
+		apiEndpoint:     "https://api.example.test",
+		s3Endpoint:      "https://objects.example.test",
+		s3CacheIdentity: "test-token",
+		s3Now:           func() time.Time { return now },
 	}
 
 	type result struct {
