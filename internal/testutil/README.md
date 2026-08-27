@@ -4,11 +4,17 @@ Acceptance sweepers remove test resources that survived an interrupted or failed
 
 The mental model is: constrain blocker order across resource types, select resources locally, and bound work within one resource type. The Terraform testing framework supplies the first layer, `testutil.Sweep` supplies the second, and a service adapter supplies the third.
 
+## Upstream references and local authority
+
+Start with HashiCorp's [official sweeper guide](https://developer.hashicorp.com/terraform/plugin/testing/acceptance-tests/sweepers). It documents the purpose of sweepers, `resource.TestMain`, unique registration keys, acceptance-test name prefixes, dependencies, and the warning that a sweep destroys real infrastructure. The [`terraform-plugin-testing` resource API](https://pkg.go.dev/github.com/hashicorp/terraform-plugin-testing@v1.11.0/helper/resource#TestMain) is the API reference for `TestMain`, `AddTestSweepers`, `Sweeper`, and the native `-sweep`, `-sweep-run`, and `-sweep-allow-failures` flags. This repository pins that API version in [`go.mod`](../../go.mod#L30).
+
+HashiCorp's [acceptance-test requirements and recommendations](https://developer.hashicorp.com/terraform/plugin/testing/acceptance-tests#requirements-and-recommendations) are the operational baseline: acceptance tests use real infrastructure, may consume quota or incur cost, and should run in a separate account or namespace. CoreWeave-specific controls and defaults are defined by the repository sources linked in [Operating sweepers](#operating-sweepers); they are additions to the upstream runner, not HashiCorp defaults.
+
 ## The three layers
 
 ### 1. Terraform testing registry and dependency graph
 
-Each package registers `resource.Sweeper` values with `resource.AddTestSweepers`. The registration key is what `-sweep-run` selects, and `Dependencies` names other registration keys that must run first. The framework resolves dependencies recursively, includes them when a dependent sweeper is selected, and runs each selected sweeper at most once per zone in a sweep invocation. Independent sweepers run sequentially in an unspecified order; registration order must not be used to encode safety or deletion ordering. The dependency graph must be acyclic: the framework recursively traverses dependencies without cycle detection.
+Each package registers [`resource.Sweeper`](https://pkg.go.dev/github.com/hashicorp/terraform-plugin-testing@v1.11.0/helper/resource#Sweeper) values with [`resource.AddTestSweepers`](https://pkg.go.dev/github.com/hashicorp/terraform-plugin-testing@v1.11.0/helper/resource#AddTestSweepers). The registration key is what `-sweep-run` selects, and `Dependencies` names other registration keys that must run first. The framework resolves dependencies recursively, includes them when a dependent sweeper is selected, and runs each selected sweeper at most once per zone in a sweep invocation. Independent sweepers run sequentially in an unspecified order; registration order must not be used to encode safety or deletion ordering. The dependency graph must be acyclic: the framework recursively traverses dependencies without cycle detection.
 
 Dependencies encode deletion blockers, not conceptual relationships. The canonical example is CKS: `coreweave_cks_vpc` depends on `coreweave_cks_cluster`, so leaked clusters are swept before the VPCs that may still be attached to them.
 
@@ -54,7 +60,7 @@ The generic runner deliberately does not provide service idempotency, state-tran
 
 ## Selection safety
 
-A prefix is an ownership boundary. Use a prefix reserved exclusively for the acceptance resources created by that package; never broaden a matcher merely to catch an older naming pattern. If two suites create the same underlying resource type, give each suite a distinct prefix so each sweeper owns only its own leaks. CKS VPCs, for example, use their CKS-specific VPC prefix rather than the networking suite's general acceptance prefix.
+A prefix is an ownership boundary. HashiCorp's [sweeper guidance](https://developer.hashicorp.com/terraform/plugin/testing/acceptance-tests/sweepers) recommends a recognizable acceptance-test prefix; in this provider, make that prefix exclusive to the package's acceptance resources and never broaden a matcher merely to catch an older naming pattern. If two suites create the same underlying resource type, give each suite a distinct prefix so each sweeper owns only its own leaks. CKS VPCs, for example, use their CKS-specific VPC prefix rather than the networking suite's general acceptance prefix.
 
 Combine every cheap discriminator supplied by the API. Most zone-scoped adapters should require both the exact acceptance prefix and the requested zone. Org-scoped resources may have no zone field, but their prefix still must be exclusive.
 
@@ -183,6 +189,8 @@ A bare `make testacc-sweep` is destructive because `SWEEP_DRY_RUN` defaults to `
 
 Before any invocation, verify the effective API and, where applicable, object-storage endpoints; authenticated account or organization; token permissions; suite; registry filter; and zone. Do this through scoped identity/configuration checks without printing tokens or other credentials.
 
+Use a dedicated acceptance-test account or namespace as [recommended by HashiCorp](https://developer.hashicorp.com/terraform/plugin/testing/acceptance-tests#requirements-and-recommendations). The endpoint, identity, and selector checks above are provider-specific safeguards in addition to that isolation boundary.
+
 Start with a dry run and the narrowest suite, full registry key, and zone:
 
 ```sh
@@ -194,6 +202,8 @@ make testacc-sweep \
 ```
 
 Quiesce acceptance creation, review every selected name, recheck the endpoint/account/scope/suite/zone preflight, then repeat promptly with `SWEEP_DRY_RUN=false` to delete. Remember that the real run re-lists resources and can select a different set. Because the selected CKS VPC sweeper declares the cluster dependency, that invocation includes the CKS cluster sweeper first.
+
+The provider defaults below are defined in the [`GNUmakefile`](../../GNUmakefile#L14-L19). [`SweepRuntimeFromEnv`](sweepers.go#L14-L49) defines the dry-run and worker-parallelism behavior, and the [reusable acceptance workflow](../../.github/workflows/acceptance-test.yaml#L21-L25) supplies suite-specific timeout and zone overrides in CI. The `-sweep-run` and `-sweep-allow-failures` semantics come from the upstream [`resource.TestMain`](https://pkg.go.dev/github.com/hashicorp/terraform-plugin-testing@v1.11.0/helper/resource#TestMain) runner.
 
 The Make controls are:
 
