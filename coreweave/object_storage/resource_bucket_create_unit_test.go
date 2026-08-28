@@ -17,6 +17,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	s3types "github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/aws/smithy-go"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	fwresource "github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -640,6 +641,83 @@ func TestCreateBucketSafelyReconcilesHTTPAttemptTimeout(t *testing.T) {
 type stateRetentionRoundTripper struct {
 	createCalls int
 	headCalls   int
+}
+
+type emptyTagsCreateRoundTripper struct {
+	createCalls int
+	tagCalls    int
+}
+
+func (r *emptyTagsCreateRoundTripper) RoundTrip(request *standardhttp.Request) (*standardhttp.Response, error) {
+	if request.URL.Query().Has("tagging") {
+		r.tagCalls++
+		return nil, errors.New("tagging API must not be called for an explicitly empty tag map")
+	}
+
+	body := ""
+	switch request.Method {
+	case standardhttp.MethodGet:
+		body = `<ListAllMyBucketsResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/"><Buckets></Buckets></ListAllMyBucketsResult>`
+	case standardhttp.MethodPut:
+		r.createCalls++
+	case standardhttp.MethodHead:
+	default:
+		return nil, fmt.Errorf("unexpected S3 method %s", request.Method)
+	}
+
+	return &standardhttp.Response{
+		StatusCode: standardhttp.StatusOK,
+		Status:     "200 OK",
+		Header:     make(standardhttp.Header),
+		Body:       io.NopCloser(strings.NewReader(body)),
+		Request:    request,
+	}, nil
+}
+
+func TestBucketCreateWithEmptyTagsSkipsTaggingAndPreservesState(t *testing.T) {
+	transport := &emptyTagsCreateRoundTripper{}
+	s3Client := s3.New(s3.Options{
+		BaseEndpoint: aws.String("https://objects.example.test"),
+		Credentials:  credentials.NewStaticCredentialsProvider("access-key", "secret-key", ""),
+		HTTPClient:   &standardhttp.Client{Transport: transport},
+		Region:       "US-EAST-04A",
+		Retryer:      aws.NopRetryer{},
+	})
+	resourceUnderTest := &BucketResource{s3ClientForZone: func(context.Context, string) (*s3.Client, error) {
+		return s3Client, nil
+	}}
+	var schemaResponse fwresource.SchemaResponse
+	resourceUnderTest.Schema(t.Context(), fwresource.SchemaRequest{}, &schemaResponse)
+	if schemaResponse.Diagnostics.HasError() {
+		t.Fatalf("bucket schema diagnostics: %v", schemaResponse.Diagnostics)
+	}
+
+	model := BucketResourceModel{
+		Name: types.StringValue("empty-tags-test"),
+		Zone: types.StringValue("US-EAST-04A"),
+		Tags: types.MapValueMust(types.StringType, map[string]attr.Value{}),
+	}
+	plan := tfsdk.Plan{Schema: schemaResponse.Schema}
+	if diagnostics := plan.Set(t.Context(), &model); diagnostics.HasError() {
+		t.Fatalf("set test plan: %v", diagnostics)
+	}
+	response := &fwresource.CreateResponse{State: tfsdk.State{Schema: schemaResponse.Schema}}
+
+	resourceUnderTest.Create(t.Context(), fwresource.CreateRequest{Plan: plan}, response)
+
+	if response.Diagnostics.HasError() {
+		t.Fatalf("Create() diagnostics = %v", response.Diagnostics)
+	}
+	if transport.createCalls != 1 || transport.tagCalls != 0 {
+		t.Fatalf("S3 calls: Create=%d Tags=%d, want 1 and 0", transport.createCalls, transport.tagCalls)
+	}
+	var retained BucketResourceModel
+	if diagnostics := response.State.Get(t.Context(), &retained); diagnostics.HasError() {
+		t.Fatalf("read retained state: %v", diagnostics)
+	}
+	if retained.Tags.IsNull() || len(retained.Tags.Elements()) != 0 {
+		t.Fatalf("retained tags = %#v, want known empty map", retained.Tags)
+	}
 }
 
 func (r *stateRetentionRoundTripper) RoundTrip(request *standardhttp.Request) (*standardhttp.Response, error) {

@@ -90,18 +90,30 @@ func TestBucketResource(t *testing.T) {
 		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			createBucketTestStep(ctx, t, bucketTestStep{
-				TestName:     "initial bucket with tags",
+				TestName:     "initial bucket with explicit empty tags",
 				ResourceName: "test_acc_bucket",
 				Bucket: objectstorage.BucketResourceModel{
 					Name: types.StringValue(bucketName),
 					Zone: types.StringValue(zone),
-					Tags: types.MapValueMust(types.StringType, map[string]attr.Value{
-						"test-tag": types.StringValue("initial"),
-					}),
+					Tags: types.MapValueMust(types.StringType, map[string]attr.Value{}),
 				},
 				ConfigPlanChecks: resource.ConfigPlanChecks{
 					PreApply: []plancheck.PlanCheck{
 						plancheck.ExpectResourceAction(fmt.Sprintf("coreweave_object_storage_bucket.%s", "test_acc_bucket"), plancheck.ResourceActionCreate),
+					},
+				},
+			}),
+			createBucketTestStep(ctx, t, bucketTestStep{
+				TestName:     "explicit empty tags remain stable after refresh",
+				ResourceName: "test_acc_bucket",
+				Bucket: objectstorage.BucketResourceModel{
+					Name: types.StringValue(bucketName),
+					Zone: types.StringValue(zone),
+					Tags: types.MapValueMust(types.StringType, map[string]attr.Value{}),
+				},
+				ConfigPlanChecks: resource.ConfigPlanChecks{
+					PreApply: []plancheck.PlanCheck{
+						plancheck.ExpectResourceAction(fmt.Sprintf("coreweave_object_storage_bucket.%s", "test_acc_bucket"), plancheck.ResourceActionNoop),
 					},
 				},
 			}),
@@ -123,7 +135,35 @@ func TestBucketResource(t *testing.T) {
 				},
 			}),
 			createBucketTestStep(ctx, t, bucketTestStep{
-				TestName:     "remove tags",
+				TestName:     "clear tags with explicit empty map",
+				ResourceName: "test_acc_bucket",
+				Bucket: objectstorage.BucketResourceModel{
+					Name: types.StringValue(bucketName),
+					Zone: types.StringValue(zone),
+					Tags: types.MapValueMust(types.StringType, map[string]attr.Value{}),
+				},
+				ConfigPlanChecks: resource.ConfigPlanChecks{
+					PreApply: []plancheck.PlanCheck{
+						plancheck.ExpectResourceAction(fmt.Sprintf("coreweave_object_storage_bucket.%s", "test_acc_bucket"), plancheck.ResourceActionUpdate),
+					},
+				},
+			}),
+			createBucketTestStep(ctx, t, bucketTestStep{
+				TestName:     "explicit empty tags remain stable after update",
+				ResourceName: "test_acc_bucket",
+				Bucket: objectstorage.BucketResourceModel{
+					Name: types.StringValue(bucketName),
+					Zone: types.StringValue(zone),
+					Tags: types.MapValueMust(types.StringType, map[string]attr.Value{}),
+				},
+				ConfigPlanChecks: resource.ConfigPlanChecks{
+					PreApply: []plancheck.PlanCheck{
+						plancheck.ExpectResourceAction(fmt.Sprintf("coreweave_object_storage_bucket.%s", "test_acc_bucket"), plancheck.ResourceActionNoop),
+					},
+				},
+			}),
+			createBucketTestStep(ctx, t, bucketTestStep{
+				TestName:     "omit tags",
 				ResourceName: "test_acc_bucket",
 				Bucket: objectstorage.BucketResourceModel{
 					Name: types.StringValue(bucketName),

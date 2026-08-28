@@ -5,12 +5,16 @@ import (
 	"errors"
 	"fmt"
 	standardhttp "net/http"
+	"strings"
 	"testing"
 
 	awsretry "github.com/aws/aws-sdk-go-v2/aws/retry"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	s3types "github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/aws/smithy-go"
 	smithyhttp "github.com/aws/smithy-go/transport/http"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
 type bucketHeadCheckerStub struct {
@@ -139,4 +143,69 @@ func TestBucketExists(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestBucketTagsForState(t *testing.T) {
+	t.Parallel()
+
+	explicitEmpty := types.MapValueMust(types.StringType, map[string]attr.Value{})
+	t.Run("preserves an explicitly empty configured map", func(t *testing.T) {
+		t.Parallel()
+
+		got, diagnostics := bucketTagsForState(explicitEmpty, nil)
+		if diagnostics.HasError() {
+			t.Fatalf("bucketTagsForState() diagnostics = %v", diagnostics)
+		}
+		if got.IsNull() || len(got.Elements()) != 0 {
+			t.Fatalf("bucketTagsForState() = %#v, want known empty map", got)
+		}
+	})
+
+	t.Run("keeps an unconfigured empty tag set null", func(t *testing.T) {
+		t.Parallel()
+
+		got, diagnostics := bucketTagsForState(types.MapNull(types.StringType), nil)
+		if diagnostics.HasError() {
+			t.Fatalf("bucketTagsForState() diagnostics = %v", diagnostics)
+		}
+		if !got.IsNull() {
+			t.Fatalf("bucketTagsForState() = %#v, want null map", got)
+		}
+	})
+
+	t.Run("remote tags replace the previous value", func(t *testing.T) {
+		t.Parallel()
+
+		got, diagnostics := bucketTagsForState(explicitEmpty, []s3types.Tag{{
+			Key:   stringPointer("env"),
+			Value: stringPointer("test"),
+		}})
+		if diagnostics.HasError() {
+			t.Fatalf("bucketTagsForState() diagnostics = %v", diagnostics)
+		}
+		var values map[string]string
+		if diagnostics := got.ElementsAs(t.Context(), &values, false); diagnostics.HasError() {
+			t.Fatalf("read bucket tag state: %v", diagnostics)
+		}
+		if values["env"] != "test" || len(values) != 1 {
+			t.Fatalf("bucketTagsForState() values = %#v, want env=test", values)
+		}
+	})
+}
+
+func TestMustRenderBucketResourceWithEmptyTags(t *testing.T) {
+	t.Parallel()
+
+	config := MustRenderBucketResource(t.Context(), "empty_tags", &BucketResourceModel{
+		Name: types.StringValue("empty-tags-test"),
+		Zone: types.StringValue("US-EAST-04A"),
+		Tags: types.MapValueMust(types.StringType, map[string]attr.Value{}),
+	})
+	if !strings.Contains(config, "tags = {}") {
+		t.Fatalf("rendered config does not preserve an explicit empty tag map:\n%s", config)
+	}
+}
+
+func stringPointer(value string) *string {
+	return &value
 }

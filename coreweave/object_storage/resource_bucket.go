@@ -168,6 +168,21 @@ func isMissingBucketTagSetError(err error) bool {
 	return errors.As(err, &apiErr) && apiErr.ErrorCode() == errNoSuchTagSet
 }
 
+func bucketTagsForState(previous types.Map, remote []s3types.Tag) (types.Map, diag.Diagnostics) {
+	if len(remote) == 0 {
+		if previous.IsNull() {
+			return types.MapNull(types.StringType), nil
+		}
+		return types.MapValue(types.StringType, map[string]attr.Value{})
+	}
+
+	tagMap := make(map[string]attr.Value, len(remote))
+	for _, tag := range remote {
+		tagMap[*tag.Key] = types.StringValue(*tag.Value)
+	}
+	return types.MapValue(types.StringType, tagMap)
+}
+
 func isHTTPNotFoundError(err error) bool {
 	var httpErr *http.ResponseError
 	return errors.As(err, &httpErr) &&
@@ -359,7 +374,6 @@ func (b *BucketResource) Create(ctx context.Context, req resource.CreateRequest,
 	}
 
 	tags := []s3types.Tag(nil)
-	applyTags := !data.Tags.IsNull()
 	if !data.Tags.IsNull() {
 		tagMap := map[string]string{}
 
@@ -376,6 +390,7 @@ func (b *BucketResource) Create(ctx context.Context, req resource.CreateRequest,
 			})
 		}
 	}
+	applyTags := len(tags) > 0
 
 	if err := reconcileBucketAfterCreate(
 		ctx,
@@ -453,21 +468,11 @@ func (b *BucketResource) Read(ctx context.Context, req resource.ReadRequest, res
 		}
 	}
 
-	tags := types.MapNull(types.StringType)
-	if len(tagSet.TagSet) > 0 {
-		tagMap := map[string]attr.Value{}
-		for _, t := range tagSet.TagSet {
-			tagMap[*t.Key] = types.StringValue(*t.Value)
-		}
-		tagMapValue, diag := types.MapValue(types.StringType, tagMap)
-		resp.Diagnostics.Append(diag...)
-		if resp.Diagnostics.HasError() {
-			return
-		}
-
-		tags = tagMapValue
+	tags, diagnostics := bucketTagsForState(data.Tags, tagSet.TagSet)
+	resp.Diagnostics.Append(diagnostics...)
+	if resp.Diagnostics.HasError() {
+		return
 	}
-
 	data.Tags = tags
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
@@ -486,8 +491,8 @@ func (b *BucketResource) Update(ctx context.Context, req resource.UpdateRequest,
 		return
 	}
 
+	tags := []s3types.Tag(nil)
 	if !data.Tags.IsNull() {
-		tags := []s3types.Tag{}
 		tagMap := map[string]string{}
 
 		if diag := data.Tags.ElementsAs(ctx, &tagMap, false); diag.HasError() {
@@ -501,6 +506,9 @@ func (b *BucketResource) Update(ctx context.Context, req resource.UpdateRequest,
 				Value: aws.String(value),
 			})
 		}
+	}
+
+	if len(tags) > 0 {
 		_, err = s3Client.PutBucketTagging(ctx, &s3.PutBucketTaggingInput{
 			Bucket: aws.String(data.Name.ValueString()),
 			Tagging: &s3types.Tagging{
@@ -530,7 +538,9 @@ func (b *BucketResource) Update(ctx context.Context, req resource.UpdateRequest,
 			return
 		}
 
-		data.Tags = types.MapNull(types.StringType)
+		if data.Tags.IsNull() {
+			data.Tags = types.MapNull(types.StringType)
+		}
 	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
@@ -585,19 +595,10 @@ func (b *BucketResource) ImportState(ctx context.Context, req resource.ImportSta
 		return
 	}
 
-	tags := types.MapNull(types.StringType)
-	if len(bucketTagging.TagSet) > 0 {
-		tagMap := map[string]attr.Value{}
-		for _, t := range bucketTagging.TagSet {
-			tagMap[*t.Key] = types.StringValue(*t.Value)
-		}
-		tagMapValue, diag := types.MapValue(types.StringType, tagMap)
-		resp.Diagnostics.Append(diag...)
-		if resp.Diagnostics.HasError() {
-			return
-		}
-
-		tags = tagMapValue
+	tags, diagnostics := bucketTagsForState(types.MapNull(types.StringType), bucketTagging.TagSet)
+	resp.Diagnostics.Append(diagnostics...)
+	if resp.Diagnostics.HasError() {
+		return
 	}
 
 	data := BucketResourceModel{
@@ -628,7 +629,11 @@ func MustRenderBucketResource(ctx context.Context, resourceName string, bucket *
 		for key, value := range tagMap {
 			tags[key] = cty.StringVal(value)
 		}
-		resourceBody.SetAttributeValue("tags", cty.MapVal(tags))
+		if len(tags) == 0 {
+			resourceBody.SetAttributeValue("tags", cty.MapValEmpty(cty.String))
+		} else {
+			resourceBody.SetAttributeValue("tags", cty.MapVal(tags))
+		}
 	}
 
 	var buf bytes.Buffer
