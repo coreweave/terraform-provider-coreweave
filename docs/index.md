@@ -28,7 +28,22 @@ provider "coreweave" {
 
 ### Optional
 
-- `endpoint` (String) CoreWeave API Endpoint. This can also be set via the COREWEAVE_API_ENDPOINT environment variable, which takes precedence. Defaults to `https://api.coreweave.com/`
-- `http_timeout` (String) Timeout for each CoreWeave API and Object Storage S3 HTTP attempt. This can also be set via the COREWEAVE_HTTP_TIMEOUT environment variable, which takes precedence. When unset, CoreWeave API attempts default to 10 seconds and S3 attempts default to 30 seconds. Values near or below service latency can cause request timeouts.
+- `authentication` (Attributes) Authentication settings. Configure workload identity to exchange HCP Terraform's OIDC token for short-lived CoreWeave credentials. (see [below for nested schema](#nestedatt--authentication))
+- `endpoint` (String) CoreWeave API Endpoint. Must be an absolute `http` or `https` URL, including the scheme. This can also be set via the COREWEAVE_API_ENDPOINT environment variable, which takes precedence. Defaults to `https://api.coreweave.com/`
+- `http_timeout` (String) Timeout duration for the HTTP client to use. This can also be set via the COREWEAVE_HTTP_TIMEOUT environment variable, which takes precedence. If unset, defaults to 10 seconds
 - `s3_endpoint` (String) CoreWeave S3 Endpoint, used for CoreWeave Object Storage. This can also be set via the COREWEAVE_S3_ENDPOINT environment variable, which takes precedence. Defaults to `https://cwobject.com`
-- `token` (String, Sensitive) CoreWeave API Token in the form `CW-SECRET-<secret>`. This can also be set via the COREWEAVE_API_TOKEN environment variable, which takes precedence.
+- `token` (String, Sensitive) CoreWeave API Token in the form `CW-SECRET-<secret>`. When workload identity is not configured, this can also be set via the COREWEAVE_API_TOKEN environment variable, which takes precedence. An explicitly configured token cannot be used with `authentication.workload_identity`.
+
+<a id="nestedatt--authentication"></a>
+### Nested Schema for `authentication`
+
+Optional:
+
+- `workload_identity` (Attributes) Authenticate as a CoreWeave service account using HCP Terraform workload identity. The external OIDC token is read from `TFC_WORKLOAD_IDENTITY_TOKEN`. (see [below for nested schema](#nestedatt--authentication--workload_identity))
+
+<a id="nestedatt--authentication--workload_identity"></a>
+### Nested Schema for `authentication.workload_identity`
+
+Required:
+
+- `service_account_uid` (String) UID of the CoreWeave service account to authenticate as.

@@ -126,6 +126,10 @@ type Client struct {
 }
 
 func IsNotFoundError(err error) bool {
+	if auth.IsTokenSourceError(err) {
+		return false
+	}
+
 	var connectErr *connect.Error
 	return errors.As(err, &connectErr) && connectErr.Code() == connect.CodeNotFound
 }
