@@ -79,7 +79,7 @@ resource "coreweave_inference_deployment" "example" {
 - `created_at` (String) RFC3339 timestamp of when the deployment was created.
 - `id` (String) The unique identifier of the deployment.
 - `organization_id` (String) The organization ID that owns the deployment.
-- `status` (String) The current status of the deployment. See the [Inference API overview](https://docs.coreweave.com/products/inference/reference/api-overview) for status values.
+- `status` (String) The current status of the deployment. See the [Inference API overview](https://docs.coreweave.com/products/inference/reference/api-overview) for status values. Apply returns once resources are applied rather than once serving, so this may not be ready immediately after apply; poll the API for live readiness.
 - `updated_at` (String) RFC3339 timestamp of when the deployment was last updated.
 
 <a id="nestedatt--autoscaling"></a>

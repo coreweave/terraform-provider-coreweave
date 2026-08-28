@@ -11,7 +11,6 @@ import (
 
 	inferencev1 "buf.build/gen/go/coreweave/inference/protocolbuffers/go/coreweave/inference/v1alpha1"
 	"connectrpc.com/connect"
-	"github.com/coreweave/terraform-provider-coreweave/coreweave"
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/setvalidator"
@@ -31,6 +30,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/retry"
+
+	"github.com/coreweave/terraform-provider-coreweave/coreweave"
 )
 
 const (
@@ -75,6 +76,50 @@ var (
 
 	errDeploymentFailed = errors.New("inference deployment entered a failed state")
 )
+
+const (
+	conditionTypeResourcesApplied = "ResourcesApplied"
+
+	// The status enum has no "applied but not yet Ready" value, so create/update
+	// wait on this synthetic state derived from the ResourcesApplied condition.
+	resourcesAppliedState = "RESOURCES_APPLIED"
+)
+
+// resourcesApplied reports whether the deployment's ResourcesApplied condition
+// is True — the completion signal for create/update. Readiness is left for the
+// user to poll via the API so Terraform runs don't block on model pulls/rollouts.
+func resourcesApplied(d *inferencev1.Deployment) bool {
+	for _, c := range d.GetStatus().GetConditions() {
+		if c.GetType() == conditionTypeResourcesApplied {
+			return c.GetStatus() == inferencev1.Condition_STATUS_TRUE
+		}
+	}
+	return false
+}
+
+// resourcesAppliedRefresh polls a deployment for a StateChangeConf keyed on the
+// ResourcesApplied condition. A terminal ERROR/FAILED status (which covers a
+// failed apply) returns errDeploymentFailed.
+func (r *InferenceDeploymentResource) resourcesAppliedRefresh(ctx context.Context, deploymentID string) retry.StateRefreshFunc {
+	return func() (interface{}, string, error) {
+		getResp, err := r.client.GetDeployment(ctx, connect.NewRequest(&inferencev1.GetDeploymentRequest{
+			Id: deploymentID,
+		}))
+		if err != nil {
+			tflog.Error(ctx, "failed to poll deployment", map[string]interface{}{"error": err.Error()})
+			return nil, inferencev1.Status_STATUS_UNSPECIFIED.String(), err
+		}
+		d := getResp.Msg.Deployment
+		status := d.GetStatus().GetStatus()
+		if status == inferencev1.Status_STATUS_ERROR || status == inferencev1.Status_STATUS_FAILED {
+			return d, status.String(), errDeploymentFailed
+		}
+		if resourcesApplied(d) {
+			return d, resourcesAppliedState, nil
+		}
+		return d, status.String(), nil
+	}
+}
 
 // conditionsListFromStatus converts proto status conditions into the Terraform
 // list value shared by all inference resources.
@@ -189,7 +234,7 @@ func (r *InferenceDeploymentResource) Schema(_ context.Context, _ resource.Schem
 			},
 			"status": schema.StringAttribute{
 				Computed:            true,
-				MarkdownDescription: "The current status of the deployment. See the [Inference API overview](https://docs.coreweave.com/products/inference/reference/api-overview) for status values.",
+				MarkdownDescription: "The current status of the deployment. See the [Inference API overview](https://docs.coreweave.com/products/inference/reference/api-overview) for status values. Apply returns once resources are applied rather than once serving, so this may not be ready immediately after apply; poll the API for live readiness.",
 				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
 			"created_at": schema.StringAttribute{
@@ -517,22 +562,8 @@ func (r *InferenceDeploymentResource) Create(ctx context.Context, req resource.C
 			inferencev1.Status_STATUS_CREATING.String(),
 			inferencev1.Status_STATUS_UNSPECIFIED.String(),
 		},
-		Target: []string{inferencev1.Status_STATUS_READY.String()},
-		Refresh: func() (interface{}, string, error) {
-			getResp, err := r.client.GetDeployment(ctx, connect.NewRequest(&inferencev1.GetDeploymentRequest{
-				Id: deploymentID,
-			}))
-			if err != nil {
-				tflog.Error(ctx, "failed to poll deployment", map[string]interface{}{"error": err.Error()})
-				return nil, inferencev1.Status_STATUS_UNSPECIFIED.String(), err
-			}
-			d := getResp.Msg.Deployment
-			status := d.GetStatus().GetStatus()
-			if status == inferencev1.Status_STATUS_ERROR || status == inferencev1.Status_STATUS_FAILED {
-				return d, status.String(), errDeploymentFailed
-			}
-			return d, status.String(), nil
-		},
+		Target:     []string{resourcesAppliedState},
+		Refresh:    r.resourcesAppliedRefresh(ctx, deploymentID),
 		Timeout:    45 * time.Minute,
 		MinTimeout: 5 * time.Second,
 	}
@@ -621,22 +652,8 @@ func (r *InferenceDeploymentResource) Update(ctx context.Context, req resource.U
 			inferencev1.Status_STATUS_CREATING.String(),
 			inferencev1.Status_STATUS_UNSPECIFIED.String(),
 		},
-		Target: []string{inferencev1.Status_STATUS_READY.String()},
-		Refresh: func() (interface{}, string, error) {
-			getResp, err := r.client.GetDeployment(ctx, connect.NewRequest(&inferencev1.GetDeploymentRequest{
-				Id: deploymentID,
-			}))
-			if err != nil {
-				tflog.Error(ctx, "failed to poll deployment", map[string]interface{}{"error": err.Error()})
-				return nil, inferencev1.Status_STATUS_UNSPECIFIED.String(), err
-			}
-			d := getResp.Msg.Deployment
-			status := d.GetStatus().GetStatus()
-			if status == inferencev1.Status_STATUS_ERROR || status == inferencev1.Status_STATUS_FAILED {
-				return d, status.String(), errDeploymentFailed
-			}
-			return d, status.String(), nil
-		},
+		Target:     []string{resourcesAppliedState},
+		Refresh:    r.resourcesAppliedRefresh(ctx, deploymentID),
 		Timeout:    20 * time.Minute,
 		MinTimeout: 5 * time.Second,
 	}
