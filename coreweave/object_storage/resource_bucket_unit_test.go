@@ -7,7 +7,7 @@ import (
 	standardhttp "net/http"
 	"testing"
 
-	"github.com/aws/aws-sdk-go-v2/aws"
+	awsretry "github.com/aws/aws-sdk-go-v2/aws/retry"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/smithy-go"
 	smithyhttp "github.com/aws/smithy-go/transport/http"
@@ -84,11 +84,14 @@ func TestIsMissingBucketTagSetError(t *testing.T) {
 func TestWithBucketReadRetry(t *testing.T) {
 	t.Parallel()
 
-	options := s3.Options{Retryer: aws.NopRetryer{}}
+	const maxAttempts = 3
+	options := s3.Options{Retryer: awsretry.NewStandard(func(options *awsretry.StandardOptions) {
+		options.MaxAttempts = maxAttempts
+	})}
 	withBucketReadRetry(&options)
 
-	if got := options.Retryer.MaxAttempts(); got != bucketReadMaxAttempts {
-		t.Errorf("MaxAttempts() = %d, want %d", got, bucketReadMaxAttempts)
+	if got := options.Retryer.MaxAttempts(); got != maxAttempts {
+		t.Errorf("MaxAttempts() = %d, want preserved cap %d", got, maxAttempts)
 	}
 	if !options.Retryer.IsErrorRetryable(&smithy.GenericAPIError{Code: ErrNoSuchBucket}) {
 		t.Error("NoSuchBucket should be retryable")
