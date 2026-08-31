@@ -167,6 +167,7 @@ func TestTransportAuthenticatesOnlyTheConfiguredOrigin(t *testing.T) {
 			require.NoError(t, err)
 			req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, test.requestURL, nil)
 			require.NoError(t, err)
+			req.Header.Set("Authorization", "Bearer caller-token")
 			_, err = transport.RoundTrip(req)
 			require.NoError(t, err)
 
@@ -176,6 +177,7 @@ func TestTransportAuthenticatesOnlyTheConfiguredOrigin(t *testing.T) {
 			} else {
 				assert.Empty(t, authorization)
 			}
+			assert.Equal(t, "Bearer caller-token", req.Header.Get("Authorization"), "transport must not mutate the caller's request")
 		})
 	}
 }

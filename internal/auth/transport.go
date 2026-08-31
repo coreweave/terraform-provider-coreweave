@@ -50,7 +50,9 @@ func (t *transport) RoundTrip(req *http.Request) (*http.Response, error) {
 			"request_origin":    requestOrigin(req.URL),
 			"configured_origin": t.allowedScheme + "://" + t.allowedHost,
 		})
-		return t.base.RoundTrip(req)
+		request := req.Clone(req.Context())
+		request.Header.Del("Authorization")
+		return t.base.RoundTrip(request)
 	}
 
 	request := req.Clone(req.Context())
