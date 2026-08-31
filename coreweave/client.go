@@ -14,13 +14,30 @@ import (
 	"buf.build/gen/go/coreweave/workload-federation/connectrpc/go/coreweave/workload_federation/control_plane/v1beta1/control_planev1beta1connect"
 	"connectrpc.com/connect"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	retryablehttp "github.com/hashicorp/go-retryablehttp"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
 )
 
+type ClientOptions struct {
+	S3AttemptTimeout time.Duration
+}
+
 func NewClient(endpoint string, s3Endpoint string, timeout time.Duration, token string, userAgent string, interceptors ...connect.Interceptor) *Client {
+	return NewClientWithOptions(endpoint, s3Endpoint, timeout, token, userAgent, ClientOptions{}, interceptors...)
+}
+
+func NewClientWithOptions(
+	endpoint string,
+	s3Endpoint string,
+	timeout time.Duration,
+	token string,
+	userAgent string,
+	options ClientOptions,
+	interceptors ...connect.Interceptor,
+) *Client {
 	rc := retryablehttp.NewClient()
 	rc.HTTPClient.Timeout = timeout
 	rc.RetryMax = 10
@@ -28,7 +45,8 @@ func NewClient(endpoint string, s3Endpoint string, timeout time.Duration, token 
 	rc.RetryWaitMax = 5 * time.Second
 	// Jittered exponential back-off (min*2^n) with capping.
 	rc.Backoff = retryablehttp.DefaultBackoff
-	// Treat only idempotent verbs + 502/503/504 + transport errors as retryable.
+	// Retry transient transport failures, 429 responses, and server errors other
+	// than 501 while rejecting permanent request and certificate failures.
 	rc.CheckRetry = RetryPolicy
 
 	c := rc.StandardClient()
@@ -47,11 +65,12 @@ func NewClient(endpoint string, s3Endpoint string, timeout time.Duration, token 
 			CapacityClaimServiceClient: inferencev1alpha1connect.NewCapacityClaimServiceClient(c, endpoint, connect.WithInterceptors(interceptors...)),
 			GatewayServiceClient:       inferencev1alpha1connect.NewGatewayServiceClient(c, endpoint, connect.WithInterceptors(interceptors...)),
 		},
-		apiEndpoint: endpoint,
-		httpClient:  c,
-		s3Endpoint:  s3Endpoint,
-		token:       token,
-		userAgent:   userAgent,
+		apiEndpoint:      endpoint,
+		httpClient:       c,
+		s3Endpoint:       s3Endpoint,
+		s3AttemptTimeout: options.S3AttemptTimeout,
+		token:            token,
+		userAgent:        userAgent,
 	}
 }
 
@@ -70,11 +89,15 @@ type Client struct {
 
 	Inference *InferenceClient
 
-	apiEndpoint string
-	httpClient  *http.Client
-	s3Endpoint  string
-	token       string
-	userAgent   string
+	apiEndpoint      string
+	httpClient       *http.Client
+	s3Endpoint       string
+	s3AttemptTimeout time.Duration
+	s3HTTPTransport  http.RoundTripper
+	s3Retryer        func() aws.Retryer
+	s3Now            func() time.Time
+	token            string
+	userAgent        string
 }
 
 func IsNotFoundError(err error) bool {

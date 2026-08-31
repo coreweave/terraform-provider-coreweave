@@ -34,30 +34,8 @@ var (
 
 func baseRetryPolicy(resp *http.Response, err error) (bool, error) {
 	if err != nil {
-		var v *url.Error
-		if errors.Is(err, v) {
-			// Don't retry if the error was due to too many redirects.
-			if redirectsErrorRe.MatchString(v.Error()) {
-				return false, v
-			}
-
-			// Don't retry if the error was due to an invalid protocol scheme.
-			if schemeErrorRe.MatchString(v.Error()) {
-				return false, v
-			}
-
-			// Don't retry if the error was due to an invalid header.
-			if invalidHeaderErrorRe.MatchString(v.Error()) {
-				return false, v
-			}
-
-			// Don't retry if the error was due to TLS cert verification failure.
-			if notTrustedErrorRe.MatchString(v.Error()) {
-				return false, v
-			}
-			if errors.Is(v, &tls.CertificateVerificationError{}) {
-				return false, v
-			}
+		if permanentErr := permanentRequestError(err); permanentErr != nil {
+			return false, permanentErr
 		}
 
 		// The error is likely recoverable so retry.
@@ -80,6 +58,37 @@ func baseRetryPolicy(resp *http.Response, err error) (bool, error) {
 	}
 
 	return false, nil
+}
+
+// permanentRequestError returns the request error when retrying cannot change
+// the outcome, such as malformed requests, exhausted redirects, or certificate
+// verification failures.
+func permanentRequestError(err error) error {
+	var certificateErr *tls.CertificateVerificationError
+	if errors.As(err, &certificateErr) {
+		return err
+	}
+
+	var urlErr *url.Error
+	if !errors.As(err, &urlErr) {
+		return nil
+	}
+
+	if redirectsErrorRe.MatchString(urlErr.Error()) ||
+		schemeErrorRe.MatchString(urlErr.Error()) ||
+		invalidHeaderErrorRe.MatchString(urlErr.Error()) ||
+		notTrustedErrorRe.MatchString(urlErr.Error()) {
+		return urlErr
+	}
+
+	return nil
+}
+
+// IsPermanentRequestError reports whether retrying a malformed request,
+// exhausted redirect, or certificate-verification failure cannot change the
+// outcome.
+func IsPermanentRequestError(err error) bool {
+	return permanentRequestError(err) != nil
 }
 
 func RetryPolicy(ctx context.Context, resp *http.Response, err error) (bool, error) {

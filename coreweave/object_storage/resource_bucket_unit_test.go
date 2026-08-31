@@ -4,13 +4,21 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	standardhttp "net/http"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	awsretry "github.com/aws/aws-sdk-go-v2/aws/retry"
+	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	s3types "github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/aws/smithy-go"
 	smithyhttp "github.com/aws/smithy-go/transport/http"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
 type bucketHeadCheckerStub struct {
@@ -84,11 +92,17 @@ func TestIsMissingBucketTagSetError(t *testing.T) {
 func TestWithBucketReadRetry(t *testing.T) {
 	t.Parallel()
 
-	options := s3.Options{Retryer: aws.NopRetryer{}}
+	const (
+		globalMaxAttempts    = 3
+		expectedReadAttempts = 8
+	)
+	options := s3.Options{Retryer: awsretry.NewStandard(func(options *awsretry.StandardOptions) {
+		options.MaxAttempts = globalMaxAttempts
+	})}
 	withBucketReadRetry(&options)
 
-	if got := options.Retryer.MaxAttempts(); got != bucketReadMaxAttempts {
-		t.Errorf("MaxAttempts() = %d, want %d", got, bucketReadMaxAttempts)
+	if got := options.Retryer.MaxAttempts(); got != expectedReadAttempts {
+		t.Errorf("MaxAttempts() = %d, want bucket read cap %d", got, expectedReadAttempts)
 	}
 	if !options.Retryer.IsErrorRetryable(&smithy.GenericAPIError{Code: ErrNoSuchBucket}) {
 		t.Error("NoSuchBucket should be retryable")
@@ -101,6 +115,88 @@ func TestWithBucketReadRetry(t *testing.T) {
 	}
 	if options.Retryer.IsErrorRetryable(&smithy.GenericAPIError{Code: errNoSuchTagSet}) {
 		t.Error("NoSuchTagSet should not be retryable")
+	}
+}
+
+type eventuallyVisibleBucketTransport struct {
+	attempts          int
+	transientFailures int
+}
+
+type immediateBackoff struct{}
+
+func (immediateBackoff) BackoffDelay(int, error) (time.Duration, error) {
+	return 0, nil
+}
+
+func (t *eventuallyVisibleBucketTransport) RoundTrip(request *standardhttp.Request) (*standardhttp.Response, error) {
+	t.attempts++
+	status := standardhttp.StatusOK
+	if t.attempts <= t.transientFailures {
+		status = standardhttp.StatusNotFound
+	}
+
+	return &standardhttp.Response{
+		StatusCode: status,
+		Status:     standardhttp.StatusText(status),
+		Header:     make(standardhttp.Header),
+		Body:       io.NopCloser(strings.NewReader("")),
+		Request:    request,
+	}, nil
+}
+
+func TestBucketExistsOutlivesGlobalS3RetryBudget(t *testing.T) {
+	t.Parallel()
+
+	const globalS3RetryAttempts = 3
+	transport := &eventuallyVisibleBucketTransport{transientFailures: globalS3RetryAttempts}
+	client := s3.New(s3.Options{
+		BaseEndpoint: aws.String("https://objects.example.test"),
+		Credentials:  credentials.NewStaticCredentialsProvider("access-key", "secret-key", ""),
+		HTTPClient:   &standardhttp.Client{Transport: transport},
+		Region:       "US-EAST-04A",
+		Retryer: awsretry.NewStandard(func(options *awsretry.StandardOptions) {
+			options.Backoff = immediateBackoff{}
+			options.MaxAttempts = globalS3RetryAttempts
+		}),
+	})
+
+	exists, err := bucketExists(t.Context(), client, "eventually-visible")
+	if err != nil {
+		t.Fatalf("bucketExists() error = %v", err)
+	}
+	if !exists {
+		t.Fatal("bucketExists() = false after transient 404 responses, want true")
+	}
+	if got, want := transport.attempts, globalS3RetryAttempts+1; got != want {
+		t.Fatalf("HeadBucket attempts = %d, want %d", got, want)
+	}
+}
+
+func TestBucketExistsStopsAtReadRetryBudget(t *testing.T) {
+	t.Parallel()
+
+	transport := &eventuallyVisibleBucketTransport{transientFailures: bucketReadMaxAttempts}
+	client := s3.New(s3.Options{
+		BaseEndpoint: aws.String("https://objects.example.test"),
+		Credentials:  credentials.NewStaticCredentialsProvider("access-key", "secret-key", ""),
+		HTTPClient:   &standardhttp.Client{Transport: transport},
+		Region:       "US-EAST-04A",
+		Retryer: awsretry.NewStandard(func(options *awsretry.StandardOptions) {
+			options.Backoff = immediateBackoff{}
+			options.MaxAttempts = 3
+		}),
+	})
+
+	exists, err := bucketExists(t.Context(), client, "absent-bucket")
+	if err != nil {
+		t.Fatalf("bucketExists() error = %v", err)
+	}
+	if exists {
+		t.Fatal("bucketExists() = true after exhausting transient 404 responses, want false")
+	}
+	if got := transport.attempts; got != bucketReadMaxAttempts {
+		t.Fatalf("HeadBucket attempts = %d, want capped at %d", got, bucketReadMaxAttempts)
 	}
 }
 
@@ -136,4 +232,69 @@ func TestBucketExists(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestBucketTagsForState(t *testing.T) {
+	t.Parallel()
+
+	explicitEmpty := types.MapValueMust(types.StringType, map[string]attr.Value{})
+	t.Run("preserves an explicitly empty configured map", func(t *testing.T) {
+		t.Parallel()
+
+		got, diagnostics := bucketTagsForState(explicitEmpty, nil)
+		if diagnostics.HasError() {
+			t.Fatalf("bucketTagsForState() diagnostics = %v", diagnostics)
+		}
+		if got.IsNull() || len(got.Elements()) != 0 {
+			t.Fatalf("bucketTagsForState() = %#v, want known empty map", got)
+		}
+	})
+
+	t.Run("keeps an unconfigured empty tag set null", func(t *testing.T) {
+		t.Parallel()
+
+		got, diagnostics := bucketTagsForState(types.MapNull(types.StringType), nil)
+		if diagnostics.HasError() {
+			t.Fatalf("bucketTagsForState() diagnostics = %v", diagnostics)
+		}
+		if !got.IsNull() {
+			t.Fatalf("bucketTagsForState() = %#v, want null map", got)
+		}
+	})
+
+	t.Run("remote tags replace the previous value", func(t *testing.T) {
+		t.Parallel()
+
+		got, diagnostics := bucketTagsForState(explicitEmpty, []s3types.Tag{{
+			Key:   stringPointer("env"),
+			Value: stringPointer("test"),
+		}})
+		if diagnostics.HasError() {
+			t.Fatalf("bucketTagsForState() diagnostics = %v", diagnostics)
+		}
+		var values map[string]string
+		if diagnostics := got.ElementsAs(t.Context(), &values, false); diagnostics.HasError() {
+			t.Fatalf("read bucket tag state: %v", diagnostics)
+		}
+		if values["env"] != "test" || len(values) != 1 {
+			t.Fatalf("bucketTagsForState() values = %#v, want env=test", values)
+		}
+	})
+}
+
+func TestMustRenderBucketResourceWithEmptyTags(t *testing.T) {
+	t.Parallel()
+
+	config := MustRenderBucketResource(t.Context(), "empty_tags", &BucketResourceModel{
+		Name: types.StringValue("empty-tags-test"),
+		Zone: types.StringValue("US-EAST-04A"),
+		Tags: types.MapValueMust(types.StringType, map[string]attr.Value{}),
+	})
+	if !strings.Contains(config, "tags = {}") {
+		t.Fatalf("rendered config does not preserve an explicit empty tag map:\n%s", config)
+	}
+}
+
+func stringPointer(value string) *string {
+	return &value
 }
