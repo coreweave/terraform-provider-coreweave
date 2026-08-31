@@ -9,6 +9,7 @@ import (
 	inferencev1 "buf.build/gen/go/coreweave/inference/protocolbuffers/go/coreweave/inference/v1alpha1"
 	"connectrpc.com/connect"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
+	"github.com/hashicorp/terraform-plugin-framework-nettypes/cidrtypes"
 	"github.com/hashicorp/terraform-plugin-framework-validators/resourcevalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/setvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
@@ -75,7 +76,9 @@ type GatewayRoutingModel struct {
 }
 
 type EndpointConfigurationModel struct {
-	AdditionalDNS types.Set `tfsdk:"additional_dns"`
+	AdditionalDNS         types.Set    `tfsdk:"additional_dns"`
+	EdgeProxyMode         types.String `tfsdk:"edge_proxy_mode"`
+	AllowedSourceIPRanges types.Set    `tfsdk:"allowed_source_ip_ranges"`
 }
 
 // InferenceGatewayResourceModel is the top-level Terraform state model.
@@ -165,8 +168,11 @@ func (r *InferenceGatewayResource) Schema(_ context.Context, _ resource.SchemaRe
 			},
 			"name": schema.StringAttribute{
 				Required:            true,
-				MarkdownDescription: "The human-readable name of the gateway.",
+				MarkdownDescription: "The human-readable name of the gateway. Capped at 38 characters so the derived public FQDN fits within the 64-character X.509 Common Name limit.",
 				PlanModifiers:       []planmodifier.String{stringplanmodifier.RequiresReplace()},
+				Validators: []validator.String{
+					stringvalidator.LengthAtMost(38),
+				},
 			},
 			"zones": schema.SetAttribute{
 				ElementType:         types.StringType,
@@ -258,6 +264,21 @@ func (r *InferenceGatewayResource) Schema(_ context.Context, _ resource.SchemaRe
 						ElementType:         types.StringType,
 						Optional:            true,
 						MarkdownDescription: "Additional DNS names for the gateway endpoint. These DNS names must be manually configured to point to the gateway endpoint.",
+					},
+					"edge_proxy_mode": schema.StringAttribute{
+						Optional:            true,
+						MarkdownDescription: "How client traffic reaches the gateway. Must be one of: `EDGE_PROXY_MODE_MANAGED` (traffic is proxied through CoreWeave's managed edge network: DDoS mitigation and WAF, with TLS terminated at the edge and the origin address kept out of public DNS) or `EDGE_PROXY_MODE_DIRECT` (clients connect straight to the gateway's load balancer, with no edge filtering and the load balancer address published in DNS). When unset, the platform default (currently `EDGE_PROXY_MODE_MANAGED`) applies.",
+						Validators: []validator.String{
+							stringvalidator.OneOf(coreweave.EnumValues(inferencev1.EdgeProxyMode_name, true)...),
+						},
+					},
+					"allowed_source_ip_ranges": schema.SetAttribute{
+						ElementType:         cidrtypes.IPPrefixType{},
+						Optional:            true,
+						MarkdownDescription: "Client source IP ranges permitted to reach the gateway, in CIDR notation (IPv4 or IPv6). Up to 50 entries; an empty list applies no source restriction. Use a full-length prefix for a single address (e.g. `203.0.113.5/32`).",
+						Validators: []validator.Set{
+							setvalidator.SizeAtMost(50),
+						},
 					},
 				},
 			},
@@ -564,21 +585,50 @@ func buildGatewayFields(ctx context.Context, m *InferenceGatewayResourceModel) (
 		Zones: zones,
 	}
 
-	// Only build an EndpointConfiguration when additional_dns is explicitly
-	// configured. Sending an empty EndpointConfiguration is non-destructive
-	// (the API merges DNS records rather than replacing them), but it muddies
-	// the wire payload for `endpoint_configuration {}` configs that set no
-	// fields.
-	if m.EndpointConfiguration != nil &&
-		!m.EndpointConfiguration.AdditionalDNS.IsNull() &&
-		!m.EndpointConfiguration.AdditionalDNS.IsUnknown() {
-		dns := []string{}
-		diagnostics.Append(m.EndpointConfiguration.AdditionalDNS.ElementsAs(ctx, &dns, false)...)
-		if diagnostics.HasError() {
-			return gatewayFields{}, diagnostics
+	// Only attach an EndpointConfiguration when at least one of its fields is
+	// explicitly configured. Sending an empty EndpointConfiguration is
+	// non-destructive (the API merges DNS records rather than replacing them),
+	// but it muddies the wire payload for `endpoint_configuration {}` configs
+	// that set no fields.
+	if m.EndpointConfiguration != nil {
+		ec := &inferencev1.EndpointConfiguration{}
+		var populated bool
+
+		if s := m.EndpointConfiguration.AdditionalDNS; !s.IsNull() && !s.IsUnknown() {
+			dns := []string{}
+			diagnostics.Append(s.ElementsAs(ctx, &dns, false)...)
+			if diagnostics.HasError() {
+				return gatewayFields{}, diagnostics
+			}
+			ec.AdditionalDns = dns
+			populated = true
 		}
-		f.EndpointConfiguration = &inferencev1.EndpointConfiguration{
-			AdditionalDns: dns,
+
+		if mode := m.EndpointConfiguration.EdgeProxyMode; !mode.IsNull() && !mode.IsUnknown() {
+			val, ok := inferencev1.EdgeProxyMode_value[mode.ValueString()]
+			if !ok {
+				diagnostics.AddError("Invalid edge_proxy_mode", fmt.Sprintf("Invalid edge_proxy_mode: %s. Must be one of: %s.", mode.ValueString(), coreweave.EnumMarkdownValues(inferencev1.EdgeProxyMode_name, true)))
+				return gatewayFields{}, diagnostics
+			}
+			ec.EdgeProxyMode = inferencev1.EdgeProxyMode(val)
+			populated = true
+		}
+
+		if s := m.EndpointConfiguration.AllowedSourceIPRanges; !s.IsNull() && !s.IsUnknown() {
+			ranges := []cidrtypes.IPPrefix{}
+			diagnostics.Append(s.ElementsAs(ctx, &ranges, false)...)
+			if diagnostics.HasError() {
+				return gatewayFields{}, diagnostics
+			}
+			ec.AllowedSourceIpRanges = make([]string, len(ranges))
+			for i, r := range ranges {
+				ec.AllowedSourceIpRanges[i] = r.ValueString()
+			}
+			populated = true
+		}
+
+		if populated {
+			f.EndpointConfiguration = ec
 		}
 	}
 
@@ -708,6 +758,17 @@ func toUpdateGatewayRequest(ctx context.Context, m *InferenceGatewayResourceMode
 	return req, diags
 }
 
+// emptyOrNullSet returns the value to store for an optional set attribute when the API returned
+// no elements: an empty set if the prior config/state held one (an explicit `[]`), otherwise
+// null. Preserving this distinction keeps the applied state consistent with the plan for both
+// `= []` and unset configs, avoiding Terraform's "inconsistent result after apply" error.
+func emptyOrNullSet(elemType attr.Type, prior types.Set) types.Set {
+	if !prior.IsNull() && !prior.IsUnknown() {
+		return types.SetValueMust(elemType, []attr.Value{})
+	}
+	return types.SetNull(elemType)
+}
+
 // setFromGateway populates all fields on the model from a proto Gateway response.
 // For Optional (non-Computed) fields, null is preserved when the plan/state was null and the
 // API returns the default (zero/empty) value.
@@ -829,11 +890,25 @@ func setFromGateway(m *InferenceGatewayResourceModel, gw *inferencev1.Gateway, p
 
 	// endpoint_configuration — null preservation
 	ec := spec.GetEndpointConfiguration()
-	if m.EndpointConfiguration == nil && (ec == nil || len(ec.GetAdditionalDns()) == 0) {
+	hasDNS := ec != nil && len(ec.GetAdditionalDns()) > 0
+	hasRanges := ec != nil && len(ec.GetAllowedSourceIpRanges()) > 0
+	hasMode := ec != nil && ec.GetEdgeProxyMode() != inferencev1.EdgeProxyMode_EDGE_PROXY_MODE_UNSPECIFIED
+	if m.EndpointConfiguration == nil && !hasDNS && !hasRanges && !hasMode {
 		m.EndpointConfiguration = nil
 	} else {
+		// Capture the prior null/empty state of the optional set attributes: the
+		// API returns an empty list for both an unset (null) config and an
+		// explicit empty set, so we mirror what the config/state held to avoid
+		// drift between plan and applied state.
+		var priorDNS, priorRanges types.Set
+		if m.EndpointConfiguration != nil {
+			priorDNS = m.EndpointConfiguration.AdditionalDNS
+			priorRanges = m.EndpointConfiguration.AllowedSourceIPRanges
+		}
+
 		ecModel := &EndpointConfigurationModel{}
-		if ec != nil && len(ec.GetAdditionalDns()) > 0 {
+
+		if hasDNS {
 			dnsVals := make([]attr.Value, len(ec.GetAdditionalDns()))
 			for i, d := range ec.GetAdditionalDns() {
 				dnsVals[i] = types.StringValue(d)
@@ -842,8 +917,27 @@ func setFromGateway(m *InferenceGatewayResourceModel, gw *inferencev1.Gateway, p
 			diagnostics.Append(diags...)
 			ecModel.AdditionalDNS = dnsSet
 		} else {
-			ecModel.AdditionalDNS = types.SetNull(types.StringType)
+			ecModel.AdditionalDNS = emptyOrNullSet(types.StringType, priorDNS)
 		}
+
+		if hasMode {
+			ecModel.EdgeProxyMode = types.StringValue(ec.GetEdgeProxyMode().String())
+		} else {
+			ecModel.EdgeProxyMode = types.StringNull()
+		}
+
+		if hasRanges {
+			rangeVals := make([]attr.Value, len(ec.GetAllowedSourceIpRanges()))
+			for i, r := range ec.GetAllowedSourceIpRanges() {
+				rangeVals[i] = cidrtypes.NewIPPrefixValue(r)
+			}
+			rangeSet, diags := types.SetValue(cidrtypes.IPPrefixType{}, rangeVals)
+			diagnostics.Append(diags...)
+			ecModel.AllowedSourceIPRanges = rangeSet
+		} else {
+			ecModel.AllowedSourceIPRanges = emptyOrNullSet(cidrtypes.IPPrefixType{}, priorRanges)
+		}
+
 		m.EndpointConfiguration = ecModel
 	}
 

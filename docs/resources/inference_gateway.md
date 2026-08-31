@@ -35,7 +35,7 @@ resource "coreweave_inference_gateway" "example" {
 ### Required
 
 - `auth` (Attributes) The [authentication configuration](https://docs.coreweave.com/products/inference/gateways) for the gateway. Exactly one of `coreweave` or `weights_and_biases` must be specified. (see [below for nested schema](#nestedatt--auth))
-- `name` (String) The human-readable name of the gateway.
+- `name` (String) The human-readable name of the gateway. Capped at 38 characters so the derived public FQDN fits within the 64-character X.509 Common Name limit.
 - `routing` (Attributes) The [routing configuration](https://docs.coreweave.com/products/inference/gateways) for the gateway. Exactly one of `body_based`, `header_based`, or `path_based` must be specified. (see [below for nested schema](#nestedatt--routing))
 - `zones` (Set of String) The zones to make the gateway available in. Limits where deployments associated with the gateway may exist.
 
@@ -113,6 +113,8 @@ Required:
 Optional:
 
 - `additional_dns` (Set of String) Additional DNS names for the gateway endpoint. These DNS names must be manually configured to point to the gateway endpoint.
+- `allowed_source_ip_ranges` (Set of String) Client source IP ranges permitted to reach the gateway, in CIDR notation (IPv4 or IPv6). Up to 50 entries; an empty list applies no source restriction. Use a full-length prefix for a single address (e.g. `203.0.113.5/32`).
+- `edge_proxy_mode` (String) How client traffic reaches the gateway. Must be one of: `EDGE_PROXY_MODE_MANAGED` (traffic is proxied through CoreWeave's managed edge network: DDoS mitigation and WAF, with TLS terminated at the edge and the origin address kept out of public DNS) or `EDGE_PROXY_MODE_DIRECT` (clients connect straight to the gateway's load balancer, with no edge filtering and the load balancer address published in DNS). When unset, the platform default (currently `EDGE_PROXY_MODE_MANAGED`) applies.
 
 
 <a id="nestedatt--conditions"></a>
