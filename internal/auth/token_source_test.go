@@ -36,6 +36,18 @@ func TestStaticTokenSource(t *testing.T) {
 	assert.Equal(t, "static-token", token)
 }
 
+func TestStaticTokenSourceCacheIdentity(t *testing.T) {
+	t.Parallel()
+
+	first := auth.NewStaticTokenSource("first-token")
+	same := auth.NewStaticTokenSource("first-token")
+	different := auth.NewStaticTokenSource("different-token")
+
+	assert.Equal(t, first.CacheIdentity(), same.CacheIdentity())
+	assert.NotEqual(t, first.CacheIdentity(), different.CacheIdentity())
+	assert.NotContains(t, first.CacheIdentity(), "first-token")
+}
+
 func TestTransportGetsTokenForEachAttempt(t *testing.T) {
 	t.Parallel()
 
