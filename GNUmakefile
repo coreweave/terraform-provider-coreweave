@@ -67,4 +67,7 @@ testacc:
 		TF_ACC=1 go test -v -cover -timeout=$(TEST_ACC_TIMEOUT) $(if $(TEST_ACC_PARALLEL),-parallel=$(TEST_ACC_PARALLEL)) ./coreweave/$$suite; \
 	done
 
-.PHONY: debug fmt lint test testacc testacc-sweep build install generate clean
+test-examples:
+	@./tools/test-examples.sh
+
+.PHONY: debug fmt lint test test-examples testacc testacc-sweep build install generate clean
