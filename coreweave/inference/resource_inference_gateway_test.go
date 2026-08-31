@@ -712,6 +712,94 @@ func TestSetFromGateway_EndpointConfiguration(t *testing.T) {
 			t.Errorf("EndpointConfiguration: expected nil when API returns an all-zero config, got %v", m.EndpointConfiguration)
 		}
 	})
+
+	// An explicitly configured empty set (`allowed_source_ip_ranges = []`) must
+	// round-trip as an empty set, not null: the API echoes an empty list, and
+	// collapsing it to null would make the applied state differ from the plan and
+	// trip Terraform's "inconsistent result after apply" check.
+	t.Run("explicit empty allowed_source_ip_ranges preserved as empty", func(t *testing.T) {
+		t.Parallel()
+
+		gw := &inferencev1.Gateway{
+			Spec: &inferencev1.GatewaySpec{
+				Id:    "gw-ec-empty",
+				Name:  "ec-empty-gw",
+				Zones: []string{"US-EAST-04A"},
+				Auth: &inferencev1.GatewaySpec_CoreWeaveAuth{
+					CoreWeaveAuth: &inferencev1.CoreWeaveAuth{},
+				},
+				Routing: &inferencev1.GatewaySpec_PathBasedRouting{
+					PathBasedRouting: &inferencev1.PathBasedRouting{},
+				},
+				EndpointConfiguration: &inferencev1.EndpointConfiguration{},
+			},
+			Status: &inferencev1.GatewayStatus{Status: inferencev1.Status_STATUS_READY},
+		}
+
+		m := &inference.InferenceGatewayResourceModel{
+			EndpointConfiguration: &inference.EndpointConfigurationModel{
+				AdditionalDNS:         types.SetNull(types.StringType),
+				EdgeProxyMode:         types.StringNull(),
+				AllowedSourceIPRanges: types.SetValueMust(cidrtypes.IPPrefixType{}, []attr.Value{}),
+			},
+		}
+		diags := inference.SetFromGateway(m, gw, false)
+		if diags.HasError() {
+			t.Fatalf("SetFromGateway returned errors: %v", diags)
+		}
+		if m.EndpointConfiguration == nil {
+			t.Fatal("EndpointConfiguration: expected non-nil")
+		}
+		got := m.EndpointConfiguration.AllowedSourceIPRanges
+		if got.IsNull() {
+			t.Errorf("AllowedSourceIPRanges: expected empty set preserved, got null")
+		}
+		if n := len(got.Elements()); n != 0 {
+			t.Errorf("AllowedSourceIPRanges: got %d entries, want 0", n)
+		}
+	})
+
+	// The mirror case: when the attribute was null in config/state, an empty API
+	// response must stay null rather than becoming an empty set.
+	t.Run("unset allowed_source_ip_ranges stays null", func(t *testing.T) {
+		t.Parallel()
+
+		gw := &inferencev1.Gateway{
+			Spec: &inferencev1.GatewaySpec{
+				Id:    "gw-ec-null",
+				Name:  "ec-null-gw",
+				Zones: []string{"US-EAST-04A"},
+				Auth: &inferencev1.GatewaySpec_CoreWeaveAuth{
+					CoreWeaveAuth: &inferencev1.CoreWeaveAuth{},
+				},
+				Routing: &inferencev1.GatewaySpec_PathBasedRouting{
+					PathBasedRouting: &inferencev1.PathBasedRouting{},
+				},
+				EndpointConfiguration: &inferencev1.EndpointConfiguration{
+					EdgeProxyMode: inferencev1.EdgeProxyMode_EDGE_PROXY_MODE_DIRECT,
+				},
+			},
+			Status: &inferencev1.GatewayStatus{Status: inferencev1.Status_STATUS_READY},
+		}
+
+		m := &inference.InferenceGatewayResourceModel{
+			EndpointConfiguration: &inference.EndpointConfigurationModel{
+				AdditionalDNS:         types.SetNull(types.StringType),
+				EdgeProxyMode:         types.StringValue("EDGE_PROXY_MODE_DIRECT"),
+				AllowedSourceIPRanges: types.SetNull(cidrtypes.IPPrefixType{}),
+			},
+		}
+		diags := inference.SetFromGateway(m, gw, false)
+		if diags.HasError() {
+			t.Fatalf("SetFromGateway returned errors: %v", diags)
+		}
+		if m.EndpointConfiguration == nil {
+			t.Fatal("EndpointConfiguration: expected non-nil")
+		}
+		if !m.EndpointConfiguration.AllowedSourceIPRanges.IsNull() {
+			t.Errorf("AllowedSourceIPRanges: expected null preserved, got %v", m.EndpointConfiguration.AllowedSourceIPRanges)
+		}
+	})
 }
 
 // TestInferenceGateway_EndpointConfigurationValidation pins the client-side

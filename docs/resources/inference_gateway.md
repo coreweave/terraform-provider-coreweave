@@ -114,7 +114,7 @@ Optional:
 
 - `additional_dns` (Set of String) Additional DNS names for the gateway endpoint. These DNS names must be manually configured to point to the gateway endpoint.
 - `allowed_source_ip_ranges` (Set of String) Client source IP ranges permitted to reach the gateway, in CIDR notation (IPv4 or IPv6). Up to 50 entries; an empty list applies no source restriction. Use a full-length prefix for a single address (e.g. `203.0.113.5/32`).
-- `edge_proxy_mode` (String) How client traffic reaches the gateway. Must be one of: `EDGE_PROXY_MODE_MANAGED`, `EDGE_PROXY_MODE_DIRECT`. When unset, the platform default (currently `EDGE_PROXY_MODE_MANAGED`) applies.
+- `edge_proxy_mode` (String) How client traffic reaches the gateway. Must be one of: `EDGE_PROXY_MODE_MANAGED` (traffic is proxied through CoreWeave's managed edge network: DDoS mitigation and WAF, with TLS terminated at the edge and the origin address kept out of public DNS) or `EDGE_PROXY_MODE_DIRECT` (clients connect straight to the gateway's load balancer, with no edge filtering and the load balancer address published in DNS). When unset, the platform default (currently `EDGE_PROXY_MODE_MANAGED`) applies.
 
 
 <a id="nestedatt--conditions"></a>

@@ -267,7 +267,7 @@ func (r *InferenceGatewayResource) Schema(_ context.Context, _ resource.SchemaRe
 					},
 					"edge_proxy_mode": schema.StringAttribute{
 						Optional:            true,
-						MarkdownDescription: fmt.Sprintf("How client traffic reaches the gateway. Must be one of: %s. When unset, the platform default (currently `EDGE_PROXY_MODE_MANAGED`) applies.", coreweave.EnumMarkdownValues(inferencev1.EdgeProxyMode_name, true)),
+						MarkdownDescription: "How client traffic reaches the gateway. Must be one of: `EDGE_PROXY_MODE_MANAGED` (traffic is proxied through CoreWeave's managed edge network: DDoS mitigation and WAF, with TLS terminated at the edge and the origin address kept out of public DNS) or `EDGE_PROXY_MODE_DIRECT` (clients connect straight to the gateway's load balancer, with no edge filtering and the load balancer address published in DNS). When unset, the platform default (currently `EDGE_PROXY_MODE_MANAGED`) applies.",
 						Validators: []validator.String{
 							stringvalidator.OneOf(coreweave.EnumValues(inferencev1.EdgeProxyMode_name, true)...),
 						},
@@ -758,6 +758,17 @@ func toUpdateGatewayRequest(ctx context.Context, m *InferenceGatewayResourceMode
 	return req, diags
 }
 
+// emptyOrNullSet returns the value to store for an optional set attribute when the API returned
+// no elements: an empty set if the prior config/state held one (an explicit `[]`), otherwise
+// null. Preserving this distinction keeps the applied state consistent with the plan for both
+// `= []` and unset configs, avoiding Terraform's "inconsistent result after apply" error.
+func emptyOrNullSet(elemType attr.Type, prior types.Set) types.Set {
+	if !prior.IsNull() && !prior.IsUnknown() {
+		return types.SetValueMust(elemType, []attr.Value{})
+	}
+	return types.SetNull(elemType)
+}
+
 // setFromGateway populates all fields on the model from a proto Gateway response.
 // For Optional (non-Computed) fields, null is preserved when the plan/state was null and the
 // API returns the default (zero/empty) value.
@@ -885,6 +896,16 @@ func setFromGateway(m *InferenceGatewayResourceModel, gw *inferencev1.Gateway, p
 	if m.EndpointConfiguration == nil && !hasDNS && !hasRanges && !hasMode {
 		m.EndpointConfiguration = nil
 	} else {
+		// Capture the prior null/empty state of the optional set attributes: the
+		// API returns an empty list for both an unset (null) config and an
+		// explicit empty set, so we mirror what the config/state held to avoid
+		// drift between plan and applied state.
+		var priorDNS, priorRanges types.Set
+		if m.EndpointConfiguration != nil {
+			priorDNS = m.EndpointConfiguration.AdditionalDNS
+			priorRanges = m.EndpointConfiguration.AllowedSourceIPRanges
+		}
+
 		ecModel := &EndpointConfigurationModel{}
 
 		if hasDNS {
@@ -896,7 +917,7 @@ func setFromGateway(m *InferenceGatewayResourceModel, gw *inferencev1.Gateway, p
 			diagnostics.Append(diags...)
 			ecModel.AdditionalDNS = dnsSet
 		} else {
-			ecModel.AdditionalDNS = types.SetNull(types.StringType)
+			ecModel.AdditionalDNS = emptyOrNullSet(types.StringType, priorDNS)
 		}
 
 		if hasMode {
@@ -914,7 +935,7 @@ func setFromGateway(m *InferenceGatewayResourceModel, gw *inferencev1.Gateway, p
 			diagnostics.Append(diags...)
 			ecModel.AllowedSourceIPRanges = rangeSet
 		} else {
-			ecModel.AllowedSourceIPRanges = types.SetNull(cidrtypes.IPPrefixType{})
+			ecModel.AllowedSourceIPRanges = emptyOrNullSet(cidrtypes.IPPrefixType{}, priorRanges)
 		}
 
 		m.EndpointConfiguration = ecModel
