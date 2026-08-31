@@ -339,7 +339,7 @@ func resolveHTTPTimeouts(ctx context.Context, configured types.String) (time.Dur
 }
 
 // Builds a CW client using the provided model, including any defaults or environment variables.
-// Returns an error if the token is not provided.
+// Returns an error if neither static-token nor workload-identity authentication is configured.
 // Variable precedence: 1) env, 2) config, 3) default/error.
 //
 //nolint:staticcheck
@@ -368,15 +368,6 @@ func BuildClient(ctx context.Context, model CoreweaveProviderModel, tfVersion, p
 	if s3EndpointFrmEnv, ok := os.LookupEnv(CoreWeaveS3EndpointEnvVar); ok {
 		s3Endpoint = s3EndpointFrmEnv
 	}
-	if timeoutStr, ok := os.LookupEnv(CoreweaveHTTPTimeoutEnvVar); ok {
-		timeoutOverride, err := parseDuration(timeoutStr)
-		if err == nil {
-			timeout = *timeoutOverride
-		} else {
-			tflog.Error(ctx, fmt.Sprintf("got invalid duration '%s' for %s, using default timeout %v", timeoutStr, CoreweaveHTTPTimeoutEnvVar, DefaultHTTPTimeout))
-		}
-	}
-
 	if endpoint == "" {
 		endpoint = CoreweaveApiEndpointDefault
 	}

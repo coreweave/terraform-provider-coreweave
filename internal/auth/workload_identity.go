@@ -3,6 +3,7 @@ package auth
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -59,6 +60,12 @@ type WorkloadIdentityTokenSource struct {
 	refresh   *tokenRefresh
 	now       func() time.Time
 	getenv    func(string) (string, bool)
+}
+
+// CacheIdentity identifies the target service-account principal without
+// retaining its UID in the process-wide S3 client cache.
+func (s *WorkloadIdentityTokenSource) CacheIdentity() string {
+	return fmt.Sprintf("workload-identity:%x", sha256.Sum256([]byte(s.serviceAccountUID)))
 }
 
 type tokenRefresh struct {

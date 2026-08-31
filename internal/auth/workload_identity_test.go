@@ -28,6 +28,18 @@ func testJWT() string {
 	return encode([]byte(`{"alg":"RS256"}`)) + "." + encode([]byte(`{"sub":"run"}`)) + "." + encode([]byte("signature"))
 }
 
+func TestWorkloadIdentityTokenSourceCacheIdentity(t *testing.T) {
+	t.Parallel()
+
+	first := &WorkloadIdentityTokenSource{serviceAccountUID: "service-account-one"}
+	same := &WorkloadIdentityTokenSource{serviceAccountUID: "service-account-one"}
+	different := &WorkloadIdentityTokenSource{serviceAccountUID: "service-account-two"}
+
+	assert.Equal(t, first.CacheIdentity(), same.CacheIdentity())
+	assert.NotEqual(t, first.CacheIdentity(), different.CacheIdentity())
+	assert.NotContains(t, first.CacheIdentity(), "service-account-one")
+}
+
 func TestNewWorkloadIdentityTokenSourceValidatesConfiguration(t *testing.T) {
 	t.Parallel()
 
