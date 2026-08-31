@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	awsretry "github.com/aws/aws-sdk-go-v2/aws/retry"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/smithy-go"
 	"github.com/aws/smithy-go/transport/http"
@@ -36,9 +37,10 @@ var (
 const (
 	errInvalidRegion = "InvalidRegion"
 
-	ErrNoSuchBucket string = "NoSuchBucket"
-	errNotFound     string = "NotFound"
-	errNoSuchTagSet string = "NoSuchTagSet"
+	ErrNoSuchBucket       string = "NoSuchBucket"
+	errNotFound           string = "NotFound"
+	errNoSuchTagSet       string = "NoSuchTagSet"
+	bucketReadMaxAttempts        = 8
 )
 
 func NewBucketResource() resource.Resource {
@@ -229,7 +231,10 @@ func (r bucketReadRetryer) GetAttemptToken(ctx context.Context) (func(error) err
 }
 
 func withBucketReadRetry(options *s3.Options) {
-	options.Retryer = bucketReadRetryer{Retryer: options.Retryer}
+	options.Retryer = awsretry.AddWithMaxAttempts(
+		bucketReadRetryer{Retryer: options.Retryer},
+		bucketReadMaxAttempts,
+	)
 }
 
 // waitForBucket polls HeadBucket every 'interval' until the bucket

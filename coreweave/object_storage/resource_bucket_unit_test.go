@@ -4,11 +4,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	standardhttp "net/http"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	awsretry "github.com/aws/aws-sdk-go-v2/aws/retry"
+	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	s3types "github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/aws/smithy-go"
@@ -88,14 +92,17 @@ func TestIsMissingBucketTagSetError(t *testing.T) {
 func TestWithBucketReadRetry(t *testing.T) {
 	t.Parallel()
 
-	const maxAttempts = 3
+	const (
+		globalMaxAttempts    = 3
+		expectedReadAttempts = 8
+	)
 	options := s3.Options{Retryer: awsretry.NewStandard(func(options *awsretry.StandardOptions) {
-		options.MaxAttempts = maxAttempts
+		options.MaxAttempts = globalMaxAttempts
 	})}
 	withBucketReadRetry(&options)
 
-	if got := options.Retryer.MaxAttempts(); got != maxAttempts {
-		t.Errorf("MaxAttempts() = %d, want preserved cap %d", got, maxAttempts)
+	if got := options.Retryer.MaxAttempts(); got != expectedReadAttempts {
+		t.Errorf("MaxAttempts() = %d, want bucket read cap %d", got, expectedReadAttempts)
 	}
 	if !options.Retryer.IsErrorRetryable(&smithy.GenericAPIError{Code: ErrNoSuchBucket}) {
 		t.Error("NoSuchBucket should be retryable")
@@ -108,6 +115,88 @@ func TestWithBucketReadRetry(t *testing.T) {
 	}
 	if options.Retryer.IsErrorRetryable(&smithy.GenericAPIError{Code: errNoSuchTagSet}) {
 		t.Error("NoSuchTagSet should not be retryable")
+	}
+}
+
+type eventuallyVisibleBucketTransport struct {
+	attempts          int
+	transientFailures int
+}
+
+type immediateBackoff struct{}
+
+func (immediateBackoff) BackoffDelay(int, error) (time.Duration, error) {
+	return 0, nil
+}
+
+func (t *eventuallyVisibleBucketTransport) RoundTrip(request *standardhttp.Request) (*standardhttp.Response, error) {
+	t.attempts++
+	status := standardhttp.StatusOK
+	if t.attempts <= t.transientFailures {
+		status = standardhttp.StatusNotFound
+	}
+
+	return &standardhttp.Response{
+		StatusCode: status,
+		Status:     standardhttp.StatusText(status),
+		Header:     make(standardhttp.Header),
+		Body:       io.NopCloser(strings.NewReader("")),
+		Request:    request,
+	}, nil
+}
+
+func TestBucketExistsOutlivesGlobalS3RetryBudget(t *testing.T) {
+	t.Parallel()
+
+	const globalS3RetryAttempts = 3
+	transport := &eventuallyVisibleBucketTransport{transientFailures: globalS3RetryAttempts}
+	client := s3.New(s3.Options{
+		BaseEndpoint: aws.String("https://objects.example.test"),
+		Credentials:  credentials.NewStaticCredentialsProvider("access-key", "secret-key", ""),
+		HTTPClient:   &standardhttp.Client{Transport: transport},
+		Region:       "US-EAST-04A",
+		Retryer: awsretry.NewStandard(func(options *awsretry.StandardOptions) {
+			options.Backoff = immediateBackoff{}
+			options.MaxAttempts = globalS3RetryAttempts
+		}),
+	})
+
+	exists, err := bucketExists(t.Context(), client, "eventually-visible")
+	if err != nil {
+		t.Fatalf("bucketExists() error = %v", err)
+	}
+	if !exists {
+		t.Fatal("bucketExists() = false after transient 404 responses, want true")
+	}
+	if got, want := transport.attempts, globalS3RetryAttempts+1; got != want {
+		t.Fatalf("HeadBucket attempts = %d, want %d", got, want)
+	}
+}
+
+func TestBucketExistsStopsAtReadRetryBudget(t *testing.T) {
+	t.Parallel()
+
+	transport := &eventuallyVisibleBucketTransport{transientFailures: bucketReadMaxAttempts}
+	client := s3.New(s3.Options{
+		BaseEndpoint: aws.String("https://objects.example.test"),
+		Credentials:  credentials.NewStaticCredentialsProvider("access-key", "secret-key", ""),
+		HTTPClient:   &standardhttp.Client{Transport: transport},
+		Region:       "US-EAST-04A",
+		Retryer: awsretry.NewStandard(func(options *awsretry.StandardOptions) {
+			options.Backoff = immediateBackoff{}
+			options.MaxAttempts = 3
+		}),
+	})
+
+	exists, err := bucketExists(t.Context(), client, "absent-bucket")
+	if err != nil {
+		t.Fatalf("bucketExists() error = %v", err)
+	}
+	if exists {
+		t.Fatal("bucketExists() = true after exhausting transient 404 responses, want false")
+	}
+	if got := transport.attempts; got != bucketReadMaxAttempts {
+		t.Fatalf("HeadBucket attempts = %d, want capped at %d", got, bucketReadMaxAttempts)
 	}
 }
 
