@@ -7,9 +7,6 @@ import (
 	"time"
 
 	inferencev1 "buf.build/gen/go/coreweave/inference/protocolbuffers/go/coreweave/inference/v1alpha1"
-	"github.com/coreweave/terraform-provider-coreweave/coreweave/inference"
-	"github.com/coreweave/terraform-provider-coreweave/internal/provider"
-	"github.com/coreweave/terraform-provider-coreweave/internal/testutil"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	fwresource "github.com/hashicorp/terraform-plugin-framework/resource"
 	fwschema "github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -20,6 +17,10 @@ import (
 	"github.com/hashicorp/terraform-plugin-testing/statecheck"
 	"github.com/hashicorp/terraform-plugin-testing/tfjsonpath"
 	"google.golang.org/protobuf/types/known/timestamppb"
+
+	"github.com/coreweave/terraform-provider-coreweave/coreweave/inference"
+	"github.com/coreweave/terraform-provider-coreweave/internal/provider"
+	"github.com/coreweave/terraform-provider-coreweave/internal/testutil"
 )
 
 const (
@@ -721,7 +722,9 @@ func TestInferenceDeployment(t *testing.T) {
 					Config: inferenceDeploymentConfig(name, preferredZone, preferredInstance),
 					ConfigStateChecks: []statecheck.StateCheck{
 						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("name"), knownvalue.StringExact(name)),
-						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("status"), knownvalue.StringExact("STATUS_READY")),
+						// Apply waits for resources applied, not serving, so status
+						// need not be STATUS_READY yet.
+						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("status"), knownvalue.NotNull()),
 						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("disabled"), knownvalue.Bool(false)),
 						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("id"), knownvalue.NotNull()),
 						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("organization_id"), knownvalue.NotNull()),
