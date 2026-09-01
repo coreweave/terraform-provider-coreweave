@@ -160,6 +160,15 @@ func (s *oidcConfigTestServer) removeAll() {
 	clear(s.configs)
 }
 
+func (s *oidcConfigTestServer) seed(configs ...*controlplanev1beta1.OIDCConfig) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	clear(s.configs)
+	for _, config := range configs {
+		s.configs[config.GetUid()] = cloneOIDCConfig(config)
+	}
+}
+
 func (s *oidcConfigTestServer) returnEmptyCreateResponse() {
 	s.mu.Lock()
 	defer s.mu.Unlock()

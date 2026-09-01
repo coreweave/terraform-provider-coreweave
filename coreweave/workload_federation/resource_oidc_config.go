@@ -73,6 +73,7 @@ type OIDCConfigResource struct {
 // OIDCConfigResourceModel describes the Terraform state for an OIDC config.
 type OIDCConfigResourceModel struct {
 	ID             types.String `tfsdk:"id"`
+	UID            types.String `tfsdk:"uid"`
 	OrganizationID types.String `tfsdk:"organization_id"`
 	Name           types.String `tfsdk:"name"`
 	Description    types.String `tfsdk:"description"`
@@ -99,6 +100,13 @@ func (r *OIDCConfigResource) Schema(_ context.Context, _ resource.SchemaRequest,
 			"id": schema.StringAttribute{
 				Computed:            true,
 				MarkdownDescription: "The server-assigned unique identifier for the OIDC configuration.",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
+			},
+			"uid": schema.StringAttribute{
+				Computed:            true,
+				MarkdownDescription: "The server-assigned stable UID of the OIDC configuration.",
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
 				},
@@ -257,6 +265,7 @@ func (m *OIDCConfigResourceModel) SetFromProto(config *controlplanev1beta1.OIDCC
 	}
 
 	m.ID = types.StringValue(config.GetUid())
+	m.UID = types.StringValue(config.GetUid())
 	m.OrganizationID = types.StringValue(config.GetOrgUid())
 	m.Name = types.StringValue(config.GetName())
 	if config.HasDescription() {
@@ -290,6 +299,9 @@ func (m *OIDCConfigResourceModel) FillUnknownFromProto(config *controlplanev1bet
 
 	if m.ID.IsUnknown() {
 		m.ID = types.StringValue(config.GetUid())
+	}
+	if m.UID.IsUnknown() {
+		m.UID = types.StringValue(config.GetUid())
 	}
 	if m.OrganizationID.IsUnknown() {
 		m.OrganizationID = types.StringValue(config.GetOrgUid())

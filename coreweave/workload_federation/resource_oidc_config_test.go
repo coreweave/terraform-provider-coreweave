@@ -27,6 +27,7 @@ func TestOIDCConfigSchema(t *testing.T) {
 
 	attributes := response.Schema.Attributes
 	assert.True(t, attributes["id"].IsComputed())
+	assert.True(t, attributes["uid"].IsComputed())
 	assert.True(t, attributes["name"].IsRequired())
 	assert.True(t, attributes["description"].IsOptional())
 	assert.True(t, attributes["issuer_url"].IsRequired())
@@ -83,6 +84,7 @@ func TestOIDCConfigModelSetFromProto(t *testing.T) {
 	require.NoError(t, model.SetFromProto(config))
 
 	assert.Equal(t, config.GetUid(), model.ID.ValueString())
+	assert.Equal(t, config.GetUid(), model.UID.ValueString())
 	assert.Equal(t, config.GetOrgUid(), model.OrganizationID.ValueString())
 	assert.Equal(t, config.GetName(), model.Name.ValueString())
 	assert.Equal(t, config.GetDescription(), model.Description.ValueString())
