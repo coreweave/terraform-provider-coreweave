@@ -2,11 +2,8 @@ package objectstorage
 
 import (
 	"context"
-	cryptorand "crypto/rand"
-	"crypto/tls"
 	"errors"
 	"fmt"
-	"math/big"
 	"net"
 	standardhttp "net/http"
 	"net/url"
@@ -18,18 +15,13 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	s3types "github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/aws/smithy-go"
-	smithyhttp "github.com/aws/smithy-go/transport/http"
-	"github.com/coreweave/terraform-provider-coreweave/coreweave"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 )
 
 const (
-	bucketPreflightPageSize  int32 = 10000
-	bucketPreflightMaxPages        = 10000
-	ambiguousCreateTimeout         = time.Minute
-	postCreateTimeout              = 5 * time.Minute
-	postCreateInitialBackoff       = 500 * time.Millisecond
-	postCreateMaxBackoff           = 5 * time.Second
+	bucketPreflightPageSize int32 = 10000
+	bucketPreflightMaxPages       = 10000
+	ambiguousCreateTimeout        = time.Minute
 )
 
 type bucketCreateAPI interface {
@@ -181,7 +173,7 @@ func reconcileAmbiguousCreate(
 	ctx, cancel := context.WithTimeout(parentCtx, ambiguousCreateTimeout)
 	defer cancel()
 
-	return runS3Phase(ctx, "ambiguous bucket create", bucket, zone, options, func(ctx context.Context) (bool, error) {
+	return runS3Phase(ctx, s3PhaseMetadata{phase: "ambiguous bucket create", bucket: bucket, zone: zone}, options, func(ctx context.Context) (bool, error) {
 		owned, err := bucketNameOwned(ctx, client, bucket)
 		if err != nil || !owned {
 			return false, err
@@ -199,82 +191,7 @@ func reconcileAmbiguousCreate(
 			return false, fmt.Errorf("owned bucket %q is in zone %q, want %q", bucket, actualZone, zone)
 		}
 		return true, nil
-	}, isPostCreateRetryableS3Error)
-}
-
-type s3PhaseOptions struct {
-	now   func() time.Time
-	delay func(attempt int) time.Duration
-	wait  func(context.Context, time.Duration) error
-}
-
-func (options s3PhaseOptions) withDefaults() s3PhaseOptions {
-	if options.now == nil {
-		options.now = time.Now
-	}
-	if options.delay == nil {
-		options.delay = postCreateBackoff
-	}
-	if options.wait == nil {
-		options.wait = waitForS3Backoff
-	}
-	return options
-}
-
-type s3PhaseError struct {
-	phase    string
-	attempts int
-	elapsed  time.Duration
-	err      error
-}
-
-func (e *s3PhaseError) Error() string {
-	return fmt.Sprintf("%s failed after %d attempt(s) in %s: %v", e.phase, e.attempts, e.elapsed.Round(time.Millisecond), e.err)
-}
-
-func (e *s3PhaseError) Unwrap() error {
-	return e.err
-}
-
-func runS3Phase(
-	ctx context.Context,
-	phase, bucket, zone string,
-	options s3PhaseOptions,
-	attempt func(context.Context) (bool, error),
-	retryable func(error) bool,
-) error {
-	options = options.withDefaults()
-	started := options.now()
-
-	for attemptNumber := 1; ; attemptNumber++ {
-		if err := ctx.Err(); err != nil {
-			return &s3PhaseError{phase: phase, attempts: attemptNumber - 1, elapsed: options.now().Sub(started), err: err}
-		}
-
-		done, err := attempt(ctx)
-		if err == nil && done {
-			return nil
-		}
-		if err != nil && !retryable(err) {
-			return &s3PhaseError{phase: phase, attempts: attemptNumber, elapsed: options.now().Sub(started), err: err}
-		}
-
-		delay := options.delay(attemptNumber)
-		errorClass, errorCode := s3ErrorMetadata(err)
-		tflog.Debug(ctx, "waiting for S3 operation convergence", map[string]interface{}{
-			"attempt":     attemptNumber,
-			"bucket":      bucket,
-			"elapsed":     options.now().Sub(started).String(),
-			"error_class": errorClass,
-			"error_code":  errorCode,
-			"next_delay":  delay.String(),
-			"phase":       phase,
-			"zone":        zone,
-		})
-		if waitErr := options.wait(ctx, delay); waitErr != nil {
-			return &s3PhaseError{phase: phase, attempts: attemptNumber, elapsed: options.now().Sub(started), err: waitErr}
-		}
-	}
+	}, isBucketPropagationRetryableS3Error)
 }
 
 func reconcileBucketAfterCreate(
@@ -285,10 +202,10 @@ func reconcileBucketAfterCreate(
 	applyTags bool,
 	options s3PhaseOptions,
 ) error {
-	ctx, cancel := context.WithTimeout(parentCtx, postCreateTimeout)
+	ctx, cancel := bucketPropagationContext(parentCtx)
 	defer cancel()
 
-	if err := runS3Phase(ctx, "bucket readiness", bucket, zone, options, func(ctx context.Context) (bool, error) {
+	if err := runS3Phase(ctx, s3PhaseMetadata{phase: "bucket readiness", bucket: bucket, zone: zone}, options, func(ctx context.Context) (bool, error) {
 		_, err := client.HeadBucket(ctx, &s3.HeadBucketInput{Bucket: aws.String(bucket)})
 		return err == nil, err
 	}, isBucketReadinessRetryableS3Error); err != nil {
@@ -303,16 +220,16 @@ func reconcileBucketAfterCreate(
 		Bucket:  aws.String(bucket),
 		Tagging: &s3types.Tagging{TagSet: expectedTags},
 	}
-	if err := runS3Phase(ctx, "bucket tag application", bucket, zone, options, func(ctx context.Context) (bool, error) {
+	if err := runS3Phase(ctx, s3PhaseMetadata{phase: "bucket tag application", bucket: bucket, zone: zone}, options, func(ctx context.Context) (bool, error) {
 		_, err := client.PutBucketTagging(ctx, tagInput)
 		return err == nil, err
-	}, isPostCreateRetryableS3Error); err != nil {
+	}, isBucketPropagationRetryableS3Error); err != nil {
 		return err
 	}
 
 	expected := append([]s3types.Tag(nil), expectedTags...)
 	slices.SortFunc(expected, cmpTag)
-	return runS3Phase(ctx, "bucket tag readback", bucket, zone, options, func(ctx context.Context) (bool, error) {
+	return runS3Phase(ctx, s3PhaseMetadata{phase: "bucket tag readback", bucket: bucket, zone: zone}, options, func(ctx context.Context) (bool, error) {
 		output, err := client.GetBucketTagging(ctx, &s3.GetBucketTaggingInput{Bucket: aws.String(bucket)})
 		if err != nil {
 			return false, err
@@ -323,7 +240,7 @@ func reconcileBucketAfterCreate(
 		actual := append([]s3types.Tag(nil), output.TagSet...)
 		slices.SortFunc(actual, cmpTag)
 		return slices.EqualFunc(expected, actual, eqTag), nil
-	}, isPostCreateRetryableS3Error)
+	}, isBucketPropagationRetryableS3Error)
 }
 
 func deleteBucketWithRetry(
@@ -332,41 +249,16 @@ func deleteBucketWithRetry(
 	bucket, zone string,
 	options s3PhaseOptions,
 ) error {
-	ctx, cancel := context.WithTimeout(parentCtx, postCreateTimeout)
+	ctx, cancel := bucketPropagationContext(parentCtx)
 	defer cancel()
 
-	return runS3Phase(ctx, "bucket deletion request", bucket, zone, options, func(ctx context.Context) (bool, error) {
+	return runS3Phase(ctx, s3PhaseMetadata{phase: "bucket deletion request", bucket: bucket, zone: zone}, options, func(ctx context.Context) (bool, error) {
 		_, err := client.DeleteBucket(ctx, &s3.DeleteBucketInput{Bucket: aws.String(bucket)})
 		if err == nil || isBucketNotFoundError(err) {
 			return true, nil
 		}
 		return false, err
-	}, isPostCreateRetryableS3Error)
-}
-
-func postCreateBackoff(attempt int) time.Duration {
-	shift := min(max(attempt-1, 0), 4)
-	delay := postCreateInitialBackoff << shift
-	if delay > postCreateMaxBackoff {
-		delay = postCreateMaxBackoff
-	}
-	half := delay / 2
-	jitter, err := cryptorand.Int(cryptorand.Reader, big.NewInt(int64(half)+1))
-	if err != nil {
-		return delay
-	}
-	return half + time.Duration(jitter.Int64())
-}
-
-func waitForS3Backoff(ctx context.Context, delay time.Duration) error {
-	timer := time.NewTimer(delay)
-	defer timer.Stop()
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-timer.C:
-		return nil
-	}
+	}, isBucketPropagationRetryableS3Error)
 }
 
 func isAmbiguousCreateError(ctx context.Context, err error) bool {
@@ -400,78 +292,8 @@ func isAmbiguousCreateError(ctx context.Context, err error) bool {
 	return errors.As(err, &netErr)
 }
 
-func isPostCreateRetryableS3Error(err error) bool {
-	if err == nil || errors.Is(err, context.Canceled) || isPermanentTransportError(err) {
-		return false
-	}
-
-	var apiErr smithy.APIError
-	hasAPIError := errors.As(err, &apiErr)
-	if hasAPIError && isPermanentBucketAPIError(apiErr.ErrorCode()) {
-		return false
-	}
-
-	if status, ok := s3HTTPStatus(err); ok && isTransientS3HTTPStatus(status, true) {
-		return true
-	}
-	if hasAPIError {
-		return isTransientBucketAPIError(apiErr.ErrorCode(), true)
-	}
-	if errors.Is(err, context.DeadlineExceeded) {
-		return true
-	}
-
-	var urlErr *url.Error
-	if errors.As(err, &urlErr) {
-		return true
-	}
-	var netErr net.Error
-	return errors.As(err, &netErr)
-}
-
-func isPermanentBucketAPIError(code string) bool {
-	switch code {
-	case "AccessDenied", "AuthorizationHeaderMalformed", "InvalidAccessKeyId",
-		"InvalidArgument", "InvalidBucketName", "InvalidRequest", "InvalidToken",
-		"SignatureDoesNotMatch":
-		return true
-	default:
-		return false
-	}
-}
-
-func isTransientBucketAPIError(code string, includePropagation bool) bool {
-	if includePropagation {
-		switch code {
-		case errInvalidRegion, ErrNoSuchBucket, errNotFound, errNoSuchTagSet:
-			return true
-		}
-	}
-
-	switch code {
-	case "BadGateway", "GatewayTimeout", "InternalError", "InternalServerError",
-		"RequestTimeout", "RequestTimeoutException", "ServiceUnavailable", "SlowDown",
-		"TooManyRequests":
-		return true
-	default:
-		return false
-	}
-}
-
-func isTransientS3HTTPStatus(status int, includeNotFound bool) bool {
-	if includeNotFound && status == standardhttp.StatusNotFound {
-		return true
-	}
-	return status == standardhttp.StatusRequestTimeout ||
-		status == standardhttp.StatusTooManyRequests ||
-		status == standardhttp.StatusInternalServerError ||
-		status == standardhttp.StatusBadGateway ||
-		status == standardhttp.StatusServiceUnavailable ||
-		status == standardhttp.StatusGatewayTimeout
-}
-
 func isBucketReadinessRetryableS3Error(err error) bool {
-	if isPostCreateRetryableS3Error(err) {
+	if isBucketPropagationRetryableS3Error(err) {
 		return true
 	}
 
@@ -485,38 +307,4 @@ func isBucketReadinessRetryableS3Error(err error) bool {
 		apiErr.ErrorCode() == "BadRequest" &&
 		hasStatus &&
 		status == standardhttp.StatusBadRequest
-}
-
-func isPermanentTransportError(err error) bool {
-	return coreweave.IsPermanentRequestError(err)
-}
-
-func s3HTTPStatus(err error) (int, bool) {
-	var responseErr *smithyhttp.ResponseError
-	if !errors.As(err, &responseErr) || responseErr.Response == nil {
-		return 0, false
-	}
-	return responseErr.Response.StatusCode, true
-}
-
-func s3ErrorMetadata(err error) (class, code string) {
-	if err == nil {
-		return "not_converged", ""
-	}
-	var apiErr smithy.APIError
-	if errors.As(err, &apiErr) {
-		return "api", apiErr.ErrorCode()
-	}
-	if status, ok := s3HTTPStatus(err); ok {
-		return "http", fmt.Sprintf("%d", status)
-	}
-	var certificateErr *tls.CertificateVerificationError
-	if errors.As(err, &certificateErr) {
-		return "tls_certificate", ""
-	}
-	var urlErr *url.Error
-	if errors.As(err, &urlErr) {
-		return "network", ""
-	}
-	return "unknown", ""
 }

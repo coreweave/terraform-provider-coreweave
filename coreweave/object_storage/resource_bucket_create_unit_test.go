@@ -489,7 +489,7 @@ func TestDeleteBucketWithRetryHandlesLocationPropagation(t *testing.T) {
 	}
 }
 
-func TestIsPostCreateRetryableS3Error(t *testing.T) {
+func TestIsBucketPropagationRetryableS3Error(t *testing.T) {
 	t.Parallel()
 
 	tlsErr := &url.Error{
@@ -519,8 +519,8 @@ func TestIsPostCreateRetryableS3Error(t *testing.T) {
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			if got := isPostCreateRetryableS3Error(tt.err); got != tt.want {
-				t.Fatalf("isPostCreateRetryableS3Error() = %t, want %t", got, tt.want)
+			if got := isBucketPropagationRetryableS3Error(tt.err); got != tt.want {
+				t.Fatalf("isBucketPropagationRetryableS3Error() = %t, want %t", got, tt.want)
 			}
 		})
 	}

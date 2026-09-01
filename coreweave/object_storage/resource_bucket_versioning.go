@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
@@ -42,6 +41,11 @@ type BucketVersioningResourceModel struct {
 
 type VersioningConfigurationModel struct {
 	Status types.String `tfsdk:"status"`
+}
+
+type bucketVersioningAPI interface {
+	PutBucketVersioning(context.Context, *s3.PutBucketVersioningInput, ...func(*s3.Options)) (*s3.PutBucketVersioningOutput, error)
+	GetBucketVersioning(context.Context, *s3.GetBucketVersioningInput, ...func(*s3.Options)) (*s3.GetBucketVersioningOutput, error)
 }
 
 func (b *BucketVersioningResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -88,14 +92,40 @@ func (b *BucketVersioningResource) Configure(_ context.Context, req resource.Con
 	b.client = client
 }
 
-func waitForBucketVersioning(parentCtx context.Context, client *s3.Client, bucket string, expected s3types.BucketVersioningStatus) error {
-	return coreweave.PollUntil("bucket versioning configuration", parentCtx, 5*time.Second, 5*time.Minute, func(ctx context.Context) (bool, error) {
-		out, err := client.GetBucketVersioning(ctx, &s3.GetBucketVersioningInput{Bucket: aws.String(bucket)})
+func putBucketVersioning(
+	ctx context.Context,
+	client bucketVersioningAPI,
+	bucket string,
+	input *s3.PutBucketVersioningInput,
+	options s3PhaseOptions,
+) error {
+	return runBucketMutationPhase(ctx, s3PhaseMetadata{
+		phase:  "bucket versioning application",
+		bucket: bucket,
+	}, options, func(ctx context.Context) error {
+		_, err := client.PutBucketVersioning(ctx, input)
+		return err
+	})
+}
+
+func waitForBucketVersioning(
+	ctx context.Context,
+	client bucketVersioningAPI,
+	bucket string,
+	expected s3types.BucketVersioningStatus,
+	options s3PhaseOptions,
+) error {
+	input := &s3.GetBucketVersioningInput{Bucket: aws.String(bucket)}
+	return runBucketReadbackPhase(ctx, s3PhaseMetadata{
+		phase:  "bucket versioning readback",
+		bucket: bucket,
+	}, options, func(ctx context.Context) (bool, error) {
+		out, err := client.GetBucketVersioning(ctx, input)
 		if err != nil {
-			if isTransientS3Error(err) {
-				return false, nil
-			}
 			return false, err
+		}
+		if out == nil {
+			return false, nil
 		}
 
 		return out.Status == expected, nil
@@ -117,20 +147,17 @@ func (b *BucketVersioningResource) Create(ctx context.Context, req resource.Crea
 	}
 
 	status := s3types.BucketVersioningStatus(data.VersioningConfiguration.Status.ValueString())
-	putReq := s3.PutBucketVersioningInput{
+	putReq := &s3.PutBucketVersioningInput{
 		Bucket: aws.String(data.Bucket.ValueString()),
 		VersioningConfiguration: &s3types.VersioningConfiguration{
 			Status: status,
 		},
 	}
-	_, err = s3Client.PutBucketVersioning(ctx, &putReq)
-	if err != nil {
-		handleS3Error(err, &resp.Diagnostics, data.Bucket.ValueString())
-		return
-	}
+	propagationCtx, cancel := bucketPropagationContext(ctx)
+	defer cancel()
 
-	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
-	if resp.Diagnostics.HasError() {
+	if err := putBucketVersioning(propagationCtx, s3Client, data.Bucket.ValueString(), putReq, s3PhaseOptions{}); err != nil {
+		handleS3Error(err, &resp.Diagnostics, data.Bucket.ValueString())
 		return
 	}
 
@@ -141,7 +168,7 @@ func (b *BucketVersioningResource) Create(ctx context.Context, req resource.Crea
 	}
 
 	// wait for bucket versioning to be read back from s3 API since it is not guaranteed to propagate immediately
-	if err := waitForBucketVersioning(ctx, s3Client, data.Bucket.ValueString(), status); err != nil {
+	if err := waitForBucketVersioning(propagationCtx, s3Client, data.Bucket.ValueString(), status, s3PhaseOptions{}); err != nil {
 		handleS3Error(err, &resp.Diagnostics, data.Bucket.ValueString())
 		return
 	}
@@ -193,20 +220,17 @@ func (b *BucketVersioningResource) Update(ctx context.Context, req resource.Upda
 	}
 
 	status := s3types.BucketVersioningStatus(data.VersioningConfiguration.Status.ValueString())
-	putReq := s3.PutBucketVersioningInput{
+	putReq := &s3.PutBucketVersioningInput{
 		Bucket: aws.String(data.Bucket.ValueString()),
 		VersioningConfiguration: &s3types.VersioningConfiguration{
 			Status: status,
 		},
 	}
-	_, err = s3Client.PutBucketVersioning(ctx, &putReq)
-	if err != nil {
-		handleS3Error(err, &resp.Diagnostics, data.Bucket.ValueString())
-		return
-	}
+	propagationCtx, cancel := bucketPropagationContext(ctx)
+	defer cancel()
 
-	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
-	if resp.Diagnostics.HasError() {
+	if err := putBucketVersioning(propagationCtx, s3Client, data.Bucket.ValueString(), putReq, s3PhaseOptions{}); err != nil {
+		handleS3Error(err, &resp.Diagnostics, data.Bucket.ValueString())
 		return
 	}
 
@@ -217,7 +241,7 @@ func (b *BucketVersioningResource) Update(ctx context.Context, req resource.Upda
 	}
 
 	// wait for bucket versioning to be read back from s3 API since it is not guaranteed to propagate immediately
-	if err := waitForBucketVersioning(ctx, s3Client, data.Bucket.ValueString(), status); err != nil {
+	if err := waitForBucketVersioning(propagationCtx, s3Client, data.Bucket.ValueString(), status, s3PhaseOptions{}); err != nil {
 		handleS3Error(err, &resp.Diagnostics, data.Bucket.ValueString())
 		return
 	}

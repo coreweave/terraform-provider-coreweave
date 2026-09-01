@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
-	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
@@ -36,12 +35,19 @@ func NewBucketPolicyResource() resource.Resource {
 }
 
 type BucketPolicyResource struct {
-	client *coreweave.Client
+	client                   *coreweave.Client
+	s3ClientForConvergence   func(context.Context) (bucketPolicyAPI, error)
+	bucketPropagationOptions s3PhaseOptions
 }
 
 type BucketPolicyResourceModel struct {
 	Bucket types.String `tfsdk:"bucket"`
 	Policy types.String `tfsdk:"policy"`
+}
+
+type bucketPolicyAPI interface {
+	PutBucketPolicy(context.Context, *s3.PutBucketPolicyInput, ...func(*s3.Options)) (*s3.PutBucketPolicyOutput, error)
+	GetBucketPolicy(context.Context, *s3.GetBucketPolicyInput, ...func(*s3.Options)) (*s3.GetBucketPolicyOutput, error)
 }
 
 func (b *BucketPolicyResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
@@ -79,22 +85,45 @@ func (b *BucketPolicyResource) Schema(ctx context.Context, req resource.SchemaRe
 	}
 }
 
-func waitForBucketPolicy(parentCtx context.Context, client *s3.Client, bucket string, expected string) error {
+func putBucketPolicy(
+	ctx context.Context,
+	client bucketPolicyAPI,
+	bucket string,
+	input *s3.PutBucketPolicyInput,
+	options s3PhaseOptions,
+) error {
+	return runBucketMutationPhase(ctx, s3PhaseMetadata{
+		phase:  "bucket policy application",
+		bucket: bucket,
+	}, options, func(ctx context.Context) error {
+		_, err := client.PutBucketPolicy(ctx, input)
+		return err
+	})
+}
+
+func waitForBucketPolicy(
+	ctx context.Context,
+	client bucketPolicyAPI,
+	bucket string,
+	expected string,
+	options s3PhaseOptions,
+) error {
 	var expectedPolicy PolicyDocument
 	if err := json.Unmarshal([]byte(expected), &expectedPolicy); err != nil {
 		return err
 	}
+	input := &s3.GetBucketPolicyInput{Bucket: aws.String(bucket)}
 
-	return coreweave.PollUntil("bucket versioning configuration", parentCtx, 5*time.Second, 5*time.Minute, func(ctx context.Context) (bool, error) {
-		out, err := client.GetBucketPolicy(ctx, &s3.GetBucketPolicyInput{Bucket: aws.String(bucket)})
+	return runBucketReadbackPhase(ctx, s3PhaseMetadata{
+		phase:  "bucket policy readback",
+		bucket: bucket,
+	}, options, func(ctx context.Context) (bool, error) {
+		out, err := client.GetBucketPolicy(ctx, input)
 		if err != nil {
-			if isTransientS3Error(err) {
-				return false, nil
-			}
 			return false, err
 		}
 
-		if out.Policy == nil {
+		if out == nil || out.Policy == nil {
 			if expected == "" {
 				return true, nil
 			}
@@ -111,6 +140,13 @@ func waitForBucketPolicy(parentCtx context.Context, client *s3.Client, bucket st
 	})
 }
 
+func (b *BucketPolicyResource) convergenceClient(ctx context.Context) (bucketPolicyAPI, error) {
+	if b.s3ClientForConvergence != nil {
+		return b.s3ClientForConvergence(ctx)
+	}
+	return b.client.S3Client(ctx, "")
+}
+
 func (b *BucketPolicyResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var data BucketPolicyResourceModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
@@ -118,17 +154,20 @@ func (b *BucketPolicyResource) Create(ctx context.Context, req resource.CreateRe
 		return
 	}
 
-	s3c, err := b.client.S3Client(ctx, "")
+	s3c, err := b.convergenceClient(ctx)
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to create S3 client", err.Error())
 		return
 	}
 
-	_, err = s3c.PutBucketPolicy(ctx, &s3.PutBucketPolicyInput{
+	propagationCtx, cancel := bucketPropagationContext(ctx)
+	defer cancel()
+
+	putInput := &s3.PutBucketPolicyInput{
 		Bucket: data.Bucket.ValueStringPointer(),
 		Policy: data.Policy.ValueStringPointer(),
-	})
-	if err != nil {
+	}
+	if err := putBucketPolicy(propagationCtx, s3c, data.Bucket.ValueString(), putInput, b.bucketPropagationOptions); err != nil {
 		handleS3Error(err, &resp.Diagnostics, data.Bucket.ValueString())
 		return
 	}
@@ -140,7 +179,7 @@ func (b *BucketPolicyResource) Create(ctx context.Context, req resource.CreateRe
 	}
 
 	// wait for bucket policy to be read back from s3 API since it is not guaranteed to propagate immediately
-	if err := waitForBucketPolicy(ctx, s3c, data.Bucket.ValueString(), data.Policy.ValueString()); err != nil {
+	if err := waitForBucketPolicy(propagationCtx, s3c, data.Bucket.ValueString(), data.Policy.ValueString(), b.bucketPropagationOptions); err != nil {
 		handleS3Error(err, &resp.Diagnostics, data.Bucket.ValueString())
 		return
 	}
@@ -207,17 +246,20 @@ func (b *BucketPolicyResource) Update(ctx context.Context, req resource.UpdateRe
 		return
 	}
 
-	s3c, err := b.client.S3Client(ctx, "")
+	s3c, err := b.convergenceClient(ctx)
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to create S3 client", err.Error())
 		return
 	}
 
-	_, err = s3c.PutBucketPolicy(ctx, &s3.PutBucketPolicyInput{
+	propagationCtx, cancel := bucketPropagationContext(ctx)
+	defer cancel()
+
+	putInput := &s3.PutBucketPolicyInput{
 		Bucket: data.Bucket.ValueStringPointer(),
 		Policy: data.Policy.ValueStringPointer(),
-	})
-	if err != nil {
+	}
+	if err := putBucketPolicy(propagationCtx, s3c, data.Bucket.ValueString(), putInput, b.bucketPropagationOptions); err != nil {
 		handleS3Error(err, &resp.Diagnostics, data.Bucket.ValueString())
 		return
 	}
@@ -229,7 +271,7 @@ func (b *BucketPolicyResource) Update(ctx context.Context, req resource.UpdateRe
 	}
 
 	// wait for bucket policy to be read back from s3 API since it is not guaranteed to propagate immediately
-	if err := waitForBucketPolicy(ctx, s3c, data.Bucket.ValueString(), data.Policy.ValueString()); err != nil {
+	if err := waitForBucketPolicy(propagationCtx, s3c, data.Bucket.ValueString(), data.Policy.ValueString(), b.bucketPropagationOptions); err != nil {
 		handleS3Error(err, &resp.Diagnostics, data.Bucket.ValueString())
 		return
 	}

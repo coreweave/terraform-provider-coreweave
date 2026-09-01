@@ -264,7 +264,7 @@ resource "coreweave_object_storage_bucket_policy" "test" {
 			Config: config,
 			Check: resource.ComposeAggregateTestCheckFunc(
 				resource.TestCheckResourceAttr("coreweave_object_storage_bucket.test", "name", postCreateTestBucket),
-				resource.TestCheckResourceAttr("coreweave_object_storage_bucket_versioning.test", "versioning_configuration.0.status", "Enabled"),
+				resource.TestCheckResourceAttr("coreweave_object_storage_bucket_versioning.test", "versioning_configuration.status", "Enabled"),
 				resource.TestCheckResourceAttr("coreweave_object_storage_bucket_policy.test", "bucket", postCreateTestBucket),
 				func(_ *terraform.State) error {
 					counts := fake.requestCounts()
