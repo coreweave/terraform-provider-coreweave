@@ -64,7 +64,7 @@ func NewClientWithOptions(
 	// Jittered exponential back-off (min*2^n) with capping.
 	rc.Backoff = retryablehttp.DefaultBackoff
 	// Retry transient transport failures, 429 responses, and server errors other
-	// than 501 while rejecting permanent request and certificate failures.
+	// than 501 unless the request context marks the attempt unsafe to replay.
 	rc.CheckRetry = RetryPolicy
 
 	authenticatedTransport, err := auth.NewTransport(rc.HTTPClient.Transport, tokenSource, endpoint)
@@ -74,7 +74,10 @@ func NewClientWithOptions(
 	rc.HTTPClient.Transport = authenticatedTransport
 
 	c := rc.StandardClient()
-	authenticatedInterceptors := append([]connect.Interceptor{auth.NewConnectErrorInterceptor()}, interceptors...)
+	authenticatedInterceptors := make([]connect.Interceptor, 0, len(interceptors)+2)
+	authenticatedInterceptors = append(authenticatedInterceptors, auth.NewConnectErrorInterceptor())
+	authenticatedInterceptors = append(authenticatedInterceptors, interceptors...)
+	authenticatedInterceptors = append(authenticatedInterceptors, connectRetryPolicyInterceptor())
 
 	return &Client{
 		ClusterServiceClient: cksv1beta1connect.NewClusterServiceClient(c, endpoint, connect.WithInterceptors(authenticatedInterceptors...)),
