@@ -338,6 +338,50 @@ func TestServiceAccountClientReturnsNilAccountOnAPIErrors(t *testing.T) {
 	}
 }
 
+func TestServiceAccountClientRequiresConnectNotFoundBeforeRemovingState(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]struct {
+		contentType string
+		body        string
+		wantMissing bool
+	}{
+		"Connect not found": {
+			contentType: "application/json",
+			body:        `{"code":"not_found","message":"service account not found"}`,
+			wantMissing: true,
+		},
+		"ingress HTML not found": {
+			contentType: "text/html",
+			body:        `<html><body>route not found</body></html>`,
+		},
+		"JSON without Connect code": {
+			contentType: "application/json",
+			body:        `{"message":"route not found"}`,
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", test.contentType)
+				w.WriteHeader(http.StatusNotFound)
+				_, _ = w.Write([]byte(test.body))
+			}))
+			t.Cleanup(server.Close)
+
+			source := accessTokenSourceFunc(func(context.Context) (string, error) { return testAccessToken, nil })
+			client, err := coreweave.NewClient(server.URL, "https://objects.example.test", time.Second, source, "test-user-agent")
+			require.NoError(t, err)
+
+			_, err = client.GetServiceAccount(t.Context(), "serviceAccounts/sa-test")
+			require.Error(t, err)
+			assert.Equal(t, test.wantMissing, coreweave.IsNotFoundError(err))
+		})
+	}
+}
+
 func TestHandleAPIError(t *testing.T) {
 	t.Parallel()
 

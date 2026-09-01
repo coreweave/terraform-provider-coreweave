@@ -194,7 +194,7 @@ func (m *ServiceAccountResourceModel) SetFromAPI(account *coreweave.ServiceAccou
 		m.Creator = types.StringValue(*account.Creator)
 	}
 	if account.DisplayName == nil {
-		m.DisplayName = types.StringNull()
+		m.DisplayName = types.StringValue("")
 	} else {
 		m.DisplayName = types.StringValue(*account.DisplayName)
 	}
@@ -330,6 +330,7 @@ func (r *ServiceAccountResource) Update(ctx context.Context, req resource.Update
 		return
 	}
 
+	wantedActive := plan.Active
 	var account *coreweave.ServiceAccount
 	if update := plan.ToDisplayNameUpdateRequest(&state); update != nil {
 		var err error
@@ -338,10 +339,22 @@ func (r *ServiceAccountResource) Update(ctx context.Context, req resource.Update
 			r.handleUpdateError(ctx, err, &resp.Diagnostics)
 			return
 		}
+		// Display-name and activation changes are separate API mutations. Persist
+		// the first one before attempting the second so a later failure cannot
+		// leave Terraform state behind the remote account.
+		if err := plan.SetFromAPI(account); err != nil {
+			resp.Diagnostics.AddError("Invalid Service Account Response", fmt.Sprintf("The directory API returned an invalid service account after updating the display name: %s.", err))
+			return
+		}
+		resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		plan.Active = wantedActive
 	}
-	if !plan.Active.IsNull() && !plan.Active.IsUnknown() && !plan.Active.Equal(state.Active) {
+	if !wantedActive.IsNull() && !wantedActive.IsUnknown() && !wantedActive.Equal(state.Active) {
 		var err error
-		if plan.Active.ValueBool() {
+		if wantedActive.ValueBool() {
 			account, err = r.client.ActivateServiceAccount(ctx, state.ID.ValueString())
 		} else {
 			account, err = r.client.DeactivateServiceAccount(ctx, state.ID.ValueString())

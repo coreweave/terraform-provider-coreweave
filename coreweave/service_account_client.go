@@ -85,7 +85,7 @@ func (c *Client) callServiceAccountAPI(ctx context.Context, procedure string, re
 
 	httpResponse, err := c.httpClient.Do(httpRequest)
 	if err != nil {
-		classified := auth.ClassifyTokenSourceError(fmt.Errorf("calling service account API: %w", err))
+		classified := classifyServiceAccountClientError(fmt.Errorf("calling service account API: %w", err))
 		tflog.Debug(ctx, "service account API request failed", map[string]any{
 			"procedure": procedure,
 			"error":     classified.Error(),
@@ -96,7 +96,7 @@ func (c *Client) callServiceAccountAPI(ctx context.Context, procedure string, re
 
 	responseBody, err := io.ReadAll(io.LimitReader(httpResponse.Body, serviceAccountResponseLimit+1))
 	if err != nil {
-		return fmt.Errorf("reading service account response: %w", err)
+		return classifyServiceAccountClientError(fmt.Errorf("reading service account response: %w", err))
 	}
 	if len(responseBody) > serviceAccountResponseLimit {
 		return fmt.Errorf("reading service account response: body exceeds %d bytes", serviceAccountResponseLimit)
@@ -109,12 +109,9 @@ func (c *Client) callServiceAccountAPI(ctx context.Context, procedure string, re
 	if httpResponse.StatusCode < http.StatusOK || httpResponse.StatusCode >= http.StatusMultipleChoices {
 		var apiError connectErrorResponse
 		if decodeErr := json.Unmarshal(responseBody, &apiError); decodeErr != nil {
-			return connect.NewError(connectCodeForHTTPStatus(httpResponse.StatusCode), fmt.Errorf("service account API returned %s", httpResponse.Status))
+			return connect.NewError(safeConnectCodeForHTTPError(httpResponse.StatusCode, "", false), fmt.Errorf("service account API returned %s", httpResponse.Status))
 		}
-		code := connectCodeForHTTPStatus(httpResponse.StatusCode)
-		if apiError.Code != "" {
-			_ = code.UnmarshalText([]byte(apiError.Code))
-		}
+		code := safeConnectCodeForHTTPError(httpResponse.StatusCode, apiError.Code, true)
 		message := strings.TrimSpace(apiError.Message)
 		if message == "" {
 			message = httpResponse.Status
@@ -131,6 +128,39 @@ func (c *Client) callServiceAccountAPI(ctx context.Context, procedure string, re
 	return nil
 }
 
+func classifyServiceAccountClientError(err error) error {
+	classified := auth.ClassifyTokenSourceError(err)
+	var connectErr *connect.Error
+	if errors.As(classified, &connectErr) {
+		return classified
+	}
+
+	switch {
+	case errors.Is(err, context.Canceled):
+		return connect.NewError(connect.CodeCanceled, err)
+	case errors.Is(err, context.DeadlineExceeded):
+		return connect.NewError(connect.CodeDeadlineExceeded, err)
+	default:
+		return connect.NewError(connect.CodeUnavailable, err)
+	}
+}
+
+// A 404 is safe to interpret as resource absence only when the API returned a
+// valid Connect error that says not_found. An ingress or stale procedure path
+// may also return 404, often with an HTML body, and must not remove state.
+func safeConnectCodeForHTTPError(status int, apiCode string, parsedConnectError bool) connect.Code {
+	if parsedConnectError && apiCode != "" {
+		var code connect.Code
+		if err := code.UnmarshalText([]byte(apiCode)); err == nil {
+			return code
+		}
+	}
+	if status == http.StatusNotFound {
+		return connect.CodeUnknown
+	}
+	return connectCodeForHTTPStatus(status)
+}
+
 func connectCodeForHTTPStatus(status int) connect.Code {
 	switch status {
 	case http.StatusBadRequest:
@@ -141,12 +171,16 @@ func connectCodeForHTTPStatus(status int) connect.Code {
 		return connect.CodePermissionDenied
 	case http.StatusNotFound:
 		return connect.CodeNotFound
+	case http.StatusRequestTimeout:
+		return connect.CodeDeadlineExceeded
 	case http.StatusConflict:
 		return connect.CodeAlreadyExists
 	case http.StatusTooManyRequests:
 		return connect.CodeResourceExhausted
 	case http.StatusNotImplemented:
 		return connect.CodeUnimplemented
+	case http.StatusInternalServerError:
+		return connect.CodeInternal
 	case http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:
 		return connect.CodeUnavailable
 	default:
