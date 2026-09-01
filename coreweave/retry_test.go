@@ -7,9 +7,21 @@ import (
 	"net/url"
 	"testing"
 
+	"connectrpc.com/connect"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestNonIdempotentCreateClassification(t *testing.T) {
+	t.Parallel()
+
+	const procedure = "/example.v1.WidgetService/CreateWidget"
+	assert.True(t, isNonIdempotentCreate(connect.Spec{Procedure: procedure}))
+	assert.False(t, isNonIdempotentCreate(connect.Spec{
+		Procedure:        procedure,
+		IdempotencyLevel: connect.IdempotencyIdempotent,
+	}))
+}
 
 func TestBaseRetryPolicyRejectsWrappedPermanentRequestErrors(t *testing.T) {
 	t.Parallel()

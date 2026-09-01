@@ -8,9 +8,13 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"strings"
 
+	"connectrpc.com/connect"
 	"github.com/coreweave/terraform-provider-coreweave/internal/auth"
 )
+
+type suppressRetryContextKey struct{}
 
 var (
 	// A regular expression to match the error returned by net/http when the
@@ -93,7 +97,43 @@ func IsPermanentRequestError(err error) bool {
 	return permanentRequestError(err) != nil
 }
 
+func connectRetryPolicyInterceptor() connect.Interceptor {
+	return connect.UnaryInterceptorFunc(func(next connect.UnaryFunc) connect.UnaryFunc {
+		return func(ctx context.Context, request connect.AnyRequest) (connect.AnyResponse, error) {
+			if isNonIdempotentCreate(request.Spec()) {
+				ctx = context.WithValue(ctx, suppressRetryContextKey{}, true)
+			}
+			return next(ctx, request)
+		}
+	})
+}
+
+func isNonIdempotentCreate(spec connect.Spec) bool {
+	method := spec.Procedure
+	if separator := strings.LastIndexByte(method, '/'); separator >= 0 {
+		method = method[separator+1:]
+	}
+	if !strings.HasPrefix(method, "Create") {
+		return false
+	}
+
+	return spec.IdempotencyLevel != connect.IdempotencyNoSideEffects &&
+		spec.IdempotencyLevel != connect.IdempotencyIdempotent
+}
+
 func RetryPolicy(ctx context.Context, resp *http.Response, err error) (bool, error) {
+	if suppressRetry, _ := ctx.Value(suppressRetryContextKey{}).(bool); suppressRetry {
+		// A Create RPC may have committed before an ambiguous failure, so replaying
+		// it is unsafe unless the schema explicitly declares it idempotent.
+		if err != nil {
+			return false, err
+		}
+		if ctx.Err() != nil {
+			return false, ctx.Err()
+		}
+		return false, nil
+	}
+
 	if ctx.Err() != nil {
 		// do not retry on context.Canceled errors
 		if errors.Is(ctx.Err(), context.Canceled) {
