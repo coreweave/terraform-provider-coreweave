@@ -19,6 +19,8 @@ import (
 
 var _ coreweave.AccessTokenSource = accessTokenSourceFunc(nil)
 
+const testAccessToken = "token"
+
 type accessTokenSourceFunc func(context.Context) (string, error)
 
 func (f accessTokenSourceFunc) Token(ctx context.Context) (string, error) {
@@ -40,7 +42,7 @@ func TestNewClientValidatesItsInputs(t *testing.T) {
 		},
 		"unparseable endpoint": {
 			endpoint: "https://api.example.test:port",
-			source:   accessTokenSourceFunc(func(context.Context) (string, error) { return "token", nil }),
+			source:   accessTokenSourceFunc(func(context.Context) (string, error) { return testAccessToken, nil }),
 			wantErr:  "parsing endpoint",
 		},
 	}
@@ -157,7 +159,7 @@ func TestClientRetriesTokenSourceDeadline(t *testing.T) {
 		if calls == 1 {
 			return "", context.DeadlineExceeded
 		}
-		return "token", nil
+		return testAccessToken, nil
 	})
 	client, err := coreweave.NewClient(server.URL, "https://objects.example.test", time.Second, source, "test-user-agent")
 	require.NoError(t, err)
@@ -222,6 +224,118 @@ func TestClientRefreshesTokenForConnectRetry(t *testing.T) {
 	_, err = client.GetCluster(t.Context(), connect.NewRequest(&cksv1beta1.GetClusterRequest{}))
 	require.Error(t, err)
 	assert.Equal(t, []string{"Bearer token-1", "Bearer token-2"}, authorizationHeaders)
+}
+
+func TestServiceAccountClientUsesRefreshableAuthentication(t *testing.T) {
+	t.Parallel()
+
+	var authorization string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		authorization = r.Header.Get("Authorization")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"name":"serviceAccounts/sa-test","uid":"sa-test","systemManaged":false,"active":true}`))
+	}))
+	t.Cleanup(server.Close)
+
+	source := accessTokenSourceFunc(func(context.Context) (string, error) { return "refreshed-token", nil })
+	client, err := coreweave.NewClient(server.URL, "https://objects.example.test", time.Second, source, "test-user-agent")
+	require.NoError(t, err)
+
+	account, err := client.GetServiceAccount(t.Context(), "serviceAccounts/sa-test")
+	require.NoError(t, err)
+	require.NotNil(t, account)
+	assert.Equal(t, "Bearer refreshed-token", authorization)
+}
+
+func TestServiceAccountCreateIsNotRetried(t *testing.T) {
+	t.Parallel()
+
+	calls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls++
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_, _ = w.Write([]byte(`{"code":"unavailable","message":"try again"}`))
+	}))
+	t.Cleanup(server.Close)
+
+	source := accessTokenSourceFunc(func(context.Context) (string, error) { return testAccessToken, nil })
+	client, err := coreweave.NewClient(server.URL, "https://objects.example.test", time.Second, source, "test-user-agent")
+	require.NoError(t, err)
+
+	account, err := client.CreateServiceAccount(t.Context(), &coreweave.CreateServiceAccountRequest{
+		ServiceAccount: &coreweave.ServiceAccount{},
+	})
+	require.Error(t, err)
+	assert.Nil(t, account)
+	assert.Equal(t, 1, calls)
+}
+
+func TestServiceAccountClientClassifiesTokenSourceErrors(t *testing.T) {
+	t.Parallel()
+
+	source := accessTokenSourceFunc(func(context.Context) (string, error) {
+		return "", errors.New("token refresh failed")
+	})
+	client, err := coreweave.NewClient(
+		"https://api.example.test",
+		"https://objects.example.test",
+		time.Second,
+		source,
+		"test-user-agent",
+	)
+	require.NoError(t, err)
+
+	account, err := client.GetServiceAccount(t.Context(), "serviceAccounts/sa-test")
+	assert.Nil(t, account)
+	var connectErr *connect.Error
+	require.ErrorAs(t, err, &connectErr)
+	assert.Equal(t, connect.CodeUnauthenticated, connectErr.Code())
+}
+
+func TestServiceAccountClientReturnsNilAccountOnAPIErrors(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"code":"not_found","message":"service account not found"}`))
+	}))
+	t.Cleanup(server.Close)
+
+	source := accessTokenSourceFunc(func(context.Context) (string, error) { return testAccessToken, nil })
+	client, err := coreweave.NewClient(server.URL, "https://objects.example.test", time.Second, source, "test-user-agent")
+	require.NoError(t, err)
+
+	tests := map[string]func() (*coreweave.ServiceAccount, error){
+		"get": func() (*coreweave.ServiceAccount, error) {
+			return client.GetServiceAccount(t.Context(), "serviceAccounts/sa-test")
+		},
+		"create": func() (*coreweave.ServiceAccount, error) {
+			return client.CreateServiceAccount(t.Context(), &coreweave.CreateServiceAccountRequest{ServiceAccount: &coreweave.ServiceAccount{}})
+		},
+		"update": func() (*coreweave.ServiceAccount, error) {
+			return client.UpdateServiceAccount(t.Context(), &coreweave.UpdateServiceAccountRequest{
+				ServiceAccount: &coreweave.ServiceAccount{Name: "serviceAccounts/sa-test"},
+				UpdateMask:     "displayName",
+			})
+		},
+		"activate": func() (*coreweave.ServiceAccount, error) {
+			return client.ActivateServiceAccount(t.Context(), "serviceAccounts/sa-test")
+		},
+		"deactivate": func() (*coreweave.ServiceAccount, error) {
+			return client.DeactivateServiceAccount(t.Context(), "serviceAccounts/sa-test")
+		},
+	}
+
+	for name, call := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			account, callErr := call()
+			require.Error(t, callErr)
+			assert.Nil(t, account)
+		})
+	}
 }
 
 func TestHandleAPIError(t *testing.T) {

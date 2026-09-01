@@ -15,17 +15,16 @@ func NewConnectErrorInterceptor() connect.Interceptor {
 		return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
 			resp, err := next(ctx, req)
 			if err != nil {
-				return nil, classifyError(err)
+				return nil, ClassifyTokenSourceError(err)
 			}
 			return resp, nil
 		}
 	})
 }
 
-// classifyError gives the transport's own errors a Connect code. Errors that
-// did not originate in the transport are returned untouched, so a code the
-// server assigned is never overwritten.
-func classifyError(err error) error {
+// ClassifyTokenSourceError gives authentication transport failures a Connect
+// code while leaving errors from other sources untouched.
+func ClassifyTokenSourceError(err error) error {
 	if err == nil || !IsTokenSourceError(err) {
 		return err
 	}
