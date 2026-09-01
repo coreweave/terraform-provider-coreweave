@@ -35,7 +35,6 @@ func (c *Client) GetCallerIdentity(ctx context.Context) (CallerIdentity, error) 
 	}
 
 	request.Header.Set("Accept", "application/json")
-	request.Header.Set("Authorization", "Bearer "+c.token)
 	request.Header.Set("User-Agent", c.userAgent)
 
 	response, err := c.httpClient.Do(request)

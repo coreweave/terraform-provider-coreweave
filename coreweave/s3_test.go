@@ -30,6 +30,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/smithy-go"
 	smithyhttp "github.com/aws/smithy-go/transport/http"
+	"github.com/coreweave/terraform-provider-coreweave/internal/auth"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -360,6 +361,129 @@ func TestCreateS3Client_UsesOneBoundedRetryLayer(t *testing.T) {
 	}
 }
 
+type principalS3CWObjectClientStub struct {
+	cwobjectv1connect.CWObjectClient
+	accessKeyID string
+	calls       atomic.Int32
+}
+
+func (s *principalS3CWObjectClientStub) CreateAccessKeyFromJWT(
+	context.Context,
+	*connect.Request[cwobjectv1.CreateAccessKeyFromJWTRequest],
+) (*connect.Response[cwobjectv1.CreateAccessKeyFromJWTResponse], error) {
+	s.calls.Add(1)
+	return connect.NewResponse(&cwobjectv1.CreateAccessKeyFromJWTResponse{
+		AccessKeyId: s.accessKeyID,
+		SecretKey:   "secret-" + s.accessKeyID,
+		Expiry:      timestamppb.New(time.Now().Add(15 * time.Minute)),
+	}), nil
+}
+
+func newS3CacheTestClient(t *testing.T, token string, service cwobjectv1connect.CWObjectClient) *Client {
+	t.Helper()
+
+	client, err := NewClient(
+		"https://api.example.test",
+		"https://objects.example.test",
+		time.Second,
+		auth.NewStaticTokenSource(token),
+		"test-user-agent",
+	)
+	if err != nil {
+		t.Fatalf("create client: %v", err)
+	}
+	client.CWObjectClient = service
+	client.s3HTTPTransport = successfulListBucketsRoundTripper{}
+	return client
+}
+
+func s3AccessKeyID(t *testing.T, client *s3.Client) string {
+	t.Helper()
+
+	credentials, err := client.Options().Credentials.Retrieve(t.Context())
+	if err != nil {
+		t.Fatalf("retrieve S3 credentials: %v", err)
+	}
+	return credentials.AccessKeyID
+}
+
+func TestS3ClientCacheIsolatedAcrossAuthPrincipals(t *testing.T) {
+	resetS3ClientCache()
+	t.Cleanup(resetS3ClientCache)
+
+	principalA := &principalS3CWObjectClientStub{accessKeyID: "principal-a-key"}
+	clientA := newS3CacheTestClient(t, "principal-a-token", principalA)
+	s3ClientA, err := clientA.S3Client(t.Context(), "US-TEST-01A")
+	if err != nil {
+		t.Fatalf("create principal A S3 client: %v", err)
+	}
+
+	principalB := &principalS3CWObjectClientStub{accessKeyID: "principal-b-key"}
+	clientB := newS3CacheTestClient(t, "principal-b-token", principalB)
+	s3ClientB, err := clientB.S3Client(t.Context(), "US-TEST-01A")
+	if err != nil {
+		t.Fatalf("create principal B S3 client: %v", err)
+	}
+
+	if s3ClientA == s3ClientB {
+		t.Fatal("different auth principals reused the same cached S3 client")
+	}
+	if got := s3AccessKeyID(t, s3ClientA); got != "principal-a-key" {
+		t.Fatalf("principal A access key = %q, want %q", got, "principal-a-key")
+	}
+	if got := s3AccessKeyID(t, s3ClientB); got != "principal-b-key" {
+		t.Fatalf("principal B access key = %q, want %q", got, "principal-b-key")
+	}
+	if got := principalA.calls.Load(); got != 1 {
+		t.Fatalf("principal A access-key requests = %d, want 1", got)
+	}
+	if got := principalB.calls.Load(); got != 1 {
+		t.Fatalf("principal B access-key requests = %d, want 1", got)
+	}
+}
+
+func TestS3ClientCacheReusedForSameStaticCredential(t *testing.T) {
+	resetS3ClientCache()
+	t.Cleanup(resetS3ClientCache)
+
+	firstService := &principalS3CWObjectClientStub{accessKeyID: "shared-key"}
+	firstClient := newS3CacheTestClient(t, "shared-token", firstService)
+	firstS3Client, err := firstClient.S3Client(t.Context(), "US-TEST-01A")
+	if err != nil {
+		t.Fatalf("create first S3 client: %v", err)
+	}
+
+	secondService := &principalS3CWObjectClientStub{accessKeyID: "unexpected-key"}
+	secondClient := newS3CacheTestClient(t, "shared-token", secondService)
+	secondS3Client, err := secondClient.S3Client(t.Context(), "US-TEST-01A")
+	if err != nil {
+		t.Fatalf("get cached S3 client: %v", err)
+	}
+
+	if firstS3Client != secondS3Client {
+		t.Fatal("clients with the same static credential did not share the cached S3 client")
+	}
+	if got := secondService.calls.Load(); got != 0 {
+		t.Fatalf("second access-key service calls = %d, want 0", got)
+	}
+}
+
+type unkeyedTokenSource func(context.Context) (string, error)
+
+func (s unkeyedTokenSource) Token(ctx context.Context) (string, error) {
+	return s(ctx)
+}
+
+func TestTokenSourcesWithoutCacheIdentityAreIsolated(t *testing.T) {
+	source := unkeyedTokenSource(func(context.Context) (string, error) { return "token", nil })
+	first := tokenSourceCacheIdentity(source)
+	second := tokenSourceCacheIdentity(source)
+
+	if first == second {
+		t.Fatal("token source without a stable cache identity was shared across clients")
+	}
+}
+
 type blockingS3CWObjectClientStub struct {
 	cwobjectv1connect.CWObjectClient
 	started chan struct{}
@@ -433,10 +557,10 @@ func TestS3ClientWaitersShareRefreshFailure(t *testing.T) {
 		err:     refreshErr,
 	}
 	client := &Client{
-		CWObjectClient: stub,
-		apiEndpoint:    "https://api.example.test",
-		s3Endpoint:     "https://objects.example.test",
-		token:          "test-token",
+		CWObjectClient:  stub,
+		apiEndpoint:     "https://api.example.test",
+		s3Endpoint:      "https://objects.example.test",
+		s3CacheIdentity: "test-token",
 	}
 
 	type result struct {
@@ -498,7 +622,7 @@ func TestS3ClientCanceledLeaderDoesNotFailHealthyWaiter(t *testing.T) {
 		apiEndpoint:     "https://api.example.test",
 		s3Endpoint:      "https://objects.example.test",
 		s3HTTPTransport: successfulListBucketsRoundTripper{},
-		token:           "test-token",
+		s3CacheIdentity: "test-token",
 	}
 	type result struct {
 		client *s3.Client
@@ -565,7 +689,7 @@ func TestS3ClientServesUnexpiredClientDuringRefresh(t *testing.T) {
 	}
 	sharedS3ClientCache.apiEndpoint = "https://api.example.test"
 	sharedS3ClientCache.endpoint = "https://objects.example.test"
-	sharedS3ClientCache.token = "test-token"
+	sharedS3ClientCache.authIdentity = "test-token"
 	sharedS3ClientCache.attemptTimeout = DefaultS3AttemptTimeout
 	sharedS3ClientCache.mu.Unlock()
 
@@ -575,11 +699,11 @@ func TestS3ClientServesUnexpiredClientDuringRefresh(t *testing.T) {
 		err:     errors.New("refresh failed"),
 	}
 	client := &Client{
-		CWObjectClient: stub,
-		apiEndpoint:    "https://api.example.test",
-		s3Endpoint:     "https://objects.example.test",
-		token:          "test-token",
-		s3Now:          func() time.Time { return now },
+		CWObjectClient:  stub,
+		apiEndpoint:     "https://api.example.test",
+		s3Endpoint:      "https://objects.example.test",
+		s3CacheIdentity: "test-token",
+		s3Now:           func() time.Time { return now },
 	}
 
 	type result struct {
