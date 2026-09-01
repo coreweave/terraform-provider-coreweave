@@ -14,6 +14,7 @@ import (
 	"github.com/coreweave/terraform-provider-coreweave/coreweave/inference"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave/networking"
 	objectstorage "github.com/coreweave/terraform-provider-coreweave/coreweave/object_storage"
+	serviceaccount "github.com/coreweave/terraform-provider-coreweave/coreweave/service_account"
 	workloadfederation "github.com/coreweave/terraform-provider-coreweave/coreweave/workload_federation"
 	"github.com/coreweave/terraform-provider-coreweave/internal/auth"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -243,6 +244,7 @@ func (p *CoreweaveProvider) Resources(ctx context.Context) []func() resource.Res
 		inference.NewInferenceDeploymentResource,
 		inference.NewInferenceCapacityClaimResource,
 		inference.NewInferenceGatewayResource,
+		serviceaccount.NewServiceAccountResource,
 		workloadfederation.NewOIDCConfigResource,
 	}
 }
