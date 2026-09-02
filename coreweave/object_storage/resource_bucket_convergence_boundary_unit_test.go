@@ -20,7 +20,7 @@ func TestBucketVersioningCreateRetainsStateWhenReadbackTimesOut(t *testing.T) {
 		s3ClientForConvergence: func(context.Context) (bucketVersioningAPI, error) {
 			return client, nil
 		},
-		bucketPropagationOptions: s3PhaseOptionsTimingOutOnWait(2),
+		bucketPropagationOptions: s3PhaseOptionsTimingOutOnSecondWait(),
 	}
 	model := BucketVersioningResourceModel{
 		Bucket: types.StringValue("versioning-state-retention-test"),
@@ -56,7 +56,7 @@ func TestBucketPolicyUpdateRetainsStateWhenReadbackTimesOut(t *testing.T) {
 		s3ClientForConvergence: func(context.Context) (bucketPolicyAPI, error) {
 			return client, nil
 		},
-		bucketPropagationOptions: s3PhaseOptionsTimingOutOnWait(2),
+		bucketPropagationOptions: s3PhaseOptionsTimingOutOnSecondWait(),
 	}
 	model := BucketPolicyResourceModel{
 		Bucket: types.StringValue("policy-update-state-retention-test"),
@@ -89,7 +89,7 @@ func TestBucketVersioningUpdateRetainsStateWhenReadbackTimesOut(t *testing.T) {
 		s3ClientForConvergence: func(context.Context) (bucketVersioningAPI, error) {
 			return client, nil
 		},
-		bucketPropagationOptions: s3PhaseOptionsTimingOutOnWait(2),
+		bucketPropagationOptions: s3PhaseOptionsTimingOutOnSecondWait(),
 	}
 	model := BucketVersioningResourceModel{
 		Bucket: types.StringValue("versioning-update-state-retention-test"),
@@ -124,7 +124,7 @@ func TestBucketLifecycleCreateRetainsStateWhenReadbackTimesOut(t *testing.T) {
 		s3ClientForConvergence: func(context.Context) (bucketLifecycleConfigurationClient, error) {
 			return client, nil
 		},
-		bucketPropagationOptions: s3PhaseOptionsTimingOutOnWait(2),
+		bucketPropagationOptions: s3PhaseOptionsTimingOutOnSecondWait(),
 	}
 	model := BucketLifecycleResourceModel{
 		Bucket: types.StringValue("lifecycle-state-retention-test"),
@@ -166,7 +166,7 @@ func TestBucketLifecycleUpdateRetainsStateWhenReadbackTimesOut(t *testing.T) {
 		s3ClientForConvergence: func(context.Context) (bucketLifecycleConfigurationClient, error) {
 			return client, nil
 		},
-		bucketPropagationOptions: s3PhaseOptionsTimingOutOnWait(2),
+		bucketPropagationOptions: s3PhaseOptionsTimingOutOnSecondWait(),
 	}
 	model := BucketLifecycleResourceModel{
 		Bucket: types.StringValue("lifecycle-update-state-retention-test"),
@@ -208,7 +208,7 @@ func TestBucketInventoryCreateRetainsStateWhenReadbackTimesOut(t *testing.T) {
 		s3ClientForConvergence: func(context.Context) (bucketInventoryConfigurationClient, error) {
 			return client, nil
 		},
-		bucketPropagationOptions: s3PhaseOptionsTimingOutOnWait(2),
+		bucketPropagationOptions: s3PhaseOptionsTimingOutOnSecondWait(),
 	}
 	model := *fullInventoryModel()
 
@@ -238,7 +238,7 @@ func TestBucketInventoryUpdateRetainsStateWhenReadbackTimesOut(t *testing.T) {
 		s3ClientForConvergence: func(context.Context) (bucketInventoryConfigurationClient, error) {
 			return client, nil
 		},
-		bucketPropagationOptions: s3PhaseOptionsTimingOutOnWait(2),
+		bucketPropagationOptions: s3PhaseOptionsTimingOutOnSecondWait(),
 	}
 	model := *fullInventoryModel()
 	model.Enabled = types.BoolValue(false)

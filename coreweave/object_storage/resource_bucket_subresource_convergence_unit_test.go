@@ -206,7 +206,7 @@ func TestBucketPolicyCreateRetainsStateWhenReadbackTimesOut(t *testing.T) {
 		s3ClientForConvergence: func(context.Context) (bucketPolicyAPI, error) {
 			return client, nil
 		},
-		bucketPropagationOptions: s3PhaseOptionsTimingOutOnWait(2),
+		bucketPropagationOptions: s3PhaseOptionsTimingOutOnSecondWait(),
 	}
 
 	model := BucketPolicyResourceModel{
@@ -227,14 +227,14 @@ func TestBucketPolicyCreateRetainsStateWhenReadbackTimesOut(t *testing.T) {
 	}
 }
 
-func s3PhaseOptionsTimingOutOnWait(timeoutOn int) s3PhaseOptions {
+func s3PhaseOptionsTimingOutOnSecondWait() s3PhaseOptions {
 	waits := 0
 	return s3PhaseOptions{
 		now:   time.Now,
 		delay: func(int) time.Duration { return 0 },
 		wait: func(context.Context, time.Duration) error {
 			waits++
-			if waits >= timeoutOn {
+			if waits >= 2 {
 				return context.DeadlineExceeded
 			}
 			return nil
