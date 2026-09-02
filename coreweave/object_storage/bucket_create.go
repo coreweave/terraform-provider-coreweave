@@ -229,7 +229,7 @@ func reconcileBucketAfterCreate(
 
 	expected := append([]s3types.Tag(nil), expectedTags...)
 	slices.SortFunc(expected, cmpTag)
-	return runS3Phase(ctx, s3PhaseMetadata{phase: "bucket tag readback", bucket: bucket, zone: zone}, options, func(ctx context.Context) (bool, error) {
+	return runBucketReadbackPhase(ctx, s3PhaseMetadata{phase: "bucket tag readback", bucket: bucket, zone: zone}, options, func(ctx context.Context) (bool, error) {
 		output, err := client.GetBucketTagging(ctx, &s3.GetBucketTaggingInput{Bucket: aws.String(bucket)})
 		if err != nil {
 			return false, err
@@ -240,7 +240,7 @@ func reconcileBucketAfterCreate(
 		actual := append([]s3types.Tag(nil), output.TagSet...)
 		slices.SortFunc(actual, cmpTag)
 		return slices.EqualFunc(expected, actual, eqTag), nil
-	}, isBucketPropagationRetryableS3Error)
+	})
 }
 
 func deleteBucketWithRetry(
