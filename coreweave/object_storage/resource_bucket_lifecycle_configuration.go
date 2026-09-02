@@ -53,7 +53,9 @@ func NewBucketLifecycleResource() resource.Resource {
 
 // BucketLifecycleResource is the resource implementation.
 type BucketLifecycleResource struct {
-	client *coreweave.Client
+	client                   *coreweave.Client
+	s3ClientForConvergence   func(context.Context) (bucketLifecycleConfigurationClient, error)
+	bucketPropagationOptions s3PhaseOptions
 }
 
 // BucketLifecycleResourceModel maps resource schema data.
@@ -629,6 +631,13 @@ func waitForLifecycleConfig(
 	return out, err
 }
 
+func (r *BucketLifecycleResource) convergenceClient(ctx context.Context) (bucketLifecycleConfigurationClient, error) {
+	if r.s3ClientForConvergence != nil {
+		return r.s3ClientForConvergence(ctx)
+	}
+	return r.client.S3Client(ctx, "")
+}
+
 func (r *BucketLifecycleResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var data BucketLifecycleResourceModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
@@ -636,7 +645,7 @@ func (r *BucketLifecycleResource) Create(ctx context.Context, req resource.Creat
 		return
 	}
 
-	s3c, err := r.client.S3Client(ctx, "")
+	s3c, err := r.convergenceClient(ctx)
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to create S3 client", err.Error())
 		return
@@ -658,7 +667,7 @@ func (r *BucketLifecycleResource) Create(ctx context.Context, req resource.Creat
 	}
 	propagationCtx, cancel := bucketPropagationContext(ctx)
 	defer cancel()
-	if err := putBucketLifecycleConfig(propagationCtx, s3c, data.Bucket.ValueString(), putInput, s3PhaseOptions{}); err != nil {
+	if err := putBucketLifecycleConfig(propagationCtx, s3c, data.Bucket.ValueString(), putInput, r.bucketPropagationOptions); err != nil {
 		handleS3Error(err, &resp.Diagnostics, data.Bucket.ValueString())
 		return
 	}
@@ -670,7 +679,7 @@ func (r *BucketLifecycleResource) Create(ctx context.Context, req resource.Creat
 	}
 
 	// wait for lifecycle config  to be read back from s3 API since it is not guaranteed to propagate immediately
-	if result, err := waitForLifecycleConfig(propagationCtx, s3c, data.Bucket.ValueString(), *lifecycleConfig, s3PhaseOptions{}); err != nil {
+	if result, err := waitForLifecycleConfig(propagationCtx, s3c, data.Bucket.ValueString(), *lifecycleConfig, r.bucketPropagationOptions); err != nil {
 		handleS3Error(err, &resp.Diagnostics, data.Bucket.ValueString())
 		return
 	} else {
@@ -847,7 +856,7 @@ func (r *BucketLifecycleResource) Update(ctx context.Context, req resource.Updat
 		return
 	}
 
-	s3c, err := r.client.S3Client(ctx, "")
+	s3c, err := r.convergenceClient(ctx)
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to create S3 client", err.Error())
 		return
@@ -863,7 +872,7 @@ func (r *BucketLifecycleResource) Update(ctx context.Context, req resource.Updat
 	}
 	propagationCtx, cancel := bucketPropagationContext(ctx)
 	defer cancel()
-	if err := putBucketLifecycleConfig(propagationCtx, s3c, data.Bucket.ValueString(), putInput, s3PhaseOptions{}); err != nil {
+	if err := putBucketLifecycleConfig(propagationCtx, s3c, data.Bucket.ValueString(), putInput, r.bucketPropagationOptions); err != nil {
 		handleS3Error(err, &resp.Diagnostics, data.Bucket.ValueString())
 		return
 	}
@@ -875,7 +884,7 @@ func (r *BucketLifecycleResource) Update(ctx context.Context, req resource.Updat
 	}
 
 	// wait for lifecycle config  to be read back from s3 API since it is not guaranteed to propagate immediately
-	if result, err := waitForLifecycleConfig(propagationCtx, s3c, data.Bucket.ValueString(), *lifecycleConfig, s3PhaseOptions{}); err != nil {
+	if result, err := waitForLifecycleConfig(propagationCtx, s3c, data.Bucket.ValueString(), *lifecycleConfig, r.bucketPropagationOptions); err != nil {
 		handleS3Error(err, &resp.Diagnostics, data.Bucket.ValueString())
 		return
 	} else {

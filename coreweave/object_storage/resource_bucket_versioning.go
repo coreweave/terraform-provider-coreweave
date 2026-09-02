@@ -31,7 +31,9 @@ func NewBucketVersioningResource() resource.Resource {
 }
 
 type BucketVersioningResource struct {
-	client *coreweave.Client
+	client                   *coreweave.Client
+	s3ClientForConvergence   func(context.Context) (bucketVersioningAPI, error)
+	bucketPropagationOptions s3PhaseOptions
 }
 
 type BucketVersioningResourceModel struct {
@@ -132,6 +134,13 @@ func waitForBucketVersioning(
 	})
 }
 
+func (b *BucketVersioningResource) convergenceClient(ctx context.Context) (bucketVersioningAPI, error) {
+	if b.s3ClientForConvergence != nil {
+		return b.s3ClientForConvergence(ctx)
+	}
+	return b.client.S3Client(ctx, "")
+}
+
 func (b *BucketVersioningResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var data BucketVersioningResourceModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
@@ -140,7 +149,7 @@ func (b *BucketVersioningResource) Create(ctx context.Context, req resource.Crea
 		return
 	}
 
-	s3Client, err := b.client.S3Client(ctx, "")
+	s3Client, err := b.convergenceClient(ctx)
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to create S3 client", err.Error())
 		return
@@ -156,7 +165,7 @@ func (b *BucketVersioningResource) Create(ctx context.Context, req resource.Crea
 	propagationCtx, cancel := bucketPropagationContext(ctx)
 	defer cancel()
 
-	if err := putBucketVersioning(propagationCtx, s3Client, data.Bucket.ValueString(), putReq, s3PhaseOptions{}); err != nil {
+	if err := putBucketVersioning(propagationCtx, s3Client, data.Bucket.ValueString(), putReq, b.bucketPropagationOptions); err != nil {
 		handleS3Error(err, &resp.Diagnostics, data.Bucket.ValueString())
 		return
 	}
@@ -168,7 +177,7 @@ func (b *BucketVersioningResource) Create(ctx context.Context, req resource.Crea
 	}
 
 	// wait for bucket versioning to be read back from s3 API since it is not guaranteed to propagate immediately
-	if err := waitForBucketVersioning(propagationCtx, s3Client, data.Bucket.ValueString(), status, s3PhaseOptions{}); err != nil {
+	if err := waitForBucketVersioning(propagationCtx, s3Client, data.Bucket.ValueString(), status, b.bucketPropagationOptions); err != nil {
 		handleS3Error(err, &resp.Diagnostics, data.Bucket.ValueString())
 		return
 	}
@@ -213,7 +222,7 @@ func (b *BucketVersioningResource) Update(ctx context.Context, req resource.Upda
 		return
 	}
 
-	s3Client, err := b.client.S3Client(ctx, "")
+	s3Client, err := b.convergenceClient(ctx)
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to create S3 client", err.Error())
 		return
@@ -229,7 +238,7 @@ func (b *BucketVersioningResource) Update(ctx context.Context, req resource.Upda
 	propagationCtx, cancel := bucketPropagationContext(ctx)
 	defer cancel()
 
-	if err := putBucketVersioning(propagationCtx, s3Client, data.Bucket.ValueString(), putReq, s3PhaseOptions{}); err != nil {
+	if err := putBucketVersioning(propagationCtx, s3Client, data.Bucket.ValueString(), putReq, b.bucketPropagationOptions); err != nil {
 		handleS3Error(err, &resp.Diagnostics, data.Bucket.ValueString())
 		return
 	}
@@ -241,7 +250,7 @@ func (b *BucketVersioningResource) Update(ctx context.Context, req resource.Upda
 	}
 
 	// wait for bucket versioning to be read back from s3 API since it is not guaranteed to propagate immediately
-	if err := waitForBucketVersioning(propagationCtx, s3Client, data.Bucket.ValueString(), status, s3PhaseOptions{}); err != nil {
+	if err := waitForBucketVersioning(propagationCtx, s3Client, data.Bucket.ValueString(), status, b.bucketPropagationOptions); err != nil {
 		handleS3Error(err, &resp.Diagnostics, data.Bucket.ValueString())
 		return
 	}

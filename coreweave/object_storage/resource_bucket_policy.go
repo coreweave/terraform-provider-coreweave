@@ -22,8 +22,8 @@ import (
 
 // Ensure provider defined types fully satisfy framework interfaces.
 var (
-	_ resource.Resource                = &BucketVersioningResource{}
-	_ resource.ResourceWithImportState = &BucketVersioningResource{}
+	_ resource.Resource                = &BucketPolicyResource{}
+	_ resource.ResourceWithImportState = &BucketPolicyResource{}
 )
 
 const (
