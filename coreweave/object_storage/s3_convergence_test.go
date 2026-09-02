@@ -158,6 +158,39 @@ func TestRunBucketReadbackPhaseRequiresStableConvergence(t *testing.T) {
 	}
 }
 
+func TestRunBucketReadbackPhaseTriesImmediatelyAndSpansConfirmationWindow(t *testing.T) {
+	t.Parallel()
+
+	events := []string{}
+	waits := []time.Duration{}
+	err := runBucketReadbackPhase(
+		t.Context(),
+		s3PhaseMetadata{phase: "test readback", bucket: "target"},
+		s3PhaseOptions{
+			now:   time.Now,
+			delay: func(int) time.Duration { return 0 },
+			wait: func(ctx context.Context, delay time.Duration) error {
+				events = append(events, "wait")
+				waits = append(waits, delay)
+				return ctx.Err()
+			},
+		},
+		func(context.Context) (bool, error) {
+			events = append(events, "attempt")
+			return true, nil
+		},
+	)
+	if err != nil {
+		t.Fatalf("runBucketReadbackPhase() error = %v", err)
+	}
+	if got, want := strings.Join(events, ","), "attempt,wait,attempt"; got != want {
+		t.Fatalf("events = %q, want %q", got, want)
+	}
+	if len(waits) != 1 || waits[0] != 5*time.Second {
+		t.Fatalf("waits = %v, want [5s] between matching readbacks", waits)
+	}
+}
+
 func TestRunBucketReadbackPhaseResetsConfirmationAfterRetryableError(t *testing.T) {
 	t.Parallel()
 

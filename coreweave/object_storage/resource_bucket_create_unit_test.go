@@ -405,7 +405,9 @@ func TestReconcileBucketAfterCreate(t *testing.T) {
 			nil,
 		},
 		getTagOutputs: []*s3.GetBucketTaggingOutput{
+			{TagSet: expectedTags},
 			{TagSet: []s3types.Tag{{Key: aws.String("env"), Value: aws.String("stale")}}},
+			{TagSet: expectedTags},
 			{TagSet: expectedTags},
 		},
 	}
@@ -423,11 +425,11 @@ func TestReconcileBucketAfterCreate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reconcileBucketAfterCreate() error = %v", err)
 	}
-	if client.headCalls != 4 || client.putTagCalls != 2 || client.getTagCalls != 2 {
-		t.Fatalf("calls: Head=%d PutTags=%d GetTags=%d, want 4, 2, 2", client.headCalls, client.putTagCalls, client.getTagCalls)
+	if client.headCalls != 4 || client.putTagCalls != 2 || client.getTagCalls != 4 {
+		t.Fatalf("calls: Head=%d PutTags=%d GetTags=%d, want 4, 2, 4", client.headCalls, client.putTagCalls, client.getTagCalls)
 	}
-	if waits != 5 {
-		t.Fatalf("backoff waits = %d, want 5", waits)
+	if waits != 7 {
+		t.Fatalf("backoff waits = %d, want 7", waits)
 	}
 }
 
