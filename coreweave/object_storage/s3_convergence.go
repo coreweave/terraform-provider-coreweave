@@ -121,7 +121,7 @@ func runBucketMutationPhase(
 	return runS3Phase(ctx, metadata, options, func(ctx context.Context) (bool, error) {
 		err := mutate(ctx)
 		return err == nil, err
-	}, isBucketPropagationRetryableS3Error)
+	}, isBucketSubresourceMutationRetryableS3Error)
 }
 
 func runBucketReadbackPhase(
@@ -156,6 +156,22 @@ func waitForS3Backoff(ctx context.Context, delay time.Duration) error {
 	case <-timer.C:
 		return nil
 	}
+}
+
+func isBucketSubresourceMutationRetryableS3Error(err error) bool {
+	if status, ok := s3HTTPStatus(err); ok && status == standardhttp.StatusNotFound {
+		return false
+	}
+
+	var apiErr smithy.APIError
+	if errors.As(err, &apiErr) {
+		switch apiErr.ErrorCode() {
+		case ErrNoSuchBucket, errNotFound, errNoSuchTagSet:
+			return false
+		}
+	}
+
+	return isBucketPropagationRetryableS3Error(err)
 }
 
 func isBucketPropagationRetryableS3Error(err error) bool {
