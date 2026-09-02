@@ -3,6 +3,7 @@ package workloadfederation_test
 import (
 	"fmt"
 	"regexp"
+	"strings"
 	"testing"
 	"time"
 
@@ -74,8 +75,8 @@ func TestOIDCConfigDataSourceLookup(t *testing.T) {
 			wantName:   "github-actions",
 			wantActive: "true",
 		},
-		"name lookup": {
-			selectors:  `  name = "github-actions"`,
+		"issuer and audience lookup": {
+			selectors:  "  issuer_url = \"https://token.actions.githubusercontent.com\"\n  audience   = \"coreweave\"",
 			configs:    []*controlplanev1beta1.OIDCConfig{deactivated, active},
 			wantUID:    testOIDCConfigUID,
 			wantName:   "github-actions",
@@ -123,6 +124,7 @@ func TestOIDCConfigDataSourceDiagnostics(t *testing.T) {
 	active, _ := testOIDCConfigs()
 	duplicate := proto.Clone(active).(*controlplanev1beta1.OIDCConfig)
 	duplicate.Uid = testOIDCConfigOtherUID
+	duplicate.Name = "same-trust-identity"
 
 	tests := map[string]struct {
 		selectors string
@@ -130,34 +132,50 @@ func TestOIDCConfigDataSourceDiagnostics(t *testing.T) {
 		wantError string
 	}{
 		"neither selector": {
-			wantError: "Missing Attribute Configuration",
+			wantError: "Invalid OIDC Configuration Selector",
 		},
 		"both selectors": {
-			selectors: fmt.Sprintf("  uid = %q\n  name = %q", testOIDCConfigUID, "github-actions"),
+			selectors: fmt.Sprintf("  uid = %q\n  issuer_url = %q\n  audience = %q", testOIDCConfigUID, active.GetIssuerUrl(), active.GetAudience()),
 			configs:   []*controlplanev1beta1.OIDCConfig{active},
-			wantError: "Invalid Attribute Combination",
+			wantError: "Invalid OIDC Configuration Selector",
 		},
 		"empty UID": {
 			selectors: `  uid = ""`,
 			wantError: "Invalid Attribute Value Length",
 		},
-		"empty name": {
-			selectors: `  name = ""`,
+		"empty audience": {
+			selectors: "  issuer_url = \"https://token.actions.githubusercontent.com\"\n  audience = \"\"",
 			wantError: "Invalid Attribute Value Length",
+		},
+		"invalid issuer URL": {
+			selectors: "  issuer_url = \"not-a-url\"\n  audience = \"coreweave\"",
+			wantError: "Invalid OIDC issuer URL",
+		},
+		"issuer URL too long": {
+			selectors: fmt.Sprintf("  issuer_url = %q\n  audience = \"coreweave\"", "https://example.com/"+strings.Repeat("a", 1024)),
+			wantError: "Invalid Attribute Value Length",
+		},
+		"issuer without audience": {
+			selectors: `  issuer_url = "https://token.actions.githubusercontent.com"`,
+			wantError: "Invalid OIDC Configuration Selector",
+		},
+		"audience without issuer": {
+			selectors: `  audience = "coreweave"`,
+			wantError: "Invalid OIDC Configuration Selector",
 		},
 		"zero UID matches": {
 			selectors: fmt.Sprintf("  uid = %q", testOIDCConfigUID),
 			wantError: `No workload federation OIDC configuration has the UID`,
 		},
-		"zero name matches": {
-			selectors: `  name = "missing"`,
+		"zero issuer and audience matches": {
+			selectors: "  issuer_url = \"https://missing.example.com\"\n  audience = \"coreweave\"",
 			configs:   []*controlplanev1beta1.OIDCConfig{active},
-			wantError: `no workload federation OIDC configuration has the exact name`,
+			wantError: `(?s)no workload federation OIDC configuration.*issuer URL`,
 		},
-		"multiple name matches": {
-			selectors: `  name = "github-actions"`,
+		"multiple issuer and audience matches": {
+			selectors: "  issuer_url = \"https://token.actions.githubusercontent.com\"\n  audience = \"coreweave\"",
 			configs:   []*controlplanev1beta1.OIDCConfig{active, duplicate},
-			wantError: `more than one workload federation OIDC configuration has the exact name`,
+			wantError: `(?s)more than one workload federation OIDC configuration.*issuer URL`,
 		},
 	}
 
@@ -170,7 +188,7 @@ func TestOIDCConfigDataSourceDiagnostics(t *testing.T) {
 				ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
 				Steps: []tfresource.TestStep{{
 					Config:      oidcConfigDataSourceTestConfig(server.URL, test.selectors),
-					ExpectError: regexp.MustCompile(regexp.QuoteMeta(test.wantError)),
+					ExpectError: regexp.MustCompile(test.wantError),
 				}},
 			})
 		})

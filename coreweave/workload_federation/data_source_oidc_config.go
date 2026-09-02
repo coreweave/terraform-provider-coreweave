@@ -7,12 +7,12 @@ import (
 	controlplanev1beta1 "buf.build/gen/go/coreweave/workload-federation/protocolbuffers/go/coreweave/workload_federation/control_plane/v1beta1"
 	"connectrpc.com/connect"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
-	"github.com/hashicorp/terraform-plugin-framework-validators/datasourcevalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
 var (
@@ -24,6 +24,39 @@ var (
 // OIDCConfigDataSource looks up an existing workload federation OIDC config.
 type OIDCConfigDataSource struct {
 	client *coreweave.Client
+}
+
+type oidcConfigSelectorValidator struct{}
+
+func (oidcConfigSelectorValidator) Description(context.Context) string {
+	return "exactly one selector must be configured: uid, or issuer_url together with audience"
+}
+
+func (v oidcConfigSelectorValidator) MarkdownDescription(ctx context.Context) string {
+	return v.Description(ctx)
+}
+
+func (oidcConfigSelectorValidator) ValidateDataSource(ctx context.Context, req datasource.ValidateConfigRequest, resp *datasource.ValidateConfigResponse) {
+	var uid, issuerURL, audience types.String
+	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("uid"), &uid)...)
+	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("issuer_url"), &issuerURL)...)
+	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("audience"), &audience)...)
+	if resp.Diagnostics.HasError() || uid.IsUnknown() || issuerURL.IsUnknown() || audience.IsUnknown() {
+		return
+	}
+
+	uidConfigured := !uid.IsNull()
+	issuerURLConfigured := !issuerURL.IsNull()
+	audienceConfigured := !audience.IsNull()
+	if (uidConfigured && !issuerURLConfigured && !audienceConfigured) ||
+		(!uidConfigured && issuerURLConfigured && audienceConfigured) {
+		return
+	}
+
+	resp.Diagnostics.AddError(
+		"Invalid OIDC Configuration Selector",
+		"Configure exactly one selector: `uid`, or both `issuer_url` and `audience`. The organization is determined by the provider's authenticated context.",
+	)
 }
 
 // OIDCConfigDataSourceModel is shared with the resource so additions to the
@@ -40,7 +73,7 @@ func (d *OIDCConfigDataSource) Metadata(_ context.Context, req datasource.Metada
 
 func (d *OIDCConfigDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, resp *datasource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		MarkdownDescription: "Looks up an existing workload federation OIDC configuration by its stable UID or exact name. Name lookup fails when no configuration or more than one configuration has that name.",
+		MarkdownDescription: "Looks up an existing workload federation OIDC configuration by its stable UID or unique issuer URL and audience pair. The organization is determined by the provider's authenticated context.",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Computed:            true,
@@ -49,7 +82,7 @@ func (d *OIDCConfigDataSource) Schema(_ context.Context, _ datasource.SchemaRequ
 			"uid": schema.StringAttribute{
 				Optional:            true,
 				Computed:            true,
-				MarkdownDescription: "The server-assigned stable UID to look up. Exactly one of `uid` or `name` must be configured.",
+				MarkdownDescription: "The server-assigned stable UID to look up. Configure either `uid`, or both `issuer_url` and `audience`.",
 				Validators: []validator.String{
 					stringvalidator.UTF8LengthAtLeast(1),
 				},
@@ -59,24 +92,29 @@ func (d *OIDCConfigDataSource) Schema(_ context.Context, _ datasource.SchemaRequ
 				MarkdownDescription: "The unique identifier of the CoreWeave organization that owns the OIDC configuration.",
 			},
 			"name": schema.StringAttribute{
-				Optional:            true,
 				Computed:            true,
-				MarkdownDescription: "The exact human-readable name to look up. Exactly one of `uid` or `name` must be configured.",
-				Validators: []validator.String{
-					stringvalidator.UTF8LengthAtLeast(1),
-				},
+				MarkdownDescription: "The human-readable name of the OIDC configuration.",
 			},
 			"description": schema.StringAttribute{
 				Computed:            true,
 				MarkdownDescription: "The optional human-readable description of the OIDC configuration.",
 			},
 			"issuer_url": schema.StringAttribute{
+				Optional:            true,
 				Computed:            true,
-				MarkdownDescription: "The issuer URL of the external OIDC provider.",
+				MarkdownDescription: "The issuer URL to look up. Must be configured together with `audience` when `uid` is omitted.",
+				Validators: []validator.String{
+					stringvalidator.UTF8LengthAtMost(1024),
+					oidcIssuerURLValidator{},
+				},
 			},
 			"audience": schema.StringAttribute{
+				Optional:            true,
 				Computed:            true,
-				MarkdownDescription: "The expected audience claim in tokens from the external OIDC provider.",
+				MarkdownDescription: "The audience to look up. Must be configured together with `issuer_url` when `uid` is omitted.",
+				Validators: []validator.String{
+					stringvalidator.UTF8LengthBetween(1, 1024),
+				},
 			},
 			"active": schema.BoolAttribute{
 				Computed:            true,
@@ -100,10 +138,7 @@ func (d *OIDCConfigDataSource) Schema(_ context.Context, _ datasource.SchemaRequ
 
 func (d *OIDCConfigDataSource) ConfigValidators(_ context.Context) []datasource.ConfigValidator {
 	return []datasource.ConfigValidator{
-		datasourcevalidator.ExactlyOneOf(
-			path.MatchRoot("uid"),
-			path.MatchRoot("name"),
-		),
+		oidcConfigSelectorValidator{},
 	}
 }
 
@@ -151,7 +186,7 @@ func (d *OIDCConfigDataSource) Read(ctx context.Context, req datasource.ReadRequ
 			coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
 			return
 		}
-		config, err = selectOIDCConfigByName(listResp.Msg.GetConfigs(), data.Name.ValueString())
+		config, err = selectOIDCConfigByIssuerAndAudience(listResp.Msg.GetConfigs(), data.IssuerURL.ValueString(), data.Audience.ValueString())
 		if err != nil {
 			resp.Diagnostics.AddError("OIDC Configuration Lookup Failed", err.Error())
 			return
@@ -170,19 +205,19 @@ func (d *OIDCConfigDataSource) Read(ctx context.Context, req datasource.ReadRequ
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-func selectOIDCConfigByName(configs []*controlplanev1beta1.OIDCConfig, name string) (*controlplanev1beta1.OIDCConfig, error) {
+func selectOIDCConfigByIssuerAndAudience(configs []*controlplanev1beta1.OIDCConfig, issuerURL, audience string) (*controlplanev1beta1.OIDCConfig, error) {
 	var match *controlplanev1beta1.OIDCConfig
 	for _, config := range configs {
-		if config == nil || config.GetName() != name {
+		if config == nil || config.GetIssuerUrl() != issuerURL || config.GetAudience() != audience {
 			continue
 		}
 		if match != nil {
-			return nil, fmt.Errorf("more than one workload federation OIDC configuration has the exact name %q; use uid to select one unambiguously", name)
+			return nil, fmt.Errorf("more than one workload federation OIDC configuration in the authenticated organization has issuer URL %q and audience %q; use uid to select one unambiguously", issuerURL, audience)
 		}
 		match = config
 	}
 	if match == nil {
-		return nil, fmt.Errorf("no workload federation OIDC configuration has the exact name %q", name)
+		return nil, fmt.Errorf("no workload federation OIDC configuration in the authenticated organization has issuer URL %q and audience %q", issuerURL, audience)
 	}
 	return match, nil
 }

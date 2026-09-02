@@ -3,10 +3,11 @@ data "coreweave_workload_federation_oidc_config" "github_actions" {
   uid = "13db6848-17e8-42b0-8615-4d3fc86bd721"
 }
 
-# Exact-name lookup is useful when discovering the stable UID. It returns an
-# error if no configuration or more than one configuration has this name.
-data "coreweave_workload_federation_oidc_config" "by_name" {
-  name = "github-actions"
+# Look up a configuration by its unique trust identity. The organization is
+# determined by the provider's authenticated context.
+data "coreweave_workload_federation_oidc_config" "by_trust_identity" {
+  issuer_url = "https://token.actions.githubusercontent.com"
+  audience   = "coreweave"
 }
 
 # Pass the stable UID to a runtime workspace or module without recreating the

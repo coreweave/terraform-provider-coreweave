@@ -3,12 +3,12 @@
 page_title: "coreweave_workload_federation_oidc_config Data Source - coreweave"
 subcategory: ""
 description: |-
-  Looks up an existing workload federation OIDC configuration by its stable UID or exact name. Name lookup fails when no configuration or more than one configuration has that name.
+  Looks up an existing workload federation OIDC configuration by its stable UID or unique issuer URL and audience pair. The organization is determined by the provider's authenticated context.
 ---
 
 # coreweave_workload_federation_oidc_config (Data Source)
 
-Looks up an existing workload federation OIDC configuration by its stable UID or exact name. Name lookup fails when no configuration or more than one configuration has that name.
+Looks up an existing workload federation OIDC configuration by its stable UID or unique issuer URL and audience pair. The organization is determined by the provider's authenticated context.
 
 ## Example Usage
 
@@ -18,10 +18,11 @@ data "coreweave_workload_federation_oidc_config" "github_actions" {
   uid = "13db6848-17e8-42b0-8615-4d3fc86bd721"
 }
 
-# Exact-name lookup is useful when discovering the stable UID. It returns an
-# error if no configuration or more than one configuration has this name.
-data "coreweave_workload_federation_oidc_config" "by_name" {
-  name = "github-actions"
+# Look up a configuration by its unique trust identity. The organization is
+# determined by the provider's authenticated context.
+data "coreweave_workload_federation_oidc_config" "by_trust_identity" {
+  issuer_url = "https://token.actions.githubusercontent.com"
+  audience   = "coreweave"
 }
 
 # Pass the stable UID to a runtime workspace or module without recreating the
@@ -36,17 +37,17 @@ output "workload_federation_oidc_config_uid" {
 
 ### Optional
 
-- `name` (String) The exact human-readable name to look up. Exactly one of `uid` or `name` must be configured.
-- `uid` (String) The server-assigned stable UID to look up. Exactly one of `uid` or `name` must be configured.
+- `audience` (String) The audience to look up. Must be configured together with `issuer_url` when `uid` is omitted.
+- `issuer_url` (String) The issuer URL to look up. Must be configured together with `audience` when `uid` is omitted.
+- `uid` (String) The server-assigned stable UID to look up. Configure either `uid`, or both `issuer_url` and `audience`.
 
 ### Read-Only
 
 - `active` (Boolean) Whether tokens from this OIDC provider are accepted for workload identity federation.
-- `audience` (String) The expected audience claim in tokens from the external OIDC provider.
 - `created_at` (String) The RFC 3339 timestamp at which the OIDC configuration was created.
 - `deactivated_at` (String) The RFC 3339 timestamp at which the OIDC configuration was deactivated, or null while active.
 - `description` (String) The optional human-readable description of the OIDC configuration.
 - `id` (String) The server-assigned stable UID of the OIDC configuration.
-- `issuer_url` (String) The issuer URL of the external OIDC provider.
+- `name` (String) The human-readable name of the OIDC configuration.
 - `organization_id` (String) The unique identifier of the CoreWeave organization that owns the OIDC configuration.
 - `updated_at` (String) The RFC 3339 timestamp at which the OIDC configuration was last updated.
