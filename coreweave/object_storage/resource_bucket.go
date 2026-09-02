@@ -122,6 +122,17 @@ func handleS3Error(
 	diags *diag.Diagnostics,
 	bucketName string,
 ) {
+	// Convergence phases wrap SDK errors with retry metadata. Report that
+	// context before inspecting nested Smithy errors so it is not discarded.
+	var phaseErr *s3PhaseError
+	if errors.As(err, &phaseErr) {
+		diags.AddError(
+			fmt.Sprintf("S3 %s failed on bucket %q", phaseErr.phase, bucketName),
+			phaseErr.Error(),
+		)
+		return
+	}
+
 	// 1) OperationError ⇒ report service, operation, inner error
 	var opErr *smithy.OperationError
 	if errors.As(err, &opErr) {

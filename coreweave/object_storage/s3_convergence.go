@@ -44,9 +44,10 @@ func (options s3PhaseOptions) withDefaults() s3PhaseOptions {
 }
 
 type s3PhaseMetadata struct {
-	phase  string
-	bucket string
-	zone   string
+	phase                   string
+	bucket                  string
+	zone                    string
+	sharedPropagationBudget bool
 }
 
 type s3PhaseError struct {
@@ -57,6 +58,9 @@ type s3PhaseError struct {
 }
 
 func (e *s3PhaseError) Error() string {
+	if e.attempts == 0 {
+		return fmt.Sprintf("%s could not start after %s: %v", e.phase, e.elapsed.Round(time.Millisecond), e.err)
+	}
 	return fmt.Sprintf("%s failed after %d attempt(s) in %s: %v", e.phase, e.attempts, e.elapsed.Round(time.Millisecond), e.err)
 }
 
@@ -77,13 +81,21 @@ func runS3Phase(
 ) error {
 	options = options.withDefaults()
 	started := options.now()
+	var lastAttemptErr error
 
 	for attemptNumber := 1; ; attemptNumber++ {
 		if err := ctx.Err(); err != nil {
+			if attemptNumber == 1 && metadata.sharedPropagationBudget && errors.Is(err, context.DeadlineExceeded) {
+				err = fmt.Errorf("shared propagation deadline exhausted before phase start: %w", err)
+			}
+			if lastAttemptErr != nil {
+				err = errors.Join(err, lastAttemptErr)
+			}
 			return &s3PhaseError{phase: metadata.phase, attempts: attemptNumber - 1, elapsed: options.now().Sub(started), err: err}
 		}
 
 		done, err := attempt(ctx)
+		lastAttemptErr = err
 		if err == nil && done {
 			return nil
 		}
@@ -107,6 +119,9 @@ func runS3Phase(
 		}
 		tflog.Debug(ctx, "waiting for S3 operation convergence", logFields)
 		if waitErr := options.wait(ctx, delay); waitErr != nil {
+			if lastAttemptErr != nil {
+				waitErr = errors.Join(waitErr, lastAttemptErr)
+			}
 			return &s3PhaseError{phase: metadata.phase, attempts: attemptNumber, elapsed: options.now().Sub(started), err: waitErr}
 		}
 	}
