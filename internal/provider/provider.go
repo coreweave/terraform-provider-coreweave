@@ -256,6 +256,7 @@ func (p *CoreweaveProvider) DataSources(ctx context.Context) []func() datasource
 		inference.NewInferenceDeploymentParametersDataSource,
 		inference.NewCapacityClaimParametersDataSource,
 		inference.NewGatewayParametersDataSource,
+		workloadfederation.NewOIDCConfigDataSource,
 	}
 }
 
