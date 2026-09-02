@@ -31,19 +31,26 @@ type postCreateInvalidRegionFake struct {
 
 	mu sync.Mutex
 
-	bucketExists bool
-	policy       string
-	versioning   string
+	bucketExists    bool
+	headSucceeded   bool
+	childBeforeHead bool
+	policy          string
+	versioning      string
 
 	headCalls          int
+	putPolicyCalls     int
+	putVersioningCalls int
 	getPolicyCalls     int
 	getVersioningCalls int
 }
 
 type postCreateRequestCounts struct {
-	head          int
-	getPolicy     int
-	getVersioning int
+	head            int
+	putPolicy       int
+	putVersioning   int
+	getPolicy       int
+	getVersioning   int
+	childBeforeHead bool
 }
 
 func newPostCreateInvalidRegionFake(t *testing.T) (string, *postCreateInvalidRegionFake) {
@@ -60,8 +67,10 @@ func newPostCreateInvalidRegionFake(t *testing.T) (string, *postCreateInvalidReg
 	t.Cleanup(func() {
 		counts := fake.requestCounts()
 		t.Logf(
-			"post-create fake requests: HeadBucket=%d GetBucketPolicy=%d GetBucketVersioning=%d",
+			"post-create fake requests: HeadBucket=%d PutBucketPolicy=%d PutBucketVersioning=%d GetBucketPolicy=%d GetBucketVersioning=%d",
 			counts.head,
+			counts.putPolicy,
+			counts.putVersioning,
 			counts.getPolicy,
 			counts.getVersioning,
 		)
@@ -90,12 +99,24 @@ func (f *postCreateInvalidRegionFake) handleS3(w http.ResponseWriter, r *http.Re
 		f.writeListBuckets(w)
 
 	case r.Method == http.MethodPut && bucket != "" && query.Has("versioning"):
+		f.mu.Lock()
+		if !f.headSucceeded {
+			f.childBeforeHead = true
+		}
+		f.mu.Unlock()
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
 			http.Error(w, fmt.Sprintf("read PutBucketVersioning body: %v", err), http.StatusInternalServerError)
 			return
 		}
 		f.mu.Lock()
+		f.putVersioningCalls++
+		attempt := f.putVersioningCalls
+		if attempt == 1 {
+			f.mu.Unlock()
+			writePostCreateS3Error(w, http.StatusBadRequest, "InvalidRegion", "Region does not match")
+			return
+		}
 		if strings.Contains(string(body), "<Status>Suspended</Status>") {
 			f.versioning = "Suspended"
 		} else {
@@ -114,6 +135,9 @@ func (f *postCreateInvalidRegionFake) handleS3(w http.ResponseWriter, r *http.Re
 			writePostCreateS3Error(w, http.StatusBadRequest, "InvalidRegion", "Region does not match")
 			return
 		}
+		if attempt == 3 {
+			versioning = "Suspended"
+		}
 		w.Header().Set("Content-Type", "application/xml")
 		_, _ = fmt.Fprintf(
 			w,
@@ -122,12 +146,24 @@ func (f *postCreateInvalidRegionFake) handleS3(w http.ResponseWriter, r *http.Re
 		)
 
 	case r.Method == http.MethodPut && bucket != "" && query.Has("policy"):
+		f.mu.Lock()
+		if !f.headSucceeded {
+			f.childBeforeHead = true
+		}
+		f.mu.Unlock()
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
 			http.Error(w, fmt.Sprintf("read PutBucketPolicy body: %v", err), http.StatusInternalServerError)
 			return
 		}
 		f.mu.Lock()
+		f.putPolicyCalls++
+		attempt := f.putPolicyCalls
+		if attempt == 1 {
+			f.mu.Unlock()
+			writePostCreateS3Error(w, http.StatusBadRequest, "InvalidRegion", "Region does not match")
+			return
+		}
 		f.policy = string(body)
 		f.mu.Unlock()
 		w.WriteHeader(http.StatusNoContent)
@@ -141,6 +177,9 @@ func (f *postCreateInvalidRegionFake) handleS3(w http.ResponseWriter, r *http.Re
 		if attempt == 1 {
 			writePostCreateS3Error(w, http.StatusBadRequest, "InvalidRegion", "Region does not match")
 			return
+		}
+		if attempt == 3 {
+			policy = `{"Version":"2012-10-17","Statement":[]}`
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = io.WriteString(w, policy)
@@ -179,6 +218,9 @@ func (f *postCreateInvalidRegionFake) handleS3(w http.ResponseWriter, r *http.Re
 			return
 		}
 		w.Header().Set("x-amz-bucket-region", postCreateTestZone)
+		f.mu.Lock()
+		f.headSucceeded = true
+		f.mu.Unlock()
 		w.WriteHeader(http.StatusOK)
 
 	case r.Method == http.MethodDelete && bucket != "":
@@ -214,9 +256,12 @@ func (f *postCreateInvalidRegionFake) requestCounts() postCreateRequestCounts {
 	defer f.mu.Unlock()
 
 	return postCreateRequestCounts{
-		head:          f.headCalls,
-		getPolicy:     f.getPolicyCalls,
-		getVersioning: f.getVersioningCalls,
+		head:            f.headCalls,
+		putPolicy:       f.putPolicyCalls,
+		putVersioning:   f.putVersioningCalls,
+		getPolicy:       f.getPolicyCalls,
+		getVersioning:   f.getVersioningCalls,
+		childBeforeHead: f.childBeforeHead,
 	}
 }
 
@@ -271,11 +316,20 @@ resource "coreweave_object_storage_bucket_policy" "test" {
 					if counts.head == 0 {
 						return fmt.Errorf("HeadBucket requests = 0, want readiness barrier before child resources")
 					}
-					if counts.getPolicy != 2 {
-						return fmt.Errorf("GetBucketPolicy requests = %d, want 2", counts.getPolicy)
+					if counts.childBeforeHead {
+						return fmt.Errorf("child resource mutation occurred before a successful HeadBucket")
 					}
-					if counts.getVersioning != 2 {
-						return fmt.Errorf("GetBucketVersioning requests = %d, want 2", counts.getVersioning)
+					if counts.putPolicy != 2 {
+						return fmt.Errorf("PutBucketPolicy requests = %d, want 2", counts.putPolicy)
+					}
+					if counts.putVersioning != 2 {
+						return fmt.Errorf("PutBucketVersioning requests = %d, want 2", counts.putVersioning)
+					}
+					if counts.getPolicy != 5 {
+						return fmt.Errorf("GetBucketPolicy requests = %d, want 5", counts.getPolicy)
+					}
+					if counts.getVersioning != 5 {
+						return fmt.Errorf("GetBucketVersioning requests = %d, want 5", counts.getVersioning)
 					}
 					return nil
 				},
