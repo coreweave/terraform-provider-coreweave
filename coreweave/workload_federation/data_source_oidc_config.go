@@ -29,7 +29,7 @@ type OIDCConfigDataSource struct {
 type oidcConfigSelectorValidator struct{}
 
 func (oidcConfigSelectorValidator) Description(context.Context) string {
-	return "exactly one selector must be configured: uid, or issuer_url together with audience"
+	return "exactly one selector must be configured: id, or issuer_url together with audience"
 }
 
 func (v oidcConfigSelectorValidator) MarkdownDescription(ctx context.Context) string {
@@ -37,25 +37,25 @@ func (v oidcConfigSelectorValidator) MarkdownDescription(ctx context.Context) st
 }
 
 func (oidcConfigSelectorValidator) ValidateDataSource(ctx context.Context, req datasource.ValidateConfigRequest, resp *datasource.ValidateConfigResponse) {
-	var uid, issuerURL, audience types.String
-	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("uid"), &uid)...)
+	var id, issuerURL, audience types.String
+	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("id"), &id)...)
 	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("issuer_url"), &issuerURL)...)
 	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("audience"), &audience)...)
-	if resp.Diagnostics.HasError() || uid.IsUnknown() || issuerURL.IsUnknown() || audience.IsUnknown() {
+	if resp.Diagnostics.HasError() || id.IsUnknown() || issuerURL.IsUnknown() || audience.IsUnknown() {
 		return
 	}
 
-	uidConfigured := !uid.IsNull()
+	idConfigured := !id.IsNull()
 	issuerURLConfigured := !issuerURL.IsNull()
 	audienceConfigured := !audience.IsNull()
-	if (uidConfigured && !issuerURLConfigured && !audienceConfigured) ||
-		(!uidConfigured && issuerURLConfigured && audienceConfigured) {
+	if (idConfigured && !issuerURLConfigured && !audienceConfigured) ||
+		(!idConfigured && issuerURLConfigured && audienceConfigured) {
 		return
 	}
 
 	resp.Diagnostics.AddError(
 		"Invalid OIDC Configuration Selector",
-		"Configure exactly one selector: `uid`, or both `issuer_url` and `audience`. The organization is determined by the provider's authenticated context.",
+		"Configure exactly one selector: `id`, or both `issuer_url` and `audience`. The organization is determined by the provider's authenticated context.",
 	)
 }
 
@@ -76,13 +76,9 @@ func (d *OIDCConfigDataSource) Schema(_ context.Context, _ datasource.SchemaRequ
 		MarkdownDescription: "Looks up an existing workload federation OIDC configuration by its stable UID or unique issuer URL and audience pair. The organization is determined by the provider's authenticated context.",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
-				Computed:            true,
-				MarkdownDescription: "The server-assigned stable UID of the OIDC configuration.",
-			},
-			"uid": schema.StringAttribute{
 				Optional:            true,
 				Computed:            true,
-				MarkdownDescription: "The server-assigned stable UID to look up. Configure either `uid`, or both `issuer_url` and `audience`.",
+				MarkdownDescription: "The server-assigned stable ID to look up. Configure either `id`, or both `issuer_url` and `audience`.",
 				Validators: []validator.String{
 					stringvalidator.UTF8LengthAtLeast(1),
 				},
@@ -102,7 +98,7 @@ func (d *OIDCConfigDataSource) Schema(_ context.Context, _ datasource.SchemaRequ
 			"issuer_url": schema.StringAttribute{
 				Optional:            true,
 				Computed:            true,
-				MarkdownDescription: "The issuer URL to look up. Must be configured together with `audience` when `uid` is omitted.",
+				MarkdownDescription: "The issuer URL to look up. Must be configured together with `audience` when `id` is omitted.",
 				Validators: []validator.String{
 					stringvalidator.UTF8LengthAtMost(1024),
 					oidcIssuerURLValidator{},
@@ -111,7 +107,7 @@ func (d *OIDCConfigDataSource) Schema(_ context.Context, _ datasource.SchemaRequ
 			"audience": schema.StringAttribute{
 				Optional:            true,
 				Computed:            true,
-				MarkdownDescription: "The audience to look up. Must be configured together with `issuer_url` when `uid` is omitted.",
+				MarkdownDescription: "The audience to look up. Must be configured together with `issuer_url` when `id` is omitted.",
 				Validators: []validator.String{
 					stringvalidator.UTF8LengthBetween(1, 1024),
 				},
@@ -166,13 +162,13 @@ func (d *OIDCConfigDataSource) Read(ctx context.Context, req datasource.ReadRequ
 	}
 
 	var config *controlplanev1beta1.OIDCConfig
-	if !data.UID.IsNull() && !data.UID.IsUnknown() {
-		readResp, err := d.client.GetOIDCConfig(ctx, connect.NewRequest(&controlplanev1beta1.GetOIDCConfigRequest{Uid: data.UID.ValueString()}))
+	if !data.ID.IsNull() && !data.ID.IsUnknown() {
+		readResp, err := d.client.GetOIDCConfig(ctx, connect.NewRequest(&controlplanev1beta1.GetOIDCConfigRequest{Uid: data.ID.ValueString()}))
 		if err != nil {
 			if coreweave.IsNotFoundError(err) {
 				resp.Diagnostics.AddError(
 					"OIDC Configuration Not Found",
-					fmt.Sprintf("No workload federation OIDC configuration has the UID %q.", data.UID.ValueString()),
+					fmt.Sprintf("No workload federation OIDC configuration has the ID %q.", data.ID.ValueString()),
 				)
 				return
 			}
@@ -212,7 +208,7 @@ func selectOIDCConfigByIssuerAndAudience(configs []*controlplanev1beta1.OIDCConf
 			continue
 		}
 		if match != nil {
-			return nil, fmt.Errorf("more than one workload federation OIDC configuration in the authenticated organization has issuer URL %q and audience %q; use uid to select one unambiguously", issuerURL, audience)
+			return nil, fmt.Errorf("more than one workload federation OIDC configuration in the authenticated organization has issuer URL %q and audience %q; use id to select one unambiguously", issuerURL, audience)
 		}
 		match = config
 	}

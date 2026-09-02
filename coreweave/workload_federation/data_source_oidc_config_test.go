@@ -68,8 +68,8 @@ func TestOIDCConfigDataSourceLookup(t *testing.T) {
 		wantActive      string
 		wantDeactivated bool
 	}{
-		"UID lookup": {
-			selectors:  fmt.Sprintf("  uid = %q", testOIDCConfigUID),
+		"ID lookup": {
+			selectors:  fmt.Sprintf("  id = %q", testOIDCConfigUID),
 			configs:    []*controlplanev1beta1.OIDCConfig{active},
 			wantUID:    testOIDCConfigUID,
 			wantName:   "github-actions",
@@ -83,7 +83,7 @@ func TestOIDCConfigDataSourceLookup(t *testing.T) {
 			wantActive: "true",
 		},
 		"deactivated object": {
-			selectors:       fmt.Sprintf("  uid = %q", testOIDCConfigOtherUID),
+			selectors:       fmt.Sprintf("  id = %q", testOIDCConfigOtherUID),
 			configs:         []*controlplanev1beta1.OIDCConfig{deactivated},
 			wantUID:         testOIDCConfigOtherUID,
 			wantName:        "deactivated-config",
@@ -99,7 +99,6 @@ func TestOIDCConfigDataSourceLookup(t *testing.T) {
 
 			checks := []tfresource.TestCheckFunc{
 				tfresource.TestCheckResourceAttr(oidcConfigDataSourceAddress, "id", test.wantUID),
-				tfresource.TestCheckResourceAttr(oidcConfigDataSourceAddress, "uid", test.wantUID),
 				tfresource.TestCheckResourceAttr(oidcConfigDataSourceAddress, "name", test.wantName),
 				tfresource.TestCheckResourceAttr(oidcConfigDataSourceAddress, "active", test.wantActive),
 			}
@@ -135,12 +134,12 @@ func TestOIDCConfigDataSourceDiagnostics(t *testing.T) {
 			wantError: "Invalid OIDC Configuration Selector",
 		},
 		"both selectors": {
-			selectors: fmt.Sprintf("  uid = %q\n  issuer_url = %q\n  audience = %q", testOIDCConfigUID, active.GetIssuerUrl(), active.GetAudience()),
+			selectors: fmt.Sprintf("  id = %q\n  issuer_url = %q\n  audience = %q", testOIDCConfigUID, active.GetIssuerUrl(), active.GetAudience()),
 			configs:   []*controlplanev1beta1.OIDCConfig{active},
 			wantError: "Invalid OIDC Configuration Selector",
 		},
-		"empty UID": {
-			selectors: `  uid = ""`,
+		"empty ID": {
+			selectors: `  id = ""`,
 			wantError: "Invalid Attribute Value Length",
 		},
 		"empty audience": {
@@ -163,9 +162,9 @@ func TestOIDCConfigDataSourceDiagnostics(t *testing.T) {
 			selectors: `  audience = "coreweave"`,
 			wantError: "Invalid OIDC Configuration Selector",
 		},
-		"zero UID matches": {
-			selectors: fmt.Sprintf("  uid = %q", testOIDCConfigUID),
-			wantError: `No workload federation OIDC configuration has the UID`,
+		"zero ID matches": {
+			selectors: fmt.Sprintf("  id = %q", testOIDCConfigUID),
+			wantError: `No workload federation OIDC configuration has the ID`,
 		},
 		"zero issuer and audience matches": {
 			selectors: "  issuer_url = \"https://missing.example.com\"\n  audience = \"coreweave\"",

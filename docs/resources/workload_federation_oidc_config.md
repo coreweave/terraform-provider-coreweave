@@ -41,7 +41,6 @@ resource "coreweave_workload_federation_oidc_config" "example" {
 - `deactivated_at` (String) The RFC 3339 timestamp at which the OIDC configuration was deactivated, or null while it is active.
 - `id` (String) The server-assigned unique identifier for the OIDC configuration.
 - `organization_id` (String) The unique identifier of the CoreWeave organization that owns the OIDC configuration.
-- `uid` (String) The server-assigned stable UID of the OIDC configuration.
 - `updated_at` (String) The RFC 3339 timestamp at which the OIDC configuration was last updated.
 
 ## Import
