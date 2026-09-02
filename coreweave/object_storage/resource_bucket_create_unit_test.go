@@ -357,7 +357,7 @@ func TestCreateBucketSafely(t *testing.T) {
 			client,
 			"target",
 			"US-EAST-04A",
-			immediatePhaseOptions(&waits),
+			immediateS3PhaseOptions(&waits),
 		); err != nil {
 			t.Fatalf("createBucketSafelyWithOptions() error = %v", err)
 		}
@@ -389,17 +389,6 @@ func TestCreateBucketSafely(t *testing.T) {
 	})
 }
 
-func immediatePhaseOptions(waits *int) s3PhaseOptions {
-	return s3PhaseOptions{
-		now:   time.Now,
-		delay: func(int) time.Duration { return 0 },
-		wait: func(ctx context.Context, _ time.Duration) error {
-			*waits++
-			return ctx.Err()
-		},
-	}
-}
-
 func TestReconcileBucketAfterCreate(t *testing.T) {
 	t.Parallel()
 
@@ -429,7 +418,7 @@ func TestReconcileBucketAfterCreate(t *testing.T) {
 		"US-EAST-04A",
 		expectedTags,
 		true,
-		immediatePhaseOptions(&waits),
+		immediateS3PhaseOptions(&waits),
 	)
 	if err != nil {
 		t.Fatalf("reconcileBucketAfterCreate() error = %v", err)
@@ -457,7 +446,7 @@ func TestReconcileBucketAfterCreateDoesNotRetryUnrelated400(t *testing.T) {
 		"US-EAST-04A",
 		nil,
 		false,
-		immediatePhaseOptions(&waits),
+		immediateS3PhaseOptions(&waits),
 	)
 	if err == nil {
 		t.Fatal("reconcileBucketAfterCreate() error = nil, want permanent failure")
@@ -480,7 +469,7 @@ func TestDeleteBucketWithRetryHandlesLocationPropagation(t *testing.T) {
 		client,
 		"target",
 		"US-EAST-04A",
-		immediatePhaseOptions(&waits),
+		immediateS3PhaseOptions(&waits),
 	); err != nil {
 		t.Fatalf("deleteBucketWithRetry() error = %v", err)
 	}
@@ -626,7 +615,7 @@ func TestCreateBucketSafelyReconcilesHTTPAttemptTimeout(t *testing.T) {
 		client,
 		bucketName,
 		zone,
-		immediatePhaseOptions(&waits),
+		immediateS3PhaseOptions(&waits),
 	); err != nil {
 		t.Fatalf("createBucketSafelyWithOptions() error = %v", err)
 	}

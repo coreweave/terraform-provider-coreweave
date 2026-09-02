@@ -11,19 +11,22 @@ import (
 )
 
 type scriptedLifecycleConfigurationClient struct {
-	putErrors  []error
-	putInputs  []*s3.PutBucketLifecycleConfigurationInput
-	getErrors  []error
-	getOutputs []*s3.GetBucketLifecycleConfigurationOutput
-	getInputs  []*s3.GetBucketLifecycleConfigurationInput
+	putErrors   []error
+	putInputs   []*s3.PutBucketLifecycleConfigurationInput
+	getErrors   []error
+	getOutputs  []*s3.GetBucketLifecycleConfigurationOutput
+	getInputs   []*s3.GetBucketLifecycleConfigurationInput
+	putContexts []context.Context
+	getContexts []context.Context
 }
 
 func (c *scriptedLifecycleConfigurationClient) PutBucketLifecycleConfiguration(
-	_ context.Context,
+	ctx context.Context,
 	input *s3.PutBucketLifecycleConfigurationInput,
 	_ ...func(*s3.Options),
 ) (*s3.PutBucketLifecycleConfigurationOutput, error) {
 	c.putInputs = append(c.putInputs, input)
+	c.putContexts = append(c.putContexts, ctx)
 	index := len(c.putInputs) - 1
 	if index < len(c.putErrors) && c.putErrors[index] != nil {
 		return nil, c.putErrors[index]
@@ -32,11 +35,12 @@ func (c *scriptedLifecycleConfigurationClient) PutBucketLifecycleConfiguration(
 }
 
 func (c *scriptedLifecycleConfigurationClient) GetBucketLifecycleConfiguration(
-	_ context.Context,
+	ctx context.Context,
 	input *s3.GetBucketLifecycleConfigurationInput,
 	_ ...func(*s3.Options),
 ) (*s3.GetBucketLifecycleConfigurationOutput, error) {
 	c.getInputs = append(c.getInputs, input)
+	c.getContexts = append(c.getContexts, ctx)
 	index := len(c.getInputs) - 1
 	if index < len(c.getErrors) && c.getErrors[index] != nil {
 		return nil, c.getErrors[index]
@@ -48,19 +52,22 @@ func (c *scriptedLifecycleConfigurationClient) GetBucketLifecycleConfiguration(
 }
 
 type scriptedInventoryConfigurationClient struct {
-	putErrors  []error
-	putInputs  []*s3.PutBucketInventoryConfigurationInput
-	getErrors  []error
-	getOutputs []*s3.GetBucketInventoryConfigurationOutput
-	getInputs  []*s3.GetBucketInventoryConfigurationInput
+	putErrors   []error
+	putInputs   []*s3.PutBucketInventoryConfigurationInput
+	getErrors   []error
+	getOutputs  []*s3.GetBucketInventoryConfigurationOutput
+	getInputs   []*s3.GetBucketInventoryConfigurationInput
+	putContexts []context.Context
+	getContexts []context.Context
 }
 
 func (c *scriptedInventoryConfigurationClient) PutBucketInventoryConfiguration(
-	_ context.Context,
+	ctx context.Context,
 	input *s3.PutBucketInventoryConfigurationInput,
 	_ ...func(*s3.Options),
 ) (*s3.PutBucketInventoryConfigurationOutput, error) {
 	c.putInputs = append(c.putInputs, input)
+	c.putContexts = append(c.putContexts, ctx)
 	index := len(c.putInputs) - 1
 	if index < len(c.putErrors) && c.putErrors[index] != nil {
 		return nil, c.putErrors[index]
@@ -69,11 +76,12 @@ func (c *scriptedInventoryConfigurationClient) PutBucketInventoryConfiguration(
 }
 
 func (c *scriptedInventoryConfigurationClient) GetBucketInventoryConfiguration(
-	_ context.Context,
+	ctx context.Context,
 	input *s3.GetBucketInventoryConfigurationInput,
 	_ ...func(*s3.Options),
 ) (*s3.GetBucketInventoryConfigurationOutput, error) {
 	c.getInputs = append(c.getInputs, input)
+	c.getContexts = append(c.getContexts, ctx)
 	index := len(c.getInputs) - 1
 	if index < len(c.getErrors) && c.getErrors[index] != nil {
 		return nil, c.getErrors[index]
@@ -101,10 +109,11 @@ func TestBucketLifecycleConfigConvergenceRetriesInvalidRegion(t *testing.T) {
 		getOutputs: []*s3.GetBucketLifecycleConfigurationOutput{
 			nil,
 			{Rules: expected.Rules},
+			{Rules: expected.Rules},
 		},
 	}
 	waits := 0
-	options := immediatePhaseOptions(&waits)
+	options := immediateS3PhaseOptions(&waits)
 
 	if err := putBucketLifecycleConfig(t.Context(), client, "source-bucket", putInput, options); err != nil {
 		t.Fatalf("putBucketLifecycleConfig() error = %v", err)
@@ -119,11 +128,11 @@ func TestBucketLifecycleConfigConvergenceRetriesInvalidRegion(t *testing.T) {
 	if len(client.putInputs) != 2 || client.putInputs[0] != putInput || client.putInputs[1] != putInput {
 		t.Fatalf("Put inputs = %#v, want the same input pointer on both attempts", client.putInputs)
 	}
-	if len(client.getInputs) != 2 || client.getInputs[0] != client.getInputs[1] {
-		t.Fatalf("Get inputs = %#v, want the same input pointer on both attempts", client.getInputs)
+	if len(client.getInputs) != 3 || client.getInputs[0] != client.getInputs[1] || client.getInputs[1] != client.getInputs[2] {
+		t.Fatalf("Get inputs = %#v, want the same input pointer on all attempts", client.getInputs)
 	}
-	if waits != 2 {
-		t.Fatalf("backoff waits = %d, want 2", waits)
+	if waits != 3 {
+		t.Fatalf("backoff waits = %d, want 3", waits)
 	}
 }
 
@@ -146,10 +155,11 @@ func TestBucketInventoryConfigConvergenceRetriesInvalidRegion(t *testing.T) {
 		getOutputs: []*s3.GetBucketInventoryConfigurationOutput{
 			nil,
 			{InventoryConfiguration: &expected},
+			{InventoryConfiguration: &expected},
 		},
 	}
 	waits := 0
-	options := immediatePhaseOptions(&waits)
+	options := immediateS3PhaseOptions(&waits)
 
 	if err := putBucketInventoryConfig(t.Context(), client, "source-bucket", putInput, options); err != nil {
 		t.Fatalf("putBucketInventoryConfig() error = %v", err)
@@ -164,11 +174,11 @@ func TestBucketInventoryConfigConvergenceRetriesInvalidRegion(t *testing.T) {
 	if len(client.putInputs) != 2 || client.putInputs[0] != putInput || client.putInputs[1] != putInput {
 		t.Fatalf("Put inputs = %#v, want the same input pointer on both attempts", client.putInputs)
 	}
-	if len(client.getInputs) != 2 || client.getInputs[0] != client.getInputs[1] {
-		t.Fatalf("Get inputs = %#v, want the same input pointer on both attempts", client.getInputs)
+	if len(client.getInputs) != 3 || client.getInputs[0] != client.getInputs[1] || client.getInputs[1] != client.getInputs[2] {
+		t.Fatalf("Get inputs = %#v, want the same input pointer on all attempts", client.getInputs)
 	}
-	if waits != 2 {
-		t.Fatalf("backoff waits = %d, want 2", waits)
+	if waits != 3 {
+		t.Fatalf("backoff waits = %d, want 3", waits)
 	}
 }
 
@@ -187,7 +197,7 @@ func TestBucketConfigurationConvergenceDoesNotRetryPermanentErrors(t *testing.T)
 			client,
 			"invalid",
 			&s3.PutBucketLifecycleConfigurationInput{Bucket: aws.String("invalid")},
-			immediatePhaseOptions(&waits),
+			immediateS3PhaseOptions(&waits),
 		)
 		if err == nil {
 			t.Fatal("putBucketLifecycleConfig() error = nil, want permanent failure")
@@ -210,7 +220,7 @@ func TestBucketConfigurationConvergenceDoesNotRetryPermanentErrors(t *testing.T)
 			"source-bucket",
 			"daily",
 			s3types.InventoryConfiguration{},
-			immediatePhaseOptions(&waits),
+			immediateS3PhaseOptions(&waits),
 		)
 		if err == nil {
 			t.Fatal("waitForInventoryConfig() error = nil, want permanent failure")

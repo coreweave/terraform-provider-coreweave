@@ -124,11 +124,7 @@ func waitForBucketPolicy(
 		}
 
 		if out == nil || out.Policy == nil {
-			if expected == "" {
-				return true, nil
-			}
-
-			return false, fmt.Errorf("bucket policy for %q was nil", bucket)
+			return expected == "", nil
 		}
 
 		var actualPolicy PolicyDocument

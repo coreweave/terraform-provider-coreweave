@@ -22,6 +22,7 @@ const (
 	bucketPropagationTimeout        = 5 * time.Minute
 	bucketPropagationInitialBackoff = 500 * time.Millisecond
 	bucketPropagationMaxBackoff     = 5 * time.Second
+	bucketReadbackConfirmations     = 2
 )
 
 type s3PhaseOptions struct {
@@ -145,7 +146,21 @@ func runBucketReadbackPhase(
 	options s3PhaseOptions,
 	converged func(context.Context) (bool, error),
 ) error {
-	return runS3Phase(ctx, metadata, options, converged, isBucketPropagationRetryableS3Error)
+	// A matching response is request-local evidence, not a service readiness
+	// guarantee. Require a second sample through the normal backoff path so a
+	// match from one gateway does not immediately end reconciliation.
+	metadata.sharedPropagationBudget = true
+	consecutiveMatches := 0
+	return runS3Phase(ctx, metadata, options, func(ctx context.Context) (bool, error) {
+		matched, err := converged(ctx)
+		if err != nil || !matched {
+			consecutiveMatches = 0
+			return false, err
+		}
+
+		consecutiveMatches++
+		return consecutiveMatches >= bucketReadbackConfirmations, nil
+	}, isBucketPropagationRetryableS3Error)
 }
 
 func bucketPropagationBackoff(attempt int) time.Duration {

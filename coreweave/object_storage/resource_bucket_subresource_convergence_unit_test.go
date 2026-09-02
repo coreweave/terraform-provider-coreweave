@@ -9,8 +9,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	s3types "github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/aws/smithy-go"
-	fwresource "github.com/hashicorp/terraform-plugin-framework/resource"
-	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
@@ -56,20 +54,23 @@ func (c *scriptedBucketPolicyClient) GetBucketPolicy(
 }
 
 type scriptedBucketVersioningClient struct {
-	putErrors  []error
-	getErrors  []error
-	getOutputs []*s3.GetBucketVersioningOutput
-	putInputs  []*s3.PutBucketVersioningInput
-	getInputs  []*s3.GetBucketVersioningInput
+	putErrors   []error
+	getErrors   []error
+	getOutputs  []*s3.GetBucketVersioningOutput
+	putInputs   []*s3.PutBucketVersioningInput
+	getInputs   []*s3.GetBucketVersioningInput
+	putContexts []context.Context
+	getContexts []context.Context
 }
 
 func (c *scriptedBucketVersioningClient) PutBucketVersioning(
-	_ context.Context,
+	ctx context.Context,
 	input *s3.PutBucketVersioningInput,
 	_ ...func(*s3.Options),
 ) (*s3.PutBucketVersioningOutput, error) {
 	index := len(c.putInputs)
 	c.putInputs = append(c.putInputs, input)
+	c.putContexts = append(c.putContexts, ctx)
 	if index < len(c.putErrors) && c.putErrors[index] != nil {
 		return nil, c.putErrors[index]
 	}
@@ -77,12 +78,13 @@ func (c *scriptedBucketVersioningClient) PutBucketVersioning(
 }
 
 func (c *scriptedBucketVersioningClient) GetBucketVersioning(
-	_ context.Context,
+	ctx context.Context,
 	input *s3.GetBucketVersioningInput,
 	_ ...func(*s3.Options),
 ) (*s3.GetBucketVersioningOutput, error) {
 	index := len(c.getInputs)
 	c.getInputs = append(c.getInputs, input)
+	c.getContexts = append(c.getContexts, ctx)
 	if index < len(c.getErrors) && c.getErrors[index] != nil {
 		return nil, c.getErrors[index]
 	}
@@ -90,17 +92,6 @@ func (c *scriptedBucketVersioningClient) GetBucketVersioning(
 		return c.getOutputs[index], nil
 	}
 	return &s3.GetBucketVersioningOutput{}, nil
-}
-
-func immediateSubresourcePhaseOptions(waits *int) s3PhaseOptions {
-	return s3PhaseOptions{
-		now:   time.Now,
-		delay: func(int) time.Duration { return 0 },
-		wait: func(ctx context.Context, _ time.Duration) error {
-			*waits = *waits + 1
-			return ctx.Err()
-		},
-	}
 }
 
 func TestBucketPolicyConvergenceRetriesInvalidRegion(t *testing.T) {
@@ -122,10 +113,11 @@ func TestBucketPolicyConvergenceRetriesInvalidRegion(t *testing.T) {
 		getOutputs: []*s3.GetBucketPolicyOutput{
 			nil,
 			{Policy: aws.String(policy)},
+			{Policy: aws.String(policy)},
 		},
 	}
 	waits := 0
-	options := immediateSubresourcePhaseOptions(&waits)
+	options := immediateS3PhaseOptions(&waits)
 	ctx, cancel := bucketPropagationContext(t.Context())
 	defer cancel()
 	input := &s3.PutBucketPolicyInput{
@@ -148,11 +140,11 @@ func TestBucketPolicyConvergenceRetriesInvalidRegion(t *testing.T) {
 			t.Fatalf("PutBucketPolicy input on attempt %d was rebuilt, want immutable input %p", attempt+1, input)
 		}
 	}
-	if len(client.getInputs) != 2 || client.getInputs[0] != client.getInputs[1] {
-		t.Fatalf("GetBucketPolicy inputs = %#v, want the same input pointer on both attempts", client.getInputs)
+	if len(client.getInputs) != 3 || client.getInputs[0] != client.getInputs[1] || client.getInputs[1] != client.getInputs[2] {
+		t.Fatalf("GetBucketPolicy inputs = %#v, want the same input pointer on all attempts", client.getInputs)
 	}
-	if waits != 2 {
-		t.Fatalf("backoff waits = %d, want 2", waits)
+	if waits != 3 {
+		t.Fatalf("backoff waits = %d, want 3", waits)
 	}
 }
 
@@ -169,12 +161,31 @@ func TestBucketPolicyConvergenceDoesNotRetryUnrelated400(t *testing.T) {
 		Policy: aws.String(`{"Version":"2012-10-17","Statement":[]}`),
 	}
 
-	err := putBucketPolicy(t.Context(), client, aws.ToString(input.Bucket), input, immediateSubresourcePhaseOptions(&waits))
+	err := putBucketPolicy(t.Context(), client, aws.ToString(input.Bucket), input, immediateS3PhaseOptions(&waits))
 	if err == nil {
 		t.Fatal("putBucketPolicy() error = nil, want permanent failure")
 	}
 	if got := len(client.putInputs); got != 1 || waits != 0 {
 		t.Fatalf("PutBucketPolicy calls = %d, waits = %d, want 1 and 0", got, waits)
+	}
+}
+
+func TestWaitForBucketPolicyRetriesNilResponse(t *testing.T) {
+	t.Parallel()
+
+	const policy = `{"Version":"2012-10-17","Statement":[]}`
+	client := &scriptedBucketPolicyClient{getOutputs: []*s3.GetBucketPolicyOutput{
+		{},
+		{Policy: aws.String(policy)},
+		{Policy: aws.String(policy)},
+	}}
+	waits := 0
+
+	if err := waitForBucketPolicy(t.Context(), client, "policy-test", policy, immediateS3PhaseOptions(&waits)); err != nil {
+		t.Fatalf("waitForBucketPolicy() error = %v", err)
+	}
+	if len(client.getInputs) != 3 || waits != 2 {
+		t.Fatalf("GetBucketPolicy calls = %d, waits = %d; want 3, 2", len(client.getInputs), waits)
 	}
 }
 
@@ -187,45 +198,25 @@ func TestBucketPolicyCreateRetainsStateWhenReadbackTimesOut(t *testing.T) {
 	)
 	client := &scriptedBucketPolicyClient{getErrors: []error{
 		&smithy.GenericAPIError{Code: errInvalidRegion},
+	}, putErrors: []error{
+		&smithy.GenericAPIError{Code: errInvalidRegion},
+		nil,
 	}}
 	resourceUnderTest := &BucketPolicyResource{
 		s3ClientForConvergence: func(context.Context) (bucketPolicyAPI, error) {
 			return client, nil
 		},
-		bucketPropagationOptions: s3PhaseOptions{
-			now:   time.Now,
-			delay: func(int) time.Duration { return 0 },
-			wait: func(context.Context, time.Duration) error {
-				return context.DeadlineExceeded
-			},
-		},
+		bucketPropagationOptions: s3PhaseOptionsTimingOutOnWait(2),
 	}
 
-	var schemaResponse fwresource.SchemaResponse
-	resourceUnderTest.Schema(t.Context(), fwresource.SchemaRequest{}, &schemaResponse)
-	if schemaResponse.Diagnostics.HasError() {
-		t.Fatalf("bucket policy schema diagnostics: %v", schemaResponse.Diagnostics)
-	}
 	model := BucketPolicyResourceModel{
 		Bucket: types.StringValue(bucket),
 		Policy: types.StringValue(policy),
 	}
-	plan := tfsdk.Plan{Schema: schemaResponse.Schema}
-	if diagnostics := plan.Set(t.Context(), &model); diagnostics.HasError() {
-		t.Fatalf("set test plan: %v", diagnostics)
-	}
-	response := &fwresource.CreateResponse{State: tfsdk.State{Schema: schemaResponse.Schema}}
-
-	resourceUnderTest.Create(t.Context(), fwresource.CreateRequest{Plan: plan}, response)
-
-	if !response.Diagnostics.HasError() {
-		t.Fatal("Create() diagnostics contain no error, want readback timeout")
-	}
-	if len(client.putInputs) != 1 || len(client.getInputs) != 1 {
-		t.Fatalf("S3 calls: Put=%d Get=%d, want 1 and 1", len(client.putInputs), len(client.getInputs))
-	}
-	if client.putContexts[0] != client.getContexts[0] {
-		t.Fatal("PutBucketPolicy and GetBucketPolicy used different propagation contexts")
+	response := runCreateWithModel(t, resourceUnderTest, model)
+	assertWriteRetriedAndRetainedState(t, response.Diagnostics.HasError(), len(client.putInputs), len(client.getInputs), client.putContexts, client.getContexts)
+	if client.putInputs[0] != client.putInputs[1] {
+		t.Fatal("PutBucketPolicy rebuilt its retry input")
 	}
 	var retained BucketPolicyResourceModel
 	if diagnostics := response.State.Get(t.Context(), &retained); diagnostics.HasError() {
@@ -233,6 +224,21 @@ func TestBucketPolicyCreateRetainsStateWhenReadbackTimesOut(t *testing.T) {
 	}
 	if retained.Bucket.ValueString() != bucket || retained.Policy.ValueString() != policy {
 		t.Fatalf("retained state = (%q, %q), want (%q, %q)", retained.Bucket.ValueString(), retained.Policy.ValueString(), bucket, policy)
+	}
+}
+
+func s3PhaseOptionsTimingOutOnWait(timeoutOn int) s3PhaseOptions {
+	waits := 0
+	return s3PhaseOptions{
+		now:   time.Now,
+		delay: func(int) time.Duration { return 0 },
+		wait: func(context.Context, time.Duration) error {
+			waits++
+			if waits >= timeoutOn {
+				return context.DeadlineExceeded
+			}
+			return nil
+		},
 	}
 }
 
@@ -253,10 +259,11 @@ func TestBucketVersioningConvergenceRetriesInvalidRegion(t *testing.T) {
 		getOutputs: []*s3.GetBucketVersioningOutput{
 			nil,
 			{Status: status},
+			{Status: status},
 		},
 	}
 	waits := 0
-	options := immediateSubresourcePhaseOptions(&waits)
+	options := immediateS3PhaseOptions(&waits)
 	ctx, cancel := bucketPropagationContext(t.Context())
 	defer cancel()
 	input := &s3.PutBucketVersioningInput{
@@ -281,11 +288,11 @@ func TestBucketVersioningConvergenceRetriesInvalidRegion(t *testing.T) {
 			t.Fatalf("PutBucketVersioning input on attempt %d was rebuilt, want immutable input %p", attempt+1, input)
 		}
 	}
-	if len(client.getInputs) != 2 || client.getInputs[0] != client.getInputs[1] {
-		t.Fatalf("GetBucketVersioning inputs = %#v, want the same input pointer on both attempts", client.getInputs)
+	if len(client.getInputs) != 3 || client.getInputs[0] != client.getInputs[1] || client.getInputs[1] != client.getInputs[2] {
+		t.Fatalf("GetBucketVersioning inputs = %#v, want the same input pointer on all attempts", client.getInputs)
 	}
-	if waits != 2 {
-		t.Fatalf("backoff waits = %d, want 2", waits)
+	if waits != 3 {
+		t.Fatalf("backoff waits = %d, want 3", waits)
 	}
 }
 
@@ -303,7 +310,7 @@ func TestBucketVersioningConvergenceDoesNotRetryUnrelated400(t *testing.T) {
 		client,
 		"invalid-versioning-test",
 		s3types.BucketVersioningStatusEnabled,
-		immediateSubresourcePhaseOptions(&waits),
+		immediateS3PhaseOptions(&waits),
 	)
 	if err == nil {
 		t.Fatal("waitForBucketVersioning() error = nil, want permanent failure")
