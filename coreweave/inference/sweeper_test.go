@@ -2,8 +2,8 @@ package inference_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"log"
 	"os"
 	"strings"
 	"testing"
@@ -15,15 +15,21 @@ import (
 	"github.com/coreweave/terraform-provider-coreweave/internal/provider"
 	"github.com/coreweave/terraform-provider-coreweave/internal/testutil"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 const AcceptanceTestPrefix = "test-acc-inf-"
 
 const (
-	defaultInferenceModelName       = "meta-llama/Llama-3.1-8B-Instruct"
-	defaultInferenceModelBucket     = "infr-cwc38d"
-	defaultInferenceModelPath       = "raw/OpenPipe/Llama-3.1-8B-Instruct/a33eb8ed541ad2695fe492718662a3577c929888"
-	inferenceDeploymentResourceType = "coreweave_inference_deployment"
+	defaultInferenceModelName          = "meta-llama/Llama-3.1-8B-Instruct"
+	defaultInferenceModelBucket        = "infr-cwc38d"
+	defaultInferenceModelPath          = "raw/OpenPipe/Llama-3.1-8B-Instruct/a33eb8ed541ad2695fe492718662a3577c929888"
+	inferenceDeploymentResourceType    = "coreweave_inference_deployment"
+	inferenceCapacityClaimResourceType = "coreweave_inference_capacity_claim"
+	inferenceGatewayResourceType       = "coreweave_inference_gateway"
+	inferenceDeleteTimeout             = 20 * time.Minute
+	inferenceDeletePollInterval        = 10 * time.Second
 )
 
 func TestMain(m *testing.M) {
@@ -72,160 +78,236 @@ func inferenceModelPath() string {
 	return inferenceEnvOrDefault("INFR_MODEL_PATH", defaultInferenceModelPath)
 }
 
+func normalizeInferenceSweepRegion(region string) (string, error) {
+	region = strings.TrimSpace(region)
+	if region == "" {
+		return "", errors.New("inference sweep region must not be empty")
+	}
+	return region, nil
+}
+
+func newInferenceSweepConfig[T any](resourceType, singular, plural string, list func(context.Context) ([]T, error), name func(T) string, id func(T) string, deleteFunc func(context.Context, string) error, waitForDelete func(context.Context, string) error) testutil.SweepConfig[T] {
+	return testutil.SweepConfig[T]{
+		ResourceType: resourceType,
+		List: func(ctx context.Context) ([]T, error) {
+			items, err := list(ctx)
+			if coreweave.IsNotFoundError(err) {
+				return nil, nil
+			}
+			if err != nil {
+				return nil, fmt.Errorf("failed to list %s: %w", plural, err)
+			}
+			return items, nil
+		},
+		Name: name,
+		Match: func(item T) bool {
+			return strings.HasPrefix(name(item), AcceptanceTestPrefix)
+		},
+		Delete: func(ctx context.Context, item T) error {
+			itemID := id(item)
+			if err := deleteFunc(ctx, itemID); coreweave.IsNotFoundError(err) {
+				return nil
+			} else if err != nil {
+				return fmt.Errorf("failed to delete %s %s: %w", singular, name(item), err)
+			}
+			if err := waitForDelete(ctx, itemID); err != nil {
+				return fmt.Errorf("timed out waiting for %s %s to be deleted: %w", singular, name(item), err)
+			}
+			return nil
+		},
+	}
+}
+
+func newDeploymentSweepConfig(client *coreweave.InferenceClient) testutil.SweepConfig[*inferencev1.Deployment] {
+	return newInferenceSweepConfig(inferenceDeploymentResourceType, "deployment", "deployments",
+		func(ctx context.Context) ([]*inferencev1.Deployment, error) {
+			response, err := client.ListDeployments(ctx, connect.NewRequest(&inferencev1.ListDeploymentsRequest{}))
+			if err != nil {
+				return nil, err
+			}
+			return response.Msg.GetItems(), nil
+		},
+		func(item *inferencev1.Deployment) string { return item.GetSpec().GetName() },
+		func(item *inferencev1.Deployment) string { return item.GetSpec().GetId() },
+		func(ctx context.Context, id string) error {
+			_, err := client.DeleteDeployment(ctx, connect.NewRequest(&inferencev1.DeleteDeploymentRequest{Id: id}))
+			return err
+		}, func(ctx context.Context, id string) error {
+			return testutil.WaitForDelete(ctx, inferenceDeleteTimeout, inferenceDeletePollInterval, client.GetDeployment, &inferencev1.GetDeploymentRequest{Id: id})
+		})
+}
+
+func newCapacityClaimSweepConfig(client *coreweave.InferenceClient) testutil.SweepConfig[*inferencev1.CapacityClaim] {
+	return newInferenceSweepConfig(inferenceCapacityClaimResourceType, "capacity claim", "capacity claims",
+		func(ctx context.Context) ([]*inferencev1.CapacityClaim, error) {
+			response, err := client.ListCapacityClaims(ctx, connect.NewRequest(&inferencev1.ListCapacityClaimsRequest{}))
+			if err != nil {
+				return nil, err
+			}
+			return response.Msg.GetCapacityClaims(), nil
+		},
+		func(item *inferencev1.CapacityClaim) string { return item.GetSpec().GetName() },
+		func(item *inferencev1.CapacityClaim) string { return item.GetSpec().GetId() },
+		func(ctx context.Context, id string) error {
+			_, err := client.DeleteCapacityClaim(ctx, connect.NewRequest(&inferencev1.DeleteCapacityClaimRequest{Id: id}))
+			return err
+		}, func(ctx context.Context, id string) error {
+			return testutil.WaitForDelete(ctx, inferenceDeleteTimeout, inferenceDeletePollInterval, client.GetCapacityClaim, &inferencev1.GetCapacityClaimRequest{Id: id})
+		})
+}
+
+func newGatewaySweepConfig(client *coreweave.InferenceClient) testutil.SweepConfig[*inferencev1.Gateway] {
+	return newInferenceSweepConfig(inferenceGatewayResourceType, "gateway", "gateways",
+		func(ctx context.Context) ([]*inferencev1.Gateway, error) {
+			response, err := client.ListGateways(ctx, connect.NewRequest(&inferencev1.ListGatewaysRequest{}))
+			if err != nil {
+				return nil, err
+			}
+			return response.Msg.GetItems(), nil
+		},
+		func(item *inferencev1.Gateway) string { return item.GetSpec().GetName() },
+		func(item *inferencev1.Gateway) string { return item.GetSpec().GetId() },
+		func(ctx context.Context, id string) error {
+			_, err := client.DeleteGateway(ctx, connect.NewRequest(&inferencev1.DeleteGatewayRequest{Id: id}))
+			return err
+		}, func(ctx context.Context, id string) error {
+			return testutil.WaitForDelete(ctx, inferenceDeleteTimeout, inferenceDeletePollInterval, client.GetGateway, &inferencev1.GetGatewayRequest{Id: id})
+		})
+}
+
+func newInferenceSweeper(resourceType string, dependencies []string, config func(context.Context, testutil.SweepRuntime, *coreweave.InferenceClient) error) *resource.Sweeper {
+	return &resource.Sweeper{
+		Name:         resourceType,
+		Dependencies: dependencies,
+		F: func(region string) error {
+			if _, err := normalizeInferenceSweepRegion(region); err != nil {
+				return err
+			}
+			runtime, err := testutil.SweepRuntimeFromEnv()
+			if err != nil {
+				return err
+			}
+
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+			defer cancel()
+			testutil.SetEnvDefaults()
+			client, err := provider.BuildClient(ctx, provider.CoreweaveProviderModel{}, "", "")
+			if err != nil {
+				return fmt.Errorf("failed to build client: %w", err)
+			}
+			return config(ctx, runtime, client.Inference)
+		},
+	}
+}
+
+func newDeploymentSweeper() *resource.Sweeper {
+	return newInferenceSweeper(inferenceDeploymentResourceType, []string{}, func(ctx context.Context, runtime testutil.SweepRuntime, client *coreweave.InferenceClient) error {
+		return testutil.Sweep(ctx, runtime, newDeploymentSweepConfig(client))
+	})
+}
+
+func newCapacityClaimSweeper() *resource.Sweeper {
+	return newInferenceSweeper(inferenceCapacityClaimResourceType, []string{inferenceDeploymentResourceType}, func(ctx context.Context, runtime testutil.SweepRuntime, client *coreweave.InferenceClient) error {
+		return testutil.Sweep(ctx, runtime, newCapacityClaimSweepConfig(client))
+	})
+}
+
+func newGatewaySweeper() *resource.Sweeper {
+	return newInferenceSweeper(inferenceGatewayResourceType, []string{inferenceDeploymentResourceType}, func(ctx context.Context, runtime testutil.SweepRuntime, client *coreweave.InferenceClient) error {
+		return testutil.Sweep(ctx, runtime, newGatewaySweepConfig(client))
+	})
+}
+
 func init() {
-	resource.AddTestSweepers(inferenceDeploymentResourceType, &resource.Sweeper{
-		Name:         inferenceDeploymentResourceType,
-		Dependencies: []string{},
-		F: func(r string) error {
-			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
-			defer cancel()
+	resource.AddTestSweepers(inferenceDeploymentResourceType, newDeploymentSweeper())
+	resource.AddTestSweepers(inferenceCapacityClaimResourceType, newCapacityClaimSweeper())
+	resource.AddTestSweepers(inferenceGatewayResourceType, newGatewaySweeper())
+}
 
-			testutil.SetEnvDefaults()
-			client, err := provider.BuildClient(ctx, provider.CoreweaveProviderModel{}, "", "")
-			if err != nil {
-				return fmt.Errorf("failed to build client: %w", err)
-			}
+func TestInferenceSweeperRegistrations(t *testing.T) {
+	tests := []struct {
+		name         string
+		dependencies []string
+		sweeper      *resource.Sweeper
+	}{
+		{name: inferenceDeploymentResourceType, dependencies: []string{}, sweeper: newDeploymentSweeper()},
+		{name: inferenceCapacityClaimResourceType, dependencies: []string{inferenceDeploymentResourceType}, sweeper: newCapacityClaimSweeper()},
+		{name: inferenceGatewayResourceType, dependencies: []string{inferenceDeploymentResourceType}, sweeper: newGatewaySweeper()},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.name, tt.sweeper.Name)
+			assert.Equal(t, tt.dependencies, tt.sweeper.Dependencies)
+			assert.NotNil(t, tt.sweeper.F)
+		})
+	}
+}
 
-			listResp, err := client.Inference.ListDeployments(ctx, connect.NewRequest(&inferencev1.ListDeploymentsRequest{}))
-			if err != nil {
-				if coreweave.IsNotFoundError(err) {
-					log.Println("[INFO] No deployments found. Skipping sweeper.")
-					return nil
-				}
-				return fmt.Errorf("failed to list deployments: %w", err)
-			}
+func TestInferenceSweeperValidationPrecedesSetup(t *testing.T) {
+	t.Setenv(provider.CoreweaveApiTokenEnvVar, "")
+	t.Setenv(provider.CoreweaveApiEndpointEnvVar, "restored by testing")
+	require.NoError(t, os.Unsetenv(provider.CoreweaveApiEndpointEnvVar))
+	t.Setenv("TEST_ACC_SWEEP_PARALLEL", "invalid")
 
-			for _, d := range listResp.Msg.GetItems() {
-				name := d.GetSpec().GetName()
-				if !strings.HasPrefix(name, AcceptanceTestPrefix) {
-					continue
-				}
-				if testutil.SweepDryRun() {
-					fmt.Printf("[DRY RUN] would delete inference deployment: %s\n", name)
-					continue
-				}
+	require.EqualError(t, newDeploymentSweeper().F(" \t\n"), "inference sweep region must not be empty")
+	assert.ErrorContains(t, newCapacityClaimSweeper().F("zone-a"), "parse TEST_ACC_SWEEP_PARALLEL as integer")
+	_, found := os.LookupEnv(provider.CoreweaveApiEndpointEnvVar)
+	require.False(t, found, "client setup must not run before region and runtime validation")
+}
 
-				id := d.GetSpec().GetId()
-				fmt.Printf("sweeping inference deployment: %s (%s)\n", name, id)
+func TestInferenceSweepConfigPolicy(t *testing.T) {
+	const listedID = "listed-id"
 
-				_, err := client.Inference.DeleteDeployment(ctx, connect.NewRequest(&inferencev1.DeleteDeploymentRequest{Id: id}))
-				if err != nil {
-					return fmt.Errorf("failed to delete deployment %s: %w", name, err)
-				}
+	type item struct {
+		name string
+		id   string
+	}
 
-				if err := testutil.WaitForDelete(ctx, 20*time.Minute, 10*time.Second,
-					client.Inference.GetDeployment,
-					&inferencev1.GetDeploymentRequest{Id: id},
-				); err != nil {
-					return fmt.Errorf("timed out waiting for deployment %s to be deleted: %w", name, err)
-				}
-			}
-
-			return nil
+	listed := &item{name: AcceptanceTestPrefix + "selected", id: listedID}
+	var listError, deleteError, waitError error
+	var deletedIDs, waitedIDs []string
+	config := newInferenceSweepConfig("test_resource", "resource", "resources",
+		func(context.Context) ([]*item, error) { return []*item{listed}, listError },
+		func(item *item) string { return item.name },
+		func(item *item) string { return item.id },
+		func(_ context.Context, id string) error {
+			deletedIDs = append(deletedIDs, id)
+			return deleteError
 		},
-	})
-
-	resource.AddTestSweepers("coreweave_inference_capacity_claim", &resource.Sweeper{
-		Name:         "coreweave_inference_capacity_claim",
-		Dependencies: []string{inferenceDeploymentResourceType},
-		F: func(r string) error {
-			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
-			defer cancel()
-
-			testutil.SetEnvDefaults()
-			client, err := provider.BuildClient(ctx, provider.CoreweaveProviderModel{}, "", "")
-			if err != nil {
-				return fmt.Errorf("failed to build client: %w", err)
-			}
-
-			listResp, err := client.Inference.ListCapacityClaims(ctx, connect.NewRequest(&inferencev1.ListCapacityClaimsRequest{}))
-			if err != nil {
-				if coreweave.IsNotFoundError(err) {
-					log.Println("[INFO] No capacity claims found. Skipping sweeper.")
-					return nil
-				}
-				return fmt.Errorf("failed to list capacity claims: %w", err)
-			}
-
-			for _, d := range listResp.Msg.GetCapacityClaims() {
-				name := d.GetSpec().GetName()
-				if !strings.HasPrefix(name, AcceptanceTestPrefix) {
-					continue
-				}
-				if testutil.SweepDryRun() {
-					fmt.Printf("[DRY RUN] would delete inference capacity claim: %s\n", name)
-					continue
-				}
-
-				id := d.GetSpec().GetId()
-				fmt.Printf("sweeping inference capacity claim: %s (%s)\n", name, id)
-
-				_, err := client.Inference.DeleteCapacityClaim(ctx, connect.NewRequest(&inferencev1.DeleteCapacityClaimRequest{Id: id}))
-				if err != nil {
-					return fmt.Errorf("failed to delete capacity claim %s: %w", name, err)
-				}
-
-				if err := testutil.WaitForDelete(ctx, 20*time.Minute, 10*time.Second,
-					client.Inference.GetCapacityClaim,
-					&inferencev1.GetCapacityClaimRequest{Id: id},
-				); err != nil {
-					return fmt.Errorf("timed out waiting for capacity claim %s to be deleted: %w", name, err)
-				}
-			}
-
-			return nil
+		func(_ context.Context, id string) error {
+			waitedIDs = append(waitedIDs, id)
+			return waitError
 		},
-	})
+	)
 
-	resource.AddTestSweepers("coreweave_inference_gateway", &resource.Sweeper{
-		Name:         "coreweave_inference_gateway",
-		Dependencies: []string{inferenceDeploymentResourceType},
-		F: func(r string) error {
-			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
-			defer cancel()
+	assert.True(t, config.Match(listed))
+	assert.False(t, config.Match(&item{name: "production"}))
+	items, err := config.List(t.Context())
+	require.NoError(t, err)
+	require.Equal(t, []*item{listed}, items)
 
-			testutil.SetEnvDefaults()
-			client, err := provider.BuildClient(ctx, provider.CoreweaveProviderModel{}, "", "")
-			if err != nil {
-				return fmt.Errorf("failed to build client: %w", err)
-			}
+	listError = connect.NewError(connect.CodeNotFound, assert.AnError)
+	items, err = config.List(t.Context())
+	require.NoError(t, err)
+	assert.Empty(t, items)
+	listError = assert.AnError
+	_, err = config.List(t.Context())
+	assert.ErrorContains(t, err, "failed to list resources")
+	listError = nil
 
-			listResp, err := client.Inference.ListGateways(ctx, connect.NewRequest(&inferencev1.ListGatewaysRequest{}))
-			if err != nil {
-				if coreweave.IsNotFoundError(err) {
-					log.Println("[INFO] No gateways found. Skipping sweeper.")
-					return nil
-				}
-				return fmt.Errorf("failed to list gateways: %w", err)
-			}
+	require.NoError(t, config.Delete(t.Context(), listed))
+	assert.Equal(t, []string{listedID}, deletedIDs)
+	assert.Equal(t, []string{listedID}, waitedIDs)
 
-			for _, d := range listResp.Msg.GetItems() {
-				name := d.GetSpec().GetName()
-				if !strings.HasPrefix(name, AcceptanceTestPrefix) {
-					continue
-				}
-				if testutil.SweepDryRun() {
-					fmt.Printf("[DRY RUN] would delete inference gateway: %s\n", name)
-					continue
-				}
+	deleteError = connect.NewError(connect.CodeNotFound, assert.AnError)
+	waitedIDs = nil
+	require.NoError(t, config.Delete(t.Context(), listed))
+	assert.Empty(t, waitedIDs)
 
-				id := d.GetSpec().GetId()
-				fmt.Printf("sweeping inference gateway: %s (%s)\n", name, id)
+	deleteError = assert.AnError
+	assert.ErrorContains(t, config.Delete(t.Context(), listed), "failed to delete resource")
 
-				_, err := client.Inference.DeleteGateway(ctx, connect.NewRequest(&inferencev1.DeleteGatewayRequest{Id: id}))
-				if err != nil {
-					return fmt.Errorf("failed to delete gateway %s: %w", name, err)
-				}
-
-				if err := testutil.WaitForDelete(ctx, 20*time.Minute, 10*time.Second,
-					client.Inference.GetGateway,
-					&inferencev1.GetGatewayRequest{Id: id},
-				); err != nil {
-					return fmt.Errorf("timed out waiting for gateway %s to be deleted: %w", name, err)
-				}
-			}
-
-			return nil
-		},
-	})
+	deleteError = nil
+	waitError = assert.AnError
+	assert.ErrorContains(t, config.Delete(t.Context(), listed), "timed out waiting for resource")
 }

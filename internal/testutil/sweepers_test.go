@@ -62,26 +62,6 @@ func TestSweepRuntimeFromEnv(t *testing.T) {
 	}
 }
 
-func TestSweepDryRun(t *testing.T) {
-	for _, tt := range []struct {
-		name      string
-		value     string
-		wantPanic bool
-	}{
-		{name: "empty is false"},
-		{name: "malformed panics", value: "sometimes", wantPanic: true},
-	} {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Setenv("SWEEP_DRY_RUN", tt.value)
-			if tt.wantPanic {
-				assert.Panics(t, func() { testutil.SweepDryRun() })
-				return
-			}
-			assert.False(t, testutil.SweepDryRun())
-		})
-	}
-}
-
 func TestSweep(t *testing.T) {
 	errFirst := errors.New("first failure")
 	errSecond := errors.New("second failure")
