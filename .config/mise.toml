@@ -4,7 +4,7 @@
 [tools]
 go = "1.26.6"
 golangci-lint = "2.9.0"
-terraform = "1.15.9"
+terraform = "1.16.0"
 
 # go backend is experimental
 [settings]
