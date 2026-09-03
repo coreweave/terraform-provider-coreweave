@@ -2,24 +2,39 @@ package objectstorage
 
 import (
 	"context"
-	"reflect"
 	"testing"
 
 	"github.com/aws/smithy-go"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
+func TestBucketPolicyCreateRetainsStateWhenReadbackTimesOut(t *testing.T) {
+	t.Parallel()
+
+	client := &scriptedBucketPolicyClient{}
+	client.put.errors = []error{&smithy.GenericAPIError{Code: errInvalidRegion}, nil}
+	client.get.errors = []error{&smithy.GenericAPIError{Code: errInvalidRegion}}
+	resourceUnderTest := &BucketPolicyResource{
+		s3ClientForConvergence:   func(context.Context) (bucketPolicyAPI, error) { return client, nil },
+		bucketPropagationOptions: s3PhaseOptionsTimingOutOnSecondWait(),
+	}
+	model := BucketPolicyResourceModel{
+		Bucket: types.StringValue("policy-state-retention-test"),
+		Policy: types.StringValue(`{"Version":"2012-10-17","Statement":[]}`),
+	}
+
+	response := runCreateWithModel(t, resourceUnderTest, model)
+	assertReadbackTimeoutRetainsPlan(t, response.State, response.Diagnostics.HasError(), model, &client.put, &client.get)
+}
+
 func TestBucketVersioningCreateRetainsStateWhenReadbackTimesOut(t *testing.T) {
 	t.Parallel()
 
-	client := &scriptedBucketVersioningClient{
-		putErrors: []error{&smithy.GenericAPIError{Code: errInvalidRegion}, nil},
-		getErrors: []error{&smithy.GenericAPIError{Code: errInvalidRegion}},
-	}
+	client := &scriptedBucketVersioningClient{}
+	client.put.errors = []error{&smithy.GenericAPIError{Code: errInvalidRegion}, nil}
+	client.get.errors = []error{&smithy.GenericAPIError{Code: errInvalidRegion}}
 	resourceUnderTest := &BucketVersioningResource{
-		s3ClientForConvergence: func(context.Context) (bucketVersioningAPI, error) {
-			return client, nil
-		},
+		s3ClientForConvergence:   func(context.Context) (bucketVersioningAPI, error) { return client, nil },
 		bucketPropagationOptions: s3PhaseOptionsTimingOutOnSecondWait(),
 	}
 	model := BucketVersioningResourceModel{
@@ -30,65 +45,36 @@ func TestBucketVersioningCreateRetainsStateWhenReadbackTimesOut(t *testing.T) {
 	}
 
 	response := runCreateWithModel(t, resourceUnderTest, model)
-	assertWriteRetriedAndRetainedState(t, response.Diagnostics.HasError(), len(client.putInputs), len(client.getInputs), client.putContexts, client.getContexts)
-	if client.putInputs[0] != client.putInputs[1] {
-		t.Fatal("PutBucketVersioning rebuilt its retry input")
-	}
-
-	var retained BucketVersioningResourceModel
-	if diagnostics := response.State.Get(t.Context(), &retained); diagnostics.HasError() {
-		t.Fatalf("read retained state: %v", diagnostics)
-	}
-	if !reflect.DeepEqual(retained, model) {
-		t.Fatalf("retained state = %#v, want %#v", retained, model)
-	}
+	assertReadbackTimeoutRetainsPlan(t, response.State, response.Diagnostics.HasError(), model, &client.put, &client.get)
 }
 
 func TestBucketPolicyUpdateRetainsStateWhenReadbackTimesOut(t *testing.T) {
 	t.Parallel()
 
-	const policy = `{"Version":"2012-10-17","Statement":[]}`
-	client := &scriptedBucketPolicyClient{
-		putErrors: []error{&smithy.GenericAPIError{Code: errInvalidRegion}, nil},
-		getErrors: []error{&smithy.GenericAPIError{Code: errInvalidRegion}},
-	}
+	client := &scriptedBucketPolicyClient{}
+	client.put.errors = []error{&smithy.GenericAPIError{Code: errInvalidRegion}, nil}
+	client.get.errors = []error{&smithy.GenericAPIError{Code: errInvalidRegion}}
 	resourceUnderTest := &BucketPolicyResource{
-		s3ClientForConvergence: func(context.Context) (bucketPolicyAPI, error) {
-			return client, nil
-		},
+		s3ClientForConvergence:   func(context.Context) (bucketPolicyAPI, error) { return client, nil },
 		bucketPropagationOptions: s3PhaseOptionsTimingOutOnSecondWait(),
 	}
 	model := BucketPolicyResourceModel{
 		Bucket: types.StringValue("policy-update-state-retention-test"),
-		Policy: types.StringValue(policy),
+		Policy: types.StringValue(`{"Version":"2012-10-17","Statement":[]}`),
 	}
 
 	response := runUpdateWithModel(t, resourceUnderTest, model)
-	assertWriteRetriedAndRetainedState(t, response.Diagnostics.HasError(), len(client.putInputs), len(client.getInputs), client.putContexts, client.getContexts)
-	if client.putInputs[0] != client.putInputs[1] {
-		t.Fatal("PutBucketPolicy rebuilt its retry input")
-	}
-
-	var retained BucketPolicyResourceModel
-	if diagnostics := response.State.Get(t.Context(), &retained); diagnostics.HasError() {
-		t.Fatalf("read retained state: %v", diagnostics)
-	}
-	if !reflect.DeepEqual(retained, model) {
-		t.Fatalf("retained state = %#v, want %#v", retained, model)
-	}
+	assertReadbackTimeoutRetainsPlan(t, response.State, response.Diagnostics.HasError(), model, &client.put, &client.get)
 }
 
 func TestBucketVersioningUpdateRetainsStateWhenReadbackTimesOut(t *testing.T) {
 	t.Parallel()
 
-	client := &scriptedBucketVersioningClient{
-		putErrors: []error{&smithy.GenericAPIError{Code: errInvalidRegion}, nil},
-		getErrors: []error{&smithy.GenericAPIError{Code: errInvalidRegion}},
-	}
+	client := &scriptedBucketVersioningClient{}
+	client.put.errors = []error{&smithy.GenericAPIError{Code: errInvalidRegion}, nil}
+	client.get.errors = []error{&smithy.GenericAPIError{Code: errInvalidRegion}}
 	resourceUnderTest := &BucketVersioningResource{
-		s3ClientForConvergence: func(context.Context) (bucketVersioningAPI, error) {
-			return client, nil
-		},
+		s3ClientForConvergence:   func(context.Context) (bucketVersioningAPI, error) { return client, nil },
 		bucketPropagationOptions: s3PhaseOptionsTimingOutOnSecondWait(),
 	}
 	model := BucketVersioningResourceModel{
@@ -99,31 +85,17 @@ func TestBucketVersioningUpdateRetainsStateWhenReadbackTimesOut(t *testing.T) {
 	}
 
 	response := runUpdateWithModel(t, resourceUnderTest, model)
-	assertWriteRetriedAndRetainedState(t, response.Diagnostics.HasError(), len(client.putInputs), len(client.getInputs), client.putContexts, client.getContexts)
-	if client.putInputs[0] != client.putInputs[1] {
-		t.Fatal("PutBucketVersioning rebuilt its retry input")
-	}
-
-	var retained BucketVersioningResourceModel
-	if diagnostics := response.State.Get(t.Context(), &retained); diagnostics.HasError() {
-		t.Fatalf("read retained state: %v", diagnostics)
-	}
-	if !reflect.DeepEqual(retained, model) {
-		t.Fatalf("retained state = %#v, want %#v", retained, model)
-	}
+	assertReadbackTimeoutRetainsPlan(t, response.State, response.Diagnostics.HasError(), model, &client.put, &client.get)
 }
 
 func TestBucketLifecycleCreateRetainsStateWhenReadbackTimesOut(t *testing.T) {
 	t.Parallel()
 
-	client := &scriptedLifecycleConfigurationClient{
-		putErrors: []error{&smithy.GenericAPIError{Code: errInvalidRegion}, nil},
-		getErrors: []error{&smithy.GenericAPIError{Code: errInvalidRegion}},
-	}
+	client := &scriptedLifecycleConfigurationClient{}
+	client.put.errors = []error{&smithy.GenericAPIError{Code: errInvalidRegion}, nil}
+	client.get.errors = []error{&smithy.GenericAPIError{Code: errInvalidRegion}}
 	resourceUnderTest := &BucketLifecycleResource{
-		s3ClientForConvergence: func(context.Context) (bucketLifecycleConfigurationClient, error) {
-			return client, nil
-		},
+		s3ClientForConvergence:   func(context.Context) (bucketLifecycleConfigurationClient, error) { return client, nil },
 		bucketPropagationOptions: s3PhaseOptionsTimingOutOnSecondWait(),
 	}
 	model := BucketLifecycleResourceModel{
@@ -141,31 +113,17 @@ func TestBucketLifecycleCreateRetainsStateWhenReadbackTimesOut(t *testing.T) {
 	}
 
 	response := runCreateWithModel(t, resourceUnderTest, model)
-	assertWriteRetriedAndRetainedState(t, response.Diagnostics.HasError(), len(client.putInputs), len(client.getInputs), client.putContexts, client.getContexts)
-	if client.putInputs[0] != client.putInputs[1] {
-		t.Fatal("PutBucketLifecycleConfiguration rebuilt its retry input")
-	}
-
-	var retained BucketLifecycleResourceModel
-	if diagnostics := response.State.Get(t.Context(), &retained); diagnostics.HasError() {
-		t.Fatalf("read retained state: %v", diagnostics)
-	}
-	if !reflect.DeepEqual(retained, model) {
-		t.Fatalf("retained state = %#v, want lifecycle plan", retained)
-	}
+	assertReadbackTimeoutRetainsPlan(t, response.State, response.Diagnostics.HasError(), model, &client.put, &client.get)
 }
 
 func TestBucketLifecycleUpdateRetainsStateWhenReadbackTimesOut(t *testing.T) {
 	t.Parallel()
 
-	client := &scriptedLifecycleConfigurationClient{
-		putErrors: []error{&smithy.GenericAPIError{Code: errInvalidRegion}, nil},
-		getErrors: []error{&smithy.GenericAPIError{Code: errInvalidRegion}},
-	}
+	client := &scriptedLifecycleConfigurationClient{}
+	client.put.errors = []error{&smithy.GenericAPIError{Code: errInvalidRegion}, nil}
+	client.get.errors = []error{&smithy.GenericAPIError{Code: errInvalidRegion}}
 	resourceUnderTest := &BucketLifecycleResource{
-		s3ClientForConvergence: func(context.Context) (bucketLifecycleConfigurationClient, error) {
-			return client, nil
-		},
+		s3ClientForConvergence:   func(context.Context) (bucketLifecycleConfigurationClient, error) { return client, nil },
 		bucketPropagationOptions: s3PhaseOptionsTimingOutOnSecondWait(),
 	}
 	model := BucketLifecycleResourceModel{
@@ -183,77 +141,38 @@ func TestBucketLifecycleUpdateRetainsStateWhenReadbackTimesOut(t *testing.T) {
 	}
 
 	response := runUpdateWithModel(t, resourceUnderTest, model)
-	assertWriteRetriedAndRetainedState(t, response.Diagnostics.HasError(), len(client.putInputs), len(client.getInputs), client.putContexts, client.getContexts)
-	if client.putInputs[0] != client.putInputs[1] {
-		t.Fatal("PutBucketLifecycleConfiguration rebuilt its retry input")
-	}
-
-	var retained BucketLifecycleResourceModel
-	if diagnostics := response.State.Get(t.Context(), &retained); diagnostics.HasError() {
-		t.Fatalf("read retained state: %v", diagnostics)
-	}
-	if !reflect.DeepEqual(retained, model) {
-		t.Fatalf("retained state = %#v, want %#v", retained, model)
-	}
+	assertReadbackTimeoutRetainsPlan(t, response.State, response.Diagnostics.HasError(), model, &client.put, &client.get)
 }
 
 func TestBucketInventoryCreateRetainsStateWhenReadbackTimesOut(t *testing.T) {
 	t.Parallel()
 
-	client := &scriptedInventoryConfigurationClient{
-		putErrors: []error{&smithy.GenericAPIError{Code: errInvalidRegion}, nil},
-		getErrors: []error{&smithy.GenericAPIError{Code: errInvalidRegion}},
-	}
+	client := &scriptedInventoryConfigurationClient{}
+	client.put.errors = []error{&smithy.GenericAPIError{Code: errInvalidRegion}, nil}
+	client.get.errors = []error{&smithy.GenericAPIError{Code: errInvalidRegion}}
 	resourceUnderTest := &BucketInventoryResource{
-		s3ClientForConvergence: func(context.Context) (bucketInventoryConfigurationClient, error) {
-			return client, nil
-		},
+		s3ClientForConvergence:   func(context.Context) (bucketInventoryConfigurationClient, error) { return client, nil },
 		bucketPropagationOptions: s3PhaseOptionsTimingOutOnSecondWait(),
 	}
 	model := *fullInventoryModel()
 
 	response := runCreateWithModel(t, resourceUnderTest, model)
-	assertWriteRetriedAndRetainedState(t, response.Diagnostics.HasError(), len(client.putInputs), len(client.getInputs), client.putContexts, client.getContexts)
-	if client.putInputs[0] != client.putInputs[1] {
-		t.Fatal("PutBucketInventoryConfiguration rebuilt its retry input")
-	}
-
-	var retained BucketInventoryResourceModel
-	if diagnostics := response.State.Get(t.Context(), &retained); diagnostics.HasError() {
-		t.Fatalf("read retained state: %v", diagnostics)
-	}
-	if !reflect.DeepEqual(retained, model) {
-		t.Fatalf("retained state = %#v, want inventory plan", retained)
-	}
+	assertReadbackTimeoutRetainsPlan(t, response.State, response.Diagnostics.HasError(), model, &client.put, &client.get)
 }
 
 func TestBucketInventoryUpdateRetainsStateWhenReadbackTimesOut(t *testing.T) {
 	t.Parallel()
 
-	client := &scriptedInventoryConfigurationClient{
-		putErrors: []error{&smithy.GenericAPIError{Code: errInvalidRegion}, nil},
-		getErrors: []error{&smithy.GenericAPIError{Code: errInvalidRegion}},
-	}
+	client := &scriptedInventoryConfigurationClient{}
+	client.put.errors = []error{&smithy.GenericAPIError{Code: errInvalidRegion}, nil}
+	client.get.errors = []error{&smithy.GenericAPIError{Code: errInvalidRegion}}
 	resourceUnderTest := &BucketInventoryResource{
-		s3ClientForConvergence: func(context.Context) (bucketInventoryConfigurationClient, error) {
-			return client, nil
-		},
+		s3ClientForConvergence:   func(context.Context) (bucketInventoryConfigurationClient, error) { return client, nil },
 		bucketPropagationOptions: s3PhaseOptionsTimingOutOnSecondWait(),
 	}
 	model := *fullInventoryModel()
 	model.Enabled = types.BoolValue(false)
 
 	response := runUpdateWithModel(t, resourceUnderTest, model)
-	assertWriteRetriedAndRetainedState(t, response.Diagnostics.HasError(), len(client.putInputs), len(client.getInputs), client.putContexts, client.getContexts)
-	if client.putInputs[0] != client.putInputs[1] {
-		t.Fatal("PutBucketInventoryConfiguration rebuilt its retry input")
-	}
-
-	var retained BucketInventoryResourceModel
-	if diagnostics := response.State.Get(t.Context(), &retained); diagnostics.HasError() {
-		t.Fatalf("read retained state: %v", diagnostics)
-	}
-	if !reflect.DeepEqual(retained, model) {
-		t.Fatalf("retained state = %#v, want %#v", retained, model)
-	}
+	assertReadbackTimeoutRetainsPlan(t, response.State, response.Diagnostics.HasError(), model, &client.put, &client.get)
 }

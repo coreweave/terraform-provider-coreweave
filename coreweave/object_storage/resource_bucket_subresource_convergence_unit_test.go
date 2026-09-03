@@ -3,23 +3,16 @@ package objectstorage
 import (
 	"context"
 	"testing"
-	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	s3types "github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/aws/smithy-go"
-	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
 type scriptedBucketPolicyClient struct {
-	putErrors   []error
-	getErrors   []error
-	getOutputs  []*s3.GetBucketPolicyOutput
-	putInputs   []*s3.PutBucketPolicyInput
-	getInputs   []*s3.GetBucketPolicyInput
-	putContexts []context.Context
-	getContexts []context.Context
+	put scriptedS3Call[s3.PutBucketPolicyInput, s3.PutBucketPolicyOutput]
+	get scriptedS3Call[s3.GetBucketPolicyInput, s3.GetBucketPolicyOutput]
 }
 
 func (c *scriptedBucketPolicyClient) PutBucketPolicy(
@@ -27,13 +20,7 @@ func (c *scriptedBucketPolicyClient) PutBucketPolicy(
 	input *s3.PutBucketPolicyInput,
 	_ ...func(*s3.Options),
 ) (*s3.PutBucketPolicyOutput, error) {
-	index := len(c.putInputs)
-	c.putInputs = append(c.putInputs, input)
-	c.putContexts = append(c.putContexts, ctx)
-	if index < len(c.putErrors) && c.putErrors[index] != nil {
-		return nil, c.putErrors[index]
-	}
-	return &s3.PutBucketPolicyOutput{}, nil
+	return c.put.call(ctx, input)
 }
 
 func (c *scriptedBucketPolicyClient) GetBucketPolicy(
@@ -41,26 +28,12 @@ func (c *scriptedBucketPolicyClient) GetBucketPolicy(
 	input *s3.GetBucketPolicyInput,
 	_ ...func(*s3.Options),
 ) (*s3.GetBucketPolicyOutput, error) {
-	index := len(c.getInputs)
-	c.getInputs = append(c.getInputs, input)
-	c.getContexts = append(c.getContexts, ctx)
-	if index < len(c.getErrors) && c.getErrors[index] != nil {
-		return nil, c.getErrors[index]
-	}
-	if index < len(c.getOutputs) && c.getOutputs[index] != nil {
-		return c.getOutputs[index], nil
-	}
-	return &s3.GetBucketPolicyOutput{}, nil
+	return c.get.call(ctx, input)
 }
 
 type scriptedBucketVersioningClient struct {
-	putErrors   []error
-	getErrors   []error
-	getOutputs  []*s3.GetBucketVersioningOutput
-	putInputs   []*s3.PutBucketVersioningInput
-	getInputs   []*s3.GetBucketVersioningInput
-	putContexts []context.Context
-	getContexts []context.Context
+	put scriptedS3Call[s3.PutBucketVersioningInput, s3.PutBucketVersioningOutput]
+	get scriptedS3Call[s3.GetBucketVersioningInput, s3.GetBucketVersioningOutput]
 }
 
 func (c *scriptedBucketVersioningClient) PutBucketVersioning(
@@ -68,13 +41,7 @@ func (c *scriptedBucketVersioningClient) PutBucketVersioning(
 	input *s3.PutBucketVersioningInput,
 	_ ...func(*s3.Options),
 ) (*s3.PutBucketVersioningOutput, error) {
-	index := len(c.putInputs)
-	c.putInputs = append(c.putInputs, input)
-	c.putContexts = append(c.putContexts, ctx)
-	if index < len(c.putErrors) && c.putErrors[index] != nil {
-		return nil, c.putErrors[index]
-	}
-	return &s3.PutBucketVersioningOutput{}, nil
+	return c.put.call(ctx, input)
 }
 
 func (c *scriptedBucketVersioningClient) GetBucketVersioning(
@@ -82,16 +49,7 @@ func (c *scriptedBucketVersioningClient) GetBucketVersioning(
 	input *s3.GetBucketVersioningInput,
 	_ ...func(*s3.Options),
 ) (*s3.GetBucketVersioningOutput, error) {
-	index := len(c.getInputs)
-	c.getInputs = append(c.getInputs, input)
-	c.getContexts = append(c.getContexts, ctx)
-	if index < len(c.getErrors) && c.getErrors[index] != nil {
-		return nil, c.getErrors[index]
-	}
-	if index < len(c.getOutputs) && c.getOutputs[index] != nil {
-		return c.getOutputs[index], nil
-	}
-	return &s3.GetBucketVersioningOutput{}, nil
+	return c.get.call(ctx, input)
 }
 
 func TestBucketPolicyConvergenceRetriesInvalidRegion(t *testing.T) {
@@ -101,20 +59,19 @@ func TestBucketPolicyConvergenceRetriesInvalidRegion(t *testing.T) {
 		bucket = "policy-test"
 		policy = `{"Version":"2012-10-17","Statement":[]}`
 	)
-	client := &scriptedBucketPolicyClient{
-		putErrors: []error{
-			&smithy.GenericAPIError{Code: errInvalidRegion},
-			nil,
-		},
-		getErrors: []error{
-			&smithy.GenericAPIError{Code: errInvalidRegion},
-			nil,
-		},
-		getOutputs: []*s3.GetBucketPolicyOutput{
-			nil,
-			{Policy: aws.String(policy)},
-			{Policy: aws.String(policy)},
-		},
+	client := &scriptedBucketPolicyClient{}
+	client.put.errors = []error{
+		&smithy.GenericAPIError{Code: errInvalidRegion},
+		nil,
+	}
+	client.get.errors = []error{
+		&smithy.GenericAPIError{Code: errInvalidRegion},
+		nil,
+	}
+	client.get.outputs = []*s3.GetBucketPolicyOutput{
+		nil,
+		{Policy: aws.String(policy)},
+		{Policy: aws.String(policy)},
 	}
 	waits := 0
 	options := immediateS3PhaseOptions(&waits)
@@ -132,41 +89,19 @@ func TestBucketPolicyConvergenceRetriesInvalidRegion(t *testing.T) {
 		t.Fatalf("waitForBucketPolicy() error = %v", err)
 	}
 
-	if got := len(client.putInputs); got != 2 {
+	if got := len(client.put.inputs); got != 2 {
 		t.Fatalf("PutBucketPolicy calls = %d, want 2", got)
 	}
-	for attempt, got := range client.putInputs {
+	for attempt, got := range client.put.inputs {
 		if got != input {
 			t.Fatalf("PutBucketPolicy input on attempt %d was rebuilt, want immutable input %p", attempt+1, input)
 		}
 	}
-	if len(client.getInputs) != 3 || client.getInputs[0] != client.getInputs[1] || client.getInputs[1] != client.getInputs[2] {
-		t.Fatalf("GetBucketPolicy inputs = %#v, want the same input pointer on all attempts", client.getInputs)
+	if len(client.get.inputs) != 3 || client.get.inputs[0] != client.get.inputs[1] || client.get.inputs[1] != client.get.inputs[2] {
+		t.Fatalf("GetBucketPolicy inputs = %#v, want the same input pointer on all attempts", client.get.inputs)
 	}
 	if waits != 3 {
 		t.Fatalf("backoff waits = %d, want 3", waits)
-	}
-}
-
-func TestBucketPolicyConvergenceDoesNotRetryUnrelated400(t *testing.T) {
-	t.Parallel()
-
-	client := &scriptedBucketPolicyClient{putErrors: []error{
-		&smithy.GenericAPIError{Code: "InvalidBucketName"},
-		nil,
-	}}
-	waits := 0
-	input := &s3.PutBucketPolicyInput{
-		Bucket: aws.String("invalid-policy-test"),
-		Policy: aws.String(`{"Version":"2012-10-17","Statement":[]}`),
-	}
-
-	err := putBucketPolicy(t.Context(), client, aws.ToString(input.Bucket), input, immediateS3PhaseOptions(&waits))
-	if err == nil {
-		t.Fatal("putBucketPolicy() error = nil, want permanent failure")
-	}
-	if got := len(client.putInputs); got != 1 || waits != 0 {
-		t.Fatalf("PutBucketPolicy calls = %d, waits = %d, want 1 and 0", got, waits)
 	}
 }
 
@@ -174,71 +109,19 @@ func TestWaitForBucketPolicyRetriesNilResponse(t *testing.T) {
 	t.Parallel()
 
 	const policy = `{"Version":"2012-10-17","Statement":[]}`
-	client := &scriptedBucketPolicyClient{getOutputs: []*s3.GetBucketPolicyOutput{
+	client := &scriptedBucketPolicyClient{}
+	client.get.outputs = []*s3.GetBucketPolicyOutput{
 		{},
 		{Policy: aws.String(policy)},
 		{Policy: aws.String(policy)},
-	}}
+	}
 	waits := 0
 
 	if err := waitForBucketPolicy(t.Context(), client, "policy-test", policy, immediateS3PhaseOptions(&waits)); err != nil {
 		t.Fatalf("waitForBucketPolicy() error = %v", err)
 	}
-	if len(client.getInputs) != 3 || waits != 2 {
-		t.Fatalf("GetBucketPolicy calls = %d, waits = %d; want 3, 2", len(client.getInputs), waits)
-	}
-}
-
-func TestBucketPolicyCreateRetainsStateWhenReadbackTimesOut(t *testing.T) {
-	t.Parallel()
-
-	const (
-		bucket = "policy-state-retention-test"
-		policy = `{"Version":"2012-10-17","Statement":[]}`
-	)
-	client := &scriptedBucketPolicyClient{getErrors: []error{
-		&smithy.GenericAPIError{Code: errInvalidRegion},
-	}, putErrors: []error{
-		&smithy.GenericAPIError{Code: errInvalidRegion},
-		nil,
-	}}
-	resourceUnderTest := &BucketPolicyResource{
-		s3ClientForConvergence: func(context.Context) (bucketPolicyAPI, error) {
-			return client, nil
-		},
-		bucketPropagationOptions: s3PhaseOptionsTimingOutOnSecondWait(),
-	}
-
-	model := BucketPolicyResourceModel{
-		Bucket: types.StringValue(bucket),
-		Policy: types.StringValue(policy),
-	}
-	response := runCreateWithModel(t, resourceUnderTest, model)
-	assertWriteRetriedAndRetainedState(t, response.Diagnostics.HasError(), len(client.putInputs), len(client.getInputs), client.putContexts, client.getContexts)
-	if client.putInputs[0] != client.putInputs[1] {
-		t.Fatal("PutBucketPolicy rebuilt its retry input")
-	}
-	var retained BucketPolicyResourceModel
-	if diagnostics := response.State.Get(t.Context(), &retained); diagnostics.HasError() {
-		t.Fatalf("read retained state: %v", diagnostics)
-	}
-	if retained.Bucket.ValueString() != bucket || retained.Policy.ValueString() != policy {
-		t.Fatalf("retained state = (%q, %q), want (%q, %q)", retained.Bucket.ValueString(), retained.Policy.ValueString(), bucket, policy)
-	}
-}
-
-func s3PhaseOptionsTimingOutOnSecondWait() s3PhaseOptions {
-	waits := 0
-	return s3PhaseOptions{
-		now:   time.Now,
-		delay: func(int) time.Duration { return 0 },
-		wait: func(context.Context, time.Duration) error {
-			waits++
-			if waits >= 2 {
-				return context.DeadlineExceeded
-			}
-			return nil
-		},
+	if len(client.get.inputs) != 3 || waits != 2 {
+		t.Fatalf("GetBucketPolicy calls = %d, waits = %d; want 3, 2", len(client.get.inputs), waits)
 	}
 }
 
@@ -247,20 +130,19 @@ func TestBucketVersioningConvergenceRetriesInvalidRegion(t *testing.T) {
 
 	const bucket = "versioning-test"
 	const status = s3types.BucketVersioningStatusEnabled
-	client := &scriptedBucketVersioningClient{
-		putErrors: []error{
-			&smithy.GenericAPIError{Code: errInvalidRegion},
-			nil,
-		},
-		getErrors: []error{
-			&smithy.GenericAPIError{Code: errInvalidRegion},
-			nil,
-		},
-		getOutputs: []*s3.GetBucketVersioningOutput{
-			nil,
-			{Status: status},
-			{Status: status},
-		},
+	client := &scriptedBucketVersioningClient{}
+	client.put.errors = []error{
+		&smithy.GenericAPIError{Code: errInvalidRegion},
+		nil,
+	}
+	client.get.errors = []error{
+		&smithy.GenericAPIError{Code: errInvalidRegion},
+		nil,
+	}
+	client.get.outputs = []*s3.GetBucketVersioningOutput{
+		nil,
+		{Status: status},
+		{Status: status},
 	}
 	waits := 0
 	options := immediateS3PhaseOptions(&waits)
@@ -280,42 +162,18 @@ func TestBucketVersioningConvergenceRetriesInvalidRegion(t *testing.T) {
 		t.Fatalf("waitForBucketVersioning() error = %v", err)
 	}
 
-	if got := len(client.putInputs); got != 2 {
+	if got := len(client.put.inputs); got != 2 {
 		t.Fatalf("PutBucketVersioning calls = %d, want 2", got)
 	}
-	for attempt, got := range client.putInputs {
+	for attempt, got := range client.put.inputs {
 		if got != input {
 			t.Fatalf("PutBucketVersioning input on attempt %d was rebuilt, want immutable input %p", attempt+1, input)
 		}
 	}
-	if len(client.getInputs) != 3 || client.getInputs[0] != client.getInputs[1] || client.getInputs[1] != client.getInputs[2] {
-		t.Fatalf("GetBucketVersioning inputs = %#v, want the same input pointer on all attempts", client.getInputs)
+	if len(client.get.inputs) != 3 || client.get.inputs[0] != client.get.inputs[1] || client.get.inputs[1] != client.get.inputs[2] {
+		t.Fatalf("GetBucketVersioning inputs = %#v, want the same input pointer on all attempts", client.get.inputs)
 	}
 	if waits != 3 {
 		t.Fatalf("backoff waits = %d, want 3", waits)
-	}
-}
-
-func TestBucketVersioningConvergenceDoesNotRetryUnrelated400(t *testing.T) {
-	t.Parallel()
-
-	client := &scriptedBucketVersioningClient{getErrors: []error{
-		&smithy.GenericAPIError{Code: "InvalidRequest"},
-		nil,
-	}}
-	waits := 0
-
-	err := waitForBucketVersioning(
-		t.Context(),
-		client,
-		"invalid-versioning-test",
-		s3types.BucketVersioningStatusEnabled,
-		immediateS3PhaseOptions(&waits),
-	)
-	if err == nil {
-		t.Fatal("waitForBucketVersioning() error = nil, want permanent failure")
-	}
-	if len(client.getInputs) != 1 || waits != 0 {
-		t.Fatalf("GetBucketVersioning calls = %d, waits = %d, want 1 and 0", len(client.getInputs), waits)
 	}
 }

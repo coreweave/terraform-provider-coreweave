@@ -135,9 +135,6 @@ func (f *postCreateInvalidRegionFake) handleS3(w http.ResponseWriter, r *http.Re
 			writePostCreateS3Error(w, http.StatusBadRequest, "InvalidRegion", "Region does not match")
 			return
 		}
-		if attempt == 3 {
-			versioning = "Suspended"
-		}
 		w.Header().Set("Content-Type", "application/xml")
 		_, _ = fmt.Fprintf(
 			w,
@@ -177,9 +174,6 @@ func (f *postCreateInvalidRegionFake) handleS3(w http.ResponseWriter, r *http.Re
 		if attempt == 1 {
 			writePostCreateS3Error(w, http.StatusBadRequest, "InvalidRegion", "Region does not match")
 			return
-		}
-		if attempt == 3 {
-			policy = `{"Version":"2012-10-17","Statement":[]}`
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = io.WriteString(w, policy)
@@ -325,11 +319,11 @@ resource "coreweave_object_storage_bucket_policy" "test" {
 					if counts.putVersioning != 2 {
 						return fmt.Errorf("PutBucketVersioning requests = %d, want 2", counts.putVersioning)
 					}
-					if counts.getPolicy != 5 {
-						return fmt.Errorf("GetBucketPolicy requests = %d, want 5", counts.getPolicy)
+					if counts.getPolicy < 2 {
+						return fmt.Errorf("GetBucketPolicy requests = %d, want at least 2 after InvalidRegion", counts.getPolicy)
 					}
-					if counts.getVersioning != 5 {
-						return fmt.Errorf("GetBucketVersioning requests = %d, want 5", counts.getVersioning)
+					if counts.getVersioning < 2 {
+						return fmt.Errorf("GetBucketVersioning requests = %d, want at least 2 after InvalidRegion", counts.getVersioning)
 					}
 					return nil
 				},

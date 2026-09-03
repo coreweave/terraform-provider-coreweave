@@ -11,40 +11,53 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 )
 
-func TestRunBucketMutationPhaseRetriesInvalidRegion(t *testing.T) {
+func TestIsBucketSubresourceMutationRetryableS3Error(t *testing.T) {
 	t.Parallel()
 
-	calls := 0
-	waits := 0
-	err := runBucketMutationPhase(
-		t.Context(),
-		s3PhaseMetadata{phase: "test mutation", bucket: "target"},
-		immediateS3PhaseOptions(&waits),
-		func(context.Context) error {
-			calls++
-			if calls == 1 {
-				return &smithy.GenericAPIError{Code: errInvalidRegion}
-			}
-			return nil
-		},
-	)
-	if err != nil {
-		t.Fatalf("runBucketMutationPhase() error = %v", err)
+	tests := map[string]struct {
+		err  error
+		want bool
+	}{
+		"InvalidRegion": {err: &smithy.GenericAPIError{Code: errInvalidRegion}, want: true},
+		"HTTP 503":      {err: responseErrorWithCause(t, 503, errors.New("unavailable")), want: true},
+		"NoSuchBucket":  {err: &smithy.GenericAPIError{Code: ErrNoSuchBucket}},
+		"NotFound":      {err: &smithy.GenericAPIError{Code: errNotFound}},
+		"NoSuchTagSet":  {err: &smithy.GenericAPIError{Code: errNoSuchTagSet}},
+		"HTTP 404":      {err: responseErrorWithCause(t, 404, errors.New("not found"))},
+		"AccessDenied":  {err: &smithy.GenericAPIError{Code: "AccessDenied"}},
+		"HTTP 400":      {err: responseErrorWithCause(t, 400, &smithy.GenericAPIError{Code: "BadRequest"})},
 	}
-	if calls != 2 || waits != 1 {
-		t.Fatalf("calls = %d, waits = %d; want 2, 1", calls, waits)
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			if got := isBucketSubresourceMutationRetryableS3Error(test.err); got != test.want {
+				t.Fatalf("isBucketSubresourceMutationRetryableS3Error() = %t, want %t", got, test.want)
+			}
+		})
 	}
 }
 
-func TestRunBucketMutationPhaseDoesNotRetryPermanentErrors(t *testing.T) {
+func TestRunBucketMutationPhaseUsesMutationClassifier(t *testing.T) {
 	t.Parallel()
 
-	tests := map[string]error{
-		"generic non-head 400": responseErrorWithCause(t, 400, &smithy.GenericAPIError{Code: "BadRequest"}),
-		"access denied":        &smithy.GenericAPIError{Code: "AccessDenied"},
-		"invalid signature":    &smithy.GenericAPIError{Code: "SignatureDoesNotMatch"},
+	tests := map[string]struct {
+		errors    []error
+		wantError bool
+		wantCalls int
+		wantWaits int
+	}{
+		"retries InvalidRegion": {
+			errors:    []error{&smithy.GenericAPIError{Code: errInvalidRegion}, nil},
+			wantCalls: 2,
+			wantWaits: 1,
+		},
+		"does not retry NoSuchBucket": {
+			errors:    []error{&smithy.GenericAPIError{Code: ErrNoSuchBucket}},
+			wantError: true,
+			wantCalls: 1,
+		},
 	}
-	for name, mutationErr := range tests {
+	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
@@ -55,106 +68,80 @@ func TestRunBucketMutationPhaseDoesNotRetryPermanentErrors(t *testing.T) {
 				s3PhaseMetadata{phase: "test mutation", bucket: "target"},
 				immediateS3PhaseOptions(&waits),
 				func(context.Context) error {
+					if calls >= len(test.errors) {
+						t.Fatalf("mutation called more than %d times", len(test.errors))
+					}
+					err := test.errors[calls]
 					calls++
-					return mutationErr
+					return err
 				},
 			)
-			if err == nil {
-				t.Fatal("runBucketMutationPhase() error = nil, want permanent failure")
+			if (err != nil) != test.wantError {
+				t.Fatalf("runBucketMutationPhase() error = %v, wantError %t", err, test.wantError)
 			}
-			if calls != 1 || waits != 0 {
-				t.Fatalf("calls = %d, waits = %d; want 1, 0", calls, waits)
+			if calls != test.wantCalls || waits != test.wantWaits {
+				t.Fatalf("calls = %d, waits = %d; want %d, %d", calls, waits, test.wantCalls, test.wantWaits)
 			}
 		})
 	}
 }
 
-func TestRunBucketMutationPhaseDoesNotRetryMissingResources(t *testing.T) {
+func TestRunBucketReadbackPhaseUsesStableConvergence(t *testing.T) {
 	t.Parallel()
 
-	tests := map[string]error{
-		"NoSuchBucket": &smithy.GenericAPIError{Code: ErrNoSuchBucket},
-		"NotFound":     &smithy.GenericAPIError{Code: errNotFound},
-		"NoSuchTagSet": &smithy.GenericAPIError{Code: errNoSuchTagSet},
-		"HTTP 404":     responseErrorWithCause(t, 404, errors.New("not found")),
+	type sample struct {
+		matched bool
+		err     error
 	}
-	for name, mutationErr := range tests {
+	tests := map[string]struct {
+		samples   []sample
+		wantError bool
+	}{
+		"misses before convergence": {
+			samples: []sample{{}, {}, {matched: true}, {matched: true}},
+		},
+		"mismatch resets confirmation": {
+			samples: []sample{{matched: true}, {}, {matched: true}, {matched: true}},
+		},
+		"retryable error resets confirmation": {
+			samples: []sample{
+				{matched: true},
+				{err: &smithy.GenericAPIError{Code: errInvalidRegion}},
+				{matched: true},
+				{matched: true},
+			},
+		},
+		"permanent error stops after match": {
+			samples:   []sample{{matched: true}, {err: &smithy.GenericAPIError{Code: "AccessDenied"}}},
+			wantError: true,
+		},
+	}
+	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
 			calls := 0
 			waits := 0
-			err := runBucketMutationPhase(
+			err := runBucketReadbackPhase(
 				t.Context(),
-				s3PhaseMetadata{phase: "test mutation", bucket: "missing"},
-				s3PhaseOptions{
-					delay: func(int) time.Duration { return 0 },
-					wait: func(context.Context, time.Duration) error {
-						waits++
-						return context.DeadlineExceeded
-					},
-				},
-				func(context.Context) error {
+				s3PhaseMetadata{phase: "test readback", bucket: "target"},
+				immediateS3PhaseOptions(&waits),
+				func(context.Context) (bool, error) {
+					if calls >= len(test.samples) {
+						t.Fatalf("readback called more than %d times", len(test.samples))
+					}
+					sample := test.samples[calls]
 					calls++
-					return mutationErr
+					return sample.matched, sample.err
 				},
 			)
-			if err == nil {
-				t.Fatal("runBucketMutationPhase() error = nil, want permanent failure")
+			if (err != nil) != test.wantError {
+				t.Fatalf("runBucketReadbackPhase() error = %v, wantError %t", err, test.wantError)
 			}
-			if calls != 1 || waits != 0 {
-				t.Fatalf("calls = %d, waits = %d; want 1, 0", calls, waits)
+			if calls != len(test.samples) || waits != len(test.samples)-1 {
+				t.Fatalf("calls = %d, waits = %d; want %d, %d", calls, waits, len(test.samples), len(test.samples)-1)
 			}
 		})
-	}
-}
-
-func TestRunBucketReadbackPhaseRetriesNonConvergedResult(t *testing.T) {
-	t.Parallel()
-
-	calls := 0
-	waits := 0
-	err := runBucketReadbackPhase(
-		t.Context(),
-		s3PhaseMetadata{phase: "test readback", bucket: "target"},
-		immediateS3PhaseOptions(&waits),
-		func(context.Context) (bool, error) {
-			calls++
-			return calls >= 3, nil
-		},
-	)
-	if err != nil {
-		t.Fatalf("runBucketReadbackPhase() error = %v", err)
-	}
-	if calls != 4 || waits != 3 {
-		t.Fatalf("calls = %d, waits = %d; want 4, 3", calls, waits)
-	}
-}
-
-func TestRunBucketReadbackPhaseRequiresStableConvergence(t *testing.T) {
-	t.Parallel()
-
-	results := []bool{true, false, true, true}
-	calls := 0
-	waits := 0
-	err := runBucketReadbackPhase(
-		t.Context(),
-		s3PhaseMetadata{phase: "test readback", bucket: "target"},
-		immediateS3PhaseOptions(&waits),
-		func(context.Context) (bool, error) {
-			if calls >= len(results) {
-				t.Fatalf("readback called more than %d times", len(results))
-			}
-			result := results[calls]
-			calls++
-			return result, nil
-		},
-	)
-	if err != nil {
-		t.Fatalf("runBucketReadbackPhase() error = %v", err)
-	}
-	if calls != len(results) || waits != len(results)-1 {
-		t.Fatalf("calls = %d, waits = %d; want %d, %d", calls, waits, len(results), len(results)-1)
 	}
 }
 
@@ -188,66 +175,6 @@ func TestRunBucketReadbackPhaseTriesImmediatelyAndSpansConfirmationWindow(t *tes
 	}
 	if len(waits) != 1 || waits[0] != 5*time.Second {
 		t.Fatalf("waits = %v, want [5s] between matching readbacks", waits)
-	}
-}
-
-func TestRunBucketReadbackPhaseResetsConfirmationAfterRetryableError(t *testing.T) {
-	t.Parallel()
-
-	results := []struct {
-		matched bool
-		err     error
-	}{
-		{matched: true},
-		{err: &smithy.GenericAPIError{Code: errInvalidRegion}},
-		{matched: true},
-		{matched: true},
-	}
-	calls := 0
-	waits := 0
-	err := runBucketReadbackPhase(
-		t.Context(),
-		s3PhaseMetadata{phase: "test readback", bucket: "target"},
-		immediateS3PhaseOptions(&waits),
-		func(context.Context) (bool, error) {
-			if calls >= len(results) {
-				t.Fatalf("readback called more than %d times", len(results))
-			}
-			result := results[calls]
-			calls++
-			return result.matched, result.err
-		},
-	)
-	if err != nil {
-		t.Fatalf("runBucketReadbackPhase() error = %v", err)
-	}
-	if calls != len(results) || waits != len(results)-1 {
-		t.Fatalf("calls = %d, waits = %d; want %d, %d", calls, waits, len(results), len(results)-1)
-	}
-}
-
-func TestRunBucketReadbackPhaseStopsOnPermanentErrorAfterMatch(t *testing.T) {
-	t.Parallel()
-
-	calls := 0
-	waits := 0
-	err := runBucketReadbackPhase(
-		t.Context(),
-		s3PhaseMetadata{phase: "test readback", bucket: "target"},
-		immediateS3PhaseOptions(&waits),
-		func(context.Context) (bool, error) {
-			calls++
-			if calls == 1 {
-				return true, nil
-			}
-			return false, &smithy.GenericAPIError{Code: "AccessDenied"}
-		},
-	)
-	if err == nil {
-		t.Fatal("runBucketReadbackPhase() error = nil, want permanent failure")
-	}
-	if calls != 2 || waits != 1 {
-		t.Fatalf("calls = %d, waits = %d; want 2, 1", calls, waits)
 	}
 }
 
@@ -387,7 +314,7 @@ func immediateS3PhaseOptions(waits *int) s3PhaseOptions {
 		now:   time.Now,
 		delay: func(int) time.Duration { return 0 },
 		wait: func(ctx context.Context, _ time.Duration) error {
-			*waits++
+			(*waits)++
 			return ctx.Err()
 		},
 	}
