@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.23.0](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.22.1...v0.23.0) (2026-09-03)
+
+
+### Features
+
+* **auth:** add refreshable access token source support ([#424](https://github.com/coreweave/terraform-provider-coreweave/issues/424)) ([571c5e4](https://github.com/coreweave/terraform-provider-coreweave/commit/571c5e437b3d5b1a476689c9809c001b5982374f))
+* **inference:** Sync inference proto and enforce gateway name length ([#422](https://github.com/coreweave/terraform-provider-coreweave/issues/422)) ([595b733](https://github.com/coreweave/terraform-provider-coreweave/commit/595b733531cbe828ae395441282ccc612ad257e2))
+* **inference:** Use ResourcesApplied condition for inference deployments create and update ([#427](https://github.com/coreweave/terraform-provider-coreweave/issues/427)) ([6b7c61b](https://github.com/coreweave/terraform-provider-coreweave/commit/6b7c61b2ee93b36de3c816bb9eed6374c27ebc05))
+* **workload_federation:** add OIDC config resource ([#417](https://github.com/coreweave/terraform-provider-coreweave/issues/417)) ([1f295ae](https://github.com/coreweave/terraform-provider-coreweave/commit/1f295ae947e4448a095c63210f524474ec96ac43))
+* **workload-federation:** add OIDC config data source ([#436](https://github.com/coreweave/terraform-provider-coreweave/issues/436)) ([945eef9](https://github.com/coreweave/terraform-provider-coreweave/commit/945eef9c192dee6df0d9ac6eafc7d3ce09c51277))
+
+
+### Bug Fixes
+
+* **object_storage:** bound bucket creation reconciliation ([#426](https://github.com/coreweave/terraform-provider-coreweave/issues/426)) ([163a648](https://github.com/coreweave/terraform-provider-coreweave/commit/163a6484b52cef56c3b0be7abdbf3ba50f1fa98f))
+* **object_storage:** retry post-create InvalidRegion updates ([#432](https://github.com/coreweave/terraform-provider-coreweave/issues/432)) ([7f815af](https://github.com/coreweave/terraform-provider-coreweave/commit/7f815afdd68291c32f99d8d4d863adfb7b66c870))
+
 ## [0.22.1](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.22.0...v0.22.1) (2026-08-27)
 
 
