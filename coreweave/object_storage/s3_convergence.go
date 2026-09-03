@@ -46,10 +46,9 @@ func (options s3PhaseOptions) withDefaults() s3PhaseOptions {
 }
 
 type s3PhaseMetadata struct {
-	phase                   string
-	bucket                  string
-	zone                    string
-	sharedPropagationBudget bool
+	phase  string
+	bucket string
+	zone   string
 }
 
 type s3PhaseError struct {
@@ -87,9 +86,6 @@ func runS3Phase(
 
 	for attemptNumber := 1; ; attemptNumber++ {
 		if err := ctx.Err(); err != nil {
-			if attemptNumber == 1 && metadata.sharedPropagationBudget && errors.Is(err, context.DeadlineExceeded) {
-				err = fmt.Errorf("shared propagation deadline exhausted before phase start: %w", err)
-			}
 			if lastAttemptErr != nil {
 				err = errors.Join(err, lastAttemptErr)
 			}
@@ -158,11 +154,20 @@ func runBucketReadbackPhase(
 		return delay
 	}
 
+	// Readback always follows a mutation on the same propagation context. If
+	// that shared budget is already spent, name it rather than reporting a
+	// bare deadline the caller cannot attribute to either phase.
+	if err := ctx.Err(); errors.Is(err, context.DeadlineExceeded) {
+		return &s3PhaseError{
+			phase: metadata.phase,
+			err:   fmt.Errorf("shared propagation deadline exhausted before phase start: %w", err),
+		}
+	}
+
 	// A matching response is request-local evidence, not a service readiness
 	// guarantee. Try immediately, then require a second matching sample after
 	// a minimum confirmation delay so a match from one gateway or cache
 	// generation does not immediately end reconciliation.
-	metadata.sharedPropagationBudget = true
 	consecutiveMatches := 0
 	return runS3Phase(ctx, metadata, options, func(ctx context.Context) (bool, error) {
 		matched, err := converged(ctx)
