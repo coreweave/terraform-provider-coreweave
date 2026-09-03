@@ -44,7 +44,7 @@ const (
 	ErrNoSuchInventoryConfiguration string = "NoSuchInventoryConfiguration"
 )
 
-type bucketInventoryConfigurationClient interface {
+type bucketInventoryConfigurationAPI interface {
 	PutBucketInventoryConfiguration(context.Context, *s3.PutBucketInventoryConfigurationInput, ...func(*s3.Options)) (*s3.PutBucketInventoryConfigurationOutput, error)
 	GetBucketInventoryConfiguration(context.Context, *s3.GetBucketInventoryConfigurationInput, ...func(*s3.Options)) (*s3.GetBucketInventoryConfigurationOutput, error)
 }
@@ -68,7 +68,7 @@ func NewBucketInventoryResource() resource.Resource {
 // BucketInventoryResource is the resource implementation.
 type BucketInventoryResource struct {
 	client                   *coreweave.Client
-	s3ClientForConvergence   func(context.Context) (bucketInventoryConfigurationClient, error)
+	s3ClientForConvergence   func(context.Context) (bucketInventoryConfigurationAPI, error)
 	bucketPropagationOptions s3PhaseOptions
 }
 
@@ -340,14 +340,14 @@ func eqInventoryConfiguration(a, b s3types.InventoryConfiguration) bool {
 
 func putBucketInventoryConfig(
 	ctx context.Context,
-	client bucketInventoryConfigurationClient,
+	client bucketInventoryConfigurationAPI,
 	bucket string,
 	input *s3.PutBucketInventoryConfigurationInput,
 	options s3PhaseOptions,
 ) error {
 	return runBucketMutationPhase(
 		ctx,
-		s3PhaseMetadata{phase: "bucket inventory configuration write", bucket: bucket},
+		s3PhaseMetadata{phase: "bucket inventory configuration application", bucket: bucket},
 		options,
 		func(ctx context.Context) error {
 			_, err := client.PutBucketInventoryConfiguration(ctx, input)
@@ -358,7 +358,7 @@ func putBucketInventoryConfig(
 
 func waitForInventoryConfig(
 	ctx context.Context,
-	client bucketInventoryConfigurationClient,
+	client bucketInventoryConfigurationAPI,
 	bucket, id string,
 	expected s3types.InventoryConfiguration,
 	options s3PhaseOptions,
@@ -389,7 +389,7 @@ func waitForInventoryConfig(
 	return out, err
 }
 
-func (r *BucketInventoryResource) convergenceClient(ctx context.Context) (bucketInventoryConfigurationClient, error) {
+func (r *BucketInventoryResource) convergenceClient(ctx context.Context) (bucketInventoryConfigurationAPI, error) {
 	if r.s3ClientForConvergence != nil {
 		return r.s3ClientForConvergence(ctx)
 	}

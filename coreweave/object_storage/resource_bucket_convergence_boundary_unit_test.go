@@ -95,7 +95,7 @@ func TestBucketLifecycleCreateRetainsStateWhenReadbackTimesOut(t *testing.T) {
 	client.put.errors = []error{&smithy.GenericAPIError{Code: errInvalidRegion}, nil}
 	client.get.errors = []error{&smithy.GenericAPIError{Code: errInvalidRegion}}
 	resourceUnderTest := &BucketLifecycleResource{
-		s3ClientForConvergence:   func(context.Context) (bucketLifecycleConfigurationClient, error) { return client, nil },
+		s3ClientForConvergence:   func(context.Context) (bucketLifecycleConfigurationAPI, error) { return client, nil },
 		bucketPropagationOptions: s3PhaseOptionsTimingOutOnSecondWait(),
 	}
 	model := BucketLifecycleResourceModel{
@@ -123,7 +123,7 @@ func TestBucketLifecycleUpdateRetainsStateWhenReadbackTimesOut(t *testing.T) {
 	client.put.errors = []error{&smithy.GenericAPIError{Code: errInvalidRegion}, nil}
 	client.get.errors = []error{&smithy.GenericAPIError{Code: errInvalidRegion}}
 	resourceUnderTest := &BucketLifecycleResource{
-		s3ClientForConvergence:   func(context.Context) (bucketLifecycleConfigurationClient, error) { return client, nil },
+		s3ClientForConvergence:   func(context.Context) (bucketLifecycleConfigurationAPI, error) { return client, nil },
 		bucketPropagationOptions: s3PhaseOptionsTimingOutOnSecondWait(),
 	}
 	model := BucketLifecycleResourceModel{
@@ -151,7 +151,7 @@ func TestBucketInventoryCreateRetainsStateWhenReadbackTimesOut(t *testing.T) {
 	client.put.errors = []error{&smithy.GenericAPIError{Code: errInvalidRegion}, nil}
 	client.get.errors = []error{&smithy.GenericAPIError{Code: errInvalidRegion}}
 	resourceUnderTest := &BucketInventoryResource{
-		s3ClientForConvergence:   func(context.Context) (bucketInventoryConfigurationClient, error) { return client, nil },
+		s3ClientForConvergence:   func(context.Context) (bucketInventoryConfigurationAPI, error) { return client, nil },
 		bucketPropagationOptions: s3PhaseOptionsTimingOutOnSecondWait(),
 	}
 	model := *fullInventoryModel()
@@ -167,7 +167,7 @@ func TestBucketInventoryUpdateRetainsStateWhenReadbackTimesOut(t *testing.T) {
 	client.put.errors = []error{&smithy.GenericAPIError{Code: errInvalidRegion}, nil}
 	client.get.errors = []error{&smithy.GenericAPIError{Code: errInvalidRegion}}
 	resourceUnderTest := &BucketInventoryResource{
-		s3ClientForConvergence:   func(context.Context) (bucketInventoryConfigurationClient, error) { return client, nil },
+		s3ClientForConvergence:   func(context.Context) (bucketInventoryConfigurationAPI, error) { return client, nil },
 		bucketPropagationOptions: s3PhaseOptionsTimingOutOnSecondWait(),
 	}
 	model := *fullInventoryModel()

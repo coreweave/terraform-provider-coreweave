@@ -41,7 +41,7 @@ const (
 	ErrNoSuchLifecycleConfiguration string = "NoSuchLifecycleConfiguration"
 )
 
-type bucketLifecycleConfigurationClient interface {
+type bucketLifecycleConfigurationAPI interface {
 	PutBucketLifecycleConfiguration(context.Context, *s3.PutBucketLifecycleConfigurationInput, ...func(*s3.Options)) (*s3.PutBucketLifecycleConfigurationOutput, error)
 	GetBucketLifecycleConfiguration(context.Context, *s3.GetBucketLifecycleConfigurationInput, ...func(*s3.Options)) (*s3.GetBucketLifecycleConfigurationOutput, error)
 }
@@ -54,7 +54,7 @@ func NewBucketLifecycleResource() resource.Resource {
 // BucketLifecycleResource is the resource implementation.
 type BucketLifecycleResource struct {
 	client                   *coreweave.Client
-	s3ClientForConvergence   func(context.Context) (bucketLifecycleConfigurationClient, error)
+	s3ClientForConvergence   func(context.Context) (bucketLifecycleConfigurationAPI, error)
 	bucketPropagationOptions s3PhaseOptions
 }
 
@@ -580,14 +580,14 @@ func eqLifecycleRule(a, b s3types.LifecycleRule) bool { //nolint:gocyclo
 
 func putBucketLifecycleConfig(
 	ctx context.Context,
-	client bucketLifecycleConfigurationClient,
+	client bucketLifecycleConfigurationAPI,
 	bucket string,
 	input *s3.PutBucketLifecycleConfigurationInput,
 	options s3PhaseOptions,
 ) error {
 	return runBucketMutationPhase(
 		ctx,
-		s3PhaseMetadata{phase: "bucket lifecycle configuration write", bucket: bucket},
+		s3PhaseMetadata{phase: "bucket lifecycle configuration application", bucket: bucket},
 		options,
 		func(ctx context.Context) error {
 			_, err := client.PutBucketLifecycleConfiguration(ctx, input)
@@ -598,7 +598,7 @@ func putBucketLifecycleConfig(
 
 func waitForLifecycleConfig(
 	ctx context.Context,
-	client bucketLifecycleConfigurationClient,
+	client bucketLifecycleConfigurationAPI,
 	bucket string,
 	expected s3types.BucketLifecycleConfiguration,
 	options s3PhaseOptions,
@@ -631,7 +631,7 @@ func waitForLifecycleConfig(
 	return out, err
 }
 
-func (r *BucketLifecycleResource) convergenceClient(ctx context.Context) (bucketLifecycleConfigurationClient, error) {
+func (r *BucketLifecycleResource) convergenceClient(ctx context.Context) (bucketLifecycleConfigurationAPI, error) {
 	if r.s3ClientForConvergence != nil {
 		return r.s3ClientForConvergence(ctx)
 	}
