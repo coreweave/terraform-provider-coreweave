@@ -41,6 +41,11 @@ const (
 	ErrNoSuchLifecycleConfiguration string = "NoSuchLifecycleConfiguration"
 )
 
+type bucketLifecycleConfigurationAPI interface {
+	PutBucketLifecycleConfiguration(context.Context, *s3.PutBucketLifecycleConfigurationInput, ...func(*s3.Options)) (*s3.PutBucketLifecycleConfigurationOutput, error)
+	GetBucketLifecycleConfiguration(context.Context, *s3.GetBucketLifecycleConfigurationInput, ...func(*s3.Options)) (*s3.GetBucketLifecycleConfigurationOutput, error)
+}
+
 // NewBucketLifecycleResource returns a new resource instance.
 func NewBucketLifecycleResource() resource.Resource {
 	return &BucketLifecycleResource{}
@@ -48,7 +53,9 @@ func NewBucketLifecycleResource() resource.Resource {
 
 // BucketLifecycleResource is the resource implementation.
 type BucketLifecycleResource struct {
-	client *coreweave.Client
+	client                   *coreweave.Client
+	s3ClientForConvergence   func(context.Context) (bucketLifecycleConfigurationAPI, error)
+	bucketPropagationOptions s3PhaseOptions
 }
 
 // BucketLifecycleResourceModel maps resource schema data.
@@ -571,27 +578,64 @@ func eqLifecycleRule(a, b s3types.LifecycleRule) bool { //nolint:gocyclo
 	return true
 }
 
-func waitForLifecycleConfig(parentCtx context.Context, client *s3.Client, bucket string, expected s3types.BucketLifecycleConfiguration) (*s3.GetBucketLifecycleConfigurationOutput, error) {
+func putBucketLifecycleConfig(
+	ctx context.Context,
+	client bucketLifecycleConfigurationAPI,
+	bucket string,
+	input *s3.PutBucketLifecycleConfigurationInput,
+	options s3PhaseOptions,
+) error {
+	return runBucketMutationPhase(
+		ctx,
+		s3PhaseMetadata{phase: "bucket lifecycle configuration application", bucket: bucket},
+		options,
+		func(ctx context.Context) error {
+			_, err := client.PutBucketLifecycleConfiguration(ctx, input)
+			return err
+		},
+	)
+}
+
+func waitForLifecycleConfig(
+	ctx context.Context,
+	client bucketLifecycleConfigurationAPI,
+	bucket string,
+	expected s3types.BucketLifecycleConfiguration,
+	options s3PhaseOptions,
+) (*s3.GetBucketLifecycleConfigurationOutput, error) {
 	// make a sorted copy of expected rules
 	exp := slices.SortedFunc(slices.Values(expected.Rules), cmpLifecycleRule)
+	input := &s3.GetBucketLifecycleConfigurationInput{Bucket: aws.String(bucket)}
 
 	var out *s3.GetBucketLifecycleConfigurationOutput
-	err := coreweave.PollUntil("bucket lifecycle configuration", parentCtx, 5*time.Second, 5*time.Minute, func(ctx context.Context) (bool, error) {
-		result, err := client.GetBucketLifecycleConfiguration(ctx, &s3.GetBucketLifecycleConfigurationInput{Bucket: aws.String(bucket)})
-		if err != nil {
-			out = nil
-			if isTransientS3Error(err) {
+	err := runBucketReadbackPhase(
+		ctx,
+		s3PhaseMetadata{phase: "bucket lifecycle configuration readback", bucket: bucket},
+		options,
+		func(ctx context.Context) (bool, error) {
+			result, err := client.GetBucketLifecycleConfiguration(ctx, input)
+			if err != nil {
+				out = nil
+				return false, err
+			}
+			out = result
+			if result == nil {
 				return false, nil
 			}
-			return false, err
-		}
-		out = result
 
-		// Make sorted a copy of the slice to sort for comparison, to avoid mutating the returned slice by reference.
-		rules := slices.SortedFunc(slices.Values(result.Rules), cmpLifecycleRule)
-		return slices.EqualFunc(exp, rules, eqLifecycleRule), nil
-	})
+			// Make sorted a copy of the slice to sort for comparison, to avoid mutating the returned slice by reference.
+			rules := slices.SortedFunc(slices.Values(result.Rules), cmpLifecycleRule)
+			return slices.EqualFunc(exp, rules, eqLifecycleRule), nil
+		},
+	)
 	return out, err
+}
+
+func (r *BucketLifecycleResource) convergenceClient(ctx context.Context) (bucketLifecycleConfigurationAPI, error) {
+	if r.s3ClientForConvergence != nil {
+		return r.s3ClientForConvergence(ctx)
+	}
+	return r.client.S3Client(ctx, "")
 }
 
 func (r *BucketLifecycleResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
@@ -601,7 +645,7 @@ func (r *BucketLifecycleResource) Create(ctx context.Context, req resource.Creat
 		return
 	}
 
-	s3c, err := r.client.S3Client(ctx, "")
+	s3c, err := r.convergenceClient(ctx)
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to create S3 client", err.Error())
 		return
@@ -617,11 +661,13 @@ func (r *BucketLifecycleResource) Create(ctx context.Context, req resource.Creat
 	lifecycleConfig := &s3types.BucketLifecycleConfiguration{
 		Rules: rules,
 	}
-	_, err = s3c.PutBucketLifecycleConfiguration(ctx, &s3.PutBucketLifecycleConfigurationInput{
+	putInput := &s3.PutBucketLifecycleConfigurationInput{
 		Bucket:                 aws.String(data.Bucket.ValueString()),
 		LifecycleConfiguration: lifecycleConfig,
-	})
-	if err != nil {
+	}
+	propagationCtx, cancel := bucketPropagationContext(ctx)
+	defer cancel()
+	if err := putBucketLifecycleConfig(propagationCtx, s3c, data.Bucket.ValueString(), putInput, r.bucketPropagationOptions); err != nil {
 		handleS3Error(err, &resp.Diagnostics, data.Bucket.ValueString())
 		return
 	}
@@ -633,7 +679,7 @@ func (r *BucketLifecycleResource) Create(ctx context.Context, req resource.Creat
 	}
 
 	// wait for lifecycle config  to be read back from s3 API since it is not guaranteed to propagate immediately
-	if result, err := waitForLifecycleConfig(ctx, s3c, data.Bucket.ValueString(), *lifecycleConfig); err != nil {
+	if result, err := waitForLifecycleConfig(propagationCtx, s3c, data.Bucket.ValueString(), *lifecycleConfig, r.bucketPropagationOptions); err != nil {
 		handleS3Error(err, &resp.Diagnostics, data.Bucket.ValueString())
 		return
 	} else {
@@ -810,7 +856,7 @@ func (r *BucketLifecycleResource) Update(ctx context.Context, req resource.Updat
 		return
 	}
 
-	s3c, err := r.client.S3Client(ctx, "")
+	s3c, err := r.convergenceClient(ctx)
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to create S3 client", err.Error())
 		return
@@ -820,11 +866,13 @@ func (r *BucketLifecycleResource) Update(ctx context.Context, req resource.Updat
 	lifecycleConfig := &s3types.BucketLifecycleConfiguration{
 		Rules: rules,
 	}
-	_, err = s3c.PutBucketLifecycleConfiguration(ctx, &s3.PutBucketLifecycleConfigurationInput{
+	putInput := &s3.PutBucketLifecycleConfigurationInput{
 		Bucket:                 aws.String(data.Bucket.ValueString()),
 		LifecycleConfiguration: lifecycleConfig,
-	})
-	if err != nil {
+	}
+	propagationCtx, cancel := bucketPropagationContext(ctx)
+	defer cancel()
+	if err := putBucketLifecycleConfig(propagationCtx, s3c, data.Bucket.ValueString(), putInput, r.bucketPropagationOptions); err != nil {
 		handleS3Error(err, &resp.Diagnostics, data.Bucket.ValueString())
 		return
 	}
@@ -836,7 +884,7 @@ func (r *BucketLifecycleResource) Update(ctx context.Context, req resource.Updat
 	}
 
 	// wait for lifecycle config  to be read back from s3 API since it is not guaranteed to propagate immediately
-	if result, err := waitForLifecycleConfig(ctx, s3c, data.Bucket.ValueString(), *lifecycleConfig); err != nil {
+	if result, err := waitForLifecycleConfig(propagationCtx, s3c, data.Bucket.ValueString(), *lifecycleConfig, r.bucketPropagationOptions); err != nil {
 		handleS3Error(err, &resp.Diagnostics, data.Bucket.ValueString())
 		return
 	} else {

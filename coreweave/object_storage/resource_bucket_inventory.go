@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"slices"
 	"strings"
-	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
@@ -45,6 +44,11 @@ const (
 	ErrNoSuchInventoryConfiguration string = "NoSuchInventoryConfiguration"
 )
 
+type bucketInventoryConfigurationAPI interface {
+	PutBucketInventoryConfiguration(context.Context, *s3.PutBucketInventoryConfigurationInput, ...func(*s3.Options)) (*s3.PutBucketInventoryConfigurationOutput, error)
+	GetBucketInventoryConfiguration(context.Context, *s3.GetBucketInventoryConfigurationInput, ...func(*s3.Options)) (*s3.GetBucketInventoryConfigurationOutput, error)
+}
+
 // enumStrings converts an AWS SDK string-enum's Values() slice into the []string
 // form the OneOf validator expects, so the accepted values track the SDK enum
 // instead of being maintained as separate string literals.
@@ -63,7 +67,9 @@ func NewBucketInventoryResource() resource.Resource {
 
 // BucketInventoryResource is the resource implementation.
 type BucketInventoryResource struct {
-	client *coreweave.Client
+	client                   *coreweave.Client
+	s3ClientForConvergence   func(context.Context) (bucketInventoryConfigurationAPI, error)
+	bucketPropagationOptions s3PhaseOptions
 }
 
 // BucketInventoryResourceModel maps resource schema data.
@@ -332,30 +338,62 @@ func eqInventoryConfiguration(a, b s3types.InventoryConfiguration) bool {
 	return slices.Equal(toSorted(a.OptionalFields), toSorted(b.OptionalFields))
 }
 
-func waitForInventoryConfig(parentCtx context.Context, client *s3.Client, bucket, id string, expected s3types.InventoryConfiguration) (*s3.GetBucketInventoryConfigurationOutput, error) {
+func putBucketInventoryConfig(
+	ctx context.Context,
+	client bucketInventoryConfigurationAPI,
+	bucket string,
+	input *s3.PutBucketInventoryConfigurationInput,
+	options s3PhaseOptions,
+) error {
+	return runBucketMutationPhase(
+		ctx,
+		s3PhaseMetadata{phase: "bucket inventory configuration application", bucket: bucket},
+		options,
+		func(ctx context.Context) error {
+			_, err := client.PutBucketInventoryConfiguration(ctx, input)
+			return err
+		},
+	)
+}
+
+func waitForInventoryConfig(
+	ctx context.Context,
+	client bucketInventoryConfigurationAPI,
+	bucket, id string,
+	expected s3types.InventoryConfiguration,
+	options s3PhaseOptions,
+) (*s3.GetBucketInventoryConfigurationOutput, error) {
+	input := &s3.GetBucketInventoryConfigurationInput{
+		Bucket: aws.String(bucket),
+		Id:     aws.String(id),
+	}
 	var out *s3.GetBucketInventoryConfigurationOutput
-	err := coreweave.PollUntil("bucket inventory configuration", parentCtx, 5*time.Second, 5*time.Minute, func(ctx context.Context) (bool, error) {
-		result, err := client.GetBucketInventoryConfiguration(ctx, &s3.GetBucketInventoryConfigurationInput{
-			Bucket: aws.String(bucket),
-			Id:     aws.String(id),
-		})
-		if err != nil {
-			out = nil
-			// A freshly-written config can 404 until it propagates; isTransientS3Error
-			// treats 404 (and 5xx/429/408) as retryable so we keep polling.
-			if isTransientS3Error(err) {
+	err := runBucketReadbackPhase(
+		ctx,
+		s3PhaseMetadata{phase: "bucket inventory configuration readback", bucket: bucket},
+		options,
+		func(ctx context.Context) (bool, error) {
+			result, err := client.GetBucketInventoryConfiguration(ctx, input)
+			if err != nil {
+				out = nil
+				return false, err
+			}
+			out = result
+
+			if result == nil || result.InventoryConfiguration == nil {
 				return false, nil
 			}
-			return false, err
-		}
-		out = result
-
-		if result.InventoryConfiguration == nil {
-			return false, nil
-		}
-		return eqInventoryConfiguration(expected, *result.InventoryConfiguration), nil
-	})
+			return eqInventoryConfiguration(expected, *result.InventoryConfiguration), nil
+		},
+	)
 	return out, err
+}
+
+func (r *BucketInventoryResource) convergenceClient(ctx context.Context) (bucketInventoryConfigurationAPI, error) {
+	if r.s3ClientForConvergence != nil {
+		return r.s3ClientForConvergence(ctx)
+	}
+	return r.client.S3Client(ctx, "")
 }
 
 func (r *BucketInventoryResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
@@ -365,7 +403,7 @@ func (r *BucketInventoryResource) Create(ctx context.Context, req resource.Creat
 		return
 	}
 
-	s3c, err := r.client.S3Client(ctx, "")
+	s3c, err := r.convergenceClient(ctx)
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to create S3 client", err.Error())
 		return
@@ -389,12 +427,14 @@ func (r *BucketInventoryResource) Create(ctx context.Context, req resource.Creat
 		"id":        data.Name.ValueString(),
 	})
 
-	_, err = s3c.PutBucketInventoryConfiguration(ctx, &s3.PutBucketInventoryConfigurationInput{
+	putInput := &s3.PutBucketInventoryConfigurationInput{
 		Bucket:                 aws.String(data.Bucket.ValueString()),
 		Id:                     aws.String(data.Name.ValueString()),
 		InventoryConfiguration: invConfig,
-	})
-	if err != nil {
+	}
+	propagationCtx, cancel := bucketPropagationContext(ctx)
+	defer cancel()
+	if err := putBucketInventoryConfig(propagationCtx, s3c, data.Bucket.ValueString(), putInput, r.bucketPropagationOptions); err != nil {
 		handleS3Error(err, &resp.Diagnostics, data.Bucket.ValueString())
 		return
 	}
@@ -408,7 +448,7 @@ func (r *BucketInventoryResource) Create(ctx context.Context, req resource.Creat
 
 	// Inventory configuration is eventually consistent, so poll the GET API
 	// until it reflects what we just wrote before reading it back into state.
-	result, err := waitForInventoryConfig(ctx, s3c, data.Bucket.ValueString(), data.Name.ValueString(), *invConfig)
+	result, err := waitForInventoryConfig(propagationCtx, s3c, data.Bucket.ValueString(), data.Name.ValueString(), *invConfig, r.bucketPropagationOptions)
 	if err != nil {
 		handleS3Error(err, &resp.Diagnostics, data.Bucket.ValueString())
 		return
@@ -533,7 +573,7 @@ func (r *BucketInventoryResource) Update(ctx context.Context, req resource.Updat
 		return
 	}
 
-	s3c, err := r.client.S3Client(ctx, "")
+	s3c, err := r.convergenceClient(ctx)
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to create S3 client", err.Error())
 		return
@@ -548,12 +588,14 @@ func (r *BucketInventoryResource) Update(ctx context.Context, req resource.Updat
 
 	// PutBucketInventoryConfiguration is an upsert, so update is the same write
 	// path as create, keyed by bucket + id.
-	_, err = s3c.PutBucketInventoryConfiguration(ctx, &s3.PutBucketInventoryConfigurationInput{
+	putInput := &s3.PutBucketInventoryConfigurationInput{
 		Bucket:                 aws.String(data.Bucket.ValueString()),
 		Id:                     aws.String(data.Name.ValueString()),
 		InventoryConfiguration: invConfig,
-	})
-	if err != nil {
+	}
+	propagationCtx, cancel := bucketPropagationContext(ctx)
+	defer cancel()
+	if err := putBucketInventoryConfig(propagationCtx, s3c, data.Bucket.ValueString(), putInput, r.bucketPropagationOptions); err != nil {
 		handleS3Error(err, &resp.Diagnostics, data.Bucket.ValueString())
 		return
 	}
@@ -567,7 +609,7 @@ func (r *BucketInventoryResource) Update(ctx context.Context, req resource.Updat
 
 	// Inventory configuration is eventually consistent, so poll the GET API
 	// until it reflects the update before reading it back into state.
-	result, err := waitForInventoryConfig(ctx, s3c, data.Bucket.ValueString(), data.Name.ValueString(), *invConfig)
+	result, err := waitForInventoryConfig(propagationCtx, s3c, data.Bucket.ValueString(), data.Name.ValueString(), *invConfig, r.bucketPropagationOptions)
 	if err != nil {
 		handleS3Error(err, &resp.Diagnostics, data.Bucket.ValueString())
 		return

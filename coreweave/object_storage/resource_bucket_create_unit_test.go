@@ -357,7 +357,7 @@ func TestCreateBucketSafely(t *testing.T) {
 			client,
 			"target",
 			"US-EAST-04A",
-			immediatePhaseOptions(&waits),
+			immediateS3PhaseOptions(&waits),
 		); err != nil {
 			t.Fatalf("createBucketSafelyWithOptions() error = %v", err)
 		}
@@ -389,17 +389,6 @@ func TestCreateBucketSafely(t *testing.T) {
 	})
 }
 
-func immediatePhaseOptions(waits *int) s3PhaseOptions {
-	return s3PhaseOptions{
-		now:   time.Now,
-		delay: func(int) time.Duration { return 0 },
-		wait: func(ctx context.Context, _ time.Duration) error {
-			*waits++
-			return ctx.Err()
-		},
-	}
-}
-
 func TestReconcileBucketAfterCreate(t *testing.T) {
 	t.Parallel()
 
@@ -416,7 +405,9 @@ func TestReconcileBucketAfterCreate(t *testing.T) {
 			nil,
 		},
 		getTagOutputs: []*s3.GetBucketTaggingOutput{
+			{TagSet: expectedTags},
 			{TagSet: []s3types.Tag{{Key: aws.String("env"), Value: aws.String("stale")}}},
+			{TagSet: expectedTags},
 			{TagSet: expectedTags},
 		},
 	}
@@ -429,16 +420,16 @@ func TestReconcileBucketAfterCreate(t *testing.T) {
 		"US-EAST-04A",
 		expectedTags,
 		true,
-		immediatePhaseOptions(&waits),
+		immediateS3PhaseOptions(&waits),
 	)
 	if err != nil {
 		t.Fatalf("reconcileBucketAfterCreate() error = %v", err)
 	}
-	if client.headCalls != 4 || client.putTagCalls != 2 || client.getTagCalls != 2 {
-		t.Fatalf("calls: Head=%d PutTags=%d GetTags=%d, want 4, 2, 2", client.headCalls, client.putTagCalls, client.getTagCalls)
+	if client.headCalls != 4 || client.putTagCalls != 2 || client.getTagCalls != 4 {
+		t.Fatalf("calls: Head=%d PutTags=%d GetTags=%d, want 4, 2, 4", client.headCalls, client.putTagCalls, client.getTagCalls)
 	}
-	if waits != 5 {
-		t.Fatalf("backoff waits = %d, want 5", waits)
+	if waits != 7 {
+		t.Fatalf("backoff waits = %d, want 7", waits)
 	}
 }
 
@@ -457,7 +448,7 @@ func TestReconcileBucketAfterCreateDoesNotRetryUnrelated400(t *testing.T) {
 		"US-EAST-04A",
 		nil,
 		false,
-		immediatePhaseOptions(&waits),
+		immediateS3PhaseOptions(&waits),
 	)
 	if err == nil {
 		t.Fatal("reconcileBucketAfterCreate() error = nil, want permanent failure")
@@ -480,7 +471,7 @@ func TestDeleteBucketWithRetryHandlesLocationPropagation(t *testing.T) {
 		client,
 		"target",
 		"US-EAST-04A",
-		immediatePhaseOptions(&waits),
+		immediateS3PhaseOptions(&waits),
 	); err != nil {
 		t.Fatalf("deleteBucketWithRetry() error = %v", err)
 	}
@@ -489,7 +480,7 @@ func TestDeleteBucketWithRetryHandlesLocationPropagation(t *testing.T) {
 	}
 }
 
-func TestIsPostCreateRetryableS3Error(t *testing.T) {
+func TestIsBucketPropagationRetryableS3Error(t *testing.T) {
 	t.Parallel()
 
 	tlsErr := &url.Error{
@@ -519,8 +510,8 @@ func TestIsPostCreateRetryableS3Error(t *testing.T) {
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			if got := isPostCreateRetryableS3Error(tt.err); got != tt.want {
-				t.Fatalf("isPostCreateRetryableS3Error() = %t, want %t", got, tt.want)
+			if got := isBucketPropagationRetryableS3Error(tt.err); got != tt.want {
+				t.Fatalf("isBucketPropagationRetryableS3Error() = %t, want %t", got, tt.want)
 			}
 		})
 	}
@@ -626,7 +617,7 @@ func TestCreateBucketSafelyReconcilesHTTPAttemptTimeout(t *testing.T) {
 		client,
 		bucketName,
 		zone,
-		immediatePhaseOptions(&waits),
+		immediateS3PhaseOptions(&waits),
 	); err != nil {
 		t.Fatalf("createBucketSafelyWithOptions() error = %v", err)
 	}
