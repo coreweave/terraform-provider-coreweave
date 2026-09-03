@@ -107,6 +107,7 @@ type bucketSettingsConfig struct {
 	auditLoggingEnabled        *bool
 	archiveEnabled             *bool
 	archiveAfterLastAccessDays *int32
+	capacityCapBytes           *int64
 }
 
 // value builds the configuration object.
@@ -128,11 +129,17 @@ func (c bucketSettingsConfig) value(objectType tftypes.Type) tftypes.Value {
 		daysValue = tftypes.NewValue(tftypes.Number, *c.archiveAfterLastAccessDays)
 	}
 
+	capValue := tftypes.NewValue(tftypes.Number, nil)
+	if c.capacityCapBytes != nil {
+		capValue = tftypes.NewValue(tftypes.Number, *c.capacityCapBytes)
+	}
+
 	return tftypes.NewValue(objectType, map[string]tftypes.Value{
 		"bucket":                         tftypes.NewValue(tftypes.String, c.bucket),
 		"audit_logging_enabled":          boolValue(c.auditLoggingEnabled),
 		"archive_enabled":                boolValue(c.archiveEnabled),
 		"archive_after_last_access_days": daysValue,
+		"capacity_cap_bytes":             capValue,
 	})
 }
 
@@ -332,6 +339,7 @@ func requireNoDiagErrors(t *testing.T, diags []*tfprotov6.Diagnostic, step strin
 
 func boolPtr(b bool) *bool    { return &b }
 func int32Ptr(i int32) *int32 { return &i }
+func int64Ptr(i int64) *int64 { return &i }
 
 // TestBucketSettingsUnentitledOrgIsUnaffectedByArchive is the regression test
 // for the entitlement break. An organization that is not on the bucket archive
@@ -618,4 +626,69 @@ func TestBucketSettingsArchiveWithoutRetentionRejectedAtValidate(t *testing.T) {
 
 	require.True(t, diagsHaveErrors(diags), "archive on without a retention must be rejected")
 	assert.Contains(t, diagText(diags), "Missing archive_after_last_access_days")
+}
+
+// TestBucketSettingsCapacityCapRoundTrip: a cap is written via the oneof and read
+// back from the configured field; 0 is a valid value, distinct from unset.
+func TestBucketSettingsCapacityCapRoundTrip(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		cap  int64
+	}{
+		{name: "positive cap", cap: 1024},
+		{name: "zero cap blocks all writes", cap: 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := t.Context()
+			h := newBucketSettingsHarness(ctx, t, true)
+
+			config := bucketSettingsConfig{
+				bucket:           testBucketName,
+				capacityCapBytes: int64Ptr(tc.cap),
+			}
+
+			applied, diags := h.create(ctx, config)
+			requireNoDiagErrors(t, diags, "create")
+
+			stored := h.fake.storedSettings(testBucketName)
+			require.NotNil(t, stored.capacityCapBytes, "cap must be persisted server-side")
+			assert.Equal(t, uint64(tc.cap), *stored.capacityCapBytes)
+
+			// Refresh then re-plan: a correct read/write split converges to empty.
+			refreshed := h.refresh(ctx, applied)
+			replanned, diags := h.plan(ctx, config, refreshed)
+			requireNoDiagErrors(t, diags, "re-plan")
+			assert.True(t, replanned.Equal(refreshed),
+				"plan after apply must be empty\n refreshed: %s\n planned:   %s", refreshed, replanned)
+		})
+	}
+}
+
+// TestBucketSettingsCapacityCapConvergesAfterRemovingFromConfig: once set, dropping
+// the attribute leaves the server value in place (no diff, no clear).
+func TestBucketSettingsCapacityCapConvergesAfterRemovingFromConfig(t *testing.T) {
+	ctx := t.Context()
+	h := newBucketSettingsHarness(ctx, t, true)
+
+	withCap := bucketSettingsConfig{
+		bucket:           testBucketName,
+		capacityCapBytes: int64Ptr(1024),
+	}
+	state, diags := h.create(ctx, withCap)
+	requireNoDiagErrors(t, diags, "create with cap")
+
+	// Stop managing the cap at all.
+	unmanaged := bucketSettingsConfig{bucket: testBucketName}
+	state, diags = h.apply(ctx, unmanaged, state)
+	requireNoDiagErrors(t, diags, "remove cap from config")
+
+	stored := h.fake.storedSettings(testBucketName)
+	require.NotNil(t, stored.capacityCapBytes, "dropping the attribute must not clear the cap")
+	assert.Equal(t, uint64(1024), *stored.capacityCapBytes)
+
+	refreshed := h.refresh(ctx, state)
+	replanned, diags := h.plan(ctx, unmanaged, refreshed)
+	requireNoDiagErrors(t, diags, "re-plan")
+	assert.True(t, replanned.Equal(refreshed),
+		"plan must be empty after cap dropped from config\n refreshed: %s\n planned: %s", refreshed, replanned)
 }

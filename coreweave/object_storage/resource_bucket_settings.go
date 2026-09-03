@@ -11,6 +11,7 @@ import (
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/hashicorp/terraform-plugin-framework-validators/int32validator"
+	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -43,6 +44,7 @@ type BucketSettingsModel struct {
 	AuditLoggingEnabled        types.Bool   `tfsdk:"audit_logging_enabled"`
 	ArchiveEnabled             types.Bool   `tfsdk:"archive_enabled"`
 	ArchiveAfterLastAccessDays types.Int32  `tfsdk:"archive_after_last_access_days"`
+	CapacityCapBytes           types.Int64  `tfsdk:"capacity_cap_bytes"`
 }
 
 // BucketSettingsResourceModel is an alias for BucketSettingsModel for consistency with other resources
@@ -70,6 +72,13 @@ func (s *BucketSettingsModel) Set(settings *cwobjectv1.CWObjectBucketSettings) {
 	} else {
 		s.ArchiveAfterLastAccessDays = types.Int32Null()
 	}
+
+	// Read the cap from the read-only configured field (the write oneof isn't returned).
+	if settings.ConfiguredCapacityCapBytes != nil {
+		s.CapacityCapBytes = types.Int64Value(int64(settings.ConfiguredCapacityCapBytes.Value)) //nolint:gosec
+	} else {
+		s.CapacityCapBytes = types.Int64Null()
+	}
 }
 
 func (s *BucketSettingsModel) ToProtoObject() *cwobjectv1.CWObjectBucketSettings {
@@ -85,6 +94,10 @@ func (s *BucketSettingsModel) ToProtoObject() *cwobjectv1.CWObjectBucketSettings
 	}
 	if !s.ArchiveAfterLastAccessDays.IsNull() && !s.ArchiveAfterLastAccessDays.IsUnknown() {
 		settings.SetArchiveAfterLastAccessDays(wrapperspb.Int32(s.ArchiveAfterLastAccessDays.ValueInt32()))
+	}
+	// A known value (0 included) sets the cap; omit to leave it unchanged.
+	if !s.CapacityCapBytes.IsNull() && !s.CapacityCapBytes.IsUnknown() {
+		settings.SetCapacityCapBytes(uint64(s.CapacityCapBytes.ValueInt64())) //nolint:gosec
 	}
 	return &settings
 }
@@ -238,6 +251,15 @@ func (b *BucketSettingsResource) Schema(ctx context.Context, req resource.Schema
 				Optional:            true,
 				Validators: []validator.Int32{
 					int32validator.AtLeast(1),
+				},
+			},
+			// Optional+Computed like archive_enabled: omit leaves the cap unchanged.
+			"capacity_cap_bytes": schema.Int64Attribute{
+				MarkdownDescription: "Maximum number of STANDARD-class bytes the bucket may store. New STANDARD writes are rejected once bucket usage would exceed this cap; `0` is a valid cap that blocks all new STANDARD writes. Omit to leave the cap unchanged. Your organization must be entitled to configure this setting.",
+				Optional:            true,
+				Computed:            true,
+				Validators: []validator.Int64{
+					int64validator.AtLeast(0),
 				},
 			},
 		},

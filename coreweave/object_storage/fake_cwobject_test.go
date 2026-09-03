@@ -43,6 +43,7 @@ type fakeBucketSettings struct {
 	auditLoggingEnabled        *bool
 	archiveEnabled             *bool
 	archiveAfterLastAccessDays *int32
+	capacityCapBytes           *uint64
 }
 
 const fakeArchiveMinDays int32 = 60
@@ -132,6 +133,11 @@ func (b *fakeBucketSettings) toProto() *cwobjectv1.CWObjectBucketSettings {
 		out.ArchiveAfterLastAccessDays = wrapperspb.Int32(*b.archiveAfterLastAccessDays)
 	}
 
+	// Surface the cap through the read-only field.
+	if b.capacityCapBytes != nil {
+		out.SetConfiguredCapacityCapBytes(wrapperspb.UInt64(*b.capacityCapBytes))
+	}
+
 	return out
 }
 
@@ -190,6 +196,12 @@ func (f *fakeCWObject) persist(stored *fakeBucketSettings, settings *cwobjectv1.
 	if audit := settings.GetAuditLoggingEnabled(); audit != nil {
 		value := audit.GetValue()
 		stored.auditLoggingEnabled = &value
+	}
+
+	// Persist a set cap (0 valid); before the archive switch, which returns early.
+	if settings.HasCapacityCapBytes() {
+		value := settings.GetCapacityCapBytes()
+		stored.capacityCapBytes = &value
 	}
 
 	enabled := settings.GetArchiveEnabled()
