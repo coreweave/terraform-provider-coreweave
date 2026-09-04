@@ -1,9 +1,9 @@
-buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.36.12-20260415201107-50325440f8f2.1 h1:y8A3AKdnK80frQccyJxFQcHJ9yZlcuoixzHhEsnpEfw=
-buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.36.12-20260415201107-50325440f8f2.1/go.mod h1:TCt1lluMFnctISJXvkIQ4x3ABrPuUKCWKyjKdkJNBpw=
-buf.build/gen/go/coreweave/cks/connectrpc/go v1.19.1-20260326215135-be22b90e1aa6.2 h1:G09Jax7e3xVX1QWaINr6P/5w8jaCoe5uAvMw5WAuCAI=
-buf.build/gen/go/coreweave/cks/connectrpc/go v1.19.1-20260326215135-be22b90e1aa6.2/go.mod h1:aCkr4xvjAVXYnCSfQFFaZ+g6vqd2t27+svGkCgwLKzo=
-buf.build/gen/go/coreweave/cks/protocolbuffers/go v1.36.11-20260326215135-be22b90e1aa6.1 h1:6VTjkKgYaRgrVlO2aq6RuCNVsV3+0J/4GM5HKX17VNM=
-buf.build/gen/go/coreweave/cks/protocolbuffers/go v1.36.11-20260326215135-be22b90e1aa6.1/go.mod h1:ByX23QBucj1Ao4H8Wn41segTqTbgOT4Sbjnm7AvLGYY=
+buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.36.12-20260415201107-50325440f8f2.2 h1:6NSZCbUQcDWZlgiF5XyM9SiNAt20hQvg2JRrBzQZVgU=
+buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.36.12-20260415201107-50325440f8f2.2/go.mod h1:TCt1lluMFnctISJXvkIQ4x3ABrPuUKCWKyjKdkJNBpw=
+buf.build/gen/go/coreweave/cks/connectrpc/go v1.20.0-20260630171200-77e2aa82efe3.1 h1:qogK4IrGOmHb2xlzV7mNqfwY64f+DhwdkAx3hy8i6o8=
+buf.build/gen/go/coreweave/cks/connectrpc/go v1.20.0-20260630171200-77e2aa82efe3.1/go.mod h1:h+w2cMPZMDYo6T3BfU1ntIixlBQ5/nm9JwK4jYxAfzc=
+buf.build/gen/go/coreweave/cks/protocolbuffers/go v1.36.12-20260630171200-77e2aa82efe3.2 h1:Uo4QtKqIhoZOBI91dG7S8czjI6XUDN0wanhkOx/HwOc=
+buf.build/gen/go/coreweave/cks/protocolbuffers/go v1.36.12-20260630171200-77e2aa82efe3.2/go.mod h1:5MQ4mpYVLhxkSHHBolZ2nr4PNXvIjhmOlqAZ8JgdLtU=
 buf.build/gen/go/coreweave/cwobject/connectrpc/go v1.19.1-20260729060712-bb1877226449.2 h1:KLhMvLNiOczSUr81SK8n9u3UjLhkupdohAZM9Y5NFsE=
 buf.build/gen/go/coreweave/cwobject/connectrpc/go v1.19.1-20260729060712-bb1877226449.2/go.mod h1:e88kN35aV9wjti8nBUgWA3S5KYcymennOZ5CRI4oY0c=
 buf.build/gen/go/coreweave/cwobject/protocolbuffers/go v1.36.11-20260729060712-bb1877226449.1 h1:h67dxeSusDhd1Jj5Dl/Gu7ycCIxHTK6YnUav8uQsbYc=
