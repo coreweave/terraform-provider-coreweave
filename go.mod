@@ -3,8 +3,8 @@ module github.com/coreweave/terraform-provider-coreweave
 go 1.26.6
 
 require (
-	buf.build/gen/go/coreweave/cks/connectrpc/go v1.19.1-20260326215135-be22b90e1aa6.2
-	buf.build/gen/go/coreweave/cks/protocolbuffers/go v1.36.11-20260326215135-be22b90e1aa6.1
+	buf.build/gen/go/coreweave/cks/connectrpc/go v1.20.0-20260630171200-77e2aa82efe3.1
+	buf.build/gen/go/coreweave/cks/protocolbuffers/go v1.36.12-20260630171200-77e2aa82efe3.2
 	buf.build/gen/go/coreweave/cwobject/connectrpc/go v1.19.1-20260729060712-bb1877226449.2
 	buf.build/gen/go/coreweave/cwobject/protocolbuffers/go v1.36.11-20260729060712-bb1877226449.1
 	buf.build/gen/go/coreweave/inference/connectrpc/go v1.20.0-20260825010541-7cc01a738b29.1
@@ -37,7 +37,7 @@ require (
 )
 
 require (
-	buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.36.12-20260415201107-50325440f8f2.1 // indirect
+	buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.36.12-20260415201107-50325440f8f2.2 // indirect
 	buf.build/gen/go/grpc-ecosystem/grpc-gateway/protocolbuffers/go v1.36.11-20241220201140-4c5ba75caaf8.1 // indirect
 	github.com/ProtonMail/go-crypto v1.1.6 // indirect
 	github.com/agext/levenshtein v1.2.2 // indirect
