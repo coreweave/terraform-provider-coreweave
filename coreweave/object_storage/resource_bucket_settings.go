@@ -11,6 +11,7 @@ import (
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/hashicorp/terraform-plugin-framework-validators/int32validator"
+	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -20,6 +21,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/zclconf/go-cty/cty"
+	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/wrapperspb"
 )
 
@@ -43,6 +45,7 @@ type BucketSettingsModel struct {
 	AuditLoggingEnabled        types.Bool   `tfsdk:"audit_logging_enabled"`
 	ArchiveEnabled             types.Bool   `tfsdk:"archive_enabled"`
 	ArchiveAfterLastAccessDays types.Int32  `tfsdk:"archive_after_last_access_days"`
+	CapacityCapBytes           types.Int64  `tfsdk:"capacity_cap_bytes"`
 }
 
 // BucketSettingsResourceModel is an alias for BucketSettingsModel for consistency with other resources
@@ -70,6 +73,13 @@ func (s *BucketSettingsModel) Set(settings *cwobjectv1.CWObjectBucketSettings) {
 	} else {
 		s.ArchiveAfterLastAccessDays = types.Int32Null()
 	}
+
+	// Read the cap from the read-only configured field (the write oneof isn't returned).
+	if settings.ConfiguredCapacityCapBytes != nil {
+		s.CapacityCapBytes = types.Int64Value(int64(settings.ConfiguredCapacityCapBytes.Value)) //nolint:gosec
+	} else {
+		s.CapacityCapBytes = types.Int64Null()
+	}
 }
 
 func (s *BucketSettingsModel) ToProtoObject() *cwobjectv1.CWObjectBucketSettings {
@@ -86,7 +96,20 @@ func (s *BucketSettingsModel) ToProtoObject() *cwobjectv1.CWObjectBucketSettings
 	if !s.ArchiveAfterLastAccessDays.IsNull() && !s.ArchiveAfterLastAccessDays.IsUnknown() {
 		settings.SetArchiveAfterLastAccessDays(wrapperspb.Int32(s.ArchiveAfterLastAccessDays.ValueInt32()))
 	}
+	// A known value (0 included) sets the cap; null/unknown is skipped. Update
+	// also strips a state-copied value via omitUnconfiguredCapacityCap.
+	if !s.CapacityCapBytes.IsNull() && !s.CapacityCapBytes.IsUnknown() {
+		settings.SetCapacityCapBytes(uint64(s.CapacityCapBytes.ValueInt64())) //nolint:gosec
+	}
 	return &settings
+}
+
+// omitUnconfiguredCapacityCap keeps an Optional+Computed value copied from
+// refreshed state from becoming a write; only a configured cap may set it.
+func omitUnconfiguredCapacityCap(settings *cwobjectv1.CWObjectBucketSettings, configured types.Int64) {
+	if configured.IsNull() || configured.IsUnknown() {
+		settings.ClearCapacityCapUpdate()
+	}
 }
 
 func (b *BucketSettingsResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
@@ -153,6 +176,12 @@ func (b *BucketSettingsResource) Delete(ctx context.Context, req resource.Delete
 	// would make the resource impossible to destroy for unentitled orgs.
 	if data.ArchiveEnabled.ValueBool() {
 		settings.ArchiveEnabled = wrapperspb.Bool(false)
+	}
+
+	// Destroy resets bucket settings. Clear a cap reported in state, but omit the
+	// instruction when no cap exists so destroy needs no capacity-cap permission.
+	if !data.CapacityCapBytes.IsNull() {
+		settings.SetClearCapacityCap(&emptypb.Empty{})
 	}
 
 	deleteReq := cwobjectv1.SetBucketSettingsRequest{
@@ -240,6 +269,15 @@ func (b *BucketSettingsResource) Schema(ctx context.Context, req resource.Schema
 					int32validator.AtLeast(1),
 				},
 			},
+			// Optional+Computed like archive_enabled: omit leaves the cap unchanged.
+			"capacity_cap_bytes": schema.Int64Attribute{
+				MarkdownDescription: "Maximum number of STANDARD-class bytes the bucket may store. New STANDARD writes are rejected once bucket usage would exceed this cap; `0` is a valid cap that blocks all new STANDARD writes. Omit to leave the cap unchanged. Deleting this bucket settings resource clears any cap reported by the service, including one configured outside Terraform. Your organization must be entitled to configure this setting.",
+				Optional:            true,
+				Computed:            true,
+				Validators: []validator.Int64{
+					int64validator.AtLeast(0),
+				},
+			},
 		},
 	}
 }
@@ -278,13 +316,20 @@ func (b *BucketSettingsResource) ValidateConfig(ctx context.Context, req resourc
 func (b *BucketSettingsResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	var data BucketSettingsModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+	var config BucketSettingsModel
+	resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
+	// Optional+Computed copies a state cap into the plan; strip it unless the
+	// practitioner configured one, so an unrelated update never re-sends it.
+	settings := data.ToProtoObject()
+	omitUnconfiguredCapacityCap(settings, config.CapacityCapBytes)
+
 	setReq := cwobjectv1.SetBucketSettingsRequest{
 		BucketName: data.Bucket.ValueString(),
-		Settings:   data.ToProtoObject(),
+		Settings:   settings,
 	}
 
 	setResp, err := b.client.SetBucketSettings(ctx, connect.NewRequest(&setReq))
@@ -345,6 +390,11 @@ func MustRenderBucketSettingsResource(_ context.Context, name string, settings *
 	// archive_after_last_access_days attribute
 	if !settings.ArchiveAfterLastAccessDays.IsNull() {
 		resourceBody.SetAttributeValue("archive_after_last_access_days", cty.NumberIntVal(int64(settings.ArchiveAfterLastAccessDays.ValueInt32())))
+	}
+
+	// capacity_cap_bytes attribute
+	if !settings.CapacityCapBytes.IsNull() {
+		resourceBody.SetAttributeValue("capacity_cap_bytes", cty.NumberIntVal(settings.CapacityCapBytes.ValueInt64()))
 	}
 
 	var buf bytes.Buffer
