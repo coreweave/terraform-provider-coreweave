@@ -20,6 +20,7 @@ var (
 	errArchiveDaysRequired     = errors.New("invalid archive settings: archive_after_last_access_days is required when archive is enabled")
 	errArchiveDaysBelowMinimum = errors.New("invalid archive settings: archive_after_last_access_days must be >= 60")
 	errNotFound                = errors.New("not found")
+	errCapNotEntitled          = errors.New("organization is not entitled to feature(s): BucketCapacityCap")
 )
 
 // fakeCWObject is an in-process stand-in for a CWObject service, covering
@@ -32,6 +33,10 @@ type fakeCWObject struct {
 
 	archiveEntitled bool
 	archiveMinDays  int32
+
+	// denyCapacityCap makes a cap-setting request fail with a permission error,
+	// modeling an org not entitled to the capacity-cap feature.
+	denyCapacityCap bool
 
 	// buckets holds the persisted settings, keyed by bucket name.
 	buckets map[string]*fakeBucketSettings
@@ -84,11 +89,11 @@ func (f *fakeCWObject) setRequestSettings() []*cwobjectv1.CWObjectBucketSettings
 // storedSettings returns the persisted settings for a bucket, unsanitized, so
 // tests can assert on what the service actually kept rather than on what it was
 // willing to disclose.
-func (f *fakeCWObject) storedSettings(bucketName string) *fakeBucketSettings {
+func (f *fakeCWObject) storedSettings() *fakeBucketSettings {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
-	stored, ok := f.buckets[bucketName]
+	stored, ok := f.buckets[testBucketName]
 	if !ok {
 		return nil
 	}
@@ -96,6 +101,14 @@ func (f *fakeCWObject) storedSettings(bucketName string) *fakeBucketSettings {
 	clone := *stored
 
 	return &clone
+}
+
+func (f *fakeCWObject) setStoredCapacityCap(capacityCapBytes uint64) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	value := capacityCapBytes
+	f.buckets[testBucketName].capacityCapBytes = &value
 }
 
 func hasArchiveFields(settings *cwobjectv1.CWObjectBucketSettings) bool {
@@ -159,6 +172,10 @@ func (f *fakeCWObject) SetBucketSettings(
 		return nil, connect.NewError(connect.CodePermissionDenied, errFeatureNotEntitled)
 	}
 
+	if settings.HasCapacityCapBytes() && f.denyCapacityCap {
+		return nil, connect.NewError(connect.CodePermissionDenied, errCapNotEntitled)
+	}
+
 	if hasArchiveFields(settings) {
 		if err := f.validateArchiveSettings(settings); err != nil {
 			return nil, err
@@ -198,10 +215,13 @@ func (f *fakeCWObject) persist(stored *fakeBucketSettings, settings *cwobjectv1.
 		stored.auditLoggingEnabled = &value
 	}
 
-	// Persist a set cap (0 valid); before the archive switch, which returns early.
-	if settings.HasCapacityCapBytes() {
+	// Persist a set cap (0 valid) or a clear, before the archive switch's early return.
+	switch {
+	case settings.HasCapacityCapBytes():
 		value := settings.GetCapacityCapBytes()
 		stored.capacityCapBytes = &value
+	case settings.HasClearCapacityCap():
+		stored.capacityCapBytes = nil
 	}
 
 	enabled := settings.GetArchiveEnabled()

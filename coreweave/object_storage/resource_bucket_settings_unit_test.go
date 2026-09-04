@@ -424,7 +424,7 @@ func TestBucketSettingsEntitledOrgRoundTrip(t *testing.T) {
 	})
 	requireNoDiagErrors(t, diags, "create")
 
-	stored := h.fake.storedSettings(testBucketName)
+	stored := h.fake.storedSettings()
 	require.NotNil(t, stored.archiveEnabled)
 	assert.True(t, *stored.archiveEnabled)
 	require.NotNil(t, stored.archiveAfterLastAccessDays)
@@ -455,7 +455,7 @@ func TestBucketSettingsDisablingArchiveDiscardsRetention(t *testing.T) {
 	}, state)
 	requireNoDiagErrors(t, diags, "update disabling archive")
 
-	stored := h.fake.storedSettings(testBucketName)
+	stored := h.fake.storedSettings()
 	require.NotNil(t, stored.archiveEnabled)
 	assert.False(t, *stored.archiveEnabled)
 	assert.Nil(t, stored.archiveAfterLastAccessDays,
@@ -650,7 +650,7 @@ func TestBucketSettingsCapacityCapRoundTrip(t *testing.T) {
 			applied, diags := h.create(ctx, config)
 			requireNoDiagErrors(t, diags, "create")
 
-			stored := h.fake.storedSettings(testBucketName)
+			stored := h.fake.storedSettings()
 			require.NotNil(t, stored.capacityCapBytes, "cap must be persisted server-side")
 			assert.Equal(t, uint64(tc.cap), *stored.capacityCapBytes)
 
@@ -662,6 +662,32 @@ func TestBucketSettingsCapacityCapRoundTrip(t *testing.T) {
 				"plan after apply must be empty\n refreshed: %s\n planned:   %s", refreshed, replanned)
 		})
 	}
+}
+
+func TestBucketSettingsCapacityCapExplicitUpdate(t *testing.T) {
+	ctx := t.Context()
+	h := newBucketSettingsHarness(ctx, t, true)
+
+	state, diags := h.create(ctx, bucketSettingsConfig{
+		bucket:           testBucketName,
+		capacityCapBytes: int64Ptr(1024),
+	})
+	requireNoDiagErrors(t, diags, "create with cap")
+
+	_, diags = h.apply(ctx, bucketSettingsConfig{
+		bucket:           testBucketName,
+		capacityCapBytes: int64Ptr(2048),
+	}, state)
+	requireNoDiagErrors(t, diags, "update cap")
+
+	requests := h.fake.setRequestSettings()
+	require.NotEmpty(t, requests)
+	require.True(t, requests[len(requests)-1].HasCapacityCapBytes())
+	assert.Equal(t, uint64(2048), requests[len(requests)-1].GetCapacityCapBytes())
+
+	stored := h.fake.storedSettings()
+	require.NotNil(t, stored.capacityCapBytes)
+	assert.Equal(t, uint64(2048), *stored.capacityCapBytes)
 }
 
 // TestBucketSettingsCapacityCapConvergesAfterRemovingFromConfig: once set, dropping
@@ -682,7 +708,7 @@ func TestBucketSettingsCapacityCapConvergesAfterRemovingFromConfig(t *testing.T)
 	state, diags = h.apply(ctx, unmanaged, state)
 	requireNoDiagErrors(t, diags, "remove cap from config")
 
-	stored := h.fake.storedSettings(testBucketName)
+	stored := h.fake.storedSettings()
 	require.NotNil(t, stored.capacityCapBytes, "dropping the attribute must not clear the cap")
 	assert.Equal(t, uint64(1024), *stored.capacityCapBytes)
 
@@ -691,4 +717,114 @@ func TestBucketSettingsCapacityCapConvergesAfterRemovingFromConfig(t *testing.T)
 	requireNoDiagErrors(t, diags, "re-plan")
 	assert.True(t, replanned.Equal(refreshed),
 		"plan must be empty after cap dropped from config\n refreshed: %s\n planned: %s", refreshed, replanned)
+}
+
+// TestBucketSettingsCapacityCapWithoutEntitlementIsRejected records that the
+// provider adds no client-side gate: an API permission error surfaces as a
+// diagnostic, exactly as the archive path does.
+func TestBucketSettingsCapacityCapWithoutEntitlementIsRejected(t *testing.T) {
+	ctx := t.Context()
+	h := newBucketSettingsHarness(ctx, t, true)
+	h.fake.denyCapacityCap = true
+
+	_, diags := h.create(ctx, bucketSettingsConfig{
+		bucket:           testBucketName,
+		capacityCapBytes: int64Ptr(1024),
+	})
+
+	require.True(t, diagsHaveErrors(diags), "setting a cap without entitlement must fail")
+	assert.Contains(t, diagText(diags), "BucketCapacityCap")
+}
+
+// TestBucketSettingsOmittedCapacityCapIsNotResent verifies the wire-level no-op:
+// Optional+Computed preserves a remotely observed cap in the plan, so an
+// unrelated update must consult configuration before writing.
+func TestBucketSettingsOmittedCapacityCapIsNotResent(t *testing.T) {
+	ctx := t.Context()
+	h := newBucketSettingsHarness(ctx, t, true)
+
+	state, diags := h.create(ctx, bucketSettingsConfig{
+		bucket:              testBucketName,
+		auditLoggingEnabled: boolPtr(false),
+	})
+	requireNoDiagErrors(t, diags, "create without cap")
+
+	// Simulate a cap created outside Terraform, then let refresh observe it.
+	h.fake.setStoredCapacityCap(2048)
+	state = h.refresh(ctx, state)
+
+	_, diags = h.apply(ctx, bucketSettingsConfig{
+		bucket:              testBucketName,
+		auditLoggingEnabled: boolPtr(true),
+	}, state)
+	requireNoDiagErrors(t, diags, "update audit logging with cap omitted")
+
+	requests := h.fake.setRequestSettings()
+	require.NotEmpty(t, requests)
+	assert.False(t, requests[len(requests)-1].HasCapacityCapUpdate(),
+		"an omitted cap must not produce a cap mutation during an unrelated update")
+
+	stored := h.fake.storedSettings()
+	require.NotNil(t, stored.capacityCapBytes)
+	assert.Equal(t, uint64(2048), *stored.capacityCapBytes)
+}
+
+// TestBucketSettingsCapacityCapClearedOnDestroy verifies that deleting the
+// settings resource clears a cap reported in state. With no cap, destroy omits
+// the instruction so it does not require the capacity-cap entitlement.
+func TestBucketSettingsCapacityCapClearedOnDestroy(t *testing.T) {
+	t.Run("reported cap is cleared on destroy", func(t *testing.T) {
+		ctx := t.Context()
+		h := newBucketSettingsHarness(ctx, t, true)
+
+		state, diags := h.create(ctx, bucketSettingsConfig{
+			bucket:           testBucketName,
+			capacityCapBytes: int64Ptr(1024),
+		})
+		requireNoDiagErrors(t, diags, "create with cap")
+
+		diags = h.destroy(ctx, state)
+		requireNoDiagErrors(t, diags, "destroy")
+
+		stored := h.fake.storedSettings()
+		require.NotNil(t, stored)
+		assert.Nil(t, stored.capacityCapBytes, "destroy must clear a cap it set")
+	})
+
+	t.Run("externally configured cap observed in state is cleared on destroy", func(t *testing.T) {
+		ctx := t.Context()
+		h := newBucketSettingsHarness(ctx, t, true)
+
+		state, diags := h.create(ctx, bucketSettingsConfig{bucket: testBucketName})
+		requireNoDiagErrors(t, diags, "create without cap")
+
+		h.fake.setStoredCapacityCap(2048)
+		state = h.refresh(ctx, state)
+
+		diags = h.destroy(ctx, state)
+		requireNoDiagErrors(t, diags, "destroy")
+
+		stored := h.fake.storedSettings()
+		require.NotNil(t, stored)
+		assert.Nil(t, stored.capacityCapBytes, "destroy must clear a cap reported in state")
+	})
+
+	t.Run("no cap sends no cap instruction on destroy", func(t *testing.T) {
+		ctx := t.Context()
+		h := newBucketSettingsHarness(ctx, t, true)
+
+		state, diags := h.create(ctx, bucketSettingsConfig{
+			bucket:              testBucketName,
+			auditLoggingEnabled: boolPtr(true),
+		})
+		requireNoDiagErrors(t, diags, "create without cap")
+
+		diags = h.destroy(ctx, state)
+		requireNoDiagErrors(t, diags, "destroy")
+
+		for _, s := range h.fake.setRequestSettings() {
+			assert.False(t, s.HasCapacityCapUpdate(),
+				"a resource with no cap must not send a cap instruction")
+		}
+	})
 }
