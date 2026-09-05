@@ -16,8 +16,8 @@ buf.build/gen/go/coreweave/networking/connectrpc/go v1.19.1-20260121155637-a637e
 buf.build/gen/go/coreweave/networking/connectrpc/go v1.19.1-20260121155637-a637e7777165.2/go.mod h1:Ri2fOqnsxnYU4CdWVP0GNqzSYq7L+Zw1AV/ebdbNITs=
 buf.build/gen/go/coreweave/networking/protocolbuffers/go v1.36.11-20260121155637-a637e7777165.1 h1:HgaTPkFCzegYtbVOir7vdty10GHoFxMceoscwcH0x7s=
 buf.build/gen/go/coreweave/networking/protocolbuffers/go v1.36.11-20260121155637-a637e7777165.1/go.mod h1:dv5LhRYj3xPrMzvA33dyS2aWx4atitDIeGOz+kPGKwA=
-buf.build/gen/go/coreweave/workload-federation/connectrpc/go v1.20.0-20260825153113-5bfae6057a98.1 h1:OdJCAsS8bDZV5ZSNLWEzV/5hU9FGagKbLw+0gjFR5Lw=
-buf.build/gen/go/coreweave/workload-federation/connectrpc/go v1.20.0-20260825153113-5bfae6057a98.1/go.mod h1:t37qa/EvhLfiQhrIqkJ+iM9UVDXoRXXsl3LoUROsvcc=
+buf.build/gen/go/coreweave/workload-federation/connectrpc/go v1.20.0-20260904205834-65e6e2ac0e42.1 h1:2JbafpfrIiX6YNrVpdGOm1b7H6RdumSi5iKKWD2c/Aw=
+buf.build/gen/go/coreweave/workload-federation/connectrpc/go v1.20.0-20260904205834-65e6e2ac0e42.1/go.mod h1:QANgRYMJeFC1yX9CcBRwSp2vc+Rr/LDJWnyYUeI53JI=
 buf.build/gen/go/coreweave/workload-federation/protocolbuffers/go v1.36.12-20260825153113-5bfae6057a98.1 h1:3NLSkOigc0Gs8SbdTzOHNFsuSdhxgQcAxb0ufPU0srM=
 buf.build/gen/go/coreweave/workload-federation/protocolbuffers/go v1.36.12-20260825153113-5bfae6057a98.1/go.mod h1:0tfgmTdtC5FHBaMGAhPUMImL/nqImiyBwcq86Rjv9nk=
 buf.build/gen/go/grpc-ecosystem/grpc-gateway/protocolbuffers/go v1.36.11-20241220201140-4c5ba75caaf8.1 h1:cpnZuwF24ackV1HgofmoFNsdw9z4/066sujIFtxYg5g=
