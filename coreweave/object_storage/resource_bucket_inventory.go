@@ -108,6 +108,9 @@ func (r *BucketInventoryResource) Metadata(ctx context.Context, req resource.Met
 }
 
 func (r *BucketInventoryResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
+	// CoreWeave supports LastAccessedDate, which is not in the AWS SDK enum.
+	optionalFields := []string{"Size", "LastModifiedDate", "LastAccessedDate", "StorageClass", "ETag", "IsMultipartUploaded", "EncryptionStatus", "ChecksumAlgorithm"}
+
 	resp.Schema = schema.Schema{
 		MarkdownDescription: "Manages a CoreWeave AI Object Storage bucket inventory configuration. The provider obtains temporary S3 credentials using its configured authentication; no separately managed access-key resource is required. The authenticated identity must have permission to manage inventory configurations on the source bucket and policies on the destination bucket. [Learn more about inventory reporting](https://docs.coreweave.com/products/storage/object-storage/buckets/inventory-reporting/configure).",
 		Attributes: map[string]schema.Attribute{
@@ -139,10 +142,10 @@ func (r *BucketInventoryResource) Schema(ctx context.Context, req resource.Schem
 			"optional_fields": schema.SetAttribute{
 				Optional:            true,
 				ElementType:         types.StringType,
-				MarkdownDescription: "Additional report fields: `Size`, `LastModifiedDate`, `LastAccessedDate`, `StorageClass`, `ETag`, `IsMultipartUploaded`, `EncryptionStatus`, or `ChecksumAlgorithm`. Omit to include no additional fields; an empty set is invalid.",
+				MarkdownDescription: fmt.Sprintf("Additional report fields: `%s`. Omit to include no additional fields; an empty set is invalid.", strings.Join(optionalFields, "`, `")),
 				Validators: []validator.Set{
 					setvalidator.SizeAtLeast(1),
-					setvalidator.ValueStringsAre(stringvalidator.OneOf("Size", "LastModifiedDate", "LastAccessedDate", "StorageClass", "ETag", "IsMultipartUploaded", "EncryptionStatus", "ChecksumAlgorithm")),
+					setvalidator.ValueStringsAre(stringvalidator.OneOf(optionalFields...)),
 				},
 			},
 		},

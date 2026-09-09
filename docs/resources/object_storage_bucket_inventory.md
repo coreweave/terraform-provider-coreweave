@@ -85,7 +85,7 @@ resource "coreweave_object_storage_bucket_inventory" "default" {
 - `destination` (Block, Optional) Where the inventory report is written. May be the same bucket as the source. The destination policy must grant the inventory service `s3:PutObject` and `s3:AbortMultipartUpload` on report objects. Use `depends_on` to apply that policy before the inventory configuration. (see [below for nested schema](#nestedblock--destination))
 - `enabled` (Boolean) Whether the inventory configuration is enabled. Defaults to `true`.
 - `filter` (Block, Optional) Limits the inventory report to objects matching a prefix. (see [below for nested schema](#nestedblock--filter))
-- `optional_fields` (Set of String) Additional report fields: `Size`, `LastModifiedDate`, `LastAccessedDate`, `StorageClass`, `ETag`, `IsMultipartUploaded`, `EncryptionStatus`, or `ChecksumAlgorithm`. Omit to include no additional fields; an empty set is invalid.
+- `optional_fields` (Set of String) Additional report fields: `Size`, `LastModifiedDate`, `LastAccessedDate`, `StorageClass`, `ETag`, `IsMultipartUploaded`, `EncryptionStatus`, `ChecksumAlgorithm`. Omit to include no additional fields; an empty set is invalid.
 - `schedule` (Block, Optional) Schedule for generating the inventory report. (see [below for nested schema](#nestedblock--schedule))
 
 <a id="nestedblock--destination"></a>
