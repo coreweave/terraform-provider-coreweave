@@ -236,6 +236,7 @@ func (p *CoreweaveProvider) Resources(ctx context.Context) []func() resource.Res
 		sandbox.NewManagedRunnerResource,
 		networking.NewVpcResource,
 		objectstorage.NewBucketResource,
+		objectstorage.NewAccessKeyResource,
 		objectstorage.NewOrganizationAccessPolicyResource,
 		objectstorage.NewBucketLifecycleResource,
 		objectstorage.NewBucketInventoryResource,
