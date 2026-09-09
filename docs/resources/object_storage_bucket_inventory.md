@@ -13,7 +13,7 @@ Manages a CoreWeave AI Object Storage bucket inventory configuration. The provid
 ## Example Usage
 
 ```terraform
-# Choose globally unique bucket names and configure CoreWeave provider authentication.
+# Replace the example bucket names with globally unique names and configure CoreWeave provider authentication.
 resource "coreweave_object_storage_bucket" "source" {
   name = "inventory-source-example"
   zone = "US-EAST-04A"
@@ -82,18 +82,18 @@ resource "coreweave_object_storage_bucket_inventory" "default" {
 
 ### Optional
 
-- `destination` (Block, Optional) Where the inventory report is written. May be the same bucket as the source. The destination policy must grant the inventory service `s3:PutObject` and `s3:AbortMultipartUpload` on report objects. Use `depends_on` to apply that policy before the inventory configuration. (see [below for nested schema](#nestedblock--destination))
+- `destination` (Block, Optional) Required. Where the inventory report is written. May be the same bucket as the source. The destination policy must grant the inventory service `s3:PutObject` and `s3:AbortMultipartUpload` on report objects. Use `depends_on` to apply that policy before the inventory configuration. (see [below for nested schema](#nestedblock--destination))
 - `enabled` (Boolean) Whether the inventory configuration is enabled. Defaults to `true`.
 - `filter` (Block, Optional) Limits the inventory report to objects matching a prefix. (see [below for nested schema](#nestedblock--filter))
 - `optional_fields` (Set of String) Additional report fields: `Size`, `LastModifiedDate`, `LastAccessedDate`, `StorageClass`, `ETag`, `IsMultipartUploaded`, `EncryptionStatus`, `ChecksumAlgorithm`. Omit to include no additional fields; an empty set is invalid.
-- `schedule` (Block, Optional) Schedule for generating the inventory report. (see [below for nested schema](#nestedblock--schedule))
+- `schedule` (Block, Optional) Required. Schedule for generating the inventory report. (see [below for nested schema](#nestedblock--schedule))
 
 <a id="nestedblock--destination"></a>
 ### Nested Schema for `destination`
 
 Optional:
 
-- `bucket` (Block, Optional) Destination bucket for the report (may equal the source bucket). (see [below for nested schema](#nestedblock--destination--bucket))
+- `bucket` (Block, Optional) Required. Destination bucket for the report (may equal the source bucket). (see [below for nested schema](#nestedblock--destination--bucket))
 
 <a id="nestedblock--destination--bucket"></a>
 ### Nested Schema for `destination.bucket`

@@ -160,7 +160,7 @@ func (r *BucketInventoryResource) Schema(ctx context.Context, req resource.Schem
 				},
 			},
 			"schedule": schema.SingleNestedBlock{
-				MarkdownDescription: "Schedule for generating the inventory report.",
+				MarkdownDescription: "Required. Schedule for generating the inventory report.",
 				Attributes: map[string]schema.Attribute{
 					"frequency": schema.StringAttribute{
 						Required:            true,
@@ -171,10 +171,10 @@ func (r *BucketInventoryResource) Schema(ctx context.Context, req resource.Schem
 				Validators: []validator.Object{objectvalidator.IsRequired()},
 			},
 			"destination": schema.SingleNestedBlock{
-				MarkdownDescription: "Where the inventory report is written. May be the same bucket as the source. The destination policy must grant the inventory service `s3:PutObject` and `s3:AbortMultipartUpload` on report objects. Use `depends_on` to apply that policy before the inventory configuration.",
+				MarkdownDescription: "Required. Where the inventory report is written. May be the same bucket as the source. The destination policy must grant the inventory service `s3:PutObject` and `s3:AbortMultipartUpload` on report objects. Use `depends_on` to apply that policy before the inventory configuration.",
 				Blocks: map[string]schema.Block{
 					"bucket": schema.SingleNestedBlock{
-						MarkdownDescription: "Destination bucket for the report (may equal the source bucket).",
+						MarkdownDescription: "Required. Destination bucket for the report (may equal the source bucket).",
 						Attributes: map[string]schema.Attribute{
 							"bucket_arn": schema.StringAttribute{
 								Required:            true,

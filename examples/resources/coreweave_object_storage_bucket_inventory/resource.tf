@@ -1,4 +1,4 @@
-# Choose globally unique bucket names and configure CoreWeave provider authentication.
+# Replace the example bucket names with globally unique names and configure CoreWeave provider authentication.
 resource "coreweave_object_storage_bucket" "source" {
   name = "inventory-source-example"
   zone = "US-EAST-04A"
