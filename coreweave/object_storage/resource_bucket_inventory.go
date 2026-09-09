@@ -109,7 +109,7 @@ func (r *BucketInventoryResource) Metadata(ctx context.Context, req resource.Met
 
 func (r *BucketInventoryResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		MarkdownDescription: "Manages a Coreweave AI Object Storage bucket inventory configuration. [Learn more about inventory reporting](https://docs.coreweave.com/products/storage/object-storage)",
+		MarkdownDescription: "Manages a CoreWeave AI Object Storage bucket inventory configuration. The provider obtains temporary S3 credentials using its configured authentication; no separately managed access-key resource is required. The authenticated identity must have permission to manage inventory configurations on the source bucket and policies on the destination bucket. [Learn more about inventory reporting](https://docs.coreweave.com/products/storage/object-storage/buckets/inventory-reporting/configure).",
 		Attributes: map[string]schema.Attribute{
 			"bucket": schema.StringAttribute{
 				Required:            true,
@@ -131,7 +131,7 @@ func (r *BucketInventoryResource) Schema(ctx context.Context, req resource.Schem
 			},
 			"included_object_versions": schema.StringAttribute{
 				Required:            true,
-				MarkdownDescription: "Specifies which object versions are included in the inventory results. Valid values are `All` and `Current`.",
+				MarkdownDescription: "Object versions to include: `All` includes all versions; `Current` includes only current versions.",
 				// Accepted values are sourced from the AWS SDK enum rather than
 				// hardcoded literals; see s3types.InventoryIncludedObjectVersions.
 				Validators: []validator.String{stringvalidator.OneOf(enumStrings(s3types.InventoryIncludedObjectVersions("").Values())...)},
@@ -139,7 +139,7 @@ func (r *BucketInventoryResource) Schema(ctx context.Context, req resource.Schem
 			"optional_fields": schema.SetAttribute{
 				Optional:            true,
 				ElementType:         types.StringType,
-				MarkdownDescription: "List of optional fields to include in the inventory results",
+				MarkdownDescription: "Additional report fields: `Size`, `LastModifiedDate`, `LastAccessedDate`, `StorageClass`, `ETag`, `IsMultipartUploaded`, `EncryptionStatus`, or `ChecksumAlgorithm`. Omit to include no additional fields; an empty set is invalid.",
 				Validators: []validator.Set{
 					setvalidator.SizeAtLeast(1),
 					setvalidator.ValueStringsAre(stringvalidator.OneOf("Size", "LastModifiedDate", "LastAccessedDate", "StorageClass", "ETag", "IsMultipartUploaded", "EncryptionStatus", "ChecksumAlgorithm")),
@@ -168,7 +168,7 @@ func (r *BucketInventoryResource) Schema(ctx context.Context, req resource.Schem
 				Validators: []validator.Object{objectvalidator.IsRequired()},
 			},
 			"destination": schema.SingleNestedBlock{
-				MarkdownDescription: "Where the inventory report is written. May be the same bucket as the source.",
+				MarkdownDescription: "Where the inventory report is written. May be the same bucket as the source. The destination policy must grant the inventory service `s3:PutObject` and `s3:AbortMultipartUpload` on report objects. Use `depends_on` to apply that policy before the inventory configuration.",
 				Blocks: map[string]schema.Block{
 					"bucket": schema.SingleNestedBlock{
 						MarkdownDescription: "Destination bucket for the report (may equal the source bucket).",

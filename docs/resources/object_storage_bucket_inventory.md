@@ -3,16 +3,17 @@
 page_title: "coreweave_object_storage_bucket_inventory Resource - coreweave"
 subcategory: ""
 description: |-
-  Manages a Coreweave AI Object Storage bucket inventory configuration. Learn more about inventory reporting https://docs.coreweave.com/products/storage/object-storage
+  Manages a CoreWeave AI Object Storage bucket inventory configuration. The provider obtains temporary S3 credentials using its configured authentication; no separately managed access-key resource is required. The authenticated identity must have permission to manage inventory configurations on the source bucket and policies on the destination bucket. Learn more about inventory reporting https://docs.coreweave.com/products/storage/object-storage/buckets/inventory-reporting/configure.
 ---
 
 # coreweave_object_storage_bucket_inventory (Resource)
 
-Manages a Coreweave AI Object Storage bucket inventory configuration. [Learn more about inventory reporting](https://docs.coreweave.com/products/storage/object-storage)
+Manages a CoreWeave AI Object Storage bucket inventory configuration. The provider obtains temporary S3 credentials using its configured authentication; no separately managed access-key resource is required. The authenticated identity must have permission to manage inventory configurations on the source bucket and policies on the destination bucket. [Learn more about inventory reporting](https://docs.coreweave.com/products/storage/object-storage/buckets/inventory-reporting/configure).
 
 ## Example Usage
 
 ```terraform
+# Choose globally unique bucket names and configure CoreWeave provider authentication.
 resource "coreweave_object_storage_bucket" "source" {
   name = "inventory-source-example"
   zone = "US-EAST-04A"
@@ -23,14 +24,33 @@ resource "coreweave_object_storage_bucket" "destination" {
   zone = "US-EAST-04A"
 }
 
+resource "coreweave_object_storage_bucket_policy" "inventory_destination" {
+  bucket = coreweave_object_storage_bucket.destination.name
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid    = "AllowInventoryReports"
+      Effect = "Allow"
+      Principal = {
+        CW = "arn:aws:iam::static:role/static/inventory"
+      }
+      Action   = ["s3:PutObject", "s3:AbortMultipartUpload"]
+      Resource = ["arn:aws:s3:::${coreweave_object_storage_bucket.destination.name}/inventory-reports/*"]
+    }]
+  })
+}
+
 resource "coreweave_object_storage_bucket_inventory" "default" {
+  # The service validates destination access when configuring inventory.
+  depends_on = [coreweave_object_storage_bucket_policy.inventory_destination]
+
   bucket                   = coreweave_object_storage_bucket.source.name
   name                     = "daily-inventory"
   enabled                  = true
   included_object_versions = "All"
 
   # Optional: omit entirely to include no extra fields. An empty set is invalid.
-  optional_fields = ["Size", "LastModifiedDate", "StorageClass", "ETag"]
+  optional_fields = ["Size", "LastModifiedDate", "LastAccessedDate", "StorageClass", "ETag"]
 
   # Optional: limit the report to objects under a prefix.
   filter {
@@ -57,15 +77,15 @@ resource "coreweave_object_storage_bucket_inventory" "default" {
 ### Required
 
 - `bucket` (String) Name of source bucket to which the inventory configuration applies
-- `included_object_versions` (String) Specifies which object versions are included in the inventory results. Valid values are `All` and `Current`.
+- `included_object_versions` (String) Object versions to include: `All` includes all versions; `Current` includes only current versions.
 - `name` (String) Name of the inventory configuration. Must be unique within the bucket.
 
 ### Optional
 
-- `destination` (Block, Optional) Where the inventory report is written. May be the same bucket as the source. (see [below for nested schema](#nestedblock--destination))
+- `destination` (Block, Optional) Where the inventory report is written. May be the same bucket as the source. The destination policy must grant the inventory service `s3:PutObject` and `s3:AbortMultipartUpload` on report objects. Use `depends_on` to apply that policy before the inventory configuration. (see [below for nested schema](#nestedblock--destination))
 - `enabled` (Boolean) Whether the inventory configuration is enabled. Defaults to `true`.
 - `filter` (Block, Optional) Limits the inventory report to objects matching a prefix. (see [below for nested schema](#nestedblock--filter))
-- `optional_fields` (Set of String) List of optional fields to include in the inventory results
+- `optional_fields` (Set of String) Additional report fields: `Size`, `LastModifiedDate`, `LastAccessedDate`, `StorageClass`, `ETag`, `IsMultipartUploaded`, `EncryptionStatus`, or `ChecksumAlgorithm`. Omit to include no additional fields; an empty set is invalid.
 - `schedule` (Block, Optional) Schedule for generating the inventory report. (see [below for nested schema](#nestedblock--schedule))
 
 <a id="nestedblock--destination"></a>
