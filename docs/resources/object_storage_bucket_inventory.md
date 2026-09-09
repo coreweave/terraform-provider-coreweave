@@ -13,6 +13,13 @@ Manages a CoreWeave AI Object Storage bucket inventory configuration. The provid
 ## Example Usage
 
 ```terraform
+# Requires CoreWeave provider v0.22.0 or later for caller_identity.
+data "coreweave_caller_identity" "current" {}
+
+locals {
+  caller_principal = "arn:aws:iam::${data.coreweave_caller_identity.current.organization_id}:coreweave/${data.coreweave_caller_identity.current.principal_id}"
+}
+
 # Replace the example bucket names with globally unique names and configure CoreWeave provider authentication.
 resource "coreweave_object_storage_bucket" "source" {
   name = "inventory-source-example"
@@ -24,19 +31,49 @@ resource "coreweave_object_storage_bucket" "destination" {
   zone = "US-EAST-04A"
 }
 
+# This resource replaces the entire bucket policy; retain any other required grants.
+# Unmatched requests are implicitly denied even if an organization policy allows them.
+# Add explicit bucket grants for other report readers. PutBucketPolicy itself uses only organization permissions.
 resource "coreweave_object_storage_bucket_policy" "inventory_destination" {
   bucket = coreweave_object_storage_bucket.destination.name
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [{
-      Sid    = "AllowInventoryReports"
-      Effect = "Allow"
-      Principal = {
-        CW = "arn:aws:iam::static:role/static/inventory"
-      }
-      Action   = ["s3:PutObject", "s3:AbortMultipartUpload"]
-      Resource = ["arn:aws:s3:::${coreweave_object_storage_bucket.destination.name}/inventory-reports/*"]
-    }]
+    Statement = [
+      {
+        Sid    = "AllowInventoryReports"
+        Effect = "Allow"
+        Principal = {
+          CW = "arn:aws:iam::static:role/static/inventory"
+        }
+        Action   = ["s3:PutObject", "s3:AbortMultipartUpload"]
+        Resource = ["arn:aws:s3:::${coreweave_object_storage_bucket.destination.name}/inventory-reports/*"]
+      },
+      {
+        Sid    = "AllowCallerManageDestination"
+        Effect = "Allow"
+        Principal = {
+          CW = local.caller_principal
+        }
+        Action = [
+          "s3:ListBucket",
+          "s3:GetBucketPolicy",
+          "s3:DeleteBucketPolicy",
+          "s3:GetBucketLocation",
+          "s3:GetBucketTagging",
+          "s3:DeleteBucket",
+        ]
+        Resource = ["arn:aws:s3:::${coreweave_object_storage_bucket.destination.name}"]
+      },
+      {
+        Sid    = "AllowCallerManageReports"
+        Effect = "Allow"
+        Principal = {
+          CW = local.caller_principal
+        }
+        Action   = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"]
+        Resource = ["arn:aws:s3:::${coreweave_object_storage_bucket.destination.name}/inventory-reports/*"]
+      },
+    ]
   })
 }
 
@@ -82,7 +119,7 @@ resource "coreweave_object_storage_bucket_inventory" "default" {
 
 ### Optional
 
-- `destination` (Block, Optional) Required. Where the inventory report is written. May be the same bucket as the source. The destination policy must grant the inventory service `s3:PutObject` and `s3:AbortMultipartUpload` on report objects. Use `depends_on` to apply that policy before the inventory configuration. (see [below for nested schema](#nestedblock--destination))
+- `destination` (Block, Optional) Required. Where the inventory report is written. May be the same bucket as the source. The destination policy must grant the inventory service `s3:PutObject` and `s3:AbortMultipartUpload` on report objects. Use `depends_on` to apply that policy before the inventory configuration. Bucket policies are evaluated after organization policies; requests without a matching bucket grant are implicitly denied even if an organization policy allows them. Include caller permissions for Terraform bucket reads and cleanup, and explicit grants for report readers. The policy resource replaces the entire existing bucket policy, so retain all required statements. `s3:PutBucketPolicy` itself evaluates organization permissions only. See [policy evaluation](https://docs.coreweave.com/products/storage/object-storage/auth-access/policies#policy-evaluation). (see [below for nested schema](#nestedblock--destination))
 - `enabled` (Boolean) Whether the inventory configuration is enabled. Defaults to `true`.
 - `filter` (Block, Optional) Limits the inventory report to objects matching a prefix. (see [below for nested schema](#nestedblock--filter))
 - `optional_fields` (Set of String) Additional report fields: `Size`, `LastModifiedDate`, `LastAccessedDate`, `StorageClass`, `ETag`, `IsMultipartUploaded`, `EncryptionStatus`, `ChecksumAlgorithm`. Omit to include no additional fields; an empty set is invalid.

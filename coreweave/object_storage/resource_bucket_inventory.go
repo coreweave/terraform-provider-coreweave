@@ -171,7 +171,7 @@ func (r *BucketInventoryResource) Schema(ctx context.Context, req resource.Schem
 				Validators: []validator.Object{objectvalidator.IsRequired()},
 			},
 			"destination": schema.SingleNestedBlock{
-				MarkdownDescription: "Required. Where the inventory report is written. May be the same bucket as the source. The destination policy must grant the inventory service `s3:PutObject` and `s3:AbortMultipartUpload` on report objects. Use `depends_on` to apply that policy before the inventory configuration.",
+				MarkdownDescription: "Required. Where the inventory report is written. May be the same bucket as the source. The destination policy must grant the inventory service `s3:PutObject` and `s3:AbortMultipartUpload` on report objects. Use `depends_on` to apply that policy before the inventory configuration. Bucket policies are evaluated after organization policies; requests without a matching bucket grant are implicitly denied even if an organization policy allows them. Include caller permissions for Terraform bucket reads and cleanup, and explicit grants for report readers. The policy resource replaces the entire existing bucket policy, so retain all required statements. `s3:PutBucketPolicy` itself evaluates organization permissions only. See [policy evaluation](https://docs.coreweave.com/products/storage/object-storage/auth-access/policies#policy-evaluation).",
 				Blocks: map[string]schema.Block{
 					"bucket": schema.SingleNestedBlock{
 						MarkdownDescription: "Required. Destination bucket for the report (may equal the source bucket).",
