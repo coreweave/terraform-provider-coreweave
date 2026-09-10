@@ -39,6 +39,7 @@ type accessKeyFake struct {
 	revocations                         []string
 	createError, readError, deleteError error
 	missingInfo                         bool
+	missingSecret                       bool
 }
 
 func newAccessKeyFake(t *testing.T) *accessKeyFake {
@@ -69,7 +70,11 @@ func (f *accessKeyFake) CreateAccessKeyFromJWT(_ context.Context, req *connect.R
 		expiry = timestamppb.New(time.Now().Add(time.Duration(req.Msg.DurationSeconds.Value) * time.Second))
 	}
 	f.keys[id] = &cwobjectv1.AccessKeyInfo{AccessKeyId: id, PrincipalName: "coreweave/caller", OrgId: "org-test", Status: "ACTIVE", Expiry: expiry, Attributes: maps.Clone(req.Msg.Attributes)}
-	return connect.NewResponse(&cwobjectv1.CreateAccessKeyFromJWTResponse{AccessKeyId: id, SecretKey: "creation-secret-" + id, PrincipalName: "coreweave/caller", Expiry: expiry, Attributes: maps.Clone(req.Msg.Attributes)}), nil
+	secret := "creation-secret-" + id
+	if f.missingSecret {
+		secret = ""
+	}
+	return connect.NewResponse(&cwobjectv1.CreateAccessKeyFromJWTResponse{AccessKeyId: id, SecretKey: secret, PrincipalName: "coreweave/caller", Expiry: expiry, Attributes: maps.Clone(req.Msg.Attributes)}), nil
 }
 func (f *accessKeyFake) GetAccessKeyInfo(_ context.Context, req *connect.Request[cwobjectv1.GetAccessKeyInfoRequest]) (*connect.Response[cwobjectv1.GetAccessKeyInfoResponse], error) {
 	f.mu.Lock()
@@ -332,6 +337,23 @@ func TestAccessKeyValidation(t *testing.T) {
 }
 
 func TestAccessKeyFailureStateAndRetry(t *testing.T) {
+	t.Run("missing secret remains null and key can be revoked", func(t *testing.T) {
+		h := newAccessKeyHarness(t)
+		h.fake.missingSecret = true
+		c := h.create(h.config(0, nil))
+		require.True(t, diagsHaveErrors(c.Diagnostics))
+		require.False(t, h.decode(c.NewState).IsNull())
+		fields := h.fields(c.NewState)
+		require.True(t, fields["id"].Equal(tftypes.NewValue(tftypes.String, "managed-1")))
+		require.True(t, fields["secret_key"].IsNull())
+		refreshed := h.read(c.NewState)
+		requireNoDiagErrors(t, refreshed.Diagnostics, "refresh")
+		require.True(t, h.fields(refreshed.NewState)["secret_key"].IsNull())
+		requireNoDiagErrors(t, h.destroy(refreshed.NewState).Diagnostics, "cleanup")
+		require.Equal(t, []string{"managed-1"}, h.fake.revocations)
+		require.Equal(t, "DELETED", h.fake.keys["managed-1"].Status)
+		require.Equal(t, "ACTIVE", h.fake.keys["unrelated"].Status)
+	})
 	t.Run("create sent once", func(t *testing.T) {
 		h := newAccessKeyHarness(t)
 		h.fake.createError = connect.NewError(connect.CodeUnavailable, errors.New("lost response"))

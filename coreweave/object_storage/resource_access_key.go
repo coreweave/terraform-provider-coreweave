@@ -129,7 +129,10 @@ func (r *AccessKeyResource) Create(ctx context.Context, req resource.CreateReque
 		return
 	}
 	data.ID = types.StringValue(created.Msg.AccessKeyId)
-	data.SecretKey = types.StringValue(created.Msg.SecretKey)
+	data.SecretKey = types.StringNull()
+	if created.Msg.SecretKey != "" {
+		data.SecretKey = types.StringValue(created.Msg.SecretKey)
+	}
 	data.PrincipalName = types.StringValue(created.Msg.PrincipalName)
 	data.Expiry = accessKeyExpiry(created.Msg.Expiry)
 	data.OrgID = types.StringNull()
