@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/netip"
+	"strings"
 
 	sandboxv1 "buf.build/gen/go/coreweave/sandbox/protocolbuffers/go/coreweave/sandbox/v1"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
@@ -50,6 +51,11 @@ func (r *ManagedRunnerResource) ValidateConfig(ctx context.Context, req resource
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
 	if resp.Diagnostics.HasError() {
 		return
+	}
+	// The v1 API returns lowercase zones. Terraform requires the returned state
+	// to match the configured value, so reject casing changes before creation.
+	if zone := data.Zone.ValueString(); !data.Zone.IsUnknown() && zone != strings.ToLower(zone) {
+		resp.Diagnostics.AddAttributeError(path.Root("zone"), "Invalid Runner Zone", "zone must be lowercase, for example us-east-04a. Use lower(...) when referencing a CKS cluster zone.")
 	}
 	if !data.Spec.IsNull() && !containsUnknown(data.Spec) {
 		spec := &sandboxv1.ManagedRunnerSpec{}

@@ -33,7 +33,8 @@ resource "coreweave_sandbox_managed_runner" "development" {
   runner_group_id = "engineering"
   display_name    = "Engineering development"
   cluster_id      = var.cluster_id
-  zone            = var.zone
+  # The Sandbox API returns lowercase zones; normalize values supplied by CKS.
+  zone = lower(var.zone)
 
   spec = {
     release_channel = "RELEASE_CHANNEL_STABLE"
@@ -88,7 +89,7 @@ resource "coreweave_sandbox_managed_runner" "development" {
 - `cluster_id` (String) CKS cluster UUID. Changing it replaces the runner.
 - `policy` (Attributes) Policy governing every sandbox on this runner. Required even for the explicit empty posture `policy = {}`. Policy is updated with an etag to detect concurrent changes. (see [below for nested schema](#nestedatt--policy))
 - `runner_id` (String) Operator-assigned runner identifier, unique within the authenticated organization. Changing it replaces the runner.
-- `zone` (String) Geographic zone of the runner. Changing it replaces the runner.
+- `zone` (String) Lowercase geographic zone of the runner, for example `us-east-04a`. Use `lower(coreweave_cks_cluster.example.zone)` when referencing a CKS cluster zone. Changing it replaces the runner.
 
 ### Optional
 

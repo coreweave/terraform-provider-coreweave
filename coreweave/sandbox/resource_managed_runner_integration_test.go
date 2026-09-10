@@ -60,6 +60,7 @@ func (s *runnerServer) CreateManagedRunner(_ context.Context, req *connect.Reque
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("expected a policy and no legacy configuration"))
 	}
 	s.runner = proto.Clone(req.Msg.ManagedRunner).(*sandboxv1.ManagedRunner)
+	s.runner.Identity.Zone = strings.ToLower(s.runner.Identity.Zone)
 	if s.runner.Identity.RunnerGroupId == "" {
 		s.runner.Identity.RunnerGroupId = "default"
 	}
@@ -220,6 +221,7 @@ func TestManagedRunnerLifecycle(t *testing.T) {
 		Steps: []tfresource.TestStep{
 			{Config: fullRunnerConfig, Check: tfresource.ComposeAggregateTestCheckFunc(
 				tfresource.TestCheckResourceAttr(runnerAddress, "id", "test-runner"),
+				tfresource.TestCheckResourceAttr(runnerAddress, "zone", "us-east-04a"),
 				tfresource.TestCheckResourceAttr(runnerAddress, "policy.constraints.resources.max_gpu_count", "0"),
 				tfresource.TestCheckResourceAttr(runnerAddress, "spec.volumes.enabled", "true"),
 				tfresource.TestCheckResourceAttr(runnerAddress, "spec.data_plane.load_balancer.hostname", "runner.example.com"),
@@ -303,6 +305,66 @@ func TestManagedRunnerEmptyGroupRejected(t *testing.T) {
 	service.mu.Lock()
 	defer service.mu.Unlock()
 	assert.Zero(t, service.creates)
+}
+
+func TestManagedRunnerNoncanonicalZoneRejected(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		expression string
+		extra      string
+	}{
+		{name: "uppercase", expression: `"US-EAST-04A"`},
+		{name: "mixed case", expression: `"Us-East-04a"`},
+		{
+			name:       "unknown at plan",
+			expression: `terraform_data.cluster_zone.output`,
+			extra:      `resource "terraform_data" "cluster_zone" { input = "US-EAST-04A" }`,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			service := startRunnerServer(t)
+			config := strings.Replace(minimalConfig(`{}`, ""), `"us-east-04a"`, tc.expression, 1) + tc.extra
+			tfresource.UnitTest(t, tfresource.TestCase{
+				ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+				CheckDestroy:             service.checkDestroyed,
+				Steps: []tfresource.TestStep{{
+					Config:      config,
+					ExpectError: regexp.MustCompile("zone must be lowercase"),
+				}},
+			})
+			service.mu.Lock()
+			defer service.mu.Unlock()
+			assert.Zero(t, service.creates, "invalid zones must be rejected before creating a runner")
+			assert.Nil(t, service.runner)
+		})
+	}
+}
+
+func TestManagedRunnerLowercaseComputedZone(t *testing.T) {
+	service := startRunnerServer(t)
+	config := strings.Replace(minimalConfig(`{}`, ""), `"us-east-04a"`, `lower(terraform_data.cluster_zone.output)`, 1) + `
+resource "terraform_data" "cluster_zone" { input = "US-EAST-04A" }
+`
+	tfresource.UnitTest(t, tfresource.TestCase{
+		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+		CheckDestroy:             service.checkDestroyed,
+		Steps: []tfresource.TestStep{
+			{
+				Config: config,
+				ConfigPlanChecks: tfresource.ConfigPlanChecks{
+					PreApply: []plancheck.PlanCheck{plancheck.ExpectUnknownValue(runnerAddress, tfjsonpath.New("zone"))},
+				},
+				Check: tfresource.TestCheckResourceAttr(runnerAddress, "zone", "us-east-04a"),
+			},
+			{Config: config, PlanOnly: true},
+			{ResourceName: runnerAddress, ImportState: true, ImportStateVerify: true},
+			{Config: config, PlanOnly: true},
+		},
+	})
+	service.mu.Lock()
+	defer service.mu.Unlock()
+	assert.Equal(t, 1, service.creates)
+	assert.Empty(t, service.updates)
 }
 
 func TestManagedRunnerDriftAndRemoteDeletion(t *testing.T) {

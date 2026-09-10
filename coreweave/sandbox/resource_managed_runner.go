@@ -88,7 +88,7 @@ func (r *ManagedRunnerResource) Schema(_ context.Context, _ resource.SchemaReque
 		Attributes: map[string]schema.Attribute{
 			"id":                    schema.StringAttribute{Computed: true, MarkdownDescription: "Terraform resource ID, equal to runner_id within the authenticated organization.", PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()}},
 			"runner_id":             identity("Operator-assigned runner identifier, unique within the authenticated organization. Changing it replaces the runner."),
-			"zone":                  identity("Geographic zone of the runner. Changing it replaces the runner."),
+			"zone":                  identity("Lowercase geographic zone of the runner, for example `us-east-04a`. Use `lower(coreweave_cks_cluster.example.zone)` when referencing a CKS cluster zone. Changing it replaces the runner."),
 			"cluster_id":            identity("CKS cluster UUID. Changing it replaces the runner."),
 			"runner_group_id":       runnerGroup,
 			"cluster_name":          computed("Cluster display name resolved by the server."),

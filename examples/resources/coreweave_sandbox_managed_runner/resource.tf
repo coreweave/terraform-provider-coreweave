@@ -18,7 +18,8 @@ resource "coreweave_sandbox_managed_runner" "development" {
   runner_group_id = "engineering"
   display_name    = "Engineering development"
   cluster_id      = var.cluster_id
-  zone            = var.zone
+  # The Sandbox API returns lowercase zones; normalize values supplied by CKS.
+  zone = lower(var.zone)
 
   spec = {
     release_channel = "RELEASE_CHANNEL_STABLE"
