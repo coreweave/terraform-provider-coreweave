@@ -12,6 +12,7 @@ import (
 	"buf.build/gen/go/coreweave/cwobject/connectrpc/go/cwobject/v1/cwobjectv1connect"
 	"buf.build/gen/go/coreweave/inference/connectrpc/go/coreweave/inference/v1alpha1/inferencev1alpha1connect"
 	"buf.build/gen/go/coreweave/networking/connectrpc/go/coreweave/networking/v1beta1/networkingv1beta1connect"
+	"buf.build/gen/go/coreweave/sandbox/connectrpc/go/coreweave/sandbox/v1/sandboxv1connect"
 	"buf.build/gen/go/coreweave/workload-federation/connectrpc/go/coreweave/workload_federation/control_plane/v1beta1/control_planev1beta1connect"
 	"connectrpc.com/connect"
 
@@ -77,8 +78,9 @@ func NewClientWithOptions(
 	authenticatedInterceptors := append([]connect.Interceptor{auth.NewConnectErrorInterceptor()}, interceptors...)
 
 	return &Client{
-		ClusterServiceClient: cksv1beta1connect.NewClusterServiceClient(c, endpoint, connect.WithInterceptors(authenticatedInterceptors...)),
-		VPCServiceClient:     networkingv1beta1connect.NewVPCServiceClient(c, endpoint, connect.WithInterceptors(authenticatedInterceptors...)),
+		ClusterServiceClient:    cksv1beta1connect.NewClusterServiceClient(c, endpoint, connect.WithInterceptors(authenticatedInterceptors...)),
+		VPCServiceClient:        networkingv1beta1connect.NewVPCServiceClient(c, endpoint, connect.WithInterceptors(authenticatedInterceptors...)),
+		SandboxRunnerManagement: sandboxv1connect.NewRunnerManagementServiceClient(c, endpoint, connect.WithInterceptors(authenticatedInterceptors...)),
 		WFControlPlaneServiceClient: control_planev1beta1connect.NewWFControlPlaneServiceClient(
 			c,
 			endpoint,
@@ -112,7 +114,8 @@ type Client struct {
 	control_planev1beta1connect.WFControlPlaneServiceClient
 	cwobjectv1connect.CWObjectClient
 
-	Inference *InferenceClient
+	Inference               *InferenceClient
+	SandboxRunnerManagement sandboxv1connect.RunnerManagementServiceClient
 
 	apiEndpoint      string
 	httpClient       *http.Client

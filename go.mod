@@ -11,6 +11,8 @@ require (
 	buf.build/gen/go/coreweave/inference/protocolbuffers/go v1.36.12-20260825010541-7cc01a738b29.1
 	buf.build/gen/go/coreweave/networking/connectrpc/go v1.19.1-20260121155637-a637e7777165.2
 	buf.build/gen/go/coreweave/networking/protocolbuffers/go v1.36.11-20260121155637-a637e7777165.1
+	buf.build/gen/go/coreweave/sandbox/connectrpc/go v1.20.0-20260909020241-374666cd3a25.1
+	buf.build/gen/go/coreweave/sandbox/protocolbuffers/go v1.36.11-20260909020241-374666cd3a25.1
 	buf.build/gen/go/coreweave/workload-federation/connectrpc/go v1.20.0-20260825153113-5bfae6057a98.1
 	buf.build/gen/go/coreweave/workload-federation/protocolbuffers/go v1.36.12-20260825153113-5bfae6057a98.1
 	connectrpc.com/connect v1.20.0
@@ -38,6 +40,7 @@ require (
 
 require (
 	buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.36.12-20260415201107-50325440f8f2.1 // indirect
+	buf.build/gen/go/gnostic/gnostic/protocolbuffers/go v1.36.11-20230414000709-087bc8072ce4.1 // indirect
 	buf.build/gen/go/grpc-ecosystem/grpc-gateway/protocolbuffers/go v1.36.11-20241220201140-4c5ba75caaf8.1 // indirect
 	github.com/ProtonMail/go-crypto v1.1.6 // indirect
 	github.com/agext/levenshtein v1.2.2 // indirect
