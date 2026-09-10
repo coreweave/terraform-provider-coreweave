@@ -56,6 +56,7 @@ func createBucketSettingsTestStep(ctx context.Context, t *testing.T, opts bucket
 		AuditLoggingEnabled:        opts.settings.AuditLoggingEnabled,
 		ArchiveEnabled:             opts.settings.ArchiveEnabled,
 		ArchiveAfterLastAccessDays: opts.settings.ArchiveAfterLastAccessDays,
+		CapacityCapBytes:           opts.settings.CapacityCapBytes,
 	})
 	config := bucketHCL + settingsHCL
 
@@ -70,6 +71,9 @@ func createBucketSettingsTestStep(ctx context.Context, t *testing.T, opts bucket
 	}
 	if !opts.settings.ArchiveAfterLastAccessDays.IsNull() {
 		checks = append(checks, statecheck.ExpectKnownValue(rs, tfjsonpath.New("archive_after_last_access_days"), knownvalue.Int32Exact(opts.settings.ArchiveAfterLastAccessDays.ValueInt32())))
+	}
+	if !opts.settings.CapacityCapBytes.IsNull() {
+		checks = append(checks, statecheck.ExpectKnownValue(rs, tfjsonpath.New("capacity_cap_bytes"), knownvalue.Int64Exact(opts.settings.CapacityCapBytes.ValueInt64())))
 	}
 
 	return resource.TestStep{
