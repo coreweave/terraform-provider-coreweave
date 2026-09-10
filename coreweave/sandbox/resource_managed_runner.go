@@ -385,6 +385,8 @@ func (r *ManagedRunnerResource) Delete(ctx context.Context, req resource.DeleteR
 	// completes so replacement cannot race cluster uniqueness constraints.
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Minute)
 	defer cancel()
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
 	for {
 		_, err := r.client.SandboxRunnerManagement.GetManagedRunner(ctx, connect.NewRequest(&sandboxv1.GetManagedRunnerRequest{RunnerId: data.ID.ValueString()}))
 		if coreweave.IsNotFoundError(err) {
@@ -394,13 +396,11 @@ func (r *ManagedRunnerResource) Delete(ctx context.Context, req resource.DeleteR
 			coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
 			return
 		}
-		timer := time.NewTimer(2 * time.Second)
 		select {
 		case <-ctx.Done():
-			timer.Stop()
 			resp.Diagnostics.AddError("Managed Runner Deletion Incomplete", ctx.Err().Error())
 			return
-		case <-timer.C:
+		case <-ticker.C:
 		}
 	}
 }

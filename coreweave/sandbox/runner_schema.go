@@ -183,6 +183,9 @@ func (canonicalCIDRValidator) ValidateString(_ context.Context, req validator.St
 }
 
 func policyAttribute() schema.SingleNestedAttribute {
+	// Policy is configured input, so keep unknown expressions unknown until
+	// Terraform resolves them before apply. Reusing prior state could conceal
+	// a policy change; updateRequest skips the write only if it resolves equal.
 	base := schema.StringAttribute{Optional: true, CustomType: jsontypes.NormalizedType{}, Sensitive: true, MarkdownDescription: "Runtime defaults and attachments as a JSON object, for example `jsonencode({ ... })`. Typed constraints belong in constraints. Values are stored in Terraform state."}
 	cidrs := optionalStrings("Canonical, nonredundant IPv4/IPv6 prefixes (at most 256). Do not include a prefix already covered by another entry. An empty set denies every public source. Omitting the enclosing source_ip_allowlist leaves access unrestricted.")
 	cidrs.Validators = []validator.Set{setvalidator.SizeAtMost(256), setvalidator.ValueStringsAre(canonicalCIDRValidator{})}

@@ -18,7 +18,9 @@ import (
 	"connectrpc.com/connect"
 	"github.com/coreweave/terraform-provider-coreweave/internal/provider"
 	tfresource "github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/plancheck"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
+	"github.com/hashicorp/terraform-plugin-testing/tfjsonpath"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
@@ -354,22 +356,71 @@ func TestManagedRunnerMissingDuringUpdate(t *testing.T) {
 	})
 }
 
-func TestManagedRunnerUnknownPolicyResolvesWithoutUpdate(t *testing.T) {
-	service := startRunnerServer(t)
-	config := func(replacement string) string {
-		return minimalConfig(`terraform_data.policy.output`, "") + fmt.Sprintf(`
+func TestManagedRunnerUnknownPolicyResolvesBeforeApply(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		policy  string
+		input   string
+		unknown tfjsonpath.Path
+	}{
+		{
+			name:    "whole policy",
+			policy:  `terraform_data.policy.output`,
+			input:   `{ constraints = { resources = { max_cpu = %q } } }`,
+			unknown: tfjsonpath.New("policy"),
+		},
+		{
+			name:    "nested constraint",
+			policy:  `{ constraints = { resources = { max_cpu = terraform_data.policy.output } } }`,
+			input:   `%q`,
+			unknown: tfjsonpath.New("policy").AtMapKey("constraints").AtMapKey("resources").AtMapKey("max_cpu"),
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			service := startRunnerServer(t)
+			config := func(cpu, replacement string) string {
+				return minimalConfig(tc.policy, "") + fmt.Sprintf(`
 resource "terraform_data" "policy" {
-  input = { display_name = "unchanged" }
+  input = %s
   triggers_replace = %q
 }
-`, replacement)
+`, fmt.Sprintf(tc.input, cpu), replacement)
+			}
+			unknownPlan := tfresource.ConfigPlanChecks{
+				PreApply: []plancheck.PlanCheck{plancheck.ExpectUnknownValue(runnerAddress, tc.unknown)},
+			}
+			tfresource.UnitTest(t, tfresource.TestCase{
+				ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+				CheckDestroy:             service.checkDestroyed,
+				Steps: []tfresource.TestStep{
+					{
+						Config: config("1", "create"), ConfigPlanChecks: unknownPlan,
+						Check: tfresource.TestCheckResourceAttr(runnerAddress, "policy.constraints.resources.max_cpu", "1"),
+					},
+					{
+						Config: config("1", "unchanged"), ConfigPlanChecks: unknownPlan,
+						Check: tfresource.ComposeAggregateTestCheckFunc(
+							tfresource.TestCheckResourceAttr(runnerAddress, "policy.constraints.resources.max_cpu", "1"),
+							func(*terraform.State) error {
+								service.mu.Lock()
+								defer service.mu.Unlock()
+								if len(service.updates) != 0 {
+									return fmt.Errorf("unchanged policy caused %d updates", len(service.updates))
+								}
+								return nil
+							},
+						),
+					},
+					{
+						Config: config("2", "changed"), ConfigPlanChecks: unknownPlan,
+						Check: tfresource.TestCheckResourceAttr(runnerAddress, "policy.constraints.resources.max_cpu", "2"),
+					},
+					{Config: config("2", "changed"), PlanOnly: true},
+				},
+			})
+			service.mu.Lock()
+			defer service.mu.Unlock()
+			assert.Equal(t, [][]string{{"policy"}}, service.updates)
+		})
 	}
-	tfresource.UnitTest(t, tfresource.TestCase{
-		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
-		CheckDestroy:             service.checkDestroyed,
-		Steps:                    []tfresource.TestStep{{Config: config("before")}, {Config: config("after")}},
-	})
-	service.mu.Lock()
-	defer service.mu.Unlock()
-	assert.Empty(t, service.updates)
 }
