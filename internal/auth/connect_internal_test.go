@@ -18,7 +18,7 @@ func wrapAsTransportError(err error) error {
 	return &url.Error{Op: "Post", URL: "https://api.example.test", Err: err}
 }
 
-func TestClassifyError(t *testing.T) {
+func TestClassifyTokenSourceError(t *testing.T) {
 	t.Parallel()
 
 	unreachable := &net.OpError{Op: "dial", Err: errors.New("connection refused")}
@@ -62,7 +62,7 @@ func TestClassifyError(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			got := classifyError(test.err)
+			got := ClassifyTokenSourceError(test.err)
 			if test.wantUntouched {
 				assert.Equal(t, test.err, got)
 				return

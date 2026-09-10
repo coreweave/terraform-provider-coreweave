@@ -12,6 +12,12 @@ import (
 	"github.com/coreweave/terraform-provider-coreweave/internal/auth"
 )
 
+type retriesDisabledContextKey struct{}
+
+func withoutRetries(ctx context.Context) context.Context {
+	return context.WithValue(ctx, retriesDisabledContextKey{}, true)
+}
+
 var (
 	// A regular expression to match the error returned by net/http when the
 	// configured number of redirects is exhausted. This error isn't typed
@@ -102,6 +108,9 @@ func RetryPolicy(ctx context.Context, resp *http.Response, err error) (bool, err
 
 		// context.DeadlineExceeded is retried to handle intermittent timeouts
 		return true, ctx.Err()
+	}
+	if disabled, _ := ctx.Value(retriesDisabledContextKey{}).(bool); disabled {
+		return false, nil
 	}
 
 	// Retry an attempt-level timeout with a freshly resolved token.

@@ -1,6 +1,7 @@
 package coreweave
 
 import (
+	"context"
 	"crypto/tls"
 	"errors"
 	"net/http"
@@ -10,6 +11,15 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestRetryPolicyHonorsSingleAttemptContext(t *testing.T) {
+	t.Parallel()
+
+	ctx := withoutRetries(context.Background())
+	retry, err := RetryPolicy(ctx, &http.Response{StatusCode: http.StatusServiceUnavailable}, nil)
+	require.NoError(t, err)
+	assert.False(t, retry)
+}
 
 func TestBaseRetryPolicyRejectsWrappedPermanentRequestErrors(t *testing.T) {
 	t.Parallel()
