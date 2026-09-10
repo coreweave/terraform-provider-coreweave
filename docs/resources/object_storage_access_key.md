@@ -5,7 +5,7 @@ subcategory: ""
 description: |-
   Manages one AI Object Storage access key for the authenticated caller. Existing organization policies determine its permissions. Destroy revokes only this key.
   Set duration_seconds explicitly when creating a key: zero creates a permanent key. Changes to duration or attributes replace the key. Use terraform apply -replace=coreweave_object_storage_access_key.example for manual rotation. There is no background renewal; distribute the new secret to consumers before removing an old key, using separate resources when an overlap is needed.
-  Refresh removes missing keys from state, so the next apply recreates them when a duration is configured. Expired and inactive keys remain managed, with their API status and a warning; they are not automatically rotated or reactivated. If the service later removes an expired key, it is treated as missing.
+  Refresh removes missing keys and keys reported as DELETED from state, so the next apply recreates them when a duration is configured. Expired and inactive keys remain managed, with their API status and a warning; they are not automatically rotated or reactivated. If the service later removes an expired key, it is treated as missing.
   Import uses the key ID. The secret and original duration cannot be recovered and remain null. Omit duration_seconds in the imported resource configuration to keep the existing key; setting it explicitly plans replacement. Omit attributes to adopt the imported values, or configure the same values. Supply an explicit duration before intentionally replacing an imported key.
   Protect access to Terraform state and backups: marking the secret sensitive hides normal CLI output but does not encrypt or omit it from state. Key creation is sent once without automatic retries. If its response is lost, a key may exist whose ID and secret were not saved; inspect keys using the service tooling before trying again.
 ---
@@ -16,7 +16,7 @@ Manages one AI Object Storage access key for the authenticated caller. Existing 
 
 Set `duration_seconds` explicitly when creating a key: zero creates a permanent key. Changes to duration or attributes replace the key. Use `terraform apply -replace=coreweave_object_storage_access_key.example` for manual rotation. There is no background renewal; distribute the new secret to consumers before removing an old key, using separate resources when an overlap is needed.
 
-Refresh removes missing keys from state, so the next apply recreates them when a duration is configured. Expired and inactive keys remain managed, with their API status and a warning; they are not automatically rotated or reactivated. If the service later removes an expired key, it is treated as missing.
+Refresh removes missing keys and keys reported as `DELETED` from state, so the next apply recreates them when a duration is configured. Expired and inactive keys remain managed, with their API status and a warning; they are not automatically rotated or reactivated. If the service later removes an expired key, it is treated as missing.
 
 Import uses the key ID. The secret and original duration cannot be recovered and remain null. Omit `duration_seconds` in the imported resource configuration to keep the existing key; setting it explicitly plans replacement. Omit attributes to adopt the imported values, or configure the same values. Supply an explicit duration before intentionally replacing an imported key.
 

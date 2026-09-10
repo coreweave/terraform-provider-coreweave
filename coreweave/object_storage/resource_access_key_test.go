@@ -51,9 +51,8 @@ resource "coreweave_object_storage_access_key" "other" {
 			return fmt.Errorf("other key is no longer active")
 		}
 		if firstID != "" && firstID != managed.Primary.ID {
-			_, err = client.GetAccessKeyInfo(context.Background(), connect.NewRequest(&cwobjectv1.GetAccessKeyInfoRequest{AccessKeyId: firstID}))
-			if !coreweave.IsNotFoundError(err) {
-				return fmt.Errorf("replaced key was not individually revoked")
+			if err := checkAccessKeyRevoked(client, firstID); err != nil {
+				return err
 			}
 		}
 		firstID = managed.Primary.ID
@@ -76,9 +75,8 @@ resource "coreweave_object_storage_access_key" "other" {
 				if r.Type != accessKeyTypeName {
 					continue
 				}
-				_, err := client.GetAccessKeyInfo(context.Background(), connect.NewRequest(&cwobjectv1.GetAccessKeyInfoRequest{AccessKeyId: r.Primary.ID}))
-				if !coreweave.IsNotFoundError(err) {
-					return fmt.Errorf("test key %s still exists or could not be checked", r.Primary.ID)
+				if err := checkAccessKeyRevoked(client, r.Primary.ID); err != nil {
+					return err
 				}
 			}
 			return nil
@@ -91,4 +89,20 @@ resource "coreweave_object_storage_access_key" "other" {
 			{ResourceName: accessKeyAddress, ImportState: true, ImportStateVerify: true, ImportStateVerifyIgnore: []string{"secret_key", "duration_seconds"}},
 		},
 	})
+}
+
+// Revocation retains metadata with DELETED status until the service removes it.
+func checkAccessKeyRevoked(client *coreweave.Client, id string) error {
+	response, err := client.GetAccessKeyInfo(context.Background(), connect.NewRequest(&cwobjectv1.GetAccessKeyInfoRequest{AccessKeyId: id}))
+	if coreweave.IsNotFoundError(err) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("read revoked test key %s: %w", id, err)
+	}
+	info := response.Msg.GetInfo()
+	if info.GetAccessKeyId() != id || info.GetStatus() != "DELETED" {
+		return fmt.Errorf("test key %s was not revoked: API status %q", id, info.GetStatus())
+	}
+	return nil
 }

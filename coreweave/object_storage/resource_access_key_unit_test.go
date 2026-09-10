@@ -96,7 +96,7 @@ func (f *accessKeyFake) RevokeAccessKeyByAccessKey(_ context.Context, req *conne
 	if _, ok := f.keys[req.Msg.AccessKey]; !ok {
 		return nil, connect.NewError(connect.CodeNotFound, errors.New("missing"))
 	}
-	delete(f.keys, req.Msg.AccessKey)
+	f.keys[req.Msg.AccessKey].Status = "DELETED"
 	return connect.NewResponse(&emptypb.Empty{}), nil
 }
 
@@ -385,8 +385,13 @@ func TestAccessKeyTerraformLifecycle(t *testing.T) {
 	resource.UnitTest(t, resource.TestCase{ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories, CheckDestroy: func(_ *terraform.State) error {
 		fake.mu.Lock()
 		defer fake.mu.Unlock()
-		if len(fake.keys) != 1 || fake.keys["unrelated"] == nil {
-			return fmt.Errorf("unexpected remaining keys: %d", len(fake.keys))
+		if fake.keys["unrelated"] == nil || fake.keys["unrelated"].Status != "ACTIVE" {
+			return fmt.Errorf("unrelated key was modified")
+		}
+		for id, key := range fake.keys {
+			if id != "unrelated" && key.Status != "DELETED" {
+				return fmt.Errorf("test key %s was not revoked", id)
+			}
 		}
 		return nil
 	}, Steps: []resource.TestStep{
@@ -437,4 +442,19 @@ func TestAccessKeyTerraformImportReplacementNeedsDuration(t *testing.T) {
 			}},
 		},
 	})
+}
+
+func TestAccessKeyDeletedRecord(t *testing.T) {
+	h := newAccessKeyHarness(t)
+	c := h.create(h.config(0, nil))
+	requireNoDiagErrors(t, c.Diagnostics, "create")
+	h.fake.keys["managed-1"].Status = "DELETED"
+	r := h.read(c.NewState)
+	requireNoDiagErrors(t, r.Diagnostics, "refresh revoked key")
+	require.True(t, h.decode(r.NewState).IsNull())
+	imported, err := h.server.ImportResourceState(t.Context(), &tfprotov6.ImportResourceStateRequest{TypeName: accessKeyTypeName, ID: "managed-1"})
+	require.NoError(t, err)
+	require.True(t, diagsHaveErrors(imported.Diagnostics))
+	requireNoDiagErrors(t, h.destroy(c.NewState).Diagnostics, "delete revoked key")
+	require.Equal(t, "ACTIVE", h.fake.keys["unrelated"].Status)
 }

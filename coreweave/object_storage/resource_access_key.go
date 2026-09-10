@@ -59,7 +59,7 @@ func (r *AccessKeyResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 	resp.Schema = schema.Schema{
 		MarkdownDescription: "Manages one AI Object Storage access key for the authenticated caller. Existing organization policies determine its permissions. Destroy revokes only this key.\n\n" +
 			"Set `duration_seconds` explicitly when creating a key: zero creates a permanent key. Changes to duration or attributes replace the key. Use `terraform apply -replace=coreweave_object_storage_access_key.example` for manual rotation. There is no background renewal; distribute the new secret to consumers before removing an old key, using separate resources when an overlap is needed.\n\n" +
-			"Refresh removes missing keys from state, so the next apply recreates them when a duration is configured. Expired and inactive keys remain managed, with their API status and a warning; they are not automatically rotated or reactivated. If the service later removes an expired key, it is treated as missing.\n\n" +
+			"Refresh removes missing keys and keys reported as `DELETED` from state, so the next apply recreates them when a duration is configured. Expired and inactive keys remain managed, with their API status and a warning; they are not automatically rotated or reactivated. If the service later removes an expired key, it is treated as missing.\n\n" +
 			"Import uses the key ID. The secret and original duration cannot be recovered and remain null. Omit `duration_seconds` in the imported resource configuration to keep the existing key; setting it explicitly plans replacement. Omit attributes to adopt the imported values, or configure the same values. Supply an explicit duration before intentionally replacing an imported key.\n\n" +
 			"Protect access to Terraform state and backups: marking the secret sensitive hides normal CLI output but does not encrypt or omit it from state. Key creation is sent once without automatic retries. If its response is lost, a key may exist whose ID and secret were not saved; inspect keys using the service tooling before trying again.",
 		Attributes: map[string]schema.Attribute{
@@ -207,6 +207,10 @@ func (r *AccessKeyResource) Read(ctx context.Context, req resource.ReadRequest, 
 		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
 		return
 	}
+	if info.Msg.Info != nil && info.Msg.Info.AccessKeyId == data.ID.ValueString() && info.Msg.Info.Status == "DELETED" {
+		resp.State.RemoveResource(ctx)
+		return
+	}
 	r.setInfo(ctx, &data, info.Msg.Info, &resp.Diagnostics)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
@@ -236,6 +240,10 @@ func (r *AccessKeyResource) ImportState(ctx context.Context, req resource.Import
 	data := accessKeyModel{ID: types.StringValue(id), Attributes: types.MapNull(types.StringType)}
 	r.readInfo(ctx, &data, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
+		return
+	}
+	if data.Status.ValueString() == "DELETED" {
+		resp.Diagnostics.AddError("Access key has been revoked", "A key reported as DELETED cannot be imported. Import an existing key or create a new resource with an explicit duration.")
 		return
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
