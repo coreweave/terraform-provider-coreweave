@@ -58,6 +58,9 @@ func (s *runnerServer) CreateManagedRunner(_ context.Context, req *connect.Reque
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("expected a policy and no legacy configuration"))
 	}
 	s.runner = proto.Clone(req.Msg.ManagedRunner).(*sandboxv1.ManagedRunner)
+	if s.runner.Identity.RunnerGroupId == "" {
+		s.runner.Identity.RunnerGroupId = "default"
+	}
 	if s.runner.Spec == nil {
 		s.runner.Spec = &sandboxv1.ManagedRunnerSpec{}
 	}
@@ -119,6 +122,9 @@ func (s *runnerServer) UpdateManagedRunner(_ context.Context, req *connect.Reque
 		if err := applyRunnerMask(s.runner.ProtoReflect(), req.Msg.ManagedRunner.ProtoReflect(), strings.Split(mask, ".")); err != nil {
 			return nil, connect.NewError(connect.CodeInvalidArgument, err)
 		}
+	}
+	if s.runner.Identity.RunnerGroupId == "" {
+		s.runner.Identity.RunnerGroupId = "default"
 	}
 	s.updates = append(s.updates, slices.Clone(paths))
 	if slices.Contains(paths, "policy") {
@@ -256,6 +262,45 @@ func TestManagedRunnerImportAndReplacement(t *testing.T) {
 	assert.Equal(t, 2, service.creates)
 	assert.Equal(t, 2, service.deletes)
 	assert.Equal(t, 4, service.deletePolls)
+}
+
+func TestManagedRunnerDefaultGroup(t *testing.T) {
+	service := startRunnerServer(t)
+	config := minimalConfig(`{}`, "")
+	checkGroup := func(group string) tfresource.TestCheckFunc {
+		return tfresource.TestCheckResourceAttr(runnerAddress, "runner_group_id", group)
+	}
+	tfresource.UnitTest(t, tfresource.TestCase{
+		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+		CheckDestroy:             service.checkDestroyed,
+		Steps: []tfresource.TestStep{
+			{Config: config, Check: checkGroup("default")},
+			{Config: config, PlanOnly: true},
+			{ResourceName: runnerAddress, ImportState: true, ImportStateVerify: true},
+			{Config: minimalConfig(`{}`, `runner_group_id = "custom"`), Check: checkGroup("custom")},
+			{Config: config, Check: checkGroup("default")},
+			{Config: minimalConfig(`{}`, `runner_group_id = null`), PlanOnly: true},
+		},
+	})
+	service.mu.Lock()
+	defer service.mu.Unlock()
+	assert.Equal(t, 1, service.creates)
+	assert.Equal(t, [][]string{{"identity.runner_group_id"}, {"identity.runner_group_id"}}, service.updates)
+}
+
+func TestManagedRunnerEmptyGroupRejected(t *testing.T) {
+	service := startRunnerServer(t)
+	tfresource.UnitTest(t, tfresource.TestCase{
+		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+		CheckDestroy:             service.checkDestroyed,
+		Steps: []tfresource.TestStep{{
+			Config:      minimalConfig(`{}`, `runner_group_id = ""`),
+			ExpectError: regexp.MustCompile("string length must be at least 1"),
+		}},
+	})
+	service.mu.Lock()
+	defer service.mu.Unlock()
+	assert.Zero(t, service.creates)
 }
 
 func TestManagedRunnerDriftAndRemoteDeletion(t *testing.T) {

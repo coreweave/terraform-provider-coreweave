@@ -93,7 +93,7 @@ resource "coreweave_sandbox_managed_runner" "development" {
 ### Optional
 
 - `display_name` (String) Human-readable runner name.
-- `runner_group_id` (String) Runner group for scheduling affinity.
+- `runner_group_id` (String) Runner group for scheduling affinity. Defaults to `default`; omitting or setting this attribute to null resets a custom group to `default`.
 - `spec` (Attributes) Desired runner configuration. When omitted, the server's defaults are adopted. Removing an optional setting inside this object resets that setting through an explicit update mask. (see [below for nested schema](#nestedatt--spec))
 
 ### Read-Only

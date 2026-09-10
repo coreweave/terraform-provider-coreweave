@@ -16,6 +16,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -78,6 +79,10 @@ func (r *ManagedRunnerResource) Schema(_ context.Context, _ resource.SchemaReque
 	}
 	deployment := computedJSON("Resolved deployment configuration as JSON. Read-only; use spec.overrides to change supported settings.")
 	deployment.Sensitive = true
+	runnerGroup := optionalString("Runner group for scheduling affinity. Defaults to `default`; omitting or setting this attribute to null resets a custom group to `default`.")
+	runnerGroup.Computed = true
+	runnerGroup.Default = stringdefault.StaticString("default")
+	runnerGroup.Validators = []validator.String{stringvalidator.LengthAtLeast(1)}
 	resp.Schema = schema.Schema{
 		MarkdownDescription: "Manages a CoreWeave Sandbox runner and its required policy through the v1 RunnerManagementService (`/v1/sandbox/managedRunners`). Requires a server implementing full v1 managed-runner CRUD; the policy-only v1 server cannot provision or fully refresh this resource. Creation and updates record the accepted desired configuration; installation and rollout continue asynchronously and are exposed in computed status attributes. Deletion waits up to 30 minutes for the runner to disappear.",
 		Attributes: map[string]schema.Attribute{
@@ -85,7 +90,7 @@ func (r *ManagedRunnerResource) Schema(_ context.Context, _ resource.SchemaReque
 			"runner_id":             identity("Operator-assigned runner identifier, unique within the authenticated organization. Changing it replaces the runner."),
 			"zone":                  identity("Geographic zone of the runner. Changing it replaces the runner."),
 			"cluster_id":            identity("CKS cluster UUID. Changing it replaces the runner."),
-			"runner_group_id":       optionalString("Runner group for scheduling affinity."),
+			"runner_group_id":       runnerGroup,
 			"cluster_name":          computed("Cluster display name resolved by the server."),
 			"display_name":          optionalString("Human-readable runner name."),
 			"spec":                  runnerSpecAttribute(),
