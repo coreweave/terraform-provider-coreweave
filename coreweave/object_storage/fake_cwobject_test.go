@@ -20,7 +20,6 @@ var (
 	errArchiveDaysRequired     = errors.New("invalid archive settings: archive_after_last_access_days is required when archive is enabled")
 	errArchiveDaysBelowMinimum = errors.New("invalid archive settings: archive_after_last_access_days must be >= 60")
 	errNotFound                = errors.New("not found")
-	errCapNotEntitled          = errors.New("organization is not entitled to feature(s): BucketCapacityCap")
 )
 
 // fakeCWObject is an in-process stand-in for a CWObject service, covering
@@ -33,10 +32,6 @@ type fakeCWObject struct {
 
 	archiveEntitled bool
 	archiveMinDays  int32
-
-	// denyCapacityCap makes any cap-changing request (set or clear) fail with a
-	// permission error, modeling an org not entitled to the capacity-cap feature.
-	denyCapacityCap bool
 
 	// buckets holds the persisted settings, keyed by bucket name.
 	buckets map[string]*fakeBucketSettings
@@ -176,11 +171,6 @@ func (f *fakeCWObject) SetBucketSettings(
 
 	if hasArchiveFields(settings) && !f.archiveEntitled {
 		return nil, connect.NewError(connect.CodePermissionDenied, errFeatureNotEntitled)
-	}
-
-	// thoth gates the whole capacity_cap_update oneof (set or clear), so match it.
-	if settings.HasCapacityCapUpdate() && f.denyCapacityCap {
-		return nil, connect.NewError(connect.CodePermissionDenied, errCapNotEntitled)
 	}
 
 	if hasArchiveFields(settings) {

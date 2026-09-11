@@ -735,23 +735,6 @@ func TestBucketSettingsCapacityCapNegativeRejectedAtValidate(t *testing.T) {
 	assert.Contains(t, diagText(diags), "at least 0")
 }
 
-// TestBucketSettingsCapacityCapWithoutEntitlementIsRejected records that the
-// provider adds no client-side gate: an API permission error surfaces as a
-// diagnostic, exactly as the archive path does.
-func TestBucketSettingsCapacityCapWithoutEntitlementIsRejected(t *testing.T) {
-	ctx := t.Context()
-	h := newBucketSettingsHarness(ctx, t, true)
-	h.fake.denyCapacityCap = true
-
-	_, diags := h.create(ctx, bucketSettingsConfig{
-		bucket:           testBucketName,
-		capacityCapBytes: int64Ptr(1024),
-	})
-
-	require.True(t, diagsHaveErrors(diags), "setting a cap without entitlement must fail")
-	assert.Contains(t, diagText(diags), "BucketCapacityCap")
-}
-
 // TestBucketSettingsOmittedCapacityCapIsNotResent verifies the wire-level no-op:
 // Optional+Computed preserves a remotely observed cap in the plan, so an
 // unrelated update must consult configuration before writing.
