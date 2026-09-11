@@ -95,16 +95,15 @@ func (s *BucketSettingsModel) ToProtoObject() *cwobjectv1.CWObjectBucketSettings
 	if !s.ArchiveAfterLastAccessDays.IsNull() && !s.ArchiveAfterLastAccessDays.IsUnknown() {
 		settings.SetArchiveAfterLastAccessDays(wrapperspb.Int32(s.ArchiveAfterLastAccessDays.ValueInt32()))
 	}
-	// A known value (0 included) sets the cap; null/unknown is skipped. Update
-	// also strips a state-copied value via omitUnconfiguredCapacityCap.
+	// Null or unknown omits the cap mutation; zero remains a valid cap.
 	if !s.CapacityCapBytes.IsNull() && !s.CapacityCapBytes.IsUnknown() {
 		settings.SetCapacityCapBytes(uint64(s.CapacityCapBytes.ValueInt64())) //nolint:gosec
 	}
 	return &settings
 }
 
-// omitUnconfiguredCapacityCap keeps an Optional+Computed value copied from
-// refreshed state from becoming a write; only a configured cap may set it.
+// Optional+Computed may copy a remote cap into the plan. Drop it unless the
+// attribute is configured, so unrelated updates leave the cap unchanged.
 func omitUnconfiguredCapacityCap(settings *cwobjectv1.CWObjectBucketSettings, configured types.Int64) {
 	if configured.IsNull() || configured.IsUnknown() {
 		settings.ClearCapacityCapUpdate()
@@ -177,8 +176,8 @@ func (b *BucketSettingsResource) Delete(ctx context.Context, req resource.Delete
 		settings.ArchiveEnabled = wrapperspb.Bool(false)
 	}
 
-	// The cap is intentionally left untouched: bucket deletion clears it
-	// server-side without capacity-cap permission, so destroy needs none.
+	// Keep the cap: it may be managed elsewhere, and bucket deletion removes it
+	// without requiring cap permission.
 	deleteReq := cwobjectv1.SetBucketSettingsRequest{
 		BucketName: data.Bucket.ValueString(),
 		Settings:   &settings,
@@ -264,7 +263,7 @@ func (b *BucketSettingsResource) Schema(ctx context.Context, req resource.Schema
 					int32validator.AtLeast(1),
 				},
 			},
-			// Optional+Computed like archive_enabled: omit leaves the cap unchanged.
+			// Omission leaves the cap unchanged.
 			"capacity_cap_bytes": schema.Int64Attribute{
 				MarkdownDescription: "Maximum number of STANDARD-class bytes the bucket may store. New STANDARD writes are rejected once bucket usage would exceed this cap; `0` is a valid cap that blocks all new STANDARD writes. Omit to leave the cap unchanged. Removing this resource leaves any cap in place; the cap is cleared when the bucket itself is deleted. Your organization must be entitled to configure this setting.",
 				Optional:            true,
@@ -317,8 +316,6 @@ func (b *BucketSettingsResource) Update(ctx context.Context, req resource.Update
 		return
 	}
 
-	// Optional+Computed copies a state cap into the plan; strip it unless the
-	// practitioner configured one, so an unrelated update never re-sends it.
 	settings := data.ToProtoObject()
 	omitUnconfiguredCapacityCap(settings, config.CapacityCapBytes)
 
