@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -222,6 +223,31 @@ func TestClientRefreshesTokenForConnectRetry(t *testing.T) {
 	_, err = client.GetCluster(t.Context(), connect.NewRequest(&cksv1beta1.GetClusterRequest{}))
 	require.Error(t, err)
 	assert.Equal(t, []string{"Bearer token-1", "Bearer token-2"}, authorizationHeaders)
+}
+
+func TestClientDoesNotRetryConnectCreate(t *testing.T) {
+	t.Parallel()
+
+	var calls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		if calls.Add(1) == 1 {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		w.Header().Set("Content-Type", "application/proto")
+	}))
+	t.Cleanup(server.Close)
+
+	source := accessTokenSourceFunc(func(context.Context) (string, error) { return "retry-policy-token", nil })
+	client, err := coreweave.NewClient(server.URL, "https://unused.example.test", time.Second, source, "test-user-agent")
+	require.NoError(t, err)
+
+	_, err = client.CreateCluster(t.Context(), connect.NewRequest(&cksv1beta1.CreateClusterRequest{}))
+	require.Error(t, err)
+	var connectErr *connect.Error
+	require.ErrorAs(t, err, &connectErr)
+	assert.Equal(t, connect.CodeUnavailable, connectErr.Code())
+	assert.Equal(t, int32(1), calls.Load())
 }
 
 func TestHandleAPIError(t *testing.T) {
