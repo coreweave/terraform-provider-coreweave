@@ -102,8 +102,9 @@ func (s *BucketSettingsModel) ToProtoObject() *cwobjectv1.CWObjectBucketSettings
 	return &settings
 }
 
-// Optional+Computed may copy a remote cap into the plan. Drop it unless the
-// attribute is configured, so unrelated updates leave the cap unchanged.
+// An omitted cap can still appear in the plan from state, including an
+// out-of-band value. Exclude it so unrelated updates neither change the cap
+// nor require capacity-cap permission.
 func omitUnconfiguredCapacityCap(settings *cwobjectv1.CWObjectBucketSettings, configured types.Int64) {
 	if configured.IsNull() || configured.IsUnknown() {
 		settings.ClearCapacityCapUpdate()
