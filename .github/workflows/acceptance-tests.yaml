@@ -101,7 +101,8 @@ jobs:
     needs: [detect-changes]
     if: needs.detect-changes.outputs.suites != '[]'
     strategy:
-      fail-fast: true
+      # A failed suite must not cancel independent suites or their cleanup.
+      fail-fast: false
       matrix:
         suite: ${{ fromJson(needs.detect-changes.outputs.suites) }}
     uses: ./.github/workflows/acceptance-test.yaml

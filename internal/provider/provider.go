@@ -14,6 +14,7 @@ import (
 	"github.com/coreweave/terraform-provider-coreweave/coreweave/inference"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave/networking"
 	objectstorage "github.com/coreweave/terraform-provider-coreweave/coreweave/object_storage"
+	"github.com/coreweave/terraform-provider-coreweave/coreweave/sandbox"
 	workloadfederation "github.com/coreweave/terraform-provider-coreweave/coreweave/workload_federation"
 	"github.com/coreweave/terraform-provider-coreweave/internal/auth"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -232,8 +233,10 @@ func BuildClient(ctx context.Context, model CoreweaveProviderModel, tfVersion, p
 func (p *CoreweaveProvider) Resources(ctx context.Context) []func() resource.Resource {
 	return []func() resource.Resource{
 		cks.NewClusterResource,
+		sandbox.NewManagedRunnerResource,
 		networking.NewVpcResource,
 		objectstorage.NewBucketResource,
+		objectstorage.NewAccessKeyResource,
 		objectstorage.NewOrganizationAccessPolicyResource,
 		objectstorage.NewBucketLifecycleResource,
 		objectstorage.NewBucketInventoryResource,

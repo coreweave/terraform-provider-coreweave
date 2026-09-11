@@ -14,8 +14,6 @@ import (
 	"github.com/coreweave/terraform-provider-coreweave/internal/auth"
 )
 
-type suppressRetryContextKey struct{}
-
 var (
 	// A regular expression to match the error returned by net/http when the
 	// configured number of redirects is exhausted. This error isn't typed
@@ -97,11 +95,19 @@ func IsPermanentRequestError(err error) bool {
 	return permanentRequestError(err) != nil
 }
 
+type withoutRetriesKey struct{}
+
+// WithoutRetries disables HTTP retries for a non-idempotent operation whose
+// outcome cannot be recovered after a lost response.
+func WithoutRetries(ctx context.Context) context.Context {
+	return context.WithValue(ctx, withoutRetriesKey{}, true)
+}
+
 func connectRetryPolicyInterceptor() connect.Interceptor {
 	return connect.UnaryInterceptorFunc(func(next connect.UnaryFunc) connect.UnaryFunc {
 		return func(ctx context.Context, request connect.AnyRequest) (connect.AnyResponse, error) {
 			if isNonIdempotentCreate(request.Spec()) {
-				ctx = context.WithValue(ctx, suppressRetryContextKey{}, true)
+				ctx = WithoutRetries(ctx)
 			}
 			return next(ctx, request)
 		}
@@ -122,18 +128,9 @@ func isNonIdempotentCreate(spec connect.Spec) bool {
 }
 
 func RetryPolicy(ctx context.Context, resp *http.Response, err error) (bool, error) {
-	if suppressRetry, _ := ctx.Value(suppressRetryContextKey{}).(bool); suppressRetry {
-		// A Create RPC may have committed before an ambiguous failure, so replaying
-		// it is unsafe unless the schema explicitly declares it idempotent.
-		if err != nil {
-			return false, err
-		}
-		if ctx.Err() != nil {
-			return false, ctx.Err()
-		}
+	if disabled, _ := ctx.Value(withoutRetriesKey{}).(bool); disabled {
 		return false, nil
 	}
-
 	if ctx.Err() != nil {
 		// do not retry on context.Canceled errors
 		if errors.Is(ctx.Err(), context.Canceled) {

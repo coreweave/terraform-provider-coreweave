@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.24.0](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.23.0...v0.24.0) (2026-09-11)
+
+
+### Features
+
+* **object-storage:** manage individual access keys ([#443](https://github.com/coreweave/terraform-provider-coreweave/issues/443)) ([c889605](https://github.com/coreweave/terraform-provider-coreweave/commit/c88960590f30fa06d49485528cd29703b6524b45))
+* **sandbox:** add v1 managed runner resource ([#440](https://github.com/coreweave/terraform-provider-coreweave/issues/440)) ([8eb913e](https://github.com/coreweave/terraform-provider-coreweave/commit/8eb913ebf3685dd2e0a5f075b38f7962f216816c))
+
+
+### Documentation
+
+* **object-storage:** complete native inventory example ([#441](https://github.com/coreweave/terraform-provider-coreweave/issues/441)) ([8a7272c](https://github.com/coreweave/terraform-provider-coreweave/commit/8a7272c31fee5f75307743b29395ed0a7fc938eb))
+
 ## [0.23.0](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.22.1...v0.23.0) (2026-09-03)
 
 

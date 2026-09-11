@@ -3,16 +3,24 @@
 page_title: "coreweave_object_storage_bucket_inventory Resource - coreweave"
 subcategory: ""
 description: |-
-  Manages a Coreweave AI Object Storage bucket inventory configuration. Learn more about inventory reporting https://docs.coreweave.com/products/storage/object-storage
+  Manages a CoreWeave AI Object Storage bucket inventory configuration. The provider obtains temporary S3 credentials using its configured authentication; no separately managed access-key resource is required. The authenticated identity must have permission to manage inventory configurations on the source bucket and policies on the destination bucket. Learn more about inventory reporting https://docs.coreweave.com/products/storage/object-storage/buckets/inventory-reporting/configure.
 ---
 
 # coreweave_object_storage_bucket_inventory (Resource)
 
-Manages a Coreweave AI Object Storage bucket inventory configuration. [Learn more about inventory reporting](https://docs.coreweave.com/products/storage/object-storage)
+Manages a CoreWeave AI Object Storage bucket inventory configuration. The provider obtains temporary S3 credentials using its configured authentication; no separately managed access-key resource is required. The authenticated identity must have permission to manage inventory configurations on the source bucket and policies on the destination bucket. [Learn more about inventory reporting](https://docs.coreweave.com/products/storage/object-storage/buckets/inventory-reporting/configure).
 
 ## Example Usage
 
 ```terraform
+# Requires CoreWeave provider v0.22.0 or later for caller_identity.
+data "coreweave_caller_identity" "current" {}
+
+locals {
+  caller_principal = "arn:aws:iam::${data.coreweave_caller_identity.current.organization_id}:coreweave/${data.coreweave_caller_identity.current.principal_id}"
+}
+
+# Replace the example bucket names with globally unique names and configure CoreWeave provider authentication.
 resource "coreweave_object_storage_bucket" "source" {
   name = "inventory-source-example"
   zone = "US-EAST-04A"
@@ -23,14 +31,63 @@ resource "coreweave_object_storage_bucket" "destination" {
   zone = "US-EAST-04A"
 }
 
+# This resource replaces the entire bucket policy; retain any other required grants.
+# Unmatched requests are implicitly denied even if an organization policy allows them.
+# Add explicit bucket grants for other report readers. PutBucketPolicy itself uses only organization permissions.
+resource "coreweave_object_storage_bucket_policy" "inventory_destination" {
+  bucket = coreweave_object_storage_bucket.destination.name
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "AllowInventoryReports"
+        Effect = "Allow"
+        Principal = {
+          CW = "arn:aws:iam::static:role/static/inventory"
+        }
+        Action   = ["s3:PutObject", "s3:AbortMultipartUpload"]
+        Resource = ["arn:aws:s3:::${coreweave_object_storage_bucket.destination.name}/inventory-reports/*"]
+      },
+      {
+        Sid    = "AllowCallerManageDestination"
+        Effect = "Allow"
+        Principal = {
+          CW = local.caller_principal
+        }
+        Action = [
+          "s3:ListBucket",
+          "s3:GetBucketPolicy",
+          "s3:DeleteBucketPolicy",
+          "s3:GetBucketLocation",
+          "s3:GetBucketTagging",
+          "s3:DeleteBucket",
+        ]
+        Resource = ["arn:aws:s3:::${coreweave_object_storage_bucket.destination.name}"]
+      },
+      {
+        Sid    = "AllowCallerManageReports"
+        Effect = "Allow"
+        Principal = {
+          CW = local.caller_principal
+        }
+        Action   = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"]
+        Resource = ["arn:aws:s3:::${coreweave_object_storage_bucket.destination.name}/inventory-reports/*"]
+      },
+    ]
+  })
+}
+
 resource "coreweave_object_storage_bucket_inventory" "default" {
+  # The service validates destination access when configuring inventory.
+  depends_on = [coreweave_object_storage_bucket_policy.inventory_destination]
+
   bucket                   = coreweave_object_storage_bucket.source.name
   name                     = "daily-inventory"
   enabled                  = true
   included_object_versions = "All"
 
   # Optional: omit entirely to include no extra fields. An empty set is invalid.
-  optional_fields = ["Size", "LastModifiedDate", "StorageClass", "ETag"]
+  optional_fields = ["Size", "LastModifiedDate", "LastAccessedDate", "StorageClass", "ETag"]
 
   # Optional: limit the report to objects under a prefix.
   filter {
@@ -57,23 +114,23 @@ resource "coreweave_object_storage_bucket_inventory" "default" {
 ### Required
 
 - `bucket` (String) Name of source bucket to which the inventory configuration applies
-- `included_object_versions` (String) Specifies which object versions are included in the inventory results. Valid values are `All` and `Current`.
+- `included_object_versions` (String) Object versions to include: `All` includes all versions; `Current` includes only current versions.
 - `name` (String) Name of the inventory configuration. Must be unique within the bucket.
 
 ### Optional
 
-- `destination` (Block, Optional) Where the inventory report is written. May be the same bucket as the source. (see [below for nested schema](#nestedblock--destination))
+- `destination` (Block, Optional) Required. Where the inventory report is written. May be the same bucket as the source. The destination policy must grant the inventory service `s3:PutObject` and `s3:AbortMultipartUpload` on report objects. Use `depends_on` to apply that policy before the inventory configuration. Bucket policies are evaluated after organization policies; requests without a matching bucket grant are implicitly denied even if an organization policy allows them. Include caller permissions for Terraform bucket reads and cleanup, and explicit grants for report readers. The policy resource replaces the entire existing bucket policy, so retain all required statements. `s3:PutBucketPolicy` itself evaluates organization permissions only. See [policy evaluation](https://docs.coreweave.com/products/storage/object-storage/auth-access/policies#policy-evaluation). (see [below for nested schema](#nestedblock--destination))
 - `enabled` (Boolean) Whether the inventory configuration is enabled. Defaults to `true`.
 - `filter` (Block, Optional) Limits the inventory report to objects matching a prefix. (see [below for nested schema](#nestedblock--filter))
-- `optional_fields` (Set of String) List of optional fields to include in the inventory results
-- `schedule` (Block, Optional) Schedule for generating the inventory report. (see [below for nested schema](#nestedblock--schedule))
+- `optional_fields` (Set of String) Additional report fields: `Size`, `LastModifiedDate`, `LastAccessedDate`, `StorageClass`, `ETag`, `IsMultipartUploaded`, `EncryptionStatus`, `ChecksumAlgorithm`. Omit to include no additional fields; an empty set is invalid.
+- `schedule` (Block, Optional) Required. Schedule for generating the inventory report. (see [below for nested schema](#nestedblock--schedule))
 
 <a id="nestedblock--destination"></a>
 ### Nested Schema for `destination`
 
 Optional:
 
-- `bucket` (Block, Optional) Destination bucket for the report (may equal the source bucket). (see [below for nested schema](#nestedblock--destination--bucket))
+- `bucket` (Block, Optional) Required. Destination bucket for the report (may equal the source bucket). (see [below for nested schema](#nestedblock--destination--bucket))
 
 <a id="nestedblock--destination--bucket"></a>
 ### Nested Schema for `destination.bucket`
