@@ -93,7 +93,18 @@ func IsPermanentRequestError(err error) bool {
 	return permanentRequestError(err) != nil
 }
 
+type withoutRetriesKey struct{}
+
+// WithoutRetries disables HTTP retries for a non-idempotent operation whose
+// outcome cannot be recovered after a lost response.
+func WithoutRetries(ctx context.Context) context.Context {
+	return context.WithValue(ctx, withoutRetriesKey{}, true)
+}
+
 func RetryPolicy(ctx context.Context, resp *http.Response, err error) (bool, error) {
+	if disabled, _ := ctx.Value(withoutRetriesKey{}).(bool); disabled {
+		return false, nil
+	}
 	if ctx.Err() != nil {
 		// do not retry on context.Canceled errors
 		if errors.Is(ctx.Err(), context.Canceled) {
