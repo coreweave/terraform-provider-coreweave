@@ -3,13 +3,13 @@
 page_title: "coreweave_caller_identity Data Source - coreweave"
 subcategory: ""
 description: |-
-  Retrieve the organization and principal identifiers associated with the configured CoreWeave API token.
+  Retrieve the organization and principal identifiers associated with the configured CoreWeave credentials.
   Comparable identity data sources in other HashiCorp cloud providers include aws_caller_identity https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/caller_identity, azurerm_client_config https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/data-sources/client_config, and google_client_openid_userinfo https://registry.terraform.io/providers/hashicorp/google/latest/docs/data-sources/client_openid_userinfo. Each data source reflects its provider's identity model and exports different attributes.
 ---
 
 # coreweave_caller_identity (Data Source)
 
-Retrieve the organization and principal identifiers associated with the configured CoreWeave API token.
+Retrieve the organization and principal identifiers associated with the configured CoreWeave credentials.
 
 Comparable identity data sources in other HashiCorp cloud providers include [aws_caller_identity](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/caller_identity), [azurerm_client_config](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/data-sources/client_config), and [google_client_openid_userinfo](https://registry.terraform.io/providers/hashicorp/google/latest/docs/data-sources/client_openid_userinfo). Each data source reflects its provider's identity model and exports different attributes.
 
@@ -24,5 +24,5 @@ data "coreweave_caller_identity" "current" {}
 
 ### Read-Only
 
-- `organization_id` (String) The unique identifier of the organization associated with the configured CoreWeave API token.
-- `principal_id` (String) The unique identifier of the principal associated with the configured CoreWeave API token.
+- `organization_id` (String) The unique identifier of the organization associated with the configured CoreWeave credentials.
+- `principal_id` (String) The unique identifier of the principal associated with the configured CoreWeave credentials.
