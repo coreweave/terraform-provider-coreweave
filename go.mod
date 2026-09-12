@@ -13,9 +13,9 @@ require (
 	buf.build/gen/go/coreweave/networking/protocolbuffers/go v1.36.11-20260121155637-a637e7777165.1
 	buf.build/gen/go/coreweave/sandbox/connectrpc/go v1.20.0-20260909020241-374666cd3a25.1
 	buf.build/gen/go/coreweave/sandbox/protocolbuffers/go v1.36.11-20260909020241-374666cd3a25.1
-	buf.build/gen/go/coreweave/workload-federation/connectrpc/go v1.20.0-20260825153113-5bfae6057a98.1
-	buf.build/gen/go/coreweave/workload-federation/protocolbuffers/go v1.36.12-20260825153113-5bfae6057a98.1
-	connectrpc.com/connect v1.20.0
+	buf.build/gen/go/coreweave/workload-federation/connectrpc/go v1.21.0-20260911205341-f7522a2ba73a.1
+	buf.build/gen/go/coreweave/workload-federation/protocolbuffers/go v1.36.12-20260911205341-f7522a2ba73a.2
+	connectrpc.com/connect v1.21.0
 	github.com/aws/aws-sdk-go-v2 v1.41.3
 	github.com/aws/aws-sdk-go-v2/credentials v1.19.11
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.97.0
@@ -39,7 +39,7 @@ require (
 )
 
 require (
-	buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.36.12-20260415201107-50325440f8f2.1 // indirect
+	buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.36.12-20260825204119-511051f7f437.2 // indirect
 	buf.build/gen/go/gnostic/gnostic/protocolbuffers/go v1.36.11-20230414000709-087bc8072ce4.1 // indirect
 	buf.build/gen/go/grpc-ecosystem/grpc-gateway/protocolbuffers/go v1.36.11-20241220201140-4c5ba75caaf8.1 // indirect
 	github.com/ProtonMail/go-crypto v1.1.6 // indirect
