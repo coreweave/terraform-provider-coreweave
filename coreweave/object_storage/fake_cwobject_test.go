@@ -43,6 +43,7 @@ type fakeBucketSettings struct {
 	auditLoggingEnabled        *bool
 	archiveEnabled             *bool
 	archiveAfterLastAccessDays *int32
+	capacityCapBytes           *uint64
 }
 
 const fakeArchiveMinDays int32 = 60
@@ -83,11 +84,11 @@ func (f *fakeCWObject) setRequestSettings() []*cwobjectv1.CWObjectBucketSettings
 // storedSettings returns the persisted settings for a bucket, unsanitized, so
 // tests can assert on what the service actually kept rather than on what it was
 // willing to disclose.
-func (f *fakeCWObject) storedSettings(bucketName string) *fakeBucketSettings {
+func (f *fakeCWObject) storedSettings() *fakeBucketSettings {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
-	stored, ok := f.buckets[bucketName]
+	stored, ok := f.buckets[testBucketName]
 	if !ok {
 		return nil
 	}
@@ -95,6 +96,14 @@ func (f *fakeCWObject) storedSettings(bucketName string) *fakeBucketSettings {
 	clone := *stored
 
 	return &clone
+}
+
+func (f *fakeCWObject) setStoredCapacityCap(capacityCapBytes uint64) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	value := capacityCapBytes
+	f.buckets[testBucketName].capacityCapBytes = &value
 }
 
 func hasArchiveFields(settings *cwobjectv1.CWObjectBucketSettings) bool {
@@ -114,6 +123,12 @@ func (f *fakeCWObject) sanitizeForOrg(settings *cwobjectv1.CWObjectBucketSetting
 		AuditLoggingEnabled: settings.GetAuditLoggingEnabled(),
 	}
 
+	// The cap stays visible regardless of archive entitlement, matching thoth's
+	// sanitizeCWObjectBucketSettingsForOrg.
+	if configured := settings.GetConfiguredCapacityCapBytes(); configured != nil {
+		out.SetConfiguredCapacityCapBytes(configured)
+	}
+
 	return out
 }
 
@@ -130,6 +145,11 @@ func (b *fakeBucketSettings) toProto() *cwobjectv1.CWObjectBucketSettings {
 
 	if b.archiveAfterLastAccessDays != nil {
 		out.ArchiveAfterLastAccessDays = wrapperspb.Int32(*b.archiveAfterLastAccessDays)
+	}
+
+	// Surface the cap through the read-only field.
+	if b.capacityCapBytes != nil {
+		out.SetConfiguredCapacityCapBytes(wrapperspb.UInt64(*b.capacityCapBytes))
 	}
 
 	return out
@@ -190,6 +210,15 @@ func (f *fakeCWObject) persist(stored *fakeBucketSettings, settings *cwobjectv1.
 	if audit := settings.GetAuditLoggingEnabled(); audit != nil {
 		value := audit.GetValue()
 		stored.auditLoggingEnabled = &value
+	}
+
+	// Persist a set cap (0 valid) or a clear, before the archive switch's early return.
+	switch {
+	case settings.HasCapacityCapBytes():
+		value := settings.GetCapacityCapBytes()
+		stored.capacityCapBytes = &value
+	case settings.HasClearCapacityCap():
+		stored.capacityCapBytes = nil
 	}
 
 	enabled := settings.GetArchiveEnabled()
