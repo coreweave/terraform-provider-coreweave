@@ -182,6 +182,8 @@ func TestBucketSettingsResource(t *testing.T) {
 				AuditLoggingEnabled:        types.BoolValue(true),
 				ArchiveEnabled:             types.BoolValue(true),
 				ArchiveAfterLastAccessDays: types.Int32Value(60),
+				// Exercise the cap over the real API: set here, round-trip and import checked.
+				CapacityCapBytes: types.Int64Value(1024),
 			},
 			configPlanChecks: resource.ConfigPlanChecks{
 				PreApply: []plancheck.PlanCheck{

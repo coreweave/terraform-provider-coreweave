@@ -16,6 +16,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
@@ -269,6 +270,10 @@ func (b *BucketSettingsResource) Schema(ctx context.Context, req resource.Schema
 				MarkdownDescription: "Maximum number of STANDARD-class bytes the bucket may store. New STANDARD writes are rejected once bucket usage would exceed this cap; `0` is a valid cap that blocks all new STANDARD writes. Omit to leave the cap unchanged. Removing this resource leaves any cap in place; the cap is cleared when the bucket itself is deleted. Your organization must be entitled to configure this setting.",
 				Optional:            true,
 				Computed:            true,
+				// Keep the prior cap in the plan when unset, avoiding "known after apply".
+				PlanModifiers: []planmodifier.Int64{
+					int64planmodifier.UseStateForUnknown(),
+				},
 				Validators: []validator.Int64{
 					int64validator.AtLeast(0),
 				},
