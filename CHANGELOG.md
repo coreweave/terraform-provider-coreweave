@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.25.0](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.24.0...v0.25.0) (2026-09-14)
+
+
+### Features
+
+* **object_storage:** add bucket capacity caps support to Terraform ([#447](https://github.com/coreweave/terraform-provider-coreweave/issues/447)) ([1ea6d4c](https://github.com/coreweave/terraform-provider-coreweave/commit/1ea6d4cb7a33b43c14b62151030347c84ea4c724))
+
 ## [0.24.0](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.23.0...v0.24.0) (2026-09-11)
 
 
