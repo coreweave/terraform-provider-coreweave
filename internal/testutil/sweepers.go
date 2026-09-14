@@ -51,18 +51,6 @@ func SweepRuntimeFromEnv() (SweepRuntime, error) {
 	return runtime, nil
 }
 
-func SweepDryRun() bool {
-	value, ok := os.LookupEnv("SWEEP_DRY_RUN")
-	if !ok || value == "" {
-		return false
-	}
-	dryRun, err := strconv.ParseBool(value)
-	if err != nil {
-		panic(fmt.Errorf("failed to parse SWEEP_DRY_RUN as bool: %w", err))
-	}
-	return dryRun
-}
-
 func Sweep[T any](ctx context.Context, runtime SweepRuntime, config SweepConfig[T]) error {
 	if err := validateSweep(runtime, config); err != nil {
 		return err
