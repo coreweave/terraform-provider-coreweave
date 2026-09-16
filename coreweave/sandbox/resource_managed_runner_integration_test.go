@@ -249,6 +249,35 @@ func TestManagedRunnerLifecycle(t *testing.T) {
 	assert.NotContains(t, service.updates[0], "identity.cluster_id")
 }
 
+func TestManagedRunnerLegacyNetworkPolicyMigration(t *testing.T) {
+	service := startRunnerServer(t)
+	legacy := minimalConfig(`{
+   constraints = { network = {
+     deny_dns = false
+     dns_egress = "DNS_EGRESS_MODE_DENY"
+     allowed_egress = [{ dns_name = "*.example.com", dns_name_except = ["private.example.com"] }]
+   } }
+ }`, "")
+	canonical := strings.NewReplacer("deny_dns", "deny_https_hostname_rules", "dns_name_except", "https_hostname_except", "dns_name", "https_hostname").Replace(legacy)
+	tfresource.UnitTest(t, tfresource.TestCase{
+		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+		CheckDestroy:             service.checkDestroyed,
+		Steps: []tfresource.TestStep{
+			{Config: legacy, Check: tfresource.TestCheckResourceAttr(runnerAddress, "policy.constraints.network.allowed_egress.0.dns_name", "*.example.com")},
+			{Config: legacy, PlanOnly: true},
+			{Config: canonical, Check: tfresource.ComposeAggregateTestCheckFunc(
+				tfresource.TestCheckResourceAttr(runnerAddress, "policy.constraints.network.allowed_egress.0.https_hostname", "*.example.com"),
+				tfresource.TestCheckResourceAttr(runnerAddress, "policy.constraints.network.deny_https_hostname_rules", "false"),
+			)},
+			{Config: canonical, PlanOnly: true},
+			{ResourceName: runnerAddress, ImportState: true, ImportStateVerify: true, ImportStateVerifyIgnore: []string{"policy.constraints.network.deny_https_hostname_rules"}},
+		},
+	})
+	service.mu.Lock()
+	defer service.mu.Unlock()
+	assert.Empty(t, service.updates, "renaming aliases must not rewrite the remote policy")
+}
+
 func TestManagedRunnerImportAndReplacement(t *testing.T) {
 	service := startRunnerServer(t)
 	config := minimalConfig(`{}`, "")

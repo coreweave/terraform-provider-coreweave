@@ -118,8 +118,8 @@ func validatePolicy(policy *sandboxv1.Policy) error {
 		}
 	}
 	for _, rule := range network.GetDefaultEgress() {
-		if rule.GetDnsName() != "" {
-			return fmt.Errorf("default_egress must not contain DNS-name destinations")
+		if rule.GetHttpsHostname() != "" {
+			return fmt.Errorf("default_egress must not contain HTTPS hostname destinations")
 		}
 	}
 	for _, rules := range [][]*sandboxv1.IngressRule{network.GetAllowedIngress(), network.GetDefaultIngress()} {

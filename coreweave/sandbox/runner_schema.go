@@ -222,11 +222,13 @@ func policyConstraintsAttribute() schema.SingleNestedAttribute {
 			"allowed_images":     optionalStrings("Allowed image references. Empty permits any image within the registry restrictions."),
 		}),
 		"network": optionalObject("Network envelopes and defaults. Empty allowed envelopes impose no restriction.", map[string]schema.Attribute{
-			"allowed_egress":  networkRulesAttribute(true, "Allowed egress envelope. DNS wildcard `*` is permitted here."),
-			"default_egress":  networkRulesAttribute(true, "Egress applied when the sandbox specifies none. DNS-name destinations are not permitted here."),
-			"deny_dns":        optionalBool("Forbid DNS-name egress grants. Does not disable DNS resolution."),
-			"allowed_ingress": networkRulesAttribute(false, "Allowed ingress sources for custom-visibility ports."),
-			"default_ingress": networkRulesAttribute(false, "Ingress applied when the sandbox specifies none."),
+			"allowed_egress":            networkRulesAttribute(true, "Allowed egress envelope. HTTPS hostname wildcard `*` is permitted here."),
+			"default_egress":            networkRulesAttribute(true, "Egress applied when the sandbox specifies none. HTTPS hostname destinations are not permitted here."),
+			"deny_https_hostname_rules": optionalBool("Forbid hostname-based HTTPS egress grants. Does not disable DNS resolution."),
+			"deny_dns":                  legacyDenyDNSAttribute(),
+			"dns_egress":                enumAttribute("Outbound DNS traffic ceiling on UDP/TCP port 53. Unspecified permits DNS; DENY requires sandboxes to block it. Independent of hostname-based HTTPS grants.", sandboxv1.DNSEgressMode_name),
+			"allowed_ingress":           networkRulesAttribute(false, "Allowed ingress sources for custom-visibility ports."),
+			"default_ingress":           networkRulesAttribute(false, "Ingress applied when the sandbox specifies none."),
 		}),
 		"security": optionalObject("Container privilege and runtime-class constraints.", map[string]schema.Attribute{
 			"allow_privileged":          optionalBool("Permit privileged containers."),
@@ -257,19 +259,31 @@ func networkRulesAttribute(egress bool, description string) schema.ListNestedAtt
 		}),
 		"tenant": enumAttribute("Relational tenant selection.", sandboxv1.TenantScope_name),
 		"any":    schema.BoolAttribute{Optional: true, MarkdownDescription: "Set to true to select any address-shaped peer.", Validators: []validator.Bool{trueValidator{}}},
-		"ports": optionalObjects("Allowed ports. Empty means all ports, except DNS destinations which use HTTPS (TCP 443).", map[string]schema.Attribute{
+		"ports": optionalObjects("Allowed ports. Empty means all ports, except HTTPS hostname destinations which use HTTPS (TCP 443).", map[string]schema.Attribute{
 			"protocol": schema.StringAttribute{Optional: true, MarkdownDescription: "TCP (default), UDP, or SCTP.", Validators: []validator.String{stringvalidator.OneOf("TCP", "UDP", "SCTP")}},
 			"port":     schema.Int64Attribute{Required: true, MarkdownDescription: "Starting port.", Validators: []validator.Int64{int64validator.Between(1, 65535)}},
 			"end_port": schema.Int64Attribute{Optional: true, MarkdownDescription: "Inclusive end port; zero or omitted means a single port.", Validators: []validator.Int64{int64validator.Between(0, 65535)}},
 		}),
 	}
 	if egress {
-		attributes["dns_name"] = optionalString("Exact DNS name or a single leftmost wildcard label; `*` is allowed only in allowed_egress.")
-		attributes["dns_name_except"] = optionalStrings("DNS names excluded from an allowed_egress DNS envelope.")
+		attributes["https_hostname"] = optionalString("Exact HTTPS hostname or a single leftmost wildcard label; `*` is allowed only in allowed_egress.")
+		attributes["https_hostname_except"] = optionalStrings("Hostnames excluded from an allowed_egress HTTPS envelope.")
+		legacyName := optionalString("Deprecated alias for https_hostname.")
+		legacyName.DeprecationMessage = "Use https_hostname instead."
+		attributes["dns_name"] = legacyName
+		legacyExcept := optionalStrings("Deprecated alias for https_hostname_except.")
+		legacyExcept.DeprecationMessage = "Use https_hostname_except instead."
+		attributes["dns_name_except"] = legacyExcept
 		attributes["selector"] = optionalObject("Explicit entitlement to reach cluster workloads by label.", map[string]schema.Attribute{
 			"pod_labels":       schema.MapAttribute{Required: true, ElementType: types.StringType, MarkdownDescription: "Pod labels to match (at least one required)."},
 			"namespace_labels": optionalMap("Namespace labels to match. Omitted means the sandbox's own namespace."),
 		})
 	}
 	return optionalObjects(description+" Select exactly one peer kind per rule.", attributes)
+}
+
+func legacyDenyDNSAttribute() schema.BoolAttribute {
+	attribute := optionalBool("Deprecated alias for deny_https_hostname_rules. Does not disable DNS resolution.")
+	attribute.DeprecationMessage = "Use deny_https_hostname_rules instead; dns_egress separately controls DNS traffic."
+	return attribute
 }

@@ -48,6 +48,10 @@ func checkMessageSchema(t *testing.T, descriptor protoreflect.MessageDescriptor,
 		}
 	}
 	for name := range attributes {
+		if current, ok := legacyNetworkAliases(descriptor.FullName())[name]; ok {
+			require.NotNil(t, fields.ByName(protoreflect.Name(current)))
+			continue
+		}
 		require.NotNil(t, fields.ByName(protoreflect.Name(name)), "unexpected field %s.%s", descriptor.FullName(), name)
 	}
 }
@@ -177,7 +181,7 @@ func TestPolicyValidation(t *testing.T) {
 	t.Parallel()
 	for name, raw := range map[string]string{
 		"missing destination":     `{"constraints":{"network":{"allowed_egress":[{}]}}}`,
-		"DNS default":             `{"constraints":{"network":{"default_egress":[{"dns_name":"example.com"}]}}}`,
+		"HTTPS hostname default":  `{"constraints":{"network":{"default_egress":[{"https_hostname":"example.com"}]}}}`,
 		"invalid port range":      `{"constraints":{"network":{"allowed_egress":[{"any":true,"ports":[{"port":100,"end_port":90}]}]}}}`,
 		"redundant source prefix": `{"control_plane_access":{"source_ip_allowlist":{"cidrs":["10.0.0.0/8","10.1.0.0/16"]}}}`,
 	} {
