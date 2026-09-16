@@ -80,9 +80,26 @@ var (
 const (
 	conditionTypeResourcesApplied = "ResourcesApplied"
 
-	// The status enum has no "applied but not yet Ready" value, so create/update
-	// wait on this synthetic state derived from the ResourcesApplied condition.
+	// Create waits on this synthetic state (derived from the ResourcesApplied
+	// condition) so an apply returns once resources are applied rather than blocking
+	// on a model pull. A serving Update instead holds for the STATUS_UPDATING rollout
+	// to return to STATUS_READY; an Update that disables the deployment completes here
+	// too, since a torn-down deployment never reaches STATUS_READY (see updateStateChangeConf).
 	resourcesAppliedState = "RESOURCES_APPLIED"
+
+	// deletedState is a synthetic target returned when the API reports NotFound, since
+	// the inference proto has no STATUS_DELETED enum value.
+	// TODO: follow up with the managed inference team to add STATUS_DELETED to the proto
+	// so deletion can be polled deterministically via status rather than CodeNotFound.
+	deletedState = "NOT_FOUND"
+
+	// rolloutStartGracePeriod delays Update's first status poll so a template or engine
+	// change has time to surface STATUS_UPDATING before we sample it. The worker picks up
+	// a spec change on its broker delta poll (5s) and then flips to STATUS_UPDATING;
+	// without this grace Update could complete on the pre-rollout STATUS_READY still
+	// reported against the prior revision. A scale-only change never leaves READY
+	// (template_only semantics) and completes right after this delay.
+	rolloutStartGracePeriod = 30 * time.Second
 )
 
 // resourcesApplied reports whether the deployment's ResourcesApplied condition
@@ -118,6 +135,48 @@ func (r *InferenceDeploymentResource) resourcesAppliedRefresh(ctx context.Contex
 			return d, resourcesAppliedState, nil
 		}
 		return d, status.String(), nil
+	}
+}
+
+// rolloutRefresh polls a deployment for a StateChangeConf that completes on
+// STATUS_READY. Update uses it to hold through a STATUS_UPDATING rollout until the
+// new revision serves: per the API contract STATUS_UPDATING outranks READY while a
+// new revision rolls out and clears once it serves. A terminal ERROR/FAILED status
+// returns errDeploymentFailed.
+func (r *InferenceDeploymentResource) rolloutRefresh(ctx context.Context, deploymentID string) retry.StateRefreshFunc {
+	return func() (interface{}, string, error) {
+		getResp, err := r.client.GetDeployment(ctx, connect.NewRequest(&inferencev1.GetDeploymentRequest{
+			Id: deploymentID,
+		}))
+		if err != nil {
+			tflog.Error(ctx, "failed to poll deployment", map[string]interface{}{"error": err.Error()})
+			return nil, inferencev1.Status_STATUS_UNSPECIFIED.String(), err
+		}
+		d := getResp.Msg.Deployment
+		status := d.GetStatus().GetStatus()
+		if status == inferencev1.Status_STATUS_ERROR || status == inferencev1.Status_STATUS_FAILED {
+			return d, status.String(), errDeploymentFailed
+		}
+		return d, status.String(), nil
+	}
+}
+
+// deletedRefresh polls a deployment during Delete, reporting deletedState once the
+// API returns NotFound and the live status otherwise.
+func (r *InferenceDeploymentResource) deletedRefresh(ctx context.Context, deploymentID string) retry.StateRefreshFunc {
+	return func() (interface{}, string, error) {
+		getResp, err := r.client.GetDeployment(ctx, connect.NewRequest(&inferencev1.GetDeploymentRequest{
+			Id: deploymentID,
+		}))
+		if err != nil {
+			if coreweave.IsNotFoundError(err) {
+				return struct{}{}, deletedState, nil
+			}
+			tflog.Error(ctx, "failed to poll deployment deletion", map[string]interface{}{"error": err.Error()})
+			return nil, inferencev1.Status_STATUS_UNSPECIFIED.String(), err
+		}
+		d := getResp.Msg.Deployment
+		return d, d.GetStatus().GetStatus().String(), nil
 	}
 }
 
@@ -234,7 +293,7 @@ func (r *InferenceDeploymentResource) Schema(_ context.Context, _ resource.Schem
 			},
 			"status": schema.StringAttribute{
 				Computed:            true,
-				MarkdownDescription: "The current status of the deployment. See the [Inference API overview](https://docs.coreweave.com/products/inference/reference/api-overview) for status values. Apply returns once resources are applied rather than once serving, so this may not be ready immediately after apply; poll the API for live readiness.",
+				MarkdownDescription: "The current status of the deployment. See the [Inference API overview](https://docs.coreweave.com/products/inference/reference/api-overview) for status values. Create — and updates that disable the deployment — return once resources are applied rather than once serving, so the status may not be ready immediately; a serving update instead blocks until the rollout reaches STATUS_READY. Poll the API for live readiness.",
 				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
 			"created_at": schema.StringAttribute{
@@ -614,6 +673,33 @@ func (r *InferenceDeploymentResource) Read(ctx context.Context, req resource.Rea
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
+// updateStateChangeConf builds Update's waiter. The completion signal depends on the desired
+// end-state: a serving deployment holds through the STATUS_UPDATING rollout and completes only
+// once the new revision serves at STATUS_READY, so an apply reflects the rolled-out version. A
+// disabled deployment is torn down and never reaches STATUS_READY (status settles at CREATING),
+// so it completes on ResourcesApplied like Create rather than waiting for a READY that never comes.
+func (r *InferenceDeploymentResource) updateStateChangeConf(
+	ctx context.Context, deploymentID string, disabled bool,
+) retry.StateChangeConf {
+	conf := retry.StateChangeConf{
+		Pending: []string{
+			inferencev1.Status_STATUS_UPDATING.String(),
+			inferencev1.Status_STATUS_CREATING.String(),
+			inferencev1.Status_STATUS_UNSPECIFIED.String(),
+		},
+		Target:     []string{inferencev1.Status_STATUS_READY.String()},
+		Refresh:    r.rolloutRefresh(ctx, deploymentID),
+		Delay:      rolloutStartGracePeriod,
+		Timeout:    45 * time.Minute,
+		MinTimeout: 5 * time.Second,
+	}
+	if disabled {
+		conf.Target = []string{resourcesAppliedState}
+		conf.Refresh = r.resourcesAppliedRefresh(ctx, deploymentID)
+	}
+	return conf
+}
+
 func (r *InferenceDeploymentResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	var data InferenceDeploymentResourceModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
@@ -646,17 +732,7 @@ func (r *InferenceDeploymentResource) Update(ctx context.Context, req resource.U
 
 	deploymentID := updateResp.Msg.Deployment.GetSpec().GetId()
 
-	conf := retry.StateChangeConf{
-		Pending: []string{
-			inferencev1.Status_STATUS_UPDATING.String(),
-			inferencev1.Status_STATUS_CREATING.String(),
-			inferencev1.Status_STATUS_UNSPECIFIED.String(),
-		},
-		Target:     []string{resourcesAppliedState},
-		Refresh:    r.resourcesAppliedRefresh(ctx, deploymentID),
-		Timeout:    20 * time.Minute,
-		MinTimeout: 5 * time.Second,
-	}
+	conf := r.updateStateChangeConf(ctx, deploymentID, data.Disabled.ValueBool())
 
 	raw, err := conf.WaitForStateContext(ctx)
 	if err != nil && !errors.Is(err, errDeploymentFailed) {
@@ -681,6 +757,29 @@ func (r *InferenceDeploymentResource) Update(ctx context.Context, req resource.U
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
+// deleteStateChangeConf builds Delete's waiter. A deployment can be deleted from any live state,
+// so every status — including the terminal STATUS_ERROR/STATUS_FAILED of a broken deployment the
+// user is destroying — is tolerated as Pending; the sole Target is the synthetic NotFound state.
+// Omitting a live status would make StateChangeConf reject the first poll as unexpected and fail
+// an otherwise-valid destroy.
+func (r *InferenceDeploymentResource) deleteStateChangeConf(ctx context.Context, deploymentID string) retry.StateChangeConf {
+	return retry.StateChangeConf{
+		Pending: []string{
+			inferencev1.Status_STATUS_READY.String(),
+			inferencev1.Status_STATUS_UPDATING.String(),
+			inferencev1.Status_STATUS_CREATING.String(),
+			inferencev1.Status_STATUS_DELETING.String(),
+			inferencev1.Status_STATUS_ERROR.String(),
+			inferencev1.Status_STATUS_FAILED.String(),
+			inferencev1.Status_STATUS_UNSPECIFIED.String(),
+		},
+		Target:     []string{deletedState},
+		Refresh:    r.deletedRefresh(ctx, deploymentID),
+		Timeout:    20 * time.Minute,
+		MinTimeout: 5 * time.Second,
+	}
+}
+
 func (r *InferenceDeploymentResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	var data InferenceDeploymentResourceModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
@@ -701,35 +800,7 @@ func (r *InferenceDeploymentResource) Delete(ctx context.Context, req resource.D
 		return
 	}
 
-	// deletedState is a synthetic target state returned when CodeNotFound is received,
-	// since the inference proto has no STATUS_DELETED enum value.
-	// TODO: follow up with the managed inference team to add STATUS_DELETED to the proto
-	// so deletion can be polled deterministically via status rather than CodeNotFound.
-	const deletedState = "NOT_FOUND"
-
-	conf := retry.StateChangeConf{
-		Pending: []string{
-			inferencev1.Status_STATUS_DELETING.String(),
-			inferencev1.Status_STATUS_UNSPECIFIED.String(),
-		},
-		Target: []string{deletedState},
-		Refresh: func() (interface{}, string, error) {
-			getResp, err := r.client.GetDeployment(ctx, connect.NewRequest(&inferencev1.GetDeploymentRequest{
-				Id: deploymentID,
-			}))
-			if err != nil {
-				if coreweave.IsNotFoundError(err) {
-					return struct{}{}, deletedState, nil
-				}
-				tflog.Error(ctx, "failed to poll deployment deletion", map[string]interface{}{"error": err.Error()})
-				return nil, inferencev1.Status_STATUS_UNSPECIFIED.String(), err
-			}
-			d := getResp.Msg.Deployment
-			return d, d.GetStatus().GetStatus().String(), nil
-		},
-		Timeout:    20 * time.Minute,
-		MinTimeout: 5 * time.Second,
-	}
+	conf := r.deleteStateChangeConf(ctx, deploymentID)
 
 	_, err = conf.WaitForStateContext(ctx)
 	if err != nil {
