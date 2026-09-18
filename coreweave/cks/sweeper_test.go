@@ -2,7 +2,9 @@ package cks_test
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 	"strings"
 	"testing"
@@ -12,6 +14,7 @@ import (
 	networkingv1beta1 "buf.build/gen/go/coreweave/networking/protocolbuffers/go/coreweave/networking/v1beta1"
 	"connectrpc.com/connect"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
+	"github.com/coreweave/terraform-provider-coreweave/coreweave/cks"
 	"github.com/coreweave/terraform-provider-coreweave/internal/provider"
 	"github.com/coreweave/terraform-provider-coreweave/internal/testutil"
 	"github.com/coreweave/terraform-provider-coreweave/internal/testutil/vpcsweeper"
@@ -22,10 +25,12 @@ import (
 
 const (
 	cksClusterSweeperName       = "coreweave_cks_cluster"
+	cksNodePoolSweeperName      = "coreweave_cks_node_pool"
 	cksVPCSweeperName           = "coreweave_cks_vpc"
 	cksClusterSweeperTimeout    = 30 * time.Minute
+	cksNodePoolSweeperTimeout   = 10 * time.Minute
 	cksVPCSweeperTimeout        = 10 * time.Minute
-	testAccSweepTimeout         = 45 * time.Minute
+	testAccSweepTimeout         = 55 * time.Minute
 	sweepTimeoutHeadroom        = 5 * time.Minute
 	clusterDeleteTimeout        = 30 * time.Minute
 	clusterTransitionRetryDelay = 30 * time.Second
@@ -35,6 +40,14 @@ const (
 	testSweepZone               = "zone-a"
 	testSweepClusterName        = "test-acc-cluster-12345"
 )
+
+type nodePoolList struct {
+	Items []struct {
+		Metadata struct {
+			Name string `json:"name"`
+		} `json:"metadata"`
+	} `json:"items"`
+}
 
 type clusterSweepClient interface {
 	ListClusters(context.Context, *connect.Request[cksv1beta1.ListClustersRequest]) (*connect.Response[cksv1beta1.ListClustersResponse], error)
@@ -146,7 +159,7 @@ func isTransitionalClusterStatus(status cksv1beta1.Cluster_Status) bool {
 func newCKSClusterSweeper() *resource.Sweeper {
 	return &resource.Sweeper{
 		Name:         cksClusterSweeperName,
-		Dependencies: []string{},
+		Dependencies: []string{cksNodePoolSweeperName},
 		F: func(zone string) error {
 			zone, err := normalizeCKSSweepZone(zone)
 			if err != nil {
@@ -170,6 +183,66 @@ func newCKSClusterSweeper() *resource.Sweeper {
 				return err
 			}
 			return testutil.Sweep(ctx, runtime, config)
+		},
+	}
+}
+
+func newCKSNodePoolSweeper() *resource.Sweeper {
+	return &resource.Sweeper{
+		Name:         cksNodePoolSweeperName,
+		Dependencies: []string{},
+		F: func(zone string) error {
+			zone, err := normalizeCKSSweepZone(zone)
+			if err != nil {
+				return err
+			}
+			runtime, err := testutil.SweepRuntimeFromEnv()
+			if err != nil {
+				return err
+			}
+
+			ctx, cancel := context.WithTimeout(context.Background(), cksNodePoolSweeperTimeout)
+			defer cancel()
+
+			testutil.SetEnvDefaults()
+			client, err := provider.BuildClient(ctx, provider.CoreweaveProviderModel{}, "", "")
+			if err != nil {
+				return fmt.Errorf("build client: %w", err)
+			}
+			clusters, err := client.ListClusters(ctx, connect.NewRequest(&cksv1beta1.ListClustersRequest{}))
+			if err != nil {
+				return fmt.Errorf("list clusters: %w", err)
+			}
+			for _, cluster := range clusters.Msg.Items {
+				if !strings.HasPrefix(cluster.GetName(), AcceptanceTestPrefix) || cluster.GetZone() != zone {
+					continue
+				}
+				endpoint, err := cks.ResolveClusterKubernetesEndpoint(ctx, client, cluster.GetId())
+				if err != nil {
+					return fmt.Errorf("resolve Kubernetes endpoint for cluster %s: %w", cluster.GetName(), err)
+				}
+				payload, err := client.DoKubernetesRequest(ctx, http.MethodGet, endpoint, "/apis/compute.coreweave.com/v1alpha1/nodepools", "", nil)
+				if err != nil {
+					return fmt.Errorf("list Node Pools in cluster %s: %w", cluster.GetName(), err)
+				}
+				var list nodePoolList
+				if err := json.Unmarshal(payload, &list); err != nil {
+					return fmt.Errorf("decode Node Pools in cluster %s: %w", cluster.GetName(), err)
+				}
+				for _, nodePool := range list.Items {
+					if !strings.HasPrefix(nodePool.Metadata.Name, AcceptanceTestPrefix) {
+						continue
+					}
+					if runtime.DryRun {
+						continue
+					}
+					path := "/apis/compute.coreweave.com/v1alpha1/nodepools/" + nodePool.Metadata.Name
+					if _, err := client.DoKubernetesRequest(ctx, http.MethodDelete, endpoint, path, "", nil); err != nil && !coreweave.IsKubernetesNotFound(err) {
+						return fmt.Errorf("delete Node Pool %s in cluster %s: %w", nodePool.Metadata.Name, cluster.GetName(), err)
+					}
+				}
+			}
+			return nil
 		},
 	}
 }
@@ -210,6 +283,7 @@ func newCKSVPCSweepConfig(client vpcsweeper.Client, zone string) (testutil.Sweep
 }
 
 func init() {
+	resource.AddTestSweepers(cksNodePoolSweeperName, newCKSNodePoolSweeper())
 	resource.AddTestSweepers(cksClusterSweeperName, newCKSClusterSweeper())
 	resource.AddTestSweepers(cksVPCSweeperName, newCKSVPCSweeper())
 }
@@ -246,9 +320,14 @@ func (client *fakeClusterSweepClient) DeleteCluster(_ context.Context, request *
 }
 
 func TestCKSSweeperRegistrations(t *testing.T) {
+	nodePoolSweeper := newCKSNodePoolSweeper()
+	assert.Equal(t, cksNodePoolSweeperName, nodePoolSweeper.Name)
+	assert.Empty(t, nodePoolSweeper.Dependencies)
+	assert.NotNil(t, nodePoolSweeper.F)
+
 	clusterSweeper := newCKSClusterSweeper()
 	assert.Equal(t, cksClusterSweeperName, clusterSweeper.Name)
-	assert.Empty(t, clusterSweeper.Dependencies)
+	assert.Equal(t, []string{cksNodePoolSweeperName}, clusterSweeper.Dependencies)
 	assert.NotNil(t, clusterSweeper.F)
 
 	vpcSweeper := newCKSVPCSweeper()
@@ -269,6 +348,8 @@ func TestCKSSweepersValidateZoneBeforeSetup(t *testing.T) {
 	}{
 		{name: "cluster empty", fn: newCKSClusterSweeper().F},
 		{name: "cluster whitespace", zone: " \t\n", fn: newCKSClusterSweeper().F},
+		{name: "Node Pool empty", fn: newCKSNodePoolSweeper().F},
+		{name: "Node Pool whitespace", zone: " \t\n", fn: newCKSNodePoolSweeper().F},
 		{name: "VPC empty", fn: newCKSVPCSweeper().F},
 		{name: "VPC whitespace", zone: " \t\n", fn: newCKSVPCSweeper().F},
 	}
@@ -292,6 +373,7 @@ func TestCKSSweepersValidateRuntimeBeforeSetup(t *testing.T) {
 		fn   func(string) error
 	}{
 		{name: "cluster", fn: newCKSClusterSweeper().F},
+		{name: "Node Pool", fn: newCKSNodePoolSweeper().F},
 		{name: "VPC", fn: newCKSVPCSweeper().F},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
@@ -309,7 +391,7 @@ func unsetCKSEnv(t *testing.T, name string) {
 }
 
 func TestCKSSweeperTimeoutBudget(t *testing.T) {
-	chainTimeout := cksClusterSweeperTimeout + cksVPCSweeperTimeout
+	chainTimeout := cksNodePoolSweeperTimeout + cksClusterSweeperTimeout + cksVPCSweeperTimeout
 	require.LessOrEqual(t, chainTimeout, testAccSweepTimeout-sweepTimeoutHeadroom)
 }
 

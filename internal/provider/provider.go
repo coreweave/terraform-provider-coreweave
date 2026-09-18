@@ -233,6 +233,7 @@ func BuildClient(ctx context.Context, model CoreweaveProviderModel, tfVersion, p
 func (p *CoreweaveProvider) Resources(ctx context.Context) []func() resource.Resource {
 	return []func() resource.Resource{
 		cks.NewClusterResource,
+		cks.NewNodePoolResource,
 		sandbox.NewManagedRunnerResource,
 		networking.NewVpcResource,
 		objectstorage.NewBucketResource,

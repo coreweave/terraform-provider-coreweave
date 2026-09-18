@@ -81,6 +81,8 @@ func NewClientWithOptions(
 		ClusterServiceClient:    cksv1beta1connect.NewClusterServiceClient(c, endpoint, connect.WithInterceptors(authenticatedInterceptors...)),
 		VPCServiceClient:        networkingv1beta1connect.NewVPCServiceClient(c, endpoint, connect.WithInterceptors(authenticatedInterceptors...)),
 		SandboxRunnerManagement: sandboxv1connect.NewRunnerManagementServiceClient(c, endpoint, connect.WithInterceptors(authenticatedInterceptors...)),
+		kubernetesHTTPClient:    &http.Client{Timeout: timeout},
+		tokenSource:             tokenSource,
 		WFControlPlaneServiceClient: control_planev1beta1connect.NewWFControlPlaneServiceClient(
 			c,
 			endpoint,
@@ -117,15 +119,17 @@ type Client struct {
 	Inference               *InferenceClient
 	SandboxRunnerManagement sandboxv1connect.RunnerManagementServiceClient
 
-	apiEndpoint      string
-	httpClient       *http.Client
-	s3Endpoint       string
-	s3AttemptTimeout time.Duration
-	s3HTTPTransport  http.RoundTripper
-	s3Retryer        func() aws.Retryer
-	s3Now            func() time.Time
-	s3CacheIdentity  string
-	userAgent        string
+	kubernetesHTTPClient *http.Client
+	tokenSource          AccessTokenSource
+	apiEndpoint          string
+	httpClient           *http.Client
+	s3Endpoint           string
+	s3AttemptTimeout     time.Duration
+	s3HTTPTransport      http.RoundTripper
+	s3Retryer            func() aws.Retryer
+	s3Now                func() time.Time
+	s3CacheIdentity      string
+	userAgent            string
 }
 
 func IsNotFoundError(err error) bool {
