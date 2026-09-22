@@ -57,7 +57,8 @@ type ClusterResource struct {
 }
 
 type TailscaleResourceModel struct {
-	ClientID types.String `tfsdk:"client_id"`
+	ClientID      types.String `tfsdk:"client_id"`
+	TailnetDomain types.String `tfsdk:"tailnet_domain"`
 }
 
 type AuthWebhookResourceModel struct {
@@ -332,7 +333,17 @@ func (c *ClusterResourceModel) Set(cluster *cksv1beta1.Cluster) {
 
 func (c *ClusterResourceModel) setTailscale(cluster *cksv1beta1.Cluster) {
 	if cluster.Tailscale != nil && cluster.Tailscale.ClientId != "" {
-		c.Tailscale = &TailscaleResourceModel{ClientID: types.StringValue(cluster.Tailscale.ClientId)}
+		// tailnet_domain is OUTPUT_ONLY and assigned asynchronously by the
+		// Tailscale operator. Preserve a null (rather than an empty string) until
+		// it is assigned so consumers can distinguish "not yet assigned".
+		tailnetDomain := types.StringNull()
+		if cluster.Tailscale.TailnetDomain != "" {
+			tailnetDomain = types.StringValue(cluster.Tailscale.TailnetDomain)
+		}
+		c.Tailscale = &TailscaleResourceModel{
+			ClientID:      types.StringValue(cluster.Tailscale.ClientId),
+			TailnetDomain: tailnetDomain,
+		}
 	} else {
 		c.Tailscale = nil
 	}
@@ -1071,6 +1082,10 @@ func (r *ClusterResource) Schema(ctx context.Context, req resource.SchemaRequest
 							stringvalidator.LengthAtMost(255),
 							stringvalidator.RegexMatches(nonWhitespace, "must not be empty"),
 						},
+					},
+					"tailnet_domain": schema.StringAttribute{
+						Computed:            true,
+						MarkdownDescription: "The Tailscale Tailnet DNS name assigned to the cluster. Populated by the Tailscale operator after the cluster becomes ready.",
 					},
 				},
 			},

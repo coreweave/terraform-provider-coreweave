@@ -171,6 +171,10 @@ Required:
 
 - `client_id` (String) The Tailscale Client ID for the federated identity.
 
+Read-Only:
+
+- `tailnet_domain` (String) The Tailscale Tailnet DNS name assigned to the cluster. Populated by the Tailscale operator after the cluster becomes ready.
+
 ## Import
 
 Import is supported using the following syntax:
