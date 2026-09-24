@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.25.0](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.24.0...v0.25.0) (2026-09-24)
+
+
+### Features
+
+* **inference:** Wait for the STATUS_UPDATING rollout to complete on update ([#449](https://github.com/coreweave/terraform-provider-coreweave/issues/449)) ([de8c5e0](https://github.com/coreweave/terraform-provider-coreweave/commit/de8c5e0ef15df7e9bfe9084c202f1049bc610d62))
+* **object_storage:** add bucket capacity caps support to Terraform ([#447](https://github.com/coreweave/terraform-provider-coreweave/issues/447)) ([1ea6d4c](https://github.com/coreweave/terraform-provider-coreweave/commit/1ea6d4cb7a33b43c14b62151030347c84ea4c724))
+
 ## [0.24.0](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.23.0...v0.24.0) (2026-09-11)
 
 
