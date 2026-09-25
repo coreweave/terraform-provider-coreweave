@@ -59,9 +59,11 @@ func (d *ClusterDataSource) Schema(ctx context.Context, req datasource.SchemaReq
 				Computed:            true,
 			},
 			"public": schema.BoolAttribute{
-				MarkdownDescription: "Whether the cluster is public.",
+				MarkdownDescription: legacyPublicDescription,
 				Computed:            true,
 			},
+			"kube_api_access":        kubeAPIAccessDataSourceAttribute(),
+			"kube_api_access_status": kubeAPIAccessStatusDataSourceAttribute(),
 			"pod_cidr_name": schema.StringAttribute{
 				MarkdownDescription: "The pod CIDR name of the cluster.",
 				Computed:            true,

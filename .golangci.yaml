@@ -130,6 +130,9 @@ linters:
       - path: ^coreweave/cks/update_mask_test\.go$
         linters:
           - goconst
+      - path: ^coreweave/cks/public_access(_schema|_test|_integration_test)?\.go$
+        linters:
+          - goconst
       # Exclude some linters from running on tests files.
       - path: _test\.go
         linters:
