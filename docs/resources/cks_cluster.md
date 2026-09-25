@@ -42,16 +42,27 @@ resource "coreweave_networking_vpc" "default" {
 }
 
 resource "coreweave_cks_cluster" "default" {
-  name                   = "default"
-  version                = "v1.35"
-  zone                   = "US-EAST-04A"
-  vpc_id                 = coreweave_networking_vpc.default.id
+  name    = "default"
+  version = "v1.35"
+  zone    = "US-EAST-04A"
+  vpc_id  = coreweave_networking_vpc.default.id
+  # Legacy ingress supports CoreWeave-managed authentication.
+  # It is independent: public_access.allow_cidrs does not restrict this ingress.
   public                 = false
   pod_cidr_name          = "pod cidr"
   service_cidr_name      = "service cidr"
   internal_lb_cidr_names = ["internal lb cidr"]
   audit_policy           = filebase64("${path.module}/audit-policy.yaml")
   kubelet                = jsonencode({ maxPods = 256 })
+
+  # Unreleased draft: requires the pinned protobuf workspace and compatible API/operator.
+  # Direct TLS access does not support CoreWeave-managed authentication.
+  # Replace these documentation prefixes with your permitted client source ranges.
+  public_access = {
+    mode        = "TLS"
+    allow_cidrs = ["203.0.113.0/24", "2001:db8::/32"]
+  }
+
   oidc = {
     ca              = filebase64("${path.module}/example-ca.crt")
     client_id       = "kbyuFDidLLm280LIwVFiazOqjO3ty8KH"
@@ -99,7 +110,8 @@ The prefixes must exist in the cluster's VPC. This field is append-only.
 - `node_port_range` (Attributes) Kubernetes Service NodePort range. NodePort range can be expanded in existing clusters but not shrunk. Updating the NodePort range to a smaller range will require a replacement of the cluster. (see [below for nested schema](#nestedatt--node_port_range))
 - `oidc` (Attributes) OpenID Connect (OIDC) configuration for authentication to the api-server. (see [below for nested schema](#nestedatt--oidc))
 - `pod_cidr_name_v6` (String) IPv6 Pod CIDR name. If any IPv6 field is set, then ALL IPv6 fields must be set.
-- `public` (Boolean) Whether the cluster's api-server is publicly accessible from the internet.
+- `public` (Boolean) Whether to expose the cluster's Kubernetes API server through legacy public ingress, including CoreWeave-managed authentication. This remains supported and operates independently of public_access; its allowlist does not restrict legacy ingress.
+- `public_access` (Attributes) Direct public access to the cluster's Kubernetes API server. CoreWeave-managed authentication is not currently supported. The allowlist applies only to this endpoint; legacy ingress is controlled independently by public. Removing this attribute clears direct public access configuration. Changes to this configuration and Kubernetes version upgrades must be applied separately. (see [below for nested schema](#nestedatt--public_access))
 - `service_cidr_name_v6` (String) IPv6 Service CIDR name. If any IPv6 field is set, then ALL IPv6 fields must be set.
 - `shared_storage_cluster_id` (String) The `cluster_id` of the cluster to share storage with. Must be enabled by CoreWeave support. Contact CoreWeave support if you are interested in this feature.
 - `tailscale` (Attributes) Tailscale configuration for the cluster. Enables cluster access via a Tailscale VPN. (see [below for nested schema](#nestedatt--tailscale))
@@ -162,6 +174,15 @@ Optional:
 - `signing_algs` (Set of String) A list of signing algorithms that the OpenID Connect discovery endpoint uses.
 - `username_claim` (String) The claim to use as the username.
 - `username_prefix` (String) The prefix to use for the username.
+
+
+<a id="nestedatt--public_access"></a>
+### Nested Schema for `public_access`
+
+Optional:
+
+- `allow_cidrs` (Set of String) Up to 100 IPv4 or IPv6 CIDR ranges allowed through the direct public endpoint. At least one is required when mode is TLS; no ranges are supplied automatically. Include 0.0.0.0/0 or ::/0 explicitly to allow all sources for that address family. Kubernetes authentication and authorization still apply. Omitted, null, or empty CIDRs are allowed only when disabled.
+- `mode` (String) Access mode for the direct public endpoint: TLS enables TLS access to the Kubernetes API server; DISABLED disables this endpoint. Omitted or MODE_UNSPECIFIED behaves as DISABLED, but mode presence is preserved in state. Legacy public ingress is unaffected. TLS requires a nonempty allow_cidrs set.
 
 
 <a id="nestedatt--tailscale"></a>
