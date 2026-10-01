@@ -24,6 +24,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectdefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
@@ -245,6 +246,12 @@ type TrafficModel struct {
 	Weight types.Int64 `tfsdk:"weight"`
 }
 
+type DeploymentHotLoadModel struct {
+	Bucket         types.String `tfsdk:"bucket"`
+	PathPrefix     types.String `tfsdk:"path_prefix"`
+	TransitionMode types.String `tfsdk:"transition_mode"`
+}
+
 type ConditionModel struct {
 	Type           types.String `tfsdk:"type"`
 	Status         types.String `tfsdk:"status"`
@@ -263,14 +270,15 @@ type InferenceDeploymentResourceModel struct {
 	UpdatedAt      types.String `tfsdk:"updated_at"`
 	Conditions     types.List   `tfsdk:"conditions"`
 	// Required / Optional
-	Name        types.String           `tfsdk:"name"`
-	GatewayIds  types.Set              `tfsdk:"gateway_ids"`
-	Disabled    types.Bool             `tfsdk:"disabled"`
-	Runtime     *RuntimeModel          `tfsdk:"runtime"`
-	Resources   *ResourcesModel        `tfsdk:"resources"`
-	Model       *DeploymentModelConfig `tfsdk:"model"`
-	Autoscaling *AutoscalingModel      `tfsdk:"autoscaling"`
-	Traffic     *TrafficModel          `tfsdk:"traffic"`
+	Name        types.String            `tfsdk:"name"`
+	GatewayIds  types.Set               `tfsdk:"gateway_ids"`
+	Disabled    types.Bool              `tfsdk:"disabled"`
+	Runtime     *RuntimeModel           `tfsdk:"runtime"`
+	Resources   *ResourcesModel         `tfsdk:"resources"`
+	Model       *DeploymentModelConfig  `tfsdk:"model"`
+	Autoscaling *AutoscalingModel       `tfsdk:"autoscaling"`
+	Traffic     *TrafficModel           `tfsdk:"traffic"`
+	HotLoad     *DeploymentHotLoadModel `tfsdk:"hot_load"`
 }
 
 func (r *InferenceDeploymentResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -357,6 +365,16 @@ func (r *InferenceDeploymentResource) Schema(_ context.Context, _ resource.Schem
 				Computed:            true,
 				MarkdownDescription: "Whether the deployment is disabled.",
 				Default:             booldefault.StaticBool(false),
+			},
+			"hot_load": schema.SingleNestedAttribute{
+				Optional:            true,
+				MarkdownDescription: "Checkpoint hot-loading configuration. Immutable after creation; adding, changing or removing it replaces the deployment.",
+				PlanModifiers:       []planmodifier.Object{objectplanmodifier.RequiresReplace()},
+				Attributes: map[string]schema.Attribute{
+					"bucket":          schema.StringAttribute{Required: true, MarkdownDescription: "CoreWeave Object Storage bucket holding checkpoint snapshots.", Validators: []validator.String{stringvalidator.RegexMatches(hostnamePattern, "must be a valid bucket label")}},
+					"path_prefix":     schema.StringAttribute{Optional: true, MarkdownDescription: "Path prefix holding snapshots. The snapshot identity is appended to this prefix.", Validators: []validator.String{hotLoadPathValidator{}}},
+					"transition_mode": schema.StringAttribute{Required: true, MarkdownDescription: "Request transition mode during checkpoint swaps. Use TRANSITION_MODE_ASYNC.", Validators: []validator.String{stringvalidator.OneOf("TRANSITION_MODE_ASYNC")}},
+				},
 			},
 			"runtime": schema.SingleNestedAttribute{
 				Required:            true,
@@ -826,6 +844,7 @@ type deploymentFields struct {
 	Model       *inferencev1.DeploymentModel
 	Autoscaling *inferencev1.DeploymentAutoscaling
 	Traffic     *inferencev1.DeploymentTraffic
+	HotLoad     *inferencev1.DeploymentHotLoad
 }
 
 // buildDeploymentFields extracts the fields common to both create and update requests
@@ -864,6 +883,17 @@ func buildDeploymentFields(ctx context.Context, m *InferenceDeploymentResourceMo
 
 	if m.Traffic != nil && !m.Traffic.Weight.IsNull() && !m.Traffic.Weight.IsUnknown() {
 		f.Traffic.Weight = uint32(m.Traffic.Weight.ValueInt64()) //nolint:gosec
+	}
+	if m.HotLoad != nil {
+		mode, ok := inferencev1.DeploymentHotLoad_TransitionMode_value[m.HotLoad.TransitionMode.ValueString()]
+		if !ok || mode == 0 {
+			diagnostics.AddError("Invalid hot_load transition_mode", "Use TRANSITION_MODE_ASYNC.")
+			return deploymentFields{}, diagnostics
+		}
+		f.HotLoad = &inferencev1.DeploymentHotLoad{
+			Bucket: m.HotLoad.Bucket.ValueString(), PathPrefix: m.HotLoad.PathPrefix.ValueString(),
+			TransitionMode: inferencev1.DeploymentHotLoad_TransitionMode(mode),
+		}
 	}
 
 	if !m.Runtime.Version.IsNull() && !m.Runtime.Version.IsUnknown() {
@@ -925,6 +955,7 @@ func toCreateRequest(ctx context.Context, m *InferenceDeploymentResourceModel) (
 		Model:       f.Model,
 		Autoscaling: f.Autoscaling,
 		Traffic:     f.Traffic,
+		HotLoad:     f.HotLoad,
 	}, diags
 }
 
@@ -943,6 +974,7 @@ func toUpdateRequest(ctx context.Context, m *InferenceDeploymentResourceModel) (
 		Model:       f.Model,
 		Autoscaling: f.Autoscaling,
 		Traffic:     f.Traffic,
+		HotLoad:     f.HotLoad,
 	}, diags
 }
 
@@ -1034,6 +1066,18 @@ func setFromDeployment(m *InferenceDeploymentResourceModel, d *inferencev1.Deplo
 	m.OrganizationID = types.StringValue(spec.GetOrganizationId())
 	m.Name = types.StringValue(spec.GetName())
 	m.Disabled = types.BoolValue(spec.GetDisabled())
+	if h := spec.GetHotLoad(); h != nil {
+		prefix := types.StringValue(h.GetPathPrefix())
+		if h.GetPathPrefix() == "" && (m.HotLoad == nil || m.HotLoad.PathPrefix.IsNull()) {
+			prefix = types.StringNull()
+		}
+		m.HotLoad = &DeploymentHotLoadModel{
+			Bucket: types.StringValue(h.GetBucket()), PathPrefix: prefix,
+			TransitionMode: types.StringValue(h.GetTransitionMode().String()),
+		}
+	} else {
+		m.HotLoad = nil
+	}
 
 	if !preserveStatusFields {
 		m.Status = types.StringValue(status.GetStatus().String())
