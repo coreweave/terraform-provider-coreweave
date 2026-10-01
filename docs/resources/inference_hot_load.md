@@ -3,12 +3,12 @@
 page_title: "coreweave_inference_hot_load Resource - coreweave"
 subcategory: ""
 description: |-
-  Submit an immutable checkpoint hot-load to a deployment configured with hot_load. Creation returns after acceptance; refresh observes progress. Destroy cancels an active operation without waiting for replica updates to stop or rolling back weights. Terminal operation history remains on the server.
+  Submit an immutable checkpoint hot-load to a deployment configured with hot_load. Creation returns after acceptance; refresh observes progress. Destroy cancels an active operation without waiting for replica updates to stop or rolling back weights. Cancellation requires server support: if the API returns Unimplemented, destroy reports an error and retains state until the operation becomes terminal. Terminal operation history remains on the server.
 ---
 
 # coreweave_inference_hot_load (Resource)
 
-Submit an immutable checkpoint hot-load to a deployment configured with hot_load. Creation returns after acceptance; refresh observes progress. Destroy cancels an active operation without waiting for replica updates to stop or rolling back weights. Terminal operation history remains on the server.
+Submit an immutable checkpoint hot-load to a deployment configured with hot_load. Creation returns after acceptance; refresh observes progress. Destroy cancels an active operation without waiting for replica updates to stop or rolling back weights. Cancellation requires server support: if the API returns Unimplemented, destroy reports an error and retains state until the operation becomes terminal. Terminal operation history remains on the server.
 
 ## Example Usage
 
