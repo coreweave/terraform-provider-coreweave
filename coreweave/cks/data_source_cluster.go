@@ -179,6 +179,10 @@ func (d *ClusterDataSource) Schema(ctx context.Context, req datasource.SchemaReq
 						MarkdownDescription: "The Tailscale Client ID for the federated identity.",
 						Computed:            true,
 					},
+					"tailnet_domain": schema.StringAttribute{
+						MarkdownDescription: "The Tailscale Tailnet DNS name assigned to the cluster. Populated by the Tailscale operator after the cluster becomes ready.",
+						Computed:            true,
+					},
 				},
 			},
 			"kubelet": schema.StringAttribute{
