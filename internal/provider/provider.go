@@ -244,6 +244,7 @@ func (p *CoreweaveProvider) Resources(ctx context.Context) []func() resource.Res
 		objectstorage.NewBucketPolicyResource,
 		objectstorage.NewBucketSettingsResource,
 		inference.NewInferenceDeploymentResource,
+		inference.NewInferenceHotLoadResource,
 		inference.NewInferenceCapacityClaimResource,
 		inference.NewInferenceGatewayResource,
 		workloadfederation.NewOIDCConfigResource,

@@ -7,8 +7,8 @@ require (
 	buf.build/gen/go/coreweave/cks/protocolbuffers/go v1.36.11-20260326215135-be22b90e1aa6.1
 	buf.build/gen/go/coreweave/cwobject/connectrpc/go v1.20.0-20260831154917-08064e55742b.1
 	buf.build/gen/go/coreweave/cwobject/protocolbuffers/go v1.36.12-20260831154917-08064e55742b.1
-	buf.build/gen/go/coreweave/inference/connectrpc/go v1.20.0-20260825010541-7cc01a738b29.1
-	buf.build/gen/go/coreweave/inference/protocolbuffers/go v1.36.12-20260825010541-7cc01a738b29.1
+	buf.build/gen/go/coreweave/inference/connectrpc/go v1.21.0-20260922162625-b6d414f8513e.1
+	buf.build/gen/go/coreweave/inference/protocolbuffers/go v1.36.12-20260922162625-b6d414f8513e.2
 	buf.build/gen/go/coreweave/networking/connectrpc/go v1.19.1-20260121155637-a637e7777165.2
 	buf.build/gen/go/coreweave/networking/protocolbuffers/go v1.36.11-20260121155637-a637e7777165.1
 	buf.build/gen/go/coreweave/sandbox/connectrpc/go v1.21.0-20261006200456-c94c38b78284.1
