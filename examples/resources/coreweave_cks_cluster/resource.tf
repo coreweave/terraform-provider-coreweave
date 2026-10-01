@@ -27,16 +27,27 @@ resource "coreweave_networking_vpc" "default" {
 }
 
 resource "coreweave_cks_cluster" "default" {
-  name                   = "default"
-  version                = "v1.35"
-  zone                   = "US-EAST-04A"
-  vpc_id                 = coreweave_networking_vpc.default.id
+  name    = "default"
+  version = "v1.35"
+  zone    = "US-EAST-04A"
+  vpc_id  = coreweave_networking_vpc.default.id
+  # Legacy ingress supports CoreWeave-managed authentication.
+  # It is independent: public_access.allow_cidrs does not restrict this ingress.
   public                 = false
   pod_cidr_name          = "pod cidr"
   service_cidr_name      = "service cidr"
   internal_lb_cidr_names = ["internal lb cidr"]
   audit_policy           = filebase64("${path.module}/audit-policy.yaml")
   kubelet                = jsonencode({ maxPods = 256 })
+
+  # Unreleased draft: requires the pinned protobuf workspace and compatible API/operator.
+  # Direct TLS access does not support CoreWeave-managed authentication.
+  # Replace these documentation prefixes with your permitted client source ranges.
+  public_access = {
+    mode        = "TLS"
+    allow_cidrs = ["203.0.113.0/24", "2001:db8::/32"]
+  }
+
   oidc = {
     ca              = filebase64("${path.module}/example-ca.crt")
     client_id       = "kbyuFDidLLm280LIwVFiazOqjO3ty8KH"

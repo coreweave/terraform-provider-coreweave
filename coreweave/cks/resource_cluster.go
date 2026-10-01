@@ -149,6 +149,7 @@ type ClusterResourceModel struct {
 	Name                        types.String              `tfsdk:"name"`
 	Version                     types.String              `tfsdk:"version"`
 	Public                      types.Bool                `tfsdk:"public"`
+	PublicAccess                types.Object              `tfsdk:"public_access"`
 	PodCidrName                 types.String              `tfsdk:"pod_cidr_name"`
 	ServiceCidrName             types.String              `tfsdk:"service_cidr_name"`
 	InternalLBCidrNames         types.List                `tfsdk:"internal_lb_cidr_names"`
@@ -212,6 +213,7 @@ func (c *ClusterResourceModel) Set(cluster *cksv1beta1.Cluster) {
 	c.Name = types.StringValue(cluster.Name)
 	c.Version = types.StringValue(cluster.Version)
 	c.Public = types.BoolValue(cluster.Public)
+	c.PublicAccess = publicAccessFromProto(cluster.PublicAccess)
 	c.Status = types.StringValue(cluster.Status.String())
 	c.ServiceAccountOIDCIssuerURL = types.StringValue(fmt.Sprintf("%s/id/%s", ServiceAccountOIDCBaseURL, cluster.Id))
 
@@ -440,11 +442,12 @@ func (c *ClusterResourceModel) NodePorts() *cksv1beta1.PortRange {
 
 func (c *ClusterResourceModel) ToCreateRequest(ctx context.Context) *cksv1beta1.CreateClusterRequest {
 	req := &cksv1beta1.CreateClusterRequest{
-		Name:    c.Name.ValueString(),
-		Zone:    c.Zone.ValueString(),
-		VpcId:   c.VpcId.ValueString(),
-		Public:  c.Public.ValueBool(),
-		Version: c.Version.ValueString(),
+		Name:         c.Name.ValueString(),
+		Zone:         c.Zone.ValueString(),
+		VpcId:        c.VpcId.ValueString(),
+		Public:       c.Public.ValueBool(),
+		PublicAccess: publicAccessToProto(c.PublicAccess),
+		Version:      c.Version.ValueString(),
 		Network: &cksv1beta1.ClusterNetworkConfig{
 			PodCidrName:         c.PodCidrName.ValueString(),
 			ServiceCidrName:     c.ServiceCidrName.ValueString(),
@@ -620,6 +623,10 @@ func buildUpdateRequest(ctx context.Context, plan, state *ClusterResourceModel) 
 	if !plan.Public.Equal(state.Public) {
 		req.Public = plan.Public.ValueBool()
 		paths = append(paths, "public")
+	}
+	if !plan.PublicAccess.Equal(state.PublicAccess) {
+		req.PublicAccess = publicAccessToProto(plan.PublicAccess)
+		paths = append(paths, "public_access")
 	}
 	if !plan.Version.Equal(state.Version) {
 		req.Version = plan.Version.ValueString()
@@ -812,6 +819,7 @@ func (r *ClusterResource) Schema(ctx context.Context, req resource.SchemaRequest
 		MarkdownDescription: "Create and manage clusters on [CoreWeave Kubernetes Service (CKS)](https://docs.coreweave.com/products/cks/clusters/introduction).",
 
 		Attributes: map[string]schema.Attribute{
+			"public_access": publicAccessResourceAttribute(),
 			"id": schema.StringAttribute{
 				Computed:            true,
 				MarkdownDescription: "The unique identifier of the cluster.",
@@ -843,7 +851,7 @@ func (r *ClusterResource) Schema(ctx context.Context, req resource.SchemaRequest
 			"public": schema.BoolAttribute{
 				Optional:            true,
 				Computed:            true,
-				MarkdownDescription: "Whether the cluster's api-server is publicly accessible from the internet.",
+				MarkdownDescription: legacyPublicDescription,
 				Default:             booldefault.StaticBool(false),
 			},
 			"version": schema.StringAttribute{
@@ -1113,6 +1121,11 @@ func (r *ClusterResource) Create(ctx context.Context, req resource.CreateRequest
 		return
 	}
 
+	resp.Diagnostics.Append(validatePublicAccessForApply(ctx, data.PublicAccess)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
 	createResp, err := r.client.CreateCluster(ctx, connect.NewRequest(data.ToCreateRequest(ctx)))
 	if err != nil {
 		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
@@ -1216,6 +1229,12 @@ func (r *ClusterResource) Update(ctx context.Context, req resource.UpdateRequest
 	var state ClusterResourceModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	resp.Diagnostics.Append(validatePublicAccessForApply(ctx, data.PublicAccess)...)
+	resp.Diagnostics.Append(validatePublicAccessUpgrade(&data, &state)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
