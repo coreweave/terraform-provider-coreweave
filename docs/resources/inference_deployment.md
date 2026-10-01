@@ -53,6 +53,14 @@ resource "coreweave_inference_deployment" "example" {
   traffic = {
     weight = 100
   }
+
+  # To enable checkpoint hot-loading on a supported Dynamo runtime, configure
+  # this immutable object at creation. Changes require deployment replacement.
+  # hot_load = {
+  #   bucket          = "my-checkpoint-bucket"
+  #   path_prefix     = "runs/my-model"
+  #   transition_mode = "TRANSITION_MODE_ASYNC"
+  # }
 }
 ```
 
@@ -71,6 +79,7 @@ resource "coreweave_inference_deployment" "example" {
 ### Optional
 
 - `disabled` (Boolean) Whether the deployment is disabled.
+- `hot_load` (Attributes) Checkpoint hot-loading configuration. Immutable after creation; adding, changing or removing it replaces the deployment. (see [below for nested schema](#nestedatt--hot_load))
 - `traffic` (Attributes) Traffic configuration. Omit to accept the API default (weight 0, which normalizes to 100% when no other deployment shares the model name). After apply, `weight` is populated from the API. (see [below for nested schema](#nestedatt--traffic))
 
 ### Read-Only
@@ -128,6 +137,19 @@ Optional:
 - `engine_config` (Map of String) Engine-specific configuration key/value pairs.
 - `engine_env` (Map of String) Engine-specific environment variables to inject into the model runtime container. Variable names must come from the selected engine's server-side allow list, exposed by `data.coreweave_inference_deployment_parameters.<name>.engine_env_options[<engine>].allowed_names`; unsupported names are rejected by the API.
 - `version` (String) The version of the engine. If not set, defaults to the latest available version. Must follow semver format (e.g. `1.2.3`).
+
+
+<a id="nestedatt--hot_load"></a>
+### Nested Schema for `hot_load`
+
+Required:
+
+- `bucket` (String) CoreWeave Object Storage bucket holding checkpoint snapshots.
+- `transition_mode` (String) Request transition mode during checkpoint swaps. Use TRANSITION_MODE_ASYNC.
+
+Optional:
+
+- `path_prefix` (String) Path prefix holding snapshots. The snapshot identity is appended to this prefix.
 
 
 <a id="nestedatt--traffic"></a>
