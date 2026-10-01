@@ -109,6 +109,8 @@ Import is supported using the following syntax:
 The [`terraform import` command](https://developer.hashicorp.com/terraform/cli/commands/import) can be used, for example:
 
 ```shell
-# Import an existing hot-load operation by UUID.
+# Purpose: import an existing hot-load operation into Terraform state.
+# Prerequisites: Terraform, a configured CoreWeave provider, and an operation UUID.
+# Usage: replace the example UUID below, then run this command from the config directory.
 terraform import coreweave_inference_hot_load.full 11111111-1111-4111-8111-111111111111
 ```
