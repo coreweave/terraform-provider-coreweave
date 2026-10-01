@@ -71,7 +71,7 @@ func (r *InferenceHotLoadResource) Metadata(_ context.Context, req resource.Meta
 func (r *InferenceHotLoadResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	immutable := []planmodifier.String{stringplanmodifier.RequiresReplace()}
 	resp.Schema = schema.Schema{
-		MarkdownDescription: "Submit an immutable checkpoint hot-load to a deployment configured with hot_load. Creation returns after acceptance; refresh observes progress. Destroy cancels an active operation without waiting for replica updates to stop or rolling back weights. Terminal operation history remains on the server.",
+		MarkdownDescription: "Submit an immutable checkpoint hot-load to a deployment configured with hot_load. Creation returns after acceptance; refresh observes progress. Destroy cancels an active operation without waiting for replica updates to stop or rolling back weights. Cancellation requires server support: if the API returns Unimplemented, destroy reports an error and retains state until the operation becomes terminal. Terminal operation history remains on the server.",
 		Attributes: map[string]schema.Attribute{
 			"id":                  schema.StringAttribute{Computed: true, MarkdownDescription: "Hot-load operation UUID.", PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()}},
 			"deployment_id":       schema.StringAttribute{Required: true, MarkdownDescription: "UUID of the target deployment.", PlanModifiers: immutable, Validators: []validator.String{stringvalidator.RegexMatches(operationUUIDPattern, "must be a UUID")}},
