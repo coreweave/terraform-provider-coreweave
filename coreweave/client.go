@@ -90,6 +90,7 @@ func NewClientWithOptions(
 		WFControlPlaneServiceClient: control_planev1beta1connect.NewWFControlPlaneServiceClient(rpcClient),
 		CWObjectClient:              cwobjectv1connect.NewCWObjectClient(rpcClient),
 		Inference: &InferenceClient{
+			HotLoadServiceClient:       inferencev1alpha1connect.NewHotLoadServiceClient(rpcClient),
 			DeploymentServiceClient:    inferencev1alpha1connect.NewDeploymentServiceClient(rpcClient),
 			CapacityClaimServiceClient: inferencev1alpha1connect.NewCapacityClaimServiceClient(rpcClient),
 			GatewayServiceClient:       inferencev1alpha1connect.NewGatewayServiceClient(rpcClient),
@@ -105,6 +106,7 @@ func NewClientWithOptions(
 
 // InferenceClient groups all inference service clients.
 type InferenceClient struct {
+	inferencev1alpha1connect.HotLoadServiceClient
 	inferencev1alpha1connect.DeploymentServiceClient
 	inferencev1alpha1connect.CapacityClaimServiceClient
 	inferencev1alpha1connect.GatewayServiceClient

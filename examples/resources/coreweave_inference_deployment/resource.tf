@@ -38,4 +38,12 @@ resource "coreweave_inference_deployment" "example" {
   traffic = {
     weight = 100
   }
+
+  # To enable checkpoint hot-loading on a supported Dynamo runtime, configure
+  # this immutable object at creation. Changes require deployment replacement.
+  # hot_load = {
+  #   bucket          = "my-checkpoint-bucket"
+  #   path_prefix     = "runs/my-model"
+  #   transition_mode = "TRANSITION_MODE_ASYNC"
+  # }
 }
