@@ -12,7 +12,7 @@ import (
 
 var _ datasource.DataSource = &CallerIdentityDataSource{}
 
-const callerIdentityDescription = `Retrieve the organization and principal identifiers associated with the configured CoreWeave API token.
+const callerIdentityDescription = `Retrieve the organization and principal identifiers associated with the configured CoreWeave credentials.
 
 Comparable identity data sources in other HashiCorp cloud providers include [aws_caller_identity](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/data-sources/caller_identity), [azurerm_client_config](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/data-sources/client_config), and [google_client_openid_userinfo](https://registry.terraform.io/providers/hashicorp/google/latest/docs/data-sources/client_openid_userinfo). Each data source reflects its provider's identity model and exports different attributes.`
 
@@ -38,11 +38,11 @@ func (d *CallerIdentityDataSource) Schema(_ context.Context, _ datasource.Schema
 		MarkdownDescription: callerIdentityDescription,
 		Attributes: map[string]schema.Attribute{
 			"organization_id": schema.StringAttribute{
-				MarkdownDescription: "The unique identifier of the organization associated with the configured CoreWeave API token.",
+				MarkdownDescription: "The unique identifier of the organization associated with the configured CoreWeave credentials.",
 				Computed:            true,
 			},
 			"principal_id": schema.StringAttribute{
-				MarkdownDescription: "The unique identifier of the principal associated with the configured CoreWeave API token.",
+				MarkdownDescription: "The unique identifier of the principal associated with the configured CoreWeave credentials.",
 				Computed:            true,
 			},
 		},

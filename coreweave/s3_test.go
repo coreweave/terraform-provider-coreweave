@@ -379,14 +379,14 @@ func (s *principalS3CWObjectClientStub) CreateAccessKeyFromJWT(
 	}), nil
 }
 
-func newS3CacheTestClient(t *testing.T, token string, service cwobjectv1connect.CWObjectClient) *Client {
+func newS3CacheTestClientWithSource(t *testing.T, source AccessTokenSource, service cwobjectv1connect.CWObjectClient) *Client {
 	t.Helper()
 
 	client, err := NewClient(
 		"https://api.example.test",
 		"https://objects.example.test",
 		time.Second,
-		auth.NewStaticTokenSource(token),
+		source,
 		"test-user-agent",
 	)
 	if err != nil {
@@ -395,6 +395,11 @@ func newS3CacheTestClient(t *testing.T, token string, service cwobjectv1connect.
 	client.CWObjectClient = service
 	client.s3HTTPTransport = successfulListBucketsRoundTripper{}
 	return client
+}
+
+func newS3CacheTestClient(t *testing.T, token string, service cwobjectv1connect.CWObjectClient) *Client {
+	t.Helper()
+	return newS3CacheTestClientWithSource(t, auth.NewStaticTokenSource(token), service)
 }
 
 func s3AccessKeyID(t *testing.T, client *s3.Client) string {
@@ -465,6 +470,84 @@ func TestS3ClientCacheReusedForSameStaticCredential(t *testing.T) {
 	}
 	if got := secondService.calls.Load(); got != 0 {
 		t.Fatalf("second access-key service calls = %d, want 0", got)
+	}
+}
+
+func newWorkloadIdentityS3CacheTestClient(t *testing.T, serviceAccountUID string, service cwobjectv1connect.CWObjectClient) *Client {
+	t.Helper()
+
+	t.Setenv(auth.TerraformCloudWorkloadIdentityTokenEnvVar, "e30.e30.c2ln")
+	source, err := auth.NewWorkloadIdentityTokenSource(
+		t.Context(),
+		"https://api.example.test",
+		serviceAccountUID,
+		"test-user-agent",
+		10*time.Second,
+	)
+	if err != nil {
+		t.Fatalf("create workload identity token source: %v", err)
+	}
+	return newS3CacheTestClientWithSource(t, source, service)
+}
+
+func TestS3ClientCacheReusedForSameWorkloadIdentity(t *testing.T) {
+	resetS3ClientCache()
+	t.Cleanup(resetS3ClientCache)
+
+	firstService := &principalS3CWObjectClientStub{accessKeyID: "shared-key"}
+	firstClient := newWorkloadIdentityS3CacheTestClient(t, "service-account-one", firstService)
+	firstS3Client, err := firstClient.S3Client(t.Context(), "US-TEST-01A")
+	if err != nil {
+		t.Fatalf("create first S3 client: %v", err)
+	}
+
+	secondService := &principalS3CWObjectClientStub{accessKeyID: "unexpected-key"}
+	secondClient := newWorkloadIdentityS3CacheTestClient(t, "service-account-one", secondService)
+	secondS3Client, err := secondClient.S3Client(t.Context(), "US-TEST-01A")
+	if err != nil {
+		t.Fatalf("get cached S3 client: %v", err)
+	}
+
+	if firstS3Client != secondS3Client {
+		t.Fatal("clients for the same workload identity did not share the cached S3 client")
+	}
+	if got := secondService.calls.Load(); got != 0 {
+		t.Fatalf("second access-key service calls = %d, want 0", got)
+	}
+}
+
+func TestS3ClientCacheIsolatedAcrossWorkloadIdentities(t *testing.T) {
+	resetS3ClientCache()
+	t.Cleanup(resetS3ClientCache)
+
+	principalA := &principalS3CWObjectClientStub{accessKeyID: "principal-a-key"}
+	clientA := newWorkloadIdentityS3CacheTestClient(t, "service-account-one", principalA)
+	s3ClientA, err := clientA.S3Client(t.Context(), "US-TEST-01A")
+	if err != nil {
+		t.Fatalf("create principal A S3 client: %v", err)
+	}
+
+	principalB := &principalS3CWObjectClientStub{accessKeyID: "principal-b-key"}
+	clientB := newWorkloadIdentityS3CacheTestClient(t, "service-account-two", principalB)
+	s3ClientB, err := clientB.S3Client(t.Context(), "US-TEST-01A")
+	if err != nil {
+		t.Fatalf("create principal B S3 client: %v", err)
+	}
+
+	if s3ClientA == s3ClientB {
+		t.Fatal("different workload identities reused the same cached S3 client")
+	}
+	if got := s3AccessKeyID(t, s3ClientA); got != "principal-a-key" {
+		t.Fatalf("principal A access key = %q, want %q", got, "principal-a-key")
+	}
+	if got := s3AccessKeyID(t, s3ClientB); got != "principal-b-key" {
+		t.Fatalf("principal B access key = %q, want %q", got, "principal-b-key")
+	}
+	if got := principalA.calls.Load(); got != 1 {
+		t.Fatalf("principal A access-key requests = %d, want 1", got)
+	}
+	if got := principalB.calls.Load(); got != 1 {
+		t.Fatalf("principal B access-key requests = %d, want 1", got)
 	}
 }
 
