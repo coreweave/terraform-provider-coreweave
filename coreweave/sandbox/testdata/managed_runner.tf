@@ -55,12 +55,12 @@ resource "coreweave_sandbox_managed_runner" "test" {
         allowed_egress = [
           { any = true, ports = [{ protocol = "TCP", port = 443, end_port = 443 }] },
           { cidr = { cidr = "10.0.0.0/8", except = ["10.1.0.0/16"] } },
-          { dns_name = "*", dns_name_except = ["blocked.example.com"] },
+          { https_hostname = "*", https_hostname_except = ["blocked.example.com"] },
           { tenant = "TENANT_SCOPE_SAME_ORG" },
           { selector = { pod_labels = { app = "database" }, namespace_labels = { team = "platform" } } },
         ]
         default_egress  = [{ any = true, ports = [{ protocol = "TCP", port = 443 }] }]
-        deny_dns        = false
+        deny_https_hostname_rules        = false
         allowed_ingress = [{ any = true }, { cidr = { cidr = "10.0.0.0/8" } }]
         default_ingress = [{ tenant = "TENANT_SCOPE_SAME_USER" }]
       }

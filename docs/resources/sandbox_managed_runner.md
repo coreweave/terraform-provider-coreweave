@@ -179,11 +179,13 @@ Optional:
 
 Optional:
 
-- `allowed_egress` (Attributes List) Allowed egress envelope. DNS wildcard `*` is permitted here. Select exactly one peer kind per rule. (see [below for nested schema](#nestedatt--policy--constraints--network--allowed_egress))
+- `allowed_egress` (Attributes List) Allowed egress envelope. HTTPS hostname wildcard `*` is permitted here. Select exactly one peer kind per rule. (see [below for nested schema](#nestedatt--policy--constraints--network--allowed_egress))
 - `allowed_ingress` (Attributes List) Allowed ingress sources for custom-visibility ports. Select exactly one peer kind per rule. (see [below for nested schema](#nestedatt--policy--constraints--network--allowed_ingress))
-- `default_egress` (Attributes List) Egress applied when the sandbox specifies none. DNS-name destinations are not permitted here. Select exactly one peer kind per rule. (see [below for nested schema](#nestedatt--policy--constraints--network--default_egress))
+- `default_egress` (Attributes List) Egress applied when the sandbox specifies none. HTTPS hostname destinations are not permitted here. Select exactly one peer kind per rule. (see [below for nested schema](#nestedatt--policy--constraints--network--default_egress))
 - `default_ingress` (Attributes List) Ingress applied when the sandbox specifies none. Select exactly one peer kind per rule. (see [below for nested schema](#nestedatt--policy--constraints--network--default_ingress))
-- `deny_dns` (Boolean) Forbid DNS-name egress grants. Does not disable DNS resolution.
+- `deny_dns` (Boolean, Deprecated) Deprecated alias for deny_https_hostname_rules. Does not disable DNS resolution.
+- `deny_https_hostname_rules` (Boolean) Forbid hostname-based HTTPS egress grants. Does not disable DNS resolution.
+- `dns_egress` (String) Outbound DNS traffic ceiling on UDP/TCP port 53. Unspecified permits DNS; DENY requires sandboxes to block it. Independent of hostname-based HTTPS grants. Values: `DNS_EGRESS_MODE_ALLOW`, `DNS_EGRESS_MODE_DENY`.
 
 <a id="nestedatt--policy--constraints--network--allowed_egress"></a>
 ### Nested Schema for `policy.constraints.network.allowed_egress`
@@ -192,9 +194,11 @@ Optional:
 
 - `any` (Boolean) Set to true to select any address-shaped peer.
 - `cidr` (Attributes) CIDR range with optional carve-outs. (see [below for nested schema](#nestedatt--policy--constraints--network--allowed_egress--cidr))
-- `dns_name` (String) Exact DNS name or a single leftmost wildcard label; `*` is allowed only in allowed_egress.
-- `dns_name_except` (Set of String) DNS names excluded from an allowed_egress DNS envelope.
-- `ports` (Attributes List) Allowed ports. Empty means all ports, except DNS destinations which use HTTPS (TCP 443). (see [below for nested schema](#nestedatt--policy--constraints--network--allowed_egress--ports))
+- `dns_name` (String, Deprecated) Deprecated alias for https_hostname.
+- `dns_name_except` (Set of String, Deprecated) Deprecated alias for https_hostname_except.
+- `https_hostname` (String) Exact HTTPS hostname or a single leftmost wildcard label; `*` is allowed only in allowed_egress.
+- `https_hostname_except` (Set of String) Hostnames excluded from an allowed_egress HTTPS envelope.
+- `ports` (Attributes List) Allowed ports. Empty means all ports, except HTTPS hostname destinations which use HTTPS (TCP 443). (see [below for nested schema](#nestedatt--policy--constraints--network--allowed_egress--ports))
 - `selector` (Attributes) Explicit entitlement to reach cluster workloads by label. (see [below for nested schema](#nestedatt--policy--constraints--network--allowed_egress--selector))
 - `tenant` (String) Relational tenant selection. Values: `TENANT_SCOPE_SAME_USER`, `TENANT_SCOPE_SAME_ORG`, `TENANT_SCOPE_SANDBOX_NETWORK`.
 
@@ -243,7 +247,7 @@ Optional:
 
 - `any` (Boolean) Set to true to select any address-shaped peer.
 - `cidr` (Attributes) CIDR range with optional carve-outs. (see [below for nested schema](#nestedatt--policy--constraints--network--allowed_ingress--cidr))
-- `ports` (Attributes List) Allowed ports. Empty means all ports, except DNS destinations which use HTTPS (TCP 443). (see [below for nested schema](#nestedatt--policy--constraints--network--allowed_ingress--ports))
+- `ports` (Attributes List) Allowed ports. Empty means all ports, except HTTPS hostname destinations which use HTTPS (TCP 443). (see [below for nested schema](#nestedatt--policy--constraints--network--allowed_ingress--ports))
 - `tenant` (String) Relational tenant selection. Values: `TENANT_SCOPE_SAME_USER`, `TENANT_SCOPE_SAME_ORG`, `TENANT_SCOPE_SANDBOX_NETWORK`.
 
 <a id="nestedatt--policy--constraints--network--allowed_ingress--cidr"></a>
@@ -279,9 +283,11 @@ Optional:
 
 - `any` (Boolean) Set to true to select any address-shaped peer.
 - `cidr` (Attributes) CIDR range with optional carve-outs. (see [below for nested schema](#nestedatt--policy--constraints--network--default_egress--cidr))
-- `dns_name` (String) Exact DNS name or a single leftmost wildcard label; `*` is allowed only in allowed_egress.
-- `dns_name_except` (Set of String) DNS names excluded from an allowed_egress DNS envelope.
-- `ports` (Attributes List) Allowed ports. Empty means all ports, except DNS destinations which use HTTPS (TCP 443). (see [below for nested schema](#nestedatt--policy--constraints--network--default_egress--ports))
+- `dns_name` (String, Deprecated) Deprecated alias for https_hostname.
+- `dns_name_except` (Set of String, Deprecated) Deprecated alias for https_hostname_except.
+- `https_hostname` (String) Exact HTTPS hostname or a single leftmost wildcard label; `*` is allowed only in allowed_egress.
+- `https_hostname_except` (Set of String) Hostnames excluded from an allowed_egress HTTPS envelope.
+- `ports` (Attributes List) Allowed ports. Empty means all ports, except HTTPS hostname destinations which use HTTPS (TCP 443). (see [below for nested schema](#nestedatt--policy--constraints--network--default_egress--ports))
 - `selector` (Attributes) Explicit entitlement to reach cluster workloads by label. (see [below for nested schema](#nestedatt--policy--constraints--network--default_egress--selector))
 - `tenant` (String) Relational tenant selection. Values: `TENANT_SCOPE_SAME_USER`, `TENANT_SCOPE_SAME_ORG`, `TENANT_SCOPE_SANDBOX_NETWORK`.
 
@@ -330,7 +336,7 @@ Optional:
 
 - `any` (Boolean) Set to true to select any address-shaped peer.
 - `cidr` (Attributes) CIDR range with optional carve-outs. (see [below for nested schema](#nestedatt--policy--constraints--network--default_ingress--cidr))
-- `ports` (Attributes List) Allowed ports. Empty means all ports, except DNS destinations which use HTTPS (TCP 443). (see [below for nested schema](#nestedatt--policy--constraints--network--default_ingress--ports))
+- `ports` (Attributes List) Allowed ports. Empty means all ports, except HTTPS hostname destinations which use HTTPS (TCP 443). (see [below for nested schema](#nestedatt--policy--constraints--network--default_ingress--ports))
 - `tenant` (String) Relational tenant selection. Values: `TENANT_SCOPE_SAME_USER`, `TENANT_SCOPE_SAME_ORG`, `TENANT_SCOPE_SANDBOX_NETWORK`.
 
 <a id="nestedatt--policy--constraints--network--default_ingress--cidr"></a>
