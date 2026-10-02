@@ -470,7 +470,7 @@ func TestClusterResource(t *testing.T) {
 			Config: strings.Join([]string{
 				fmt.Sprintf(`data "%s" "%s" { id = "%s" }`, "coreweave_cks_cluster", config.ResourceName, "1b5274f2-8012-4b68-9010-cc4c51613302"),
 			}, "\n"),
-			ExpectError: regexp.MustCompile(`(?i)cluster .*not found`),
+			ExpectError: regexp.MustCompile(`(?i)cluster .*(not found|does not exist)`),
 		},
 		func() resource.TestStep {
 			step := createClusterTestStep(ctx, t, testStepConfig{
