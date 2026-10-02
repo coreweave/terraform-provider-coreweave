@@ -1039,6 +1039,7 @@ func (r *ClusterResource) Schema(ctx context.Context, req resource.SchemaRequest
 			"service_account_oidc_issuer_url": schema.StringAttribute{
 				MarkdownDescription: "The URL of the OIDC issuer for the cluster's service account tokens. This value corresponds to the `--service-account-issuer` flag on the kube-apiserver.",
 				Computed:            true,
+				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
 			"shared_storage_cluster_id": schema.StringAttribute{
 				Optional:            true,

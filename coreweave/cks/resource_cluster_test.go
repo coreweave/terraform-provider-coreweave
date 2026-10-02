@@ -16,7 +16,11 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework-jsontypes/jsontypes"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	fwresource "github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-go/tftypes"
 	"github.com/hashicorp/terraform-plugin-testing/compare"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/knownvalue"
@@ -49,6 +53,41 @@ func TestClusterSchema(t *testing.T) {
 
 	if diagnostics.HasError() {
 		t.Fatalf("Schema validation diagnostics: %+v", diagnostics)
+	}
+}
+
+func TestClusterServiceAccountOIDCIssuerURLPlan(t *testing.T) {
+	ctx := context.Background()
+	schemaResponse := &fwresource.SchemaResponse{}
+	cks.NewClusterResource().Schema(ctx, fwresource.SchemaRequest{}, schemaResponse)
+	if schemaResponse.Diagnostics.HasError() {
+		t.Fatalf("Schema method diagnostics: %+v", schemaResponse.Diagnostics)
+	}
+
+	attribute, ok := schemaResponse.Schema.Attributes["service_account_oidc_issuer_url"].(schema.StringAttribute)
+	if !ok {
+		t.Fatal("service_account_oidc_issuer_url is not a string attribute")
+	}
+
+	issuerURL := "https://oidc.cks.coreweave.com/id/12345678-1234-1234-1234-123456789abc"
+	state := tfsdk.State{Raw: tftypes.NewValue(
+		tftypes.Object{AttributeTypes: map[string]tftypes.Type{"service_account_oidc_issuer_url": tftypes.String}},
+		map[string]tftypes.Value{"service_account_oidc_issuer_url": tftypes.NewValue(tftypes.String, issuerURL)},
+	)}
+	request := planmodifier.StringRequest{
+		State:       state,
+		StateValue:  types.StringValue(issuerURL),
+		PlanValue:   types.StringUnknown(),
+		ConfigValue: types.StringNull(),
+	}
+	response := &planmodifier.StringResponse{PlanValue: request.PlanValue}
+	for _, modifier := range attribute.PlanModifiers {
+		modifier.PlanModifyString(ctx, request, response)
+		request.PlanValue = response.PlanValue
+	}
+
+	if !response.PlanValue.Equal(types.StringValue(issuerURL)) {
+		t.Fatalf("planned issuer URL = %s, want %s", response.PlanValue, issuerURL)
 	}
 }
 
@@ -431,7 +470,7 @@ func TestClusterResource(t *testing.T) {
 			Config: strings.Join([]string{
 				fmt.Sprintf(`data "%s" "%s" { id = "%s" }`, "coreweave_cks_cluster", config.ResourceName, "1b5274f2-8012-4b68-9010-cc4c51613302"),
 			}, "\n"),
-			ExpectError: regexp.MustCompile(`(?i)cluster .*not found`),
+			ExpectError: regexp.MustCompile(`(?i)cluster .*(not found|does not exist)`),
 		},
 		func() resource.TestStep {
 			step := createClusterTestStep(ctx, t, testStepConfig{
@@ -488,6 +527,7 @@ func TestClusterResource(t *testing.T) {
 			ConfigPlanChecks: resource.ConfigPlanChecks{
 				PreApply: []plancheck.PlanCheck{
 					plancheck.ExpectResourceAction(config.FullResourceName, plancheck.ResourceActionUpdate),
+					plancheck.ExpectKnownValue(config.FullResourceName, tfjsonpath.New("service_account_oidc_issuer_url"), knownvalue.NotNull()),
 				},
 			},
 			Resources: config,
