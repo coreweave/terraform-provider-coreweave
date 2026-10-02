@@ -111,14 +111,15 @@ func TestHotLoadDestroy(t *testing.T) {
 		state             v1.HotLoadState
 		cancel, fail      bool
 	}{
-		"pending":       {state: v1.HotLoadState_HOT_LOAD_STATE_PENDING, cancel: true},
-		"updating":      {state: v1.HotLoadState_HOT_LOAD_STATE_IN_PROGRESS, cancel: true},
-		"canceled":      {state: v1.HotLoadState_HOT_LOAD_STATE_CANCELED},
-		"failed":        {state: v1.HotLoadState_HOT_LOAD_STATE_FAILED},
-		"missing":       {getErr: connect.NewError(connect.CodeNotFound, errors.New("missing"))},
-		"read error":    {getErr: connect.NewError(connect.CodeUnavailable, errors.New("offline")), fail: true},
-		"cancel error":  {state: v1.HotLoadState_HOT_LOAD_STATE_PENDING, cancelErr: connect.NewError(connect.CodeUnavailable, errors.New("offline")), cancel: true, fail: true},
-		"unknown state": {state: v1.HotLoadState_HOT_LOAD_STATE_UNSPECIFIED, fail: true},
+		"pending":            {state: v1.HotLoadState_HOT_LOAD_STATE_PENDING, cancel: true},
+		"updating":           {state: v1.HotLoadState_HOT_LOAD_STATE_IN_PROGRESS, cancel: true},
+		"canceled":           {state: v1.HotLoadState_HOT_LOAD_STATE_CANCELED},
+		"failed":             {state: v1.HotLoadState_HOT_LOAD_STATE_FAILED},
+		"missing":            {getErr: connect.NewError(connect.CodeNotFound, errors.New("missing"))},
+		"read error":         {getErr: connect.NewError(connect.CodeUnavailable, errors.New("offline")), fail: true},
+		"cancel error":       {state: v1.HotLoadState_HOT_LOAD_STATE_PENDING, cancelErr: connect.NewError(connect.CodeUnavailable, errors.New("offline")), cancel: true, fail: true},
+		"cancel unsupported": {state: v1.HotLoadState_HOT_LOAD_STATE_IN_PROGRESS, cancelErr: connect.NewError(connect.CodeUnimplemented, errors.New("not implemented")), cancel: true, fail: true},
+		"unknown state":      {state: v1.HotLoadState_HOT_LOAD_STATE_UNSPECIFIED, fail: true},
 	} {
 		t.Run(name, func(t *testing.T) {
 			r, h, state := hotLoadResourceFixture(t, nil)
@@ -127,6 +128,12 @@ func TestHotLoadDestroy(t *testing.T) {
 			r.Delete(t.Context(), resource.DeleteRequest{State: state}, &resp)
 			if resp.Diagnostics.HasError() != tc.fail || h.canceled != tc.cancel {
 				t.Fatalf("cancel=%v diagnostics=%v", h.canceled, resp.Diagnostics)
+			}
+			if tc.fail {
+				var retained InferenceHotLoadResourceModel
+				if diags := resp.State.Get(t.Context(), &retained); diags.HasError() || retained.ID.ValueString() != h.operation.GetSpec().GetId() {
+					t.Fatalf("failed destroy must retain operation ID: %v", diags)
+				}
 			}
 		})
 	}
