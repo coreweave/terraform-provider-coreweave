@@ -1,6 +1,7 @@
 package sandbox_test
 
 import (
+	"cmp"
 	"context"
 	_ "embed"
 	"fmt"
@@ -60,6 +61,7 @@ func (s *runnerServer) CreateManagedRunner(_ context.Context, req *connect.Reque
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("expected a policy and no legacy configuration"))
 	}
 	s.runner = proto.Clone(req.Msg.ManagedRunner).(*sandboxv1.ManagedRunner)
+	sortRuntimeClassMappings(s.runner)
 	s.runner.Identity.Zone = strings.ToLower(s.runner.Identity.Zone)
 	if s.runner.Identity.RunnerGroupId == "" {
 		s.runner.Identity.RunnerGroupId = "default"
@@ -129,11 +131,20 @@ func (s *runnerServer) UpdateManagedRunner(_ context.Context, req *connect.Reque
 	if s.runner.Identity.RunnerGroupId == "" {
 		s.runner.Identity.RunnerGroupId = "default"
 	}
+	sortRuntimeClassMappings(s.runner)
 	s.updates = append(s.updates, slices.Clone(paths))
 	if slices.Contains(paths, "policy") {
 		s.runner.Etag = fmt.Sprintf("etag-%d", len(s.updates)+1)
 	}
 	return connect.NewResponse(proto.Clone(s.runner).(*sandboxv1.ManagedRunner)), nil
+}
+
+// The API stores runtime class mappings sorted by class.
+func sortRuntimeClassMappings(runner *sandboxv1.ManagedRunner) {
+	mappings := runner.GetPolicy().GetConstraints().GetSecurity().GetRuntimeClassMappings()
+	slices.SortFunc(mappings, func(a, b *sandboxv1.RuntimeClassMapping) int {
+		return cmp.Compare(a.GetRuntimeClass(), b.GetRuntimeClass())
+	})
 }
 
 func applyRunnerMask(target, source protoreflect.Message, parts []string) error {
@@ -276,6 +287,63 @@ func TestManagedRunnerLegacyNetworkPolicyMigration(t *testing.T) {
 	service.mu.Lock()
 	defer service.mu.Unlock()
 	assert.Empty(t, service.updates, "renaming aliases must not rewrite the remote policy")
+}
+
+func TestManagedRunnerRuntimeClassMappings(t *testing.T) {
+	service := startRunnerServer(t)
+	// Configured out of the server's canonical (class-sorted) order.
+	initial := minimalConfig(`{ constraints = { security = { runtime_class_mappings = [
+     { runtime_class = "RUNTIME_CLASS_GPU_DEFAULT", kubernetes_runtime_class_name = "kata-qemu-nvidia-gpu" },
+     { runtime_class = "RUNTIME_CLASS_CPU_DEFAULT", node_default = true },
+   ] } } }`, "")
+	updated := strings.Replace(initial, "kata-qemu-nvidia-gpu", "kata-clh-nvidia-gpu", 1)
+	tfresource.UnitTest(t, tfresource.TestCase{
+		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+		CheckDestroy:             service.checkDestroyed,
+		Steps: []tfresource.TestStep{
+			{Config: initial, Check: tfresource.ComposeAggregateTestCheckFunc(
+				tfresource.TestCheckResourceAttr(runnerAddress, "policy.constraints.security.runtime_class_mappings.#", "2"),
+				tfresource.TestCheckTypeSetElemNestedAttrs(runnerAddress, "policy.constraints.security.runtime_class_mappings.*", map[string]string{"runtime_class": "RUNTIME_CLASS_CPU_DEFAULT", "node_default": "true"}),
+				tfresource.TestCheckTypeSetElemNestedAttrs(runnerAddress, "policy.constraints.security.runtime_class_mappings.*", map[string]string{"runtime_class": "RUNTIME_CLASS_GPU_DEFAULT", "kubernetes_runtime_class_name": "kata-qemu-nvidia-gpu"}),
+			)},
+			{Config: initial, PlanOnly: true},
+			{Config: updated, Check: tfresource.TestCheckTypeSetElemNestedAttrs(runnerAddress, "policy.constraints.security.runtime_class_mappings.*", map[string]string{"runtime_class": "RUNTIME_CLASS_GPU_DEFAULT", "kubernetes_runtime_class_name": "kata-clh-nvidia-gpu"})},
+			{Config: updated, PlanOnly: true},
+			{ResourceName: runnerAddress, ImportState: true, ImportStateVerify: true},
+		},
+	})
+	service.mu.Lock()
+	defer service.mu.Unlock()
+	assert.Equal(t, [][]string{{"policy"}}, service.updates)
+}
+
+func TestManagedRunnerInvalidRuntimeClassMappingsRejected(t *testing.T) {
+	for name, tc := range map[string]struct {
+		mappings string
+		err      string
+	}{
+		"mixed with allowlist": {`allowed_runtime_classes = ["kata"], runtime_class_mappings = [{ runtime_class = "RUNTIME_CLASS_CPU_DEFAULT", node_default = true }]`, "cannot be combined"},
+		"duplicate class":      {`runtime_class_mappings = [{ runtime_class = "RUNTIME_CLASS_CPU_DEFAULT", node_default = true }, { runtime_class = "RUNTIME_CLASS_CPU_DEFAULT", kubernetes_runtime_class_name = "kata" }]`, "more than once"},
+		"missing target":       {`runtime_class_mappings = [{ runtime_class = "RUNTIME_CLASS_CPU_DEFAULT" }]`, "exactly one of"},
+		"invalid name":         {`runtime_class_mappings = [{ runtime_class = "RUNTIME_CLASS_CPU_DEFAULT", kubernetes_runtime_class_name = "Kata_QEMU" }]`, "valid Kubernetes RuntimeClass name"},
+		"node default false":   {`runtime_class_mappings = [{ runtime_class = "RUNTIME_CLASS_CPU_DEFAULT", node_default = false }]`, "Invalid selection"},
+		"unspecified class":    {`runtime_class_mappings = [{ runtime_class = "RUNTIME_CLASS_UNSPECIFIED", node_default = true }]`, "value must be one of"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			service := startRunnerServer(t)
+			tfresource.UnitTest(t, tfresource.TestCase{
+				ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+				CheckDestroy:             service.checkDestroyed,
+				Steps: []tfresource.TestStep{{
+					Config:      minimalConfig(`{ constraints = { security = { `+tc.mappings+` } } }`, ""),
+					ExpectError: regexp.MustCompile(tc.err),
+				}},
+			})
+			service.mu.Lock()
+			defer service.mu.Unlock()
+			assert.Zero(t, service.creates)
+		})
+	}
 }
 
 func TestManagedRunnerImportAndReplacement(t *testing.T) {

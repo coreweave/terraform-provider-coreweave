@@ -45,6 +45,8 @@ func checkMessageSchema(t *testing.T, descriptor protoreflect.MessageDescriptor,
 			checkMessageSchema(t, field.Message(), nested.Attributes)
 		case schema.ListNestedAttribute:
 			checkMessageSchema(t, field.Message(), nested.NestedObject.Attributes)
+		case schema.SetNestedAttribute:
+			checkMessageSchema(t, field.Message(), nested.NestedObject.Attributes)
 		}
 	}
 	for name := range attributes {
@@ -184,6 +186,11 @@ func TestPolicyValidation(t *testing.T) {
 		"HTTPS hostname default":  `{"constraints":{"network":{"default_egress":[{"https_hostname":"example.com"}]}}}`,
 		"invalid port range":      `{"constraints":{"network":{"allowed_egress":[{"any":true,"ports":[{"port":100,"end_port":90}]}]}}}`,
 		"redundant source prefix": `{"control_plane_access":{"source_ip_allowlist":{"cidrs":["10.0.0.0/8","10.1.0.0/16"]}}}`,
+		"mappings with allowlist": `{"constraints":{"security":{"allowed_runtime_classes":["kata"],"runtime_class_mappings":[{"runtime_class":"RUNTIME_CLASS_CPU_DEFAULT","kubernetes_runtime_class_name":"kata"}]}}}`,
+		"mappings with default":   `{"constraints":{"security":{"default_gpu_runtime_class":"kata","runtime_class_mappings":[{"runtime_class":"RUNTIME_CLASS_CPU_DEFAULT","node_default":true}]}}}`,
+		"duplicate mapping":       `{"constraints":{"security":{"runtime_class_mappings":[{"runtime_class":"RUNTIME_CLASS_CPU_DEFAULT","node_default":true},{"runtime_class":"RUNTIME_CLASS_CPU_DEFAULT","kubernetes_runtime_class_name":"kata"}]}}}`,
+		"mapping without target":  `{"constraints":{"security":{"runtime_class_mappings":[{"runtime_class":"RUNTIME_CLASS_GPU_DEFAULT"}]}}}`,
+		"node default on feature": `{"constraints":{"security":{"runtime_class_mappings":[{"runtime_class":"RUNTIME_CLASS_CPU_NESTED_VIRT","node_default":true}]}}}`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			var policy sandboxv1.Policy
@@ -191,6 +198,20 @@ func TestPolicyValidation(t *testing.T) {
 			require.Error(t, validatePolicy(&policy))
 		})
 	}
+}
+
+func TestRuntimeClassMappingsRoundTrip(t *testing.T) {
+	t.Parallel()
+	policy := &sandboxv1.Policy{Constraints: &sandboxv1.PolicyConstraints{Security: &sandboxv1.SecurityConstraints{RuntimeClassMappings: []*sandboxv1.RuntimeClassMapping{
+		{RuntimeClass: sandboxv1.RuntimeClass_RUNTIME_CLASS_CPU_DEFAULT, Target: &sandboxv1.RuntimeClassMapping_NodeDefault{NodeDefault: true}},
+		{RuntimeClass: sandboxv1.RuntimeClass_RUNTIME_CLASS_CPU_NESTED_VIRT, Target: &sandboxv1.RuntimeClassMapping_KubernetesRuntimeClassName{KubernetesRuntimeClassName: "kata-qemu-nested"}},
+		{RuntimeClass: sandboxv1.RuntimeClass_RUNTIME_CLASS_GPU_DEFAULT, Target: &sandboxv1.RuntimeClassMapping_KubernetesRuntimeClassName{KubernetesRuntimeClassName: "kata-qemu-nvidia-gpu"}},
+	}}}}
+	require.NoError(t, validatePolicy(policy))
+	value := policyObject(t, policy)
+	var actual sandboxv1.Policy
+	require.NoError(t, objectToProto(value, &actual))
+	assert.True(t, proto.Equal(policy, &actual), "want %v, got %v", policy, &actual)
 }
 
 func TestExplicitFalseAndEmptyCollectionsRoundTrip(t *testing.T) {

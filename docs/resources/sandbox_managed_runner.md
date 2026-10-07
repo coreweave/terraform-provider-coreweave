@@ -372,15 +372,15 @@ Optional:
 Optional:
 
 - `cpu_ceiling` (String) Sum-of-requests CPU ceiling across the sandbox.
-- `default_cpu` (String) Default CPU per container.
-- `default_memory` (String) Default memory per container.
+- `default_cpu` (String) Default CPU per container. When a container declares neither requests nor limits, a positive default also sets its CPU limit.
+- `default_memory` (String) Default memory per container. When a container declares neither requests nor limits, a positive default also sets its memory limit.
 - `max_cpu` (String) Maximum CPU per container, as a Kubernetes quantity.
 - `max_gpu_count` (Number) Maximum GPUs per container. Omitted means no cap; explicit zero forbids GPUs.
 - `max_memory` (String) Maximum memory per container.
 - `memory_ceiling` (String) Sum-of-requests memory ceiling across the sandbox.
 - `min_cpu` (String) Minimum CPU per container.
 - `min_memory` (String) Minimum memory per container.
-- `require_limits` (Boolean) Require every container to declare requests and limits.
+- `require_limits` (Boolean) Require every container to have requests and limits after defaults are applied.
 
 
 <a id="nestedatt--policy--constraints--security"></a>
@@ -390,10 +390,24 @@ Optional:
 
 - `allow_privileged` (Boolean) Permit privileged containers.
 - `allowed_capabilities` (Set of String) Linux capabilities containers may add. Empty permits none beyond defaults.
-- `allowed_runtime_classes` (Set of String) Runtime classes callers may explicitly select. Empty forbids caller-selected runtime classes.
+- `allowed_runtime_classes` (Set of String) Runtime classes callers may explicitly select. Empty forbids caller-selected runtime classes. Cannot be combined with runtime_class_mappings.
 - `allowed_seccomp_profiles` (Set of String) Permitted seccomp profiles, such as RuntimeDefault or Unconfined.
-- `default_cpu_runtime_class` (String) Default CPU runtime class. Must fit a nonempty runtime-class allowlist.
-- `default_gpu_runtime_class` (String) Default GPU runtime class. Must fit a nonempty runtime-class allowlist.
+- `default_cpu_runtime_class` (String) Default CPU runtime class. Must fit a nonempty runtime-class allowlist. Cannot be combined with runtime_class_mappings.
+- `default_gpu_runtime_class` (String) Default GPU runtime class. Must fit a nonempty runtime-class allowlist. Cannot be combined with runtime_class_mappings.
+- `runtime_class_mappings` (Attributes Set) Bindings from portable runtime classes to concrete runtimes. A non-empty set switches the runner to mappings: a mapped class is available both for caller selection and as the automatic CPU or GPU default, an unmapped class is unavailable, and callers cannot pin a concrete runtime class. Omitting a default class disables automatic selection for that resource family. Each class appears at most once. Cannot be combined with allowed_runtime_classes, default_cpu_runtime_class, or default_gpu_runtime_class. (see [below for nested schema](#nestedatt--policy--constraints--security--runtime_class_mappings))
+
+<a id="nestedatt--policy--constraints--security--runtime_class_mappings"></a>
+### Nested Schema for `policy.constraints.security.runtime_class_mappings`
+
+Required:
+
+- `runtime_class` (String) Portable runtime class provided by the target. Values: `RUNTIME_CLASS_CPU_DEFAULT`, `RUNTIME_CLASS_CPU_NESTED_VIRT`, `RUNTIME_CLASS_CPU_SNAPSHOT_RESTORE`, `RUNTIME_CLASS_GPU_DEFAULT`.
+
+Optional:
+
+- `kubernetes_runtime_class_name` (String) Kubernetes RuntimeClass name. Set exactly one of kubernetes_runtime_class_name or node_default.
+- `node_default` (Boolean) Set to true to use the node's default container runtime. Permitted only for `RUNTIME_CLASS_CPU_DEFAULT` and `RUNTIME_CLASS_GPU_DEFAULT`, and only serves CKS-mode placement outside the shared serverless pool.
+
 
 
 <a id="nestedatt--policy--constraints--volumes"></a>
