@@ -14,7 +14,7 @@ Reads the current metadata for a Container Registry namespace.
 
 ```terraform
 data "coreweave_container_registry_namespace" "images" {
-  name = "namespaces/example-images"
+  name = "example-images"
 }
 ```
 
@@ -23,7 +23,7 @@ data "coreweave_container_registry_namespace" "images" {
 
 ### Required
 
-- `name` (String) Canonical namespace name, such as namespaces/example-images.
+- `name` (String) Namespace name, such as example-images.
 
 ### Optional
 
@@ -37,8 +37,7 @@ data "coreweave_container_registry_namespace" "images" {
 - `created_by` (Attributes) Identity that created the namespace. (see [below for nested schema](#nestedatt--created_by))
 - `dns_name` (String) Registry hostname used for OCI pushes and pulls.
 - `etag` (String) Current concurrency token. Changes when the server updates the resource.
-- `id` (String) Terraform identifier for this resource.
-- `namespace_id` (String) Namespace identifier used in the registry hostname.
+- `id` (String) Canonical API resource name used as the Terraform identifier.
 - `org_id` (String) Organization that owns the namespace.
 - `status` (String) Current namespace provisioning state.
 - `storage_quota_bytes` (Number) Current namespace storage ceiling in bytes. Null means no ceiling; zero disables pushes after evaluation.

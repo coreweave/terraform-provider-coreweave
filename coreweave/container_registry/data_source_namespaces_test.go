@@ -16,5 +16,5 @@ func TestAccNamespacesDataSource(t *testing.T) {
 	config := namespaceConfig(name, zone, "null") + `
  data "coreweave_container_registry_namespaces" "test" { depends_on = [coreweave_container_registry_namespace.test] }
  `
-	resource.ParallelTest(t, resource.TestCase{ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories, CheckDestroy: checkNamespaceDestroyed(t, name), Steps: []resource.TestStep{{Config: config, ConfigStateChecks: []statecheck.StateCheck{statecheck.ExpectKnownValue("data.coreweave_container_registry_namespaces.test", tfjsonpath.New("namespaces"), knownvalue.SetPartial([]knownvalue.Check{knownvalue.ObjectPartial(map[string]knownvalue.Check{"name": knownvalue.StringExact("namespaces/" + name), "zone": knownvalue.StringExact(zone)})}))}}}})
+	resource.ParallelTest(t, resource.TestCase{ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories, CheckDestroy: checkNamespaceDestroyed(t, name), Steps: []resource.TestStep{{Config: config, ConfigStateChecks: []statecheck.StateCheck{statecheck.ExpectKnownValue("data.coreweave_container_registry_namespaces.test", tfjsonpath.New("namespaces"), knownvalue.SetPartial([]knownvalue.Check{knownvalue.ObjectPartial(map[string]knownvalue.Check{"name": knownvalue.StringExact(name), "zone": knownvalue.StringExact(zone)})}))}}}})
 }

@@ -3,7 +3,7 @@ variable "org_id" {
 }
 
 resource "coreweave_container_registry_namespace" "images" {
-  namespace_id                 = "example-images"
+  name                         = "example-images"
   zone                         = "US-LAB-01A"
   initial_access_configuration = {}
 }

@@ -37,7 +37,7 @@ resource "coreweave_container_registry_lifecycle_policy" "test" {
 		CheckDestroy:             checkNamespaceDestroyed(t, name),
 		Steps: []resource.TestStep{
 			{Config: lifecycleConfig(name, zone, false, 10), ConfigStateChecks: lifecycleStateChecks(address, false, 10)},
-			{ResourceName: address, ImportState: true, ImportStateVerify: true, ImportStateVerifyIgnore: []string{"updated_at"}},
+			{ResourceName: address, ImportState: true, ImportStateId: name, ImportStateVerify: true, ImportStateVerifyIgnore: []string{"updated_at"}},
 			{Config: lifecycleConfig(name, zone, true, 5), ConfigStateChecks: lifecycleStateChecks(address, true, 5)},
 			{Config: empty, ConfigStateChecks: []statecheck.StateCheck{statecheck.ExpectKnownValue(address, tfjsonpath.New("enabled"), knownvalue.Bool(false)), statecheck.ExpectKnownValue(address, tfjsonpath.New("rules"), knownvalue.MapExact(map[string]knownvalue.Check{}))}},
 			{Config: lifecycleConfig(name, zone, true, 5)},

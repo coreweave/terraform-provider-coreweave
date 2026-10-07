@@ -1,1 +1,1 @@
-terraform import coreweave_container_registry_lifecycle_policy.images namespaces/example-images/lifecyclePolicy
+terraform import coreweave_container_registry_lifecycle_policy.images example-images

@@ -45,7 +45,7 @@ func acceptanceNamespace(t *testing.T) (string, string) {
 // namespaceConfig declares a namespace with non-forced cleanup and explicit quota presence.
 func namespaceConfig(name, zone, quota string) string {
 	return fmt.Sprintf(`resource "coreweave_container_registry_namespace" "test" {
- namespace_id = %q
+ name = %q
  zone = %q
  storage_quota_bytes = %s
  force_destroy = false

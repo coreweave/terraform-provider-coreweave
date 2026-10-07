@@ -225,7 +225,7 @@ func (r *LifecyclePolicyResource) Read(ctx context.Context, req resource.ReadReq
 	defer cancel()
 	err := r.read(c, &a)
 	if coreweave.IsNotFoundError(err) {
-		_, parentErr := getNamespace(c, r.client, a.Namespace.ValueString(), false)
+		_, parentErr := getNamespace(c, r.client, namespaceResourceName(a.Namespace.ValueString()), false)
 		if coreweave.IsNotFoundError(parentErr) {
 			resp.State.RemoveResource(ctx)
 			return
@@ -292,7 +292,7 @@ func (r *LifecyclePolicyResource) Delete(ctx context.Context, req resource.Delet
 	}
 	c, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	parentNamespace, parentErr := getNamespace(c, r.client, a.Namespace.ValueString(), false)
+	parentNamespace, parentErr := getNamespace(c, r.client, namespaceResourceName(a.Namespace.ValueString()), false)
 	if coreweave.IsNotFoundError(parentErr) {
 		resp.State.RemoveResource(ctx)
 		return
@@ -319,30 +319,24 @@ func (r *LifecyclePolicyResource) Delete(ctx context.Context, req resource.Delet
 	report(ctx, err, &resp.Diagnostics)
 }
 
-// ImportState accepts canonical names without changing remote content.
+// ImportState accepts a bare namespace name without changing remote content.
 func (r *LifecyclePolicyResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	parent := req.ID
-	if !strings.HasSuffix(parent, lifecycleSuffix) {
-		resp.Diagnostics.AddError("Invalid import ID", "Expected a canonical singleton name ending in "+lifecycleSuffix)
-		return
-	}
-	parent = strings.TrimSuffix(parent, lifecycleSuffix)
-	if !validParent(parent) {
-		resp.Diagnostics.AddError("Invalid import ID", "Expected a canonical namespace resource name")
+	if !validNamespace(req.ID) {
+		resp.Diagnostics.AddError("Invalid import ID", "Expected a namespace name, such as example-images")
 		return
 	}
 	a := LifecyclePolicyResourceModel{}
 	a.Rules = types.MapNull(lifecycleTypes()["rules"].(types.MapType).ElemType)
 	a.Timeouts = nullResourceTimeouts()
-	a.ID = types.StringValue(req.ID)
-	a.Name = types.StringValue(req.ID)
-	a.Namespace = types.StringValue(parent)
+	a.ID = types.StringValue(namespaceResourceName(req.ID) + lifecycleSuffix)
+	a.Name = a.ID
+	a.Namespace = types.StringValue(req.ID)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &a)...)
 }
 
 // read refreshes observations owned by this resource.
 func (r *LifecyclePolicyResource) read(ctx context.Context, a *LifecyclePolicyResourceModel) error {
-	res, err := r.client.GetRegistryLifecyclePolicy(ctx, connect.NewRequest(&api.GetRegistryLifecyclePolicyRequest{Parent: a.Namespace.ValueString()}))
+	res, err := r.client.GetRegistryLifecyclePolicy(ctx, connect.NewRequest(&api.GetRegistryLifecyclePolicyRequest{Parent: namespaceResourceName(a.Namespace.ValueString())}))
 	if err != nil {
 		return err
 	}
@@ -354,7 +348,7 @@ func (r *LifecyclePolicyResource) apply(ctx context.Context, a, old *LifecyclePo
 	if !known(a.Namespace) {
 		return old != nil, fmt.Errorf("namespace must be known at apply")
 	}
-	parent := a.Namespace.ValueString()
+	parent := namespaceResourceName(a.Namespace.ValueString())
 	_, err := getNamespace(ctx, r.client, parent, !destroy)
 	if err != nil {
 		if destroy && coreweave.IsNotFoundError(err) {

@@ -13,6 +13,7 @@ import (
 
 	client "buf.build/gen/go/coreweave/container-registry-api/connectrpc/go/coreweave/registry/v1alpha1/registryv1alpha1connect"
 	api "buf.build/gen/go/coreweave/container-registry-api/protocolbuffers/go/coreweave/registry/v1alpha1"
+	"buf.build/go/protovalidate"
 	"cloud.google.com/go/longrunning/autogen/longrunningpb"
 	"connectrpc.com/connect"
 	"github.com/coreweave/terraform-provider-coreweave/internal/provider"
@@ -88,9 +89,13 @@ func (f *fakeRegistry) CreateRegistryNamespace(_ context.Context, q *connect.Req
 }
 
 // GetRegistryNamespace distinguishes absence from permission or transport failures.
-func (f *fakeRegistry) GetRegistryNamespace(context.Context, *connect.Request[api.GetRegistryNamespaceRequest]) (*connect.Response[api.RegistryNamespace], error) {
+func (f *fakeRegistry) GetRegistryNamespace(_ context.Context, q *connect.Request[api.GetRegistryNamespaceRequest]) (*connect.Response[api.RegistryNamespace], error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if err := protovalidate.Validate(q.Msg); err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
+
 	if f.readError != nil {
 		return nil, f.readError
 	}
@@ -149,9 +154,13 @@ func (f *fakeRegistry) GetOperation(context.Context, *connect.Request[api.Regist
 }
 
 // GetRegistryAccessConfiguration returns desired access state.
-func (f *fakeRegistry) GetRegistryAccessConfiguration(context.Context, *connect.Request[api.GetRegistryAccessConfigurationRequest]) (*connect.Response[api.RegistryAccessConfiguration], error) {
+func (f *fakeRegistry) GetRegistryAccessConfiguration(_ context.Context, q *connect.Request[api.GetRegistryAccessConfigurationRequest]) (*connect.Response[api.RegistryAccessConfiguration], error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if err := protovalidate.Validate(q.Msg); err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
+
 	f.policyReads++
 	if f.policyReadError != nil && f.policyReads > f.policyReadErrorAfter {
 		return nil, f.policyReadError
@@ -208,9 +217,13 @@ func (f *fakeRegistry) UpdateRegistryAccessConfiguration(_ context.Context, q *c
 }
 
 // GetRegistryLifecyclePolicy returns desired lifecycle state and optional acknowledgement.
-func (f *fakeRegistry) GetRegistryLifecyclePolicy(context.Context, *connect.Request[api.GetRegistryLifecyclePolicyRequest]) (*connect.Response[api.RegistryLifecyclePolicy], error) {
+func (f *fakeRegistry) GetRegistryLifecyclePolicy(_ context.Context, q *connect.Request[api.GetRegistryLifecyclePolicyRequest]) (*connect.Response[api.RegistryLifecyclePolicy], error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if err := protovalidate.Validate(q.Msg); err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
+
 	f.policyReads++
 	if f.policyReadError != nil && f.policyReads > f.policyReadErrorAfter {
 		return nil, f.policyReadError
@@ -333,7 +346,7 @@ func (h *harness) config(quota any, bootstrap bool) tftypes.Value {
 	h.t.Helper()
 	m := nullObject(h.typ)
 	if h.name == "coreweave_container_registry_namespace" {
-		m["namespace_id"] = tftypes.NewValue(tftypes.String, "example-images")
+		m["name"] = tftypes.NewValue(tftypes.String, "example-images")
 		m["zone"] = tftypes.NewValue(tftypes.String, "US-LAB-01A")
 		m["storage_quota_bytes"] = tftypes.NewValue(tftypes.Number, quota)
 		if bootstrap {
@@ -341,7 +354,7 @@ func (h *harness) config(quota any, bootstrap bool) tftypes.Value {
 			m["initial_access_configuration"] = tftypes.NewValue(typ, nullObject(typ))
 		}
 	} else {
-		m["namespace"] = tftypes.NewValue(tftypes.String, "namespaces/example-images")
+		m["namespace"] = tftypes.NewValue(tftypes.String, "example-images")
 	}
 	return tftypes.NewValue(h.typ, m)
 }
@@ -561,27 +574,31 @@ func TestRetryKeepsNamespaceRequest(t *testing.T) {
 	require.Contains(t, h.fake.lastUserAgent, "terraform-provider-coreweave")
 }
 
-// TestImportAndParentDisappearance verifies canonical import identifiers and parent-aware child removal.
+// TestImportAndParentDisappearance verifies bare namespace import identifiers and parent-aware child removal.
 func TestImportAndParentDisappearance(t *testing.T) {
 	for _, kind := range []string{"namespace", "access_configuration", "lifecycle_policy"} {
 		t.Run(kind, func(t *testing.T) {
 			h := newHarness(t, kind)
-			suffix := ""
-			if kind == "access_configuration" {
-				suffix = "/accessConfiguration"
-			}
-			if kind == "lifecycle_policy" {
-				suffix = "/lifecyclePolicy"
-			}
-			bad, e := h.server.ImportResourceState(t.Context(), &tfprotov6.ImportResourceStateRequest{TypeName: h.name, ID: "example-images" + suffix})
+			bad, e := h.server.ImportResourceState(t.Context(), &tfprotov6.ImportResourceStateRequest{TypeName: h.name, ID: "namespaces/example-images"})
 			require.NoError(t, e)
 			require.NotEmpty(t, bad.Diagnostics)
-			imp, e := h.server.ImportResourceState(t.Context(), &tfprotov6.ImportResourceStateRequest{TypeName: h.name, ID: "namespaces/example-images" + suffix})
+			imp, e := h.server.ImportResourceState(t.Context(), &tfprotov6.ImportResourceStateRequest{TypeName: h.name, ID: "example-images"})
 			require.NoError(t, e)
 			noErrors(t, imp.Diagnostics)
 			read, e := h.server.ReadResource(t.Context(), &tfprotov6.ReadResourceRequest{TypeName: h.name, CurrentState: imp.ImportedResources[0].State})
 			require.NoError(t, e)
 			noErrors(t, read.Diagnostics)
+			var values map[string]tftypes.Value
+			require.NoError(t, h.decode(read.NewState).As(&values))
+			input, suffix := "name", ""
+			switch kind {
+			case "access_configuration":
+				input, suffix = "namespace", "/accessConfiguration"
+			case "lifecycle_policy":
+				input, suffix = "namespace", "/lifecyclePolicy"
+			}
+			require.True(t, values[input].Equal(tftypes.NewValue(tftypes.String, "example-images")))
+			require.True(t, values["id"].Equal(tftypes.NewValue(tftypes.String, "namespaces/example-images"+suffix)))
 			require.Empty(t, h.fake.creates)
 			require.Empty(t, h.fake.accessUpdates)
 			require.Empty(t, h.fake.lifecycleUpdates)
@@ -625,6 +642,11 @@ func TestForceIsLocalAndBootstrapReplaces(t *testing.T) {
 	var m map[string]tftypes.Value
 	require.NoError(t, cfg.As(&m))
 	m = maps.Clone(m)
+	renamed := maps.Clone(m)
+	renamed["name"] = tftypes.NewValue(tftypes.String, "renamed-images")
+	replacement := h.plan(tftypes.NewValue(h.typ, renamed), h.decode(r.NewState), r.Private)
+	noErrors(t, replacement.Diagnostics)
+	require.Equal(t, []*tftypes.AttributePath{tftypes.NewAttributePath().WithAttributeName("name")}, replacement.RequiresReplace)
 	m["force_destroy"] = tftypes.NewValue(tftypes.Bool, true)
 	r = h.apply(tftypes.NewValue(h.typ, m), h.decode(r.NewState), r.Private)
 	noErrors(t, r.Diagnostics)
@@ -686,7 +708,7 @@ func TestDiscoveryProtocol(t *testing.T) {
 		typ := s.DataSourceSchemas[name].ValueType()
 		m := nullObject(typ)
 		if kind == "namespace" {
-			m["name"] = tftypes.NewValue(tftypes.String, "namespaces/example-images")
+			m["name"] = tftypes.NewValue(tftypes.String, "example-images")
 		}
 		v, e := tfprotov6.NewDynamicValue(typ, tftypes.NewValue(typ, m))
 		require.NoError(t, e)
@@ -696,6 +718,18 @@ func TestDiscoveryProtocol(t *testing.T) {
 		state, e := r.State.Unmarshal(typ)
 		require.NoError(t, e)
 		require.False(t, state.IsNull())
+		if kind != "zones" {
+			var values map[string]tftypes.Value
+			require.NoError(t, state.As(&values))
+			if kind == "namespaces" {
+				var items []tftypes.Value
+				require.NoError(t, values["namespaces"].As(&items))
+				require.Len(t, items, 1)
+				require.NoError(t, items[0].As(&values))
+			}
+			require.True(t, values["name"].Equal(tftypes.NewValue(tftypes.String, "example-images")))
+			require.True(t, values["id"].Equal(tftypes.NewValue(tftypes.String, "namespaces/example-images")))
+		}
 	}
 	h.fake.namespace = nil
 	name := "coreweave_container_registry_namespaces"

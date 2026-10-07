@@ -225,7 +225,7 @@ func (r *AccessConfigurationResource) Read(ctx context.Context, req resource.Rea
 	defer cancel()
 	err := r.read(c, &a)
 	if coreweave.IsNotFoundError(err) {
-		_, parentErr := getNamespace(c, r.client, a.Namespace.ValueString(), false)
+		_, parentErr := getNamespace(c, r.client, namespaceResourceName(a.Namespace.ValueString()), false)
 		if coreweave.IsNotFoundError(parentErr) {
 			resp.State.RemoveResource(ctx)
 			return
@@ -292,7 +292,7 @@ func (r *AccessConfigurationResource) Delete(ctx context.Context, req resource.D
 	}
 	c, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	parentNamespace, parentErr := getNamespace(c, r.client, a.Namespace.ValueString(), false)
+	parentNamespace, parentErr := getNamespace(c, r.client, namespaceResourceName(a.Namespace.ValueString()), false)
 	if coreweave.IsNotFoundError(parentErr) {
 		resp.State.RemoveResource(ctx)
 		return
@@ -319,31 +319,25 @@ func (r *AccessConfigurationResource) Delete(ctx context.Context, req resource.D
 	report(ctx, err, &resp.Diagnostics)
 }
 
-// ImportState accepts canonical names without changing remote content.
+// ImportState accepts a bare namespace name without changing remote content.
 func (r *AccessConfigurationResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	parent := req.ID
-	if !strings.HasSuffix(parent, accessSuffix) {
-		resp.Diagnostics.AddError("Invalid import ID", "Expected a canonical singleton name ending in "+accessSuffix)
-		return
-	}
-	parent = strings.TrimSuffix(parent, accessSuffix)
-	if !validParent(parent) {
-		resp.Diagnostics.AddError("Invalid import ID", "Expected a canonical namespace resource name")
+	if !validNamespace(req.ID) {
+		resp.Diagnostics.AddError("Invalid import ID", "Expected a namespace name, such as example-images")
 		return
 	}
 	a := AccessConfigurationResourceModel{}
 	a.PolicySets = types.MapNull(accessTypes()["policy_sets"].(types.MapType).ElemType)
 	a.RequestIPACL = types.ObjectNull(accessTypes()["request_ip_acl"].(types.ObjectType).AttrTypes)
 	a.Timeouts = nullResourceTimeouts()
-	a.ID = types.StringValue(req.ID)
-	a.Name = types.StringValue(req.ID)
-	a.Namespace = types.StringValue(parent)
+	a.ID = types.StringValue(namespaceResourceName(req.ID) + accessSuffix)
+	a.Name = a.ID
+	a.Namespace = types.StringValue(req.ID)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &a)...)
 }
 
 // read refreshes observations owned by this resource.
 func (r *AccessConfigurationResource) read(ctx context.Context, a *AccessConfigurationResourceModel) error {
-	res, err := r.client.GetRegistryAccessConfiguration(ctx, connect.NewRequest(&api.GetRegistryAccessConfigurationRequest{Parent: a.Namespace.ValueString()}))
+	res, err := r.client.GetRegistryAccessConfiguration(ctx, connect.NewRequest(&api.GetRegistryAccessConfigurationRequest{Parent: namespaceResourceName(a.Namespace.ValueString())}))
 	if err != nil {
 		return err
 	}
@@ -355,7 +349,7 @@ func (r *AccessConfigurationResource) apply(ctx context.Context, a, old *AccessC
 	if !known(a.Namespace) {
 		return old != nil, fmt.Errorf("namespace must be known at apply")
 	}
-	parent := a.Namespace.ValueString()
+	parent := namespaceResourceName(a.Namespace.ValueString())
 	_, err := getNamespace(ctx, r.client, parent, !destroy)
 	if err != nil {
 		if destroy && coreweave.IsNotFoundError(err) {

@@ -27,7 +27,7 @@ variable "org_id" {
 }
 
 resource "coreweave_container_registry_namespace" "images" {
-  namespace_id                 = "example-images"
+  name                         = "example-images"
   zone                         = "US-LAB-01A"
   initial_access_configuration = {}
 }
@@ -56,7 +56,7 @@ resource "coreweave_container_registry_access_configuration" "images" {
 
 ### Required
 
-- `namespace` (String) Canonical parent namespace name. Changing it replaces this policy resource.
+- `namespace` (String) Parent namespace name, such as example-images. Changing it replaces this policy resource.
 
 ### Optional
 
@@ -69,7 +69,7 @@ resource "coreweave_container_registry_access_configuration" "images" {
 - `access_config_state` (String) Current access policy rollout state.
 - `created_at` (String) Creation timestamp in RFC3339 format.
 - `etag` (String) Current concurrency token. Changes when the server updates the resource.
-- `id` (String) Terraform identifier for this resource.
+- `id` (String) Canonical API resource name used as the Terraform identifier.
 - `name` (String) Canonical API resource name.
 - `revision` (Number) Current desired policy revision.
 - `updated_at` (String) Last update timestamp in RFC3339 format.
@@ -117,5 +117,5 @@ Import is supported using the following syntax:
 The [`terraform import` command](https://developer.hashicorp.com/terraform/cli/commands/import) can be used, for example:
 
 ```shell
-terraform import coreweave_container_registry_access_configuration.images namespaces/example-images/accessConfiguration
+terraform import coreweave_container_registry_access_configuration.images example-images
 ```

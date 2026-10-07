@@ -83,7 +83,7 @@ func (r *AccessConfigurationResource) resume(ctx context.Context, a *AccessConfi
 	if rec.Action != recoveryAccessAccepted {
 		return saveRecovery(ctx, p, nil)
 	}
-	result, err := waitAccess(ctx, r.client, a.Namespace.ValueString(), rec.Revision)
+	result, err := waitAccess(ctx, r.client, namespaceResourceName(a.Namespace.ValueString()), rec.Revision)
 	if result != nil {
 		if setErr := conversionError(a.Set(ctx, result)); setErr != nil {
 			return setErr
@@ -107,7 +107,7 @@ func (r *LifecyclePolicyResource) resume(ctx context.Context, a *LifecyclePolicy
 		if err != nil || !completed {
 			return err
 		}
-		if ack.Name != a.Namespace.ValueString()+lifecycleSuffix {
+		if ack.Name != namespaceResourceName(a.Namespace.ValueString())+lifecycleSuffix {
 			return fmt.Errorf("saved operation acknowledged an unexpected lifecycle policy")
 		}
 		rec.Revision = ack.AppliedRevision
@@ -120,7 +120,7 @@ func (r *LifecyclePolicyResource) resume(ctx context.Context, a *LifecyclePolicy
 	if rec.Action != recoveryLifecycleWait {
 		return saveRecovery(ctx, p, nil)
 	}
-	result, err := waitLifecycle(ctx, r.client, a.Namespace.ValueString(), rec.Revision)
+	result, err := waitLifecycle(ctx, r.client, namespaceResourceName(a.Namespace.ValueString()), rec.Revision)
 	if result != nil {
 		if setErr := conversionError(a.Set(ctx, result)); setErr != nil {
 			return setErr

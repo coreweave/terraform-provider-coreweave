@@ -18,15 +18,14 @@ import (
 func observedNamespaceAttributes() map[string]schema.Attribute {
 	return map[string]schema.Attribute{
 
-		"id":                  schema.StringAttribute{Computed: true, MarkdownDescription: "Terraform identifier for this resource."},
-		"name":                schema.StringAttribute{Computed: true, MarkdownDescription: "Canonical API resource name."},
+		"id":                  schema.StringAttribute{Computed: true, MarkdownDescription: "Canonical API resource name used as the Terraform identifier."},
+		"name":                schema.StringAttribute{Computed: true, MarkdownDescription: "Namespace name used in the registry hostname."},
 		"dns_name":            schema.StringAttribute{Computed: true, MarkdownDescription: "Registry hostname used for OCI pushes and pulls."},
 		"org_id":              schema.StringAttribute{Computed: true, MarkdownDescription: "Organization that owns the namespace."},
 		"status":              schema.StringAttribute{Computed: true, MarkdownDescription: "Current namespace provisioning state."},
 		"etag":                schema.StringAttribute{Computed: true, MarkdownDescription: "Current concurrency token. Changes when the server updates the resource."},
 		"created_at":          schema.StringAttribute{Computed: true, MarkdownDescription: "Creation timestamp in RFC3339 format."},
 		"updated_at":          schema.StringAttribute{Computed: true, MarkdownDescription: "Last update timestamp in RFC3339 format."},
-		"namespace_id":        schema.StringAttribute{Computed: true, MarkdownDescription: "Namespace identifier used in the registry hostname."},
 		"zone":                schema.StringAttribute{Computed: true, MarkdownDescription: "Upper-case zone in which the namespace was provisioned."},
 		"storage_quota_bytes": schema.Int64Attribute{Computed: true, MarkdownDescription: "Current namespace storage ceiling in bytes. Null means no ceiling; zero disables pushes after evaluation."},
 		"created_by":          schema.SingleNestedAttribute{Computed: true, MarkdownDescription: "Identity that created the namespace.", Attributes: actorDataAttributes()},

@@ -36,11 +36,6 @@ func validateProtoField(message proto.Message, name protoreflect.Name) error {
 	return protovalidate.Validate(message, protovalidate.WithFilter(protovalidate.FilterFunc(func(_ protoreflect.Message, d protoreflect.Descriptor) bool { return d == field })))
 }
 
-// validParent uses the canonical parent constraint from the public request contract.
-func validParent(s string) bool {
-	return protovalidate.Validate(&api.GetRegistryAccessConfigurationRequest{Parent: s}) == nil
-}
-
 // validNamespace reuses the public namespace identifier annotation for imports and operation names.
 func validNamespace(s string) bool {
 	return validateProtoField(&api.CreateRegistryNamespaceRequest{RegistryNamespaceId: s}, "registry_namespace_id") == nil
@@ -60,26 +55,26 @@ func validCIDR(s string) bool {
 	return e == nil && !p.Addr().Is4In6() && p == p.Masked() && s == p.String()
 }
 
-type parentNameValidator struct{}
+type namespaceNameValidator struct{}
 
-// Description describes the parent constraint.
-func (parentNameValidator) Description(context.Context) string {
-	return "Valid Container Registry parent"
+// Description describes the namespace name constraint.
+func (namespaceNameValidator) Description(context.Context) string {
+	return "Valid Container Registry namespace name"
 }
 
-// MarkdownDescription describes the parent constraint.
-func (v parentNameValidator) MarkdownDescription(ctx context.Context) string {
+// MarkdownDescription describes the namespace name constraint.
+func (v namespaceNameValidator) MarkdownDescription(ctx context.Context) string {
 	return v.Description(ctx)
 }
 
-// ValidateString validates known parent values and defers unresolved configuration.
-func (parentNameValidator) ValidateString(ctx context.Context, req validator.StringRequest, resp *validator.StringResponse) {
+// ValidateString validates known namespace names and defers unresolved configuration.
+func (namespaceNameValidator) ValidateString(ctx context.Context, req validator.StringRequest, resp *validator.StringResponse) {
 	if req.ConfigValue.IsNull() || req.ConfigValue.IsUnknown() {
 		return
 	}
 	s := req.ConfigValue.ValueString()
-	if !(validParent(s)) {
-		resp.Diagnostics.AddAttributeError(req.Path, "Invalid parent", fmt.Sprintf("%q is not a valid canonical parent.", s))
+	if !(validNamespace(s)) {
+		resp.Diagnostics.AddAttributeError(req.Path, "Invalid namespace identifier", fmt.Sprintf("%q is not a valid namespace name.", s))
 	}
 }
 
@@ -223,15 +218,14 @@ func accessAttributes() map[string]schema.Attribute {
 // namespaceAttributes defines API observations and namespace inputs.
 func namespaceAttributes() map[string]schema.Attribute {
 	a := map[string]schema.Attribute{
-		"id":                  schema.StringAttribute{Computed: true, MarkdownDescription: "Terraform identifier for this resource.", PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()}},
-		"name":                schema.StringAttribute{Computed: true, MarkdownDescription: "Canonical API resource name.", PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()}},
+		"id":                  schema.StringAttribute{Computed: true, MarkdownDescription: "Canonical API resource name used as the Terraform identifier.", PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()}},
+		"name":                requiredString("Namespace name used in the registry hostname, such as example-images. Changing it replaces the namespace.", true, namespaceNameValidator{}),
 		"dns_name":            schema.StringAttribute{Computed: true, MarkdownDescription: "Registry hostname used for OCI pushes and pulls.", PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()}},
 		"org_id":              schema.StringAttribute{Computed: true, MarkdownDescription: "Organization that owns the namespace."},
 		"status":              schema.StringAttribute{Computed: true, MarkdownDescription: "Current namespace provisioning state."},
 		"etag":                schema.StringAttribute{Computed: true, MarkdownDescription: "Current concurrency token. Changes when the server updates the resource."},
 		"created_at":          schema.StringAttribute{Computed: true, MarkdownDescription: "Creation timestamp in RFC3339 format."},
 		"updated_at":          schema.StringAttribute{Computed: true, MarkdownDescription: "Last update timestamp in RFC3339 format."},
-		"namespace_id":        requiredString("Namespace identifier used in the registry hostname. Changing it replaces the namespace.", true),
 		"zone":                requiredString("Upper-case zone identifier. Changing it replaces the namespace.", true, stringvalidator.RegexMatches(regexp.MustCompile(`^[^a-z]*$`), "Must use an upper-case zone")),
 		"storage_quota_bytes": schema.Int64Attribute{Optional: true, Validators: []validator.Int64{int64validator.AtLeast(0)}, MarkdownDescription: "Namespace ceiling in bytes. Omission/null clears the ceiling; zero disables pushes after evaluation."},
 		"created_by":          schema.SingleNestedAttribute{Computed: true, MarkdownDescription: "Identity that created the namespace.", Attributes: actorAttributes()},
@@ -267,8 +261,8 @@ func actorAttributes() map[string]schema.Attribute {
 // policyMetadataAttributes defines common singleton identity and observations.
 func policyMetadataAttributes() map[string]schema.Attribute {
 	return map[string]schema.Attribute{
-		"namespace":  requiredString("Canonical parent namespace name. Changing it replaces this policy resource.", true, parentNameValidator{}),
-		"id":         schema.StringAttribute{Computed: true, MarkdownDescription: "Terraform identifier for this resource.", PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()}},
+		"namespace":  requiredString("Parent namespace name, such as example-images. Changing it replaces this policy resource.", true, namespaceNameValidator{}),
+		"id":         schema.StringAttribute{Computed: true, MarkdownDescription: "Canonical API resource name used as the Terraform identifier.", PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()}},
 		"name":       schema.StringAttribute{Computed: true, MarkdownDescription: "Canonical API resource name.", PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()}},
 		"etag":       schema.StringAttribute{Computed: true, MarkdownDescription: "Current concurrency token. Changes when the server updates the resource."},
 		"created_at": schema.StringAttribute{Computed: true, MarkdownDescription: "Creation timestamp in RFC3339 format."},

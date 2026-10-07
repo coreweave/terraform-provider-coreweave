@@ -1,1 +1,1 @@
-terraform import coreweave_container_registry_namespace.images namespaces/example-images
+terraform import coreweave_container_registry_namespace.images example-images

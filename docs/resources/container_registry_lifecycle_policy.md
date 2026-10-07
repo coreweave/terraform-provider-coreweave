@@ -23,7 +23,7 @@ Action deadlines default to 20 minutes.
 
 ```terraform
 resource "coreweave_container_registry_namespace" "images" {
-  namespace_id  = "example-images"
+  name          = "example-images"
   zone          = "US-LAB-01A"
   force_destroy = false
 }
@@ -46,7 +46,7 @@ resource "coreweave_container_registry_lifecycle_policy" "images" {
 
 ### Required
 
-- `namespace` (String) Canonical parent namespace name. Changing it replaces this policy resource.
+- `namespace` (String) Parent namespace name, such as example-images. Changing it replaces this policy resource.
 
 ### Optional
 
@@ -59,7 +59,7 @@ resource "coreweave_container_registry_lifecycle_policy" "images" {
 - `applied_revision` (Number) Last lifecycle policy revision acknowledged by the worker. Acknowledgement does not indicate completed retention or garbage collection.
 - `created_at` (String) Creation timestamp in RFC3339 format.
 - `etag` (String) Current concurrency token. Changes when the server updates the resource.
-- `id` (String) Terraform identifier for this resource.
+- `id` (String) Canonical API resource name used as the Terraform identifier.
 - `name` (String) Canonical API resource name.
 - `revision` (Number) Current desired policy revision.
 - `updated_at` (String) Last update timestamp in RFC3339 format.
@@ -94,5 +94,5 @@ Import is supported using the following syntax:
 The [`terraform import` command](https://developer.hashicorp.com/terraform/cli/commands/import) can be used, for example:
 
 ```shell
-terraform import coreweave_container_registry_lifecycle_policy.images namespaces/example-images/lifecyclePolicy
+terraform import coreweave_container_registry_lifecycle_policy.images example-images
 ```

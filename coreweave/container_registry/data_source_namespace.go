@@ -46,7 +46,6 @@ type NamespaceDataSourceModel struct {
 	Etag              types.String   `tfsdk:"etag"`
 	CreatedAt         types.String   `tfsdk:"created_at"`
 	UpdatedAt         types.String   `tfsdk:"updated_at"`
-	NamespaceID       types.String   `tfsdk:"namespace_id"`
 	Zone              types.String   `tfsdk:"zone"`
 	StorageQuotaBytes types.Int64    `tfsdk:"storage_quota_bytes"`
 	CreatedBy         types.Object   `tfsdk:"created_by"`
@@ -77,7 +76,7 @@ func (d *NamespaceDataSource) Configure(_ context.Context, req datasource.Config
 // namespaceDataAttributes defines the canonical lookup input and observations.
 func namespaceDataAttributes() map[string]schema.Attribute {
 	a := observedNamespaceAttributes()
-	a["name"] = schema.StringAttribute{Required: true, MarkdownDescription: "Canonical namespace name, such as namespaces/example-images.", Validators: []validator.String{parentNameValidator{}}}
+	a["name"] = schema.StringAttribute{Required: true, MarkdownDescription: "Namespace name, such as example-images.", Validators: []validator.String{namespaceNameValidator{}}}
 	a["timeouts"] = timeouts.Attributes(context.Background())
 	return a
 }
@@ -100,7 +99,7 @@ func (d *NamespaceDataSource) Read(ctx context.Context, req datasource.ReadReque
 		report(ctx, fmt.Errorf("name must be known"), &resp.Diagnostics)
 		return
 	}
-	res, err := d.client.GetRegistryNamespace(c, connect.NewRequest(&api.GetRegistryNamespaceRequest{Name: a.Name.ValueString()}))
+	res, err := d.client.GetRegistryNamespace(c, connect.NewRequest(&api.GetRegistryNamespaceRequest{Name: namespaceResourceName(a.Name.ValueString())}))
 	if err == nil {
 		resp.Diagnostics.Append(a.Set(ctx, res.Msg)...)
 	}
@@ -114,8 +113,7 @@ func (d *NamespaceDataSource) Read(ctx context.Context, req datasource.ReadReque
 // Set populates namespace discovery observations without touching local timeouts.
 func (a *NamespaceDataSourceModel) Set(ctx context.Context, n *api.RegistryNamespace) diag.Diagnostics {
 	a.ID = types.StringValue(n.Name)
-	a.Name = types.StringValue(n.Name)
-	a.NamespaceID = types.StringValue(strings.TrimPrefix(n.Name, "namespaces/"))
+	a.Name = types.StringValue(strings.TrimPrefix(n.Name, "namespaces/"))
 	a.Zone = types.StringValue(n.Zone)
 	a.OrgID = types.StringValue(n.OwnerOrg)
 	a.DNSName = types.StringValue(n.DnsName)
@@ -145,7 +143,6 @@ type NamespaceObservationModel struct {
 	Etag              types.String `tfsdk:"etag"`
 	CreatedAt         types.String `tfsdk:"created_at"`
 	UpdatedAt         types.String `tfsdk:"updated_at"`
-	NamespaceID       types.String `tfsdk:"namespace_id"`
 	Zone              types.String `tfsdk:"zone"`
 	StorageQuotaBytes types.Int64  `tfsdk:"storage_quota_bytes"`
 	CreatedBy         types.Object `tfsdk:"created_by"`

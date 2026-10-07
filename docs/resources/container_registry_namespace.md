@@ -20,7 +20,7 @@ An interrupted create can leave a tainted resource. Inspect the remote namespace
 
 ```terraform
 resource "coreweave_container_registry_namespace" "images" {
-  namespace_id                 = "example-images"
+  name                         = "example-images"
   zone                         = "US-LAB-01A"
   storage_quota_bytes          = 107374182400
   initial_access_configuration = {}
@@ -38,7 +38,7 @@ resource "coreweave_container_registry_namespace" "images" {
 
 ### Required
 
-- `namespace_id` (String) Namespace identifier used in the registry hostname. Changing it replaces the namespace.
+- `name` (String) Namespace name used in the registry hostname, such as example-images. Changing it replaces the namespace.
 - `zone` (String) Upper-case zone identifier. Changing it replaces the namespace.
 
 ### Optional
@@ -56,8 +56,7 @@ resource "coreweave_container_registry_namespace" "images" {
 - `created_by` (Attributes) Identity that created the namespace. (see [below for nested schema](#nestedatt--created_by))
 - `dns_name` (String) Registry hostname used for OCI pushes and pulls.
 - `etag` (String) Current concurrency token. Changes when the server updates the resource.
-- `id` (String) Terraform identifier for this resource.
-- `name` (String) Canonical API resource name.
+- `id` (String) Canonical API resource name used as the Terraform identifier.
 - `org_id` (String) Organization that owns the namespace.
 - `status` (String) Current namespace provisioning state.
 - `updated_at` (String) Last update timestamp in RFC3339 format.
@@ -156,5 +155,5 @@ Import is supported using the following syntax:
 The [`terraform import` command](https://developer.hashicorp.com/terraform/cli/commands/import) can be used, for example:
 
 ```shell
-terraform import coreweave_container_registry_namespace.images namespaces/example-images
+terraform import coreweave_container_registry_namespace.images example-images
 ```

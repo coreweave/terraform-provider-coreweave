@@ -100,7 +100,6 @@ func (d *NamespacesDataSource) Read(ctx context.Context, req datasource.ReadRequ
 			Etag:              model.Etag,
 			CreatedAt:         model.CreatedAt,
 			UpdatedAt:         model.UpdatedAt,
-			NamespaceID:       model.NamespaceID,
 			Zone:              model.Zone,
 			StorageQuotaBytes: model.StorageQuotaBytes,
 			CreatedBy:         model.CreatedBy,

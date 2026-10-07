@@ -1,5 +1,5 @@
 resource "coreweave_container_registry_namespace" "images" {
-  namespace_id  = "example-images"
+  name          = "example-images"
   zone          = "US-LAB-01A"
   force_destroy = false
 }

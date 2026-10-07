@@ -46,9 +46,8 @@ Read-Only:
 - `created_by` (Attributes) Identity that created the namespace. (see [below for nested schema](#nestedatt--namespaces--created_by))
 - `dns_name` (String) Registry hostname used for OCI pushes and pulls.
 - `etag` (String) Current concurrency token. Changes when the server updates the resource.
-- `id` (String) Terraform identifier for this resource.
-- `name` (String) Canonical API resource name.
-- `namespace_id` (String) Namespace identifier used in the registry hostname.
+- `id` (String) Canonical API resource name used as the Terraform identifier.
+- `name` (String) Namespace name used in the registry hostname.
 - `org_id` (String) Organization that owns the namespace.
 - `status` (String) Current namespace provisioning state.
 - `storage_quota_bytes` (Number) Current namespace storage ceiling in bytes. Null means no ceiling; zero disables pushes after evaluation.

@@ -82,7 +82,7 @@ func TestNamespaceTerraformRecovery(t *testing.T) {
 	factories := fakeTerraformProviderFactories(t, fake, observer)
 	address := "coreweave_container_registry_namespace.test"
 	config := `resource "coreweave_container_registry_namespace" "test" {
- namespace_id = "example-images"
+ name = "example-images"
  zone = "US-LAB-01A"
 }`
 	resource.ParallelTest(t, resource.TestCase{
@@ -134,7 +134,7 @@ func TestNamespaceTerraformRecovery(t *testing.T) {
 					return nil
 				},
 			},
-			{Config: config, ResourceName: address, ImportState: true, ImportStateId: "namespaces/example-images", ImportStatePersist: true},
+			{Config: config, ResourceName: address, ImportState: true, ImportStateId: "example-images", ImportStatePersist: true},
 			{
 				Config:           config,
 				ConfigPlanChecks: resource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{plancheck.ExpectResourceAction(address, plancheck.ResourceActionNoop)}},
@@ -156,43 +156,39 @@ func TestNamespaceTerraformRecovery(t *testing.T) {
 
 // TestNamespaceTerraformChildIdentityPlanning verifies dependency planning and apply across quota and force_destroy changes.
 func TestNamespaceTerraformChildIdentityPlanning(t *testing.T) {
-	for _, reference := range []string{"id", "name"} {
-		t.Run(reference, func(t *testing.T) {
-			fake := newFakeRegistry()
-			factories := fakeTerraformProviderFactories(t, fake, nil)
-			config := func(quota int64, force bool) string {
-				return fmt.Sprintf(`resource "coreweave_container_registry_namespace" "test" {
- namespace_id = "example-images"
+	fake := newFakeRegistry()
+	factories := fakeTerraformProviderFactories(t, fake, nil)
+	config := func(quota int64, force bool) string {
+		return fmt.Sprintf(`resource "coreweave_container_registry_namespace" "test" {
+ name = "example-images"
  zone = "US-LAB-01A"
  storage_quota_bytes = %d
  force_destroy = %t
 }
 resource "coreweave_container_registry_access_configuration" "test" {
- namespace = coreweave_container_registry_namespace.test.%s
+ namespace = coreweave_container_registry_namespace.test.name
 }
 resource "coreweave_container_registry_lifecycle_policy" "test" {
- namespace = coreweave_container_registry_namespace.test.%s
+ namespace = coreweave_container_registry_namespace.test.name
  enabled = false
-}`, quota, force, reference, reference)
-			}
-			childChecks := resource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{
-				plancheck.ExpectResourceAction("coreweave_container_registry_namespace.test", plancheck.ResourceActionUpdate),
-				plancheck.ExpectResourceAction("coreweave_container_registry_access_configuration.test", plancheck.ResourceActionNoop),
-				plancheck.ExpectResourceAction("coreweave_container_registry_lifecycle_policy.test", plancheck.ResourceActionNoop),
-			}}
-			noPolicyWrites := func(_ *terraform.State) error {
-				fake.mu.Lock()
-				defer fake.mu.Unlock()
-				if len(fake.accessUpdates) != 0 || len(fake.lifecycleUpdates) != 0 || len(fake.creates) != 1 || len(fake.deletes) != 0 {
-					return fmt.Errorf("namespace update replaced resources or wrote policies: creates=%d deletes=%d access=%d lifecycle=%d", len(fake.creates), len(fake.deletes), len(fake.accessUpdates), len(fake.lifecycleUpdates))
-				}
-				return nil
-			}
-			resource.ParallelTest(t, resource.TestCase{IsUnitTest: true, ProtoV6ProviderFactories: factories, Steps: []resource.TestStep{
-				{Config: config(1048576, false), Check: noPolicyWrites},
-				{Config: config(2097152, false), ConfigPlanChecks: childChecks, Check: noPolicyWrites},
-				{Config: config(2097152, true), ConfigPlanChecks: childChecks, Check: noPolicyWrites},
-			}})
-		})
+}`, quota, force)
 	}
+	childChecks := resource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{
+		plancheck.ExpectResourceAction("coreweave_container_registry_namespace.test", plancheck.ResourceActionUpdate),
+		plancheck.ExpectResourceAction("coreweave_container_registry_access_configuration.test", plancheck.ResourceActionNoop),
+		plancheck.ExpectResourceAction("coreweave_container_registry_lifecycle_policy.test", plancheck.ResourceActionNoop),
+	}}
+	noPolicyWrites := func(_ *terraform.State) error {
+		fake.mu.Lock()
+		defer fake.mu.Unlock()
+		if len(fake.accessUpdates) != 0 || len(fake.lifecycleUpdates) != 0 || len(fake.creates) != 1 || len(fake.deletes) != 0 {
+			return fmt.Errorf("namespace update replaced resources or wrote policies: creates=%d deletes=%d access=%d lifecycle=%d", len(fake.creates), len(fake.deletes), len(fake.accessUpdates), len(fake.lifecycleUpdates))
+		}
+		return nil
+	}
+	resource.ParallelTest(t, resource.TestCase{IsUnitTest: true, ProtoV6ProviderFactories: factories, Steps: []resource.TestStep{
+		{Config: config(1048576, false), Check: noPolicyWrites},
+		{Config: config(2097152, false), ConfigPlanChecks: childChecks, Check: noPolicyWrites},
+		{Config: config(2097152, true), ConfigPlanChecks: childChecks, Check: noPolicyWrites},
+	}})
 }

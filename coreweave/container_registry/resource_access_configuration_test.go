@@ -42,7 +42,7 @@ resource "coreweave_container_registry_access_configuration" "test" {
 		CheckDestroy:             checkNamespaceDestroyed(t, name),
 		Steps: []resource.TestStep{
 			{Config: accessConfig(name, zone, "true"), ConfigStateChecks: accessStateChecks(address, "true")},
-			{ResourceName: address, ImportState: true, ImportStateVerify: true, ImportStateVerifyIgnore: []string{"updated_at"}},
+			{ResourceName: address, ImportState: true, ImportStateId: name, ImportStateVerify: true, ImportStateVerifyIgnore: []string{"updated_at"}},
 			{Config: accessConfig(name, zone, "false"), ConfigStateChecks: accessStateChecks(address, "false")},
 
 			{Config: empty, ConfigStateChecks: []statecheck.StateCheck{statecheck.ExpectKnownValue(address, tfjsonpath.New("policy_sets"), knownvalue.MapExact(map[string]knownvalue.Check{})), statecheck.ExpectKnownValue(address, tfjsonpath.New("request_ip_acl"), knownvalue.Null())}},

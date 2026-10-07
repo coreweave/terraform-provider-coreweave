@@ -43,9 +43,9 @@ func (r *NamespaceResource) Metadata(_ context.Context, req resource.MetadataReq
 // namespaceApply preserves quota presence, bootstrap atomicity, and explicit force deletion.
 func (r *NamespaceResource) namespaceApply(ctx context.Context, a, old *NamespaceResourceModel, destroy bool, p privateData) (bool, error) {
 	creating := old == nil
-	name := "namespaces/" + a.NamespaceID.ValueString()
+	name := namespaceResourceName(a.Name.ValueString())
 	if !creating {
-		name = old.Name.ValueString()
+		name = old.ID.ValueString()
 		a.Name = old.Name
 		a.ID = old.ID
 	}
@@ -56,7 +56,7 @@ func (r *NamespaceResource) namespaceApply(ctx context.Context, a, old *Namespac
 	if destroy {
 		return r.namespaceDelete(ctx, a, name, key, p)
 	}
-	if !known(a.NamespaceID) || !known(a.Zone) || !known(a.StorageQuotaBytes) || !known(a.InitialAccessConfiguration) {
+	if !known(a.Name) || !known(a.Zone) || !known(a.StorageQuotaBytes) || !known(a.InitialAccessConfiguration) {
 		return !creating, fmt.Errorf("namespace inputs must be known at apply")
 	}
 	n := &api.RegistryNamespace{Zone: a.Zone.ValueString()}
@@ -124,7 +124,7 @@ func (r *NamespaceResource) namespaceDelete(ctx context.Context, a *NamespaceRes
 
 // namespaceCreate submits atomic bootstrap and retains ownership after acceptance.
 func (r *NamespaceResource) namespaceCreate(ctx context.Context, a *NamespaceResourceModel, n *api.RegistryNamespace, name, key string, p privateData) (bool, error) {
-	q := &api.CreateRegistryNamespaceRequest{RegistryNamespaceId: a.NamespaceID.ValueString(), RegistryNamespace: n, IdempotencyKey: key}
+	q := &api.CreateRegistryNamespaceRequest{RegistryNamespaceId: a.Name.ValueString(), RegistryNamespace: n, IdempotencyKey: key}
 	if b := a.InitialAccessConfiguration; !b.IsNull() {
 		var e error
 		var bootstrap AccessConfigurationModel
@@ -151,7 +151,6 @@ func (r *NamespaceResource) namespaceCreate(ctx context.Context, a *NamespaceRes
 	if e != nil {
 		return false, fmt.Errorf("create %s: %w; if the response was lost, inspect server operations and explicitly import the verified namespace; an existing name is not proof of ownership", name, e)
 	}
-	a.Name = types.StringValue(name)
 	a.ID = types.StringValue(name)
 	rec.Operation = res.Msg.Name
 	if err := saveRecovery(ctx, p, rec); err != nil {
@@ -219,7 +218,6 @@ type NamespaceResourceModel struct {
 	Etag                       types.String   `tfsdk:"etag"`
 	CreatedAt                  types.String   `tfsdk:"created_at"`
 	UpdatedAt                  types.String   `tfsdk:"updated_at"`
-	NamespaceID                types.String   `tfsdk:"namespace_id"`
 	Zone                       types.String   `tfsdk:"zone"`
 	StorageQuotaBytes          types.Int64    `tfsdk:"storage_quota_bytes"`
 	CreatedBy                  types.Object   `tfsdk:"created_by"`
@@ -255,11 +253,6 @@ func (r *NamespaceResource) ValidateConfig(ctx context.Context, req resource.Val
 	resp.Diagnostics.Append(req.Config.Get(ctx, &a)...)
 	if resp.Diagnostics.HasError() {
 		return
-	}
-	if known(a.NamespaceID) && !a.NamespaceID.IsNull() {
-		if err := validateProtoField(&api.CreateRegistryNamespaceRequest{RegistryNamespaceId: a.NamespaceID.ValueString()}, "registry_namespace_id"); err != nil {
-			resp.Diagnostics.AddAttributeError(path.Root("namespace_id"), "Invalid namespace identifier", err.Error())
-		}
 	}
 	if known(a.Zone) && !a.Zone.IsNull() {
 		if err := validateProtoField(&api.RegistryNamespace{Zone: a.Zone.ValueString()}, "zone"); err != nil {
@@ -396,7 +389,7 @@ func (r *NamespaceResource) Delete(ctx context.Context, req resource.DeleteReque
 	}
 	c, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	_, parentErr := getNamespace(c, r.client, a.Name.ValueString(), false)
+	_, parentErr := getNamespace(c, r.client, a.ID.ValueString(), false)
 	if coreweave.IsNotFoundError(parentErr) {
 		pending, recoveryErr := protectPendingCreate(c, r.client, resp.Private)
 		if recoveryErr != nil {
@@ -427,11 +420,10 @@ func (r *NamespaceResource) Delete(ctx context.Context, req resource.DeleteReque
 	report(ctx, err, &resp.Diagnostics)
 }
 
-// ImportState accepts canonical names without changing remote content.
+// ImportState accepts a bare namespace name without changing remote content.
 func (r *NamespaceResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	parent := req.ID
-	if !validParent(parent) {
-		resp.Diagnostics.AddError("Invalid import ID", "Expected a canonical namespace resource name")
+	if !validNamespace(req.ID) {
+		resp.Diagnostics.AddError("Invalid import ID", "Expected a namespace name, such as example-images")
 		return
 	}
 	a := NamespaceResourceModel{}
@@ -441,16 +433,15 @@ func (r *NamespaceResource) ImportState(ctx context.Context, req resource.Import
 	a.ContentStatus = types.ObjectNull(namespaceTypes()["content_status"].(types.ObjectType).AttrTypes)
 	a.InitialAccessConfiguration = types.ObjectNull(namespaceTypes()["initial_access_configuration"].(types.ObjectType).AttrTypes)
 	a.Timeouts = nullResourceTimeouts()
-	a.ID = types.StringValue(req.ID)
+	a.ID = types.StringValue(namespaceResourceName(req.ID))
 	a.Name = types.StringValue(req.ID)
-	a.NamespaceID = types.StringValue(strings.TrimPrefix(parent, "namespaces/"))
 	a.ForceDestroy = types.BoolValue(false)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &a)...)
 }
 
 // read refreshes observations owned by this resource.
 func (r *NamespaceResource) read(ctx context.Context, a *NamespaceResourceModel) error {
-	n, err := getNamespace(ctx, r.client, a.Name.ValueString(), false)
+	n, err := getNamespace(ctx, r.client, a.ID.ValueString(), false)
 	if err != nil {
 		return err
 	}
@@ -489,9 +480,6 @@ func (a *NamespaceResourceModel) cleanUnknown() {
 	if a.UpdatedAt.IsUnknown() {
 		a.UpdatedAt = types.StringNull()
 	}
-	if a.NamespaceID.IsUnknown() {
-		a.NamespaceID = types.StringNull()
-	}
 	if a.Zone.IsUnknown() {
 		a.Zone = types.StringNull()
 	}
@@ -521,8 +509,7 @@ func (a *NamespaceResourceModel) cleanUnknown() {
 // Set copies server observations while preserving local resource settings.
 func (a *NamespaceResourceModel) Set(ctx context.Context, n *api.RegistryNamespace) diag.Diagnostics {
 	a.ID = types.StringValue(n.Name)
-	a.Name = types.StringValue(n.Name)
-	a.NamespaceID = types.StringValue(strings.TrimPrefix(n.Name, "namespaces/"))
+	a.Name = types.StringValue(strings.TrimPrefix(n.Name, "namespaces/"))
 	a.Zone = types.StringValue(n.Zone)
 	a.OrgID = types.StringValue(n.OwnerOrg)
 	a.DNSName = types.StringValue(n.DnsName)

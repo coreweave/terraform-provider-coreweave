@@ -105,11 +105,34 @@ func TestNamespaceKnownValidationSurvivesUnknownZone(t *testing.T) {
 	h := newHarness(t, "namespace")
 	var values map[string]tftypes.Value
 	require.NoError(t, h.config(nil, false).As(&values))
-	values["namespace_id"] = tftypes.NewValue(tftypes.String, "BAD")
+	values["name"] = tftypes.NewValue(tftypes.String, "BAD")
 	values["zone"] = tftypes.NewValue(tftypes.String, tftypes.UnknownValue)
 	result, err := h.server.ValidateResourceConfig(t.Context(), &tfprotov6.ValidateResourceConfigRequest{TypeName: h.name, Config: h.dv(tftypes.NewValue(h.typ, values))})
 	require.NoError(t, err)
 	require.Len(t, result.Diagnostics, 1)
 	require.Equal(t, "Invalid namespace identifier", result.Diagnostics[0].Summary)
 	require.Empty(t, h.fake.creates)
+}
+
+// TestCanonicalPathsAreNotTerraformNames rejects API paths at each namespace input.
+func TestCanonicalPathsAreNotTerraformNames(t *testing.T) {
+	for _, kind := range []string{"namespace", "access_configuration", "lifecycle_policy"} {
+		t.Run(kind, func(t *testing.T) {
+			h := newHarness(t, kind)
+			var values map[string]tftypes.Value
+			require.NoError(t, h.config(nil, false).As(&values))
+			field := "namespace"
+			if kind == "namespace" {
+				field = "name"
+			}
+			values[field] = tftypes.NewValue(tftypes.String, "namespaces/example-images")
+			result, err := h.server.ValidateResourceConfig(t.Context(), &tfprotov6.ValidateResourceConfigRequest{TypeName: h.name, Config: h.dv(tftypes.NewValue(h.typ, values))})
+			require.NoError(t, err)
+			require.Len(t, result.Diagnostics, 1)
+			require.Equal(t, "Invalid namespace identifier", result.Diagnostics[0].Summary)
+			require.Empty(t, h.fake.creates)
+			require.Empty(t, h.fake.accessUpdates)
+			require.Empty(t, h.fake.lifecycleUpdates)
+		})
+	}
 }

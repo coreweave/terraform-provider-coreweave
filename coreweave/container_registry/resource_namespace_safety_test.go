@@ -70,7 +70,7 @@ func TestAccNamespaceBootstrap(t *testing.T) {
 						return fmt.Errorf("atomic bootstrap policy does not match configuration")
 					}
 					return nil
-				}}, {ResourceName: "coreweave_container_registry_namespace.test", ImportState: true, ImportStateVerify: true, ImportStateVerifyIgnore: []string{"initial_access_configuration", "content_status", "access_mode", "updated_at", "updated_by"}}},
+				}}, {ResourceName: "coreweave_container_registry_namespace.test", ImportState: true, ImportStateId: name, ImportStateVerify: true, ImportStateVerifyIgnore: []string{"initial_access_configuration", "content_status", "access_mode", "updated_at", "updated_by"}}},
 			})
 		})
 	}

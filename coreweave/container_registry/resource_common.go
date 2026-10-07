@@ -33,6 +33,11 @@ func report(ctx context.Context, err error, d *diag.Diagnostics) {
 	coreweave.HandleAPIError(ctx, err, d)
 }
 
+// namespaceResourceName translates a Terraform namespace name at the API boundary.
+func namespaceResourceName(name string) string {
+	return kindNamespaces + "/" + name
+}
+
 // getNamespace verifies parent existence and optional ACTIVE mutation admission.
 func getNamespace(ctx context.Context, c client.RegistryServiceClient, name string, active bool) (*api.RegistryNamespace, error) {
 	p, e := c.GetRegistryNamespace(ctx, connect.NewRequest(&api.GetRegistryNamespaceRequest{Name: name}))
