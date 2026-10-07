@@ -51,6 +51,16 @@ func equalAccess(ctx context.Context, a, b *api.RegistryAccessConfiguration) (bo
 
 // accessApply owns an exact access revision without rebasing etags.
 func (r *AccessConfigurationResource) accessApply(ctx context.Context, a, old *AccessConfigurationResourceModel, destroy bool, p privateData, parent string) (bool, error) {
+	// Only successful server conversions may advance the update fallback snapshot.
+	observe := func(value *api.RegistryAccessConfiguration) error {
+		if err := conversionError(a.Set(ctx, value)); err != nil {
+			return err
+		}
+		if old != nil {
+			*old = *a
+		}
+		return nil
+	}
 	current, e := r.client.GetRegistryAccessConfiguration(ctx, connect.NewRequest(&api.GetRegistryAccessConfigurationRequest{Parent: parent}))
 	if e != nil {
 		return old != nil, e
@@ -68,7 +78,7 @@ func (r *AccessConfigurationResource) accessApply(ctx context.Context, a, old *A
 		}
 	}
 	revision := current.Msg.Revision
-	if err := conversionError(a.Set(ctx, current.Msg)); err != nil {
+	if err := observe(current.Msg); err != nil {
 		return old != nil, err
 	}
 	equal, err := equalAccess(ctx, desired, current.Msg)
@@ -86,7 +96,7 @@ func (r *AccessConfigurationResource) accessApply(ctx context.Context, a, old *A
 		if e != nil {
 			last, re := r.client.GetRegistryAccessConfiguration(ctx, connect.NewRequest(&api.GetRegistryAccessConfigurationRequest{Parent: parent}))
 			if re == nil {
-				if err := conversionError(a.Set(ctx, last.Msg)); err != nil {
+				if err := observe(last.Msg); err != nil {
 					return true, err
 				}
 				if last.Msg.Etag == current.Msg.Etag && last.Msg.Revision == current.Msg.Revision {
@@ -104,7 +114,7 @@ func (r *AccessConfigurationResource) accessApply(ctx context.Context, a, old *A
 		if err := saveRecovery(ctx, p, rec); err != nil {
 			return true, err
 		}
-		if err := conversionError(a.Set(ctx, res.Msg)); err != nil {
+		if err := observe(res.Msg); err != nil {
 			return true, err
 		}
 	} else {
@@ -114,7 +124,7 @@ func (r *AccessConfigurationResource) accessApply(ctx context.Context, a, old *A
 	}
 	result, e := waitAccess(ctx, r.client, parent, revision)
 	if result != nil {
-		if err := conversionError(a.Set(ctx, result)); err != nil {
+		if err := observe(result); err != nil {
 			return true, err
 		}
 	}
@@ -259,9 +269,6 @@ func (r *AccessConfigurationResource) Update(ctx context.Context, req resource.U
 	if err == nil {
 		resp.Diagnostics.Append(resp.State.Set(ctx, &a)...)
 	} else {
-		if a.ID.ValueString() != "" {
-			old = a
-		}
 		if c.Err() == nil {
 			_ = r.read(c, &old)
 		}

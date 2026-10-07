@@ -40,6 +40,10 @@ type fakeRegistry struct {
 	lifecycleUpdates                    []*api.UpdateRegistryLifecyclePolicyRequest
 	createError, readError, deleteError error
 	policyError                         error
+	policyReadError                     error
+	policyReadErrorAfter                int
+	policyReads                         int
+	policyUnacknowledged                bool
 	revisionStep                        int64
 	lagAccess                           bool
 	pollAccessError                     error
@@ -148,6 +152,10 @@ func (f *fakeRegistry) GetOperation(context.Context, *connect.Request[api.Regist
 func (f *fakeRegistry) GetRegistryAccessConfiguration(context.Context, *connect.Request[api.GetRegistryAccessConfigurationRequest]) (*connect.Response[api.RegistryAccessConfiguration], error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.policyReads++
+	if f.policyReadError != nil && f.policyReads > f.policyReadErrorAfter {
+		return nil, f.policyReadError
+	}
 	if f.access == nil {
 		return nil, connect.NewError(connect.CodeNotFound, errors.New("missing singleton"))
 	}
@@ -186,6 +194,9 @@ func (f *fakeRegistry) UpdateRegistryAccessConfiguration(_ context.Context, q *c
 	f.access.Revision = rev
 	f.access.Etag = fmt.Sprintf("access-%d", rev)
 	f.access.AccessConfigState = api.RegistryAccessConfiguration_ACCESS_CONFIG_STATE_ACCEPTED
+	if f.policyUnacknowledged {
+		f.access.AccessConfigState = api.RegistryAccessConfiguration_ACCESS_CONFIG_STATE_PARTIALLY_ACCEPTED
+	}
 	result := proto.Clone(f.access).(*api.RegistryAccessConfiguration)
 	if f.competing {
 		f.access.Revision++
@@ -200,6 +211,10 @@ func (f *fakeRegistry) UpdateRegistryAccessConfiguration(_ context.Context, q *c
 func (f *fakeRegistry) GetRegistryLifecyclePolicy(context.Context, *connect.Request[api.GetRegistryLifecyclePolicyRequest]) (*connect.Response[api.RegistryLifecyclePolicy], error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.policyReads++
+	if f.policyReadError != nil && f.policyReads > f.policyReadErrorAfter {
+		return nil, f.policyReadError
+	}
 	return connect.NewResponse(proto.Clone(f.lifecycle).(*api.RegistryLifecyclePolicy)), nil
 }
 
@@ -226,6 +241,9 @@ func (f *fakeRegistry) UpdateRegistryLifecyclePolicy(_ context.Context, q *conne
 	f.lifecycle.Name = q.Msg.Parent + "/lifecyclePolicy"
 	f.lifecycle.Revision = rev
 	f.lifecycle.AppliedRevision = &rev
+	if f.policyUnacknowledged {
+		f.lifecycle.AppliedRevision = nil
+	}
 	f.lifecycle.Etag = fmt.Sprintf("lifecycle-%d", rev)
 	return completed(&api.UpdateRegistryLifecyclePolicyResponse{Name: f.lifecycle.Name, AppliedRevision: rev}), nil
 }

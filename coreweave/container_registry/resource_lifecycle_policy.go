@@ -51,6 +51,16 @@ func equalLifecycle(ctx context.Context, a, b *api.RegistryLifecyclePolicy) (boo
 
 // lifecycleApply submits and verifies the compact acknowledgement.
 func (r *LifecyclePolicyResource) lifecycleApply(ctx context.Context, a, old *LifecyclePolicyResourceModel, destroy bool, p privateData, parent string) (bool, error) {
+	// Only successful server conversions may advance the update fallback snapshot.
+	observe := func(value *api.RegistryLifecyclePolicy) error {
+		if err := conversionError(a.Set(ctx, value)); err != nil {
+			return err
+		}
+		if old != nil {
+			*old = *a
+		}
+		return nil
+	}
 	current, e := r.client.GetRegistryLifecyclePolicy(ctx, connect.NewRequest(&api.GetRegistryLifecyclePolicyRequest{Parent: parent}))
 	if e != nil {
 		return old != nil, e
@@ -68,7 +78,7 @@ func (r *LifecyclePolicyResource) lifecycleApply(ctx context.Context, a, old *Li
 		}
 	}
 	revision := current.Msg.Revision
-	if err := conversionError(a.Set(ctx, current.Msg)); err != nil {
+	if err := observe(current.Msg); err != nil {
 		return old != nil, err
 	}
 	equal, err := equalLifecycle(ctx, desired, current.Msg)
@@ -114,7 +124,7 @@ func (r *LifecyclePolicyResource) lifecycleApply(ctx context.Context, a, old *Li
 	}
 	result, e := waitLifecycle(ctx, r.client, parent, revision)
 	if result != nil {
-		if err := conversionError(a.Set(ctx, result)); err != nil {
+		if err := observe(result); err != nil {
 			return true, err
 		}
 	}
@@ -259,9 +269,6 @@ func (r *LifecyclePolicyResource) Update(ctx context.Context, req resource.Updat
 	if err == nil {
 		resp.Diagnostics.Append(resp.State.Set(ctx, &a)...)
 	} else {
-		if a.ID.ValueString() != "" {
-			old = a
-		}
 		if c.Err() == nil {
 			_ = r.read(c, &old)
 		}

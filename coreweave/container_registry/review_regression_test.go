@@ -220,3 +220,100 @@ func TestNamespaceUpdateAfterRecoveryRequiresReplan(t *testing.T) {
 	require.NoError(t, state["etag"].As(&etag))
 	require.Equal(t, "completed-later", etag)
 }
+
+// TestFailedPolicyUpdateRetainsPriorState never saves desired content without an observation.
+func TestFailedPolicyUpdateRetainsPriorState(t *testing.T) {
+	for _, kind := range []string{"access_configuration", "lifecycle_policy"} {
+		t.Run(kind, func(t *testing.T) {
+			h := newHarness(t, kind)
+			created := h.apply(h.config(nil, false), tftypes.NewValue(h.typ, nil), nil)
+			noErrors(t, created.Diagnostics)
+			h.fake.readError = connect.NewError(connect.CodePermissionDenied, errors.New("parent read denied"))
+			h.fake.policyReadError = connect.NewError(connect.CodePermissionDenied, errors.New("policy refresh denied"))
+			h.fake.policyReads = 0
+			failed := h.apply(h.withContent(h.config(nil, false)), h.decode(created.NewState), created.Private)
+			require.NotEmpty(t, failed.Diagnostics)
+			require.True(t, h.decode(failed.NewState).Equal(h.decode(created.NewState)))
+			require.Equal(t, 1, h.fake.policyReads, "fallback refresh must be attempted")
+			require.Empty(t, h.fake.accessUpdates)
+			require.Empty(t, h.fake.lifecycleUpdates)
+		})
+	}
+}
+
+// TestFailedPolicyUpdateKeepsObservedWrite preserves returned content when rollout times out.
+func TestFailedPolicyUpdateKeepsObservedWrite(t *testing.T) {
+	for _, kind := range []string{"access_configuration", "lifecycle_policy"} {
+		t.Run(kind, func(t *testing.T) {
+			h := newHarness(t, kind)
+			config := h.shortTimeout(h.config(nil, false), "update")
+			created := h.apply(config, tftypes.NewValue(h.typ, nil), nil)
+			noErrors(t, created.Diagnostics)
+			h.fake.policyUnacknowledged = true
+			desired := h.withContent(config)
+			failed := h.apply(desired, h.decode(created.NewState), created.Private)
+			require.NotEmpty(t, failed.Diagnostics)
+			require.NotEmpty(t, failed.Private)
+			var state, content map[string]tftypes.Value
+			require.NoError(t, h.decode(failed.NewState).As(&state))
+			require.NoError(t, desired.As(&content))
+			field := "policy_sets"
+			if kind == "lifecycle_policy" {
+				field = "rules"
+			}
+			require.True(t, state[field].Equal(content[field]), "observed write must survive failed polling")
+			require.True(t, state["revision"].Equal(tftypes.NewValue(tftypes.Number, 2)))
+			require.Equal(t, 1, len(h.fake.accessUpdates)+len(h.fake.lifecycleUpdates))
+		})
+	}
+}
+
+// TestFailedPolicyRecoveryKeepsNewObservation never overwrites recovered state with the plan.
+func TestFailedPolicyRecoveryKeepsNewObservation(t *testing.T) {
+	for _, kind := range []string{"access_configuration", "lifecycle_policy"} {
+		t.Run(kind, func(t *testing.T) {
+			h := newHarness(t, kind)
+			config := h.shortTimeout(h.config(nil, false), "create")
+			h.fake.policyUnacknowledged = true
+			created := h.apply(h.withContent(config), tftypes.NewValue(h.typ, nil), nil)
+			require.NotEmpty(t, created.Diagnostics)
+			require.NotEmpty(t, created.Private)
+			// An external writer changes metadata while recovery is still pending.
+			h.fake.access.Revision++
+			h.fake.access.Etag = "access-3"
+			h.fake.lifecycle.Revision++
+			h.fake.lifecycle.Etag = "lifecycle-3"
+			h.fake.policyReads = 0
+			h.fake.policyReadErrorAfter = 1
+			h.fake.policyReadError = connect.NewError(connect.CodePermissionDenied, errors.New("fallback refresh denied"))
+			failed := h.apply(config, h.decode(created.NewState), created.Private)
+			require.NotEmpty(t, failed.Diagnostics)
+			var state map[string]tftypes.Value
+			require.NoError(t, h.decode(failed.NewState).As(&state))
+			require.True(t, state["revision"].Equal(tftypes.NewValue(tftypes.Number, 3)))
+			require.True(t, state["etag"].Equal(tftypes.NewValue(tftypes.String, map[string]string{"access_configuration": "access-3", "lifecycle_policy": "lifecycle-3"}[kind])))
+			require.Equal(t, 2, h.fake.policyReads)
+		})
+	}
+}
+
+// TestFailedAccessUpdateKeepsResponse preserves accepted content without a successful polling GET.
+func TestFailedAccessUpdateKeepsResponse(t *testing.T) {
+	h := newHarness(t, "access_configuration")
+	created := h.apply(h.config(nil, false), tftypes.NewValue(h.typ, nil), nil)
+	noErrors(t, created.Diagnostics)
+	h.fake.policyReads = 0
+	h.fake.policyReadErrorAfter = 1
+	h.fake.policyReadError = connect.NewError(connect.CodePermissionDenied, errors.New("poll and refresh denied"))
+	desired := h.withContent(h.config(nil, false))
+	failed := h.apply(desired, h.decode(created.NewState), created.Private)
+	require.NotEmpty(t, failed.Diagnostics)
+	require.NotEmpty(t, failed.Private)
+	var state, content map[string]tftypes.Value
+	require.NoError(t, h.decode(failed.NewState).As(&state))
+	require.NoError(t, desired.As(&content))
+	require.True(t, state["policy_sets"].Equal(content["policy_sets"]))
+	require.True(t, state["revision"].Equal(tftypes.NewValue(tftypes.Number, 2)))
+	require.Equal(t, 3, h.fake.policyReads)
+	require.Len(t, h.fake.accessUpdates, 1)
+}
