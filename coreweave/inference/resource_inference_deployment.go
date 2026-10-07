@@ -26,6 +26,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -371,8 +372,12 @@ func (r *InferenceDeploymentResource) Schema(_ context.Context, _ resource.Schem
 				MarkdownDescription: "Checkpoint hot-loading configuration. Immutable after creation; adding, changing or removing it replaces the deployment.",
 				PlanModifiers:       []planmodifier.Object{objectplanmodifier.RequiresReplace()},
 				Attributes: map[string]schema.Attribute{
-					"bucket":          schema.StringAttribute{Required: true, MarkdownDescription: "CoreWeave Object Storage bucket holding checkpoint snapshots.", Validators: []validator.String{stringvalidator.RegexMatches(hostnamePattern, "must be a valid bucket label")}},
-					"path_prefix":     schema.StringAttribute{Optional: true, MarkdownDescription: "Path prefix holding snapshots. The snapshot identity is appended to this prefix.", Validators: []validator.String{hotLoadPathValidator{}}},
+					"bucket": schema.StringAttribute{Required: true, MarkdownDescription: "CoreWeave Object Storage bucket holding checkpoint snapshots.", Validators: []validator.String{stringvalidator.RegexMatches(hostnamePattern, "must be a valid bucket label")}},
+					"path_prefix": schema.StringAttribute{
+						Optional: true, Computed: true, Default: stringdefault.StaticString(""),
+						MarkdownDescription: "Path prefix holding snapshots. Defaults to an empty string (bucket root). The snapshot identity is appended to this prefix.",
+						Validators:          []validator.String{hotLoadPathValidator{}},
+					},
 					"transition_mode": schema.StringAttribute{Required: true, MarkdownDescription: "Request transition mode during checkpoint swaps. Use TRANSITION_MODE_ASYNC.", Validators: []validator.String{stringvalidator.OneOf("TRANSITION_MODE_ASYNC")}},
 				},
 			},
@@ -1067,12 +1072,8 @@ func setFromDeployment(m *InferenceDeploymentResourceModel, d *inferencev1.Deplo
 	m.Name = types.StringValue(spec.GetName())
 	m.Disabled = types.BoolValue(spec.GetDisabled())
 	if h := spec.GetHotLoad(); h != nil {
-		prefix := types.StringValue(h.GetPathPrefix())
-		if h.GetPathPrefix() == "" && (m.HotLoad == nil || m.HotLoad.PathPrefix.IsNull()) {
-			prefix = types.StringNull()
-		}
 		m.HotLoad = &DeploymentHotLoadModel{
-			Bucket: types.StringValue(h.GetBucket()), PathPrefix: prefix,
+			Bucket: types.StringValue(h.GetBucket()), PathPrefix: types.StringValue(h.GetPathPrefix()),
 			TransitionMode: types.StringValue(h.GetTransitionMode().String()),
 		}
 	} else {
