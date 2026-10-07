@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/netip"
+	"regexp"
 
 	sandboxv1 "buf.build/gen/go/coreweave/sandbox/protocolbuffers/go/coreweave/sandbox/v1"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
@@ -210,31 +211,34 @@ func policyConstraintsAttribute() schema.SingleNestedAttribute {
 			"max_memory":     optionalString("Maximum memory per container."),
 			"min_cpu":        optionalString("Minimum CPU per container."),
 			"min_memory":     optionalString("Minimum memory per container."),
-			"default_cpu":    optionalString("Default CPU per container."),
-			"default_memory": optionalString("Default memory per container."),
+			"default_cpu":    optionalString("Default CPU per container. When a container declares neither requests nor limits, a positive default also sets its CPU limit."),
+			"default_memory": optionalString("Default memory per container. When a container declares neither requests nor limits, a positive default also sets its memory limit."),
 			"max_gpu_count":  optionalInt("Maximum GPUs per container. Omitted means no cap; explicit zero forbids GPUs."),
 			"cpu_ceiling":    optionalString("Sum-of-requests CPU ceiling across the sandbox."),
 			"memory_ceiling": optionalString("Sum-of-requests memory ceiling across the sandbox."),
-			"require_limits": optionalBool("Require every container to declare requests and limits."),
+			"require_limits": optionalBool("Require every container to have requests and limits after defaults are applied."),
 		}),
 		"image": optionalObject("Image restrictions.", map[string]schema.Attribute{
 			"allowed_registries": optionalStrings("Allowed registry prefixes. Empty permits any registry."),
 			"allowed_images":     optionalStrings("Allowed image references. Empty permits any image within the registry restrictions."),
 		}),
 		"network": optionalObject("Network envelopes and defaults. Empty allowed envelopes impose no restriction.", map[string]schema.Attribute{
-			"allowed_egress":  networkRulesAttribute(true, "Allowed egress envelope. DNS wildcard `*` is permitted here."),
-			"default_egress":  networkRulesAttribute(true, "Egress applied when the sandbox specifies none. DNS-name destinations are not permitted here."),
-			"deny_dns":        optionalBool("Forbid DNS-name egress grants. Does not disable DNS resolution."),
-			"allowed_ingress": networkRulesAttribute(false, "Allowed ingress sources for custom-visibility ports."),
-			"default_ingress": networkRulesAttribute(false, "Ingress applied when the sandbox specifies none."),
+			"allowed_egress":            networkRulesAttribute(true, "Allowed egress envelope. HTTPS hostname wildcard `*` is permitted here."),
+			"default_egress":            networkRulesAttribute(true, "Egress applied when the sandbox specifies none. HTTPS hostname destinations are not permitted here."),
+			"deny_https_hostname_rules": optionalBool("Forbid hostname-based HTTPS egress grants. Does not disable DNS resolution."),
+			"deny_dns":                  legacyDenyDNSAttribute(),
+			"dns_egress":                enumAttribute("Outbound DNS traffic ceiling on UDP/TCP port 53. Unspecified permits DNS; DENY requires sandboxes to block it. Independent of hostname-based HTTPS grants.", sandboxv1.DNSEgressMode_name),
+			"allowed_ingress":           networkRulesAttribute(false, "Allowed ingress sources for custom-visibility ports."),
+			"default_ingress":           networkRulesAttribute(false, "Ingress applied when the sandbox specifies none."),
 		}),
 		"security": optionalObject("Container privilege and runtime-class constraints.", map[string]schema.Attribute{
 			"allow_privileged":          optionalBool("Permit privileged containers."),
 			"allowed_capabilities":      optionalStrings("Linux capabilities containers may add. Empty permits none beyond defaults."),
 			"allowed_seccomp_profiles":  optionalStrings("Permitted seccomp profiles, such as RuntimeDefault or Unconfined."),
-			"allowed_runtime_classes":   optionalStrings("Runtime classes callers may explicitly select. Empty forbids caller-selected runtime classes."),
-			"default_cpu_runtime_class": optionalString("Default CPU runtime class. Must fit a nonempty runtime-class allowlist."),
-			"default_gpu_runtime_class": optionalString("Default GPU runtime class. Must fit a nonempty runtime-class allowlist."),
+			"allowed_runtime_classes":   optionalStrings("Runtime classes callers may explicitly select. Empty forbids caller-selected runtime classes. Cannot be combined with runtime_class_mappings."),
+			"default_cpu_runtime_class": optionalString("Default CPU runtime class. Must fit a nonempty runtime-class allowlist. Cannot be combined with runtime_class_mappings."),
+			"default_gpu_runtime_class": optionalString("Default GPU runtime class. Must fit a nonempty runtime-class allowlist. Cannot be combined with runtime_class_mappings."),
+			"runtime_class_mappings":    runtimeClassMappingsAttribute(),
 		}),
 		"instance":  optionalObject("Node instance-type restrictions.", map[string]schema.Attribute{"allowed_instance_types": optionalStrings("Allowed instance types. Empty permits any offered by the runner.")}),
 		"lifecycle": optionalObject("Lifetime defaults.", map[string]schema.Attribute{"default_lifetime_seconds": schema.Int64Attribute{Optional: true, MarkdownDescription: "Default sandbox lifetime in seconds; zero leaves the platform default. Maximum 30 days.", Validators: []validator.Int64{int64validator.Between(0, 2592000)}}}),
@@ -249,6 +253,36 @@ func policyConstraintsAttribute() schema.SingleNestedAttribute {
 	})
 }
 
+// A set, not a list: each class appears at most once, and the server stores
+// mappings sorted by class, so configured order must not produce plan drift.
+func runtimeClassMappingsAttribute() schema.SetNestedAttribute {
+	class := enumAttribute("Portable runtime class provided by the target.", sandboxv1.RuntimeClass_name)
+	class.Optional = false
+	class.Required = true
+	return schema.SetNestedAttribute{
+		Optional:            true,
+		MarkdownDescription: "Bindings from portable runtime classes to concrete runtimes. A non-empty set switches the runner to mappings: a mapped class is available both for caller selection and as the automatic CPU or GPU default, an unmapped class is unavailable, and callers cannot pin a concrete runtime class. Omitting a default class disables automatic selection for that resource family. Each class appears at most once. Cannot be combined with allowed_runtime_classes, default_cpu_runtime_class, or default_gpu_runtime_class.",
+		NestedObject: schema.NestedAttributeObject{Attributes: map[string]schema.Attribute{
+			"runtime_class": class,
+			"kubernetes_runtime_class_name": schema.StringAttribute{
+				Optional:            true,
+				MarkdownDescription: "Kubernetes RuntimeClass name. Set exactly one of kubernetes_runtime_class_name or node_default.",
+				Validators: []validator.String{
+					stringvalidator.LengthBetween(1, 253),
+					stringvalidator.RegexMatches(dns1123Subdomain, "must be a valid Kubernetes RuntimeClass name (lowercase DNS-1123 subdomain)"),
+				},
+			},
+			"node_default": schema.BoolAttribute{
+				Optional:            true,
+				MarkdownDescription: "Set to true to use the node's default container runtime. Permitted only for `RUNTIME_CLASS_CPU_DEFAULT` and `RUNTIME_CLASS_GPU_DEFAULT`, and only serves CKS-mode placement outside the shared serverless pool.",
+				Validators:          []validator.Bool{trueValidator{}},
+			},
+		}},
+	}
+}
+
+var dns1123Subdomain = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$`)
+
 func networkRulesAttribute(egress bool, description string) schema.ListNestedAttribute {
 	attributes := map[string]schema.Attribute{
 		"cidr": optionalObject("CIDR range with optional carve-outs.", map[string]schema.Attribute{
@@ -257,19 +291,31 @@ func networkRulesAttribute(egress bool, description string) schema.ListNestedAtt
 		}),
 		"tenant": enumAttribute("Relational tenant selection.", sandboxv1.TenantScope_name),
 		"any":    schema.BoolAttribute{Optional: true, MarkdownDescription: "Set to true to select any address-shaped peer.", Validators: []validator.Bool{trueValidator{}}},
-		"ports": optionalObjects("Allowed ports. Empty means all ports, except DNS destinations which use HTTPS (TCP 443).", map[string]schema.Attribute{
+		"ports": optionalObjects("Allowed ports. Empty means all ports, except HTTPS hostname destinations which use HTTPS (TCP 443).", map[string]schema.Attribute{
 			"protocol": schema.StringAttribute{Optional: true, MarkdownDescription: "TCP (default), UDP, or SCTP.", Validators: []validator.String{stringvalidator.OneOf("TCP", "UDP", "SCTP")}},
 			"port":     schema.Int64Attribute{Required: true, MarkdownDescription: "Starting port.", Validators: []validator.Int64{int64validator.Between(1, 65535)}},
 			"end_port": schema.Int64Attribute{Optional: true, MarkdownDescription: "Inclusive end port; zero or omitted means a single port.", Validators: []validator.Int64{int64validator.Between(0, 65535)}},
 		}),
 	}
 	if egress {
-		attributes["dns_name"] = optionalString("Exact DNS name or a single leftmost wildcard label; `*` is allowed only in allowed_egress.")
-		attributes["dns_name_except"] = optionalStrings("DNS names excluded from an allowed_egress DNS envelope.")
+		attributes["https_hostname"] = optionalString("Exact HTTPS hostname or a single leftmost wildcard label; `*` is allowed only in allowed_egress.")
+		attributes["https_hostname_except"] = optionalStrings("Hostnames excluded from an allowed_egress HTTPS envelope.")
+		legacyName := optionalString("Deprecated alias for https_hostname.")
+		legacyName.DeprecationMessage = "Use https_hostname instead."
+		attributes["dns_name"] = legacyName
+		legacyExcept := optionalStrings("Deprecated alias for https_hostname_except.")
+		legacyExcept.DeprecationMessage = "Use https_hostname_except instead."
+		attributes["dns_name_except"] = legacyExcept
 		attributes["selector"] = optionalObject("Explicit entitlement to reach cluster workloads by label.", map[string]schema.Attribute{
 			"pod_labels":       schema.MapAttribute{Required: true, ElementType: types.StringType, MarkdownDescription: "Pod labels to match (at least one required)."},
 			"namespace_labels": optionalMap("Namespace labels to match. Omitted means the sandbox's own namespace."),
 		})
 	}
 	return optionalObjects(description+" Select exactly one peer kind per rule.", attributes)
+}
+
+func legacyDenyDNSAttribute() schema.BoolAttribute {
+	attribute := optionalBool("Deprecated alias for deny_https_hostname_rules. Does not disable DNS resolution.")
+	attribute.DeprecationMessage = "Use deny_https_hostname_rules instead; dns_egress separately controls DNS traffic."
+	return attribute
 }

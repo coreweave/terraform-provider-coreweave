@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"time"
 
+	sandboxv1 "buf.build/gen/go/coreweave/sandbox/protocolbuffers/go/coreweave/sandbox/v1"
 	"github.com/hashicorp/terraform-plugin-framework-jsontypes/jsontypes"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -36,6 +37,11 @@ func objectToProto(value types.Object, message proto.Message) error {
 			if disabled, ok := plane["disabled"].(bool); ok && disabled {
 				plane["disabled"] = map[string]any{}
 			}
+		}
+	}
+	if _, ok := message.(*sandboxv1.Policy); ok {
+		if err := canonicalizePolicyNetworkAliases(raw); err != nil {
+			return err
 		}
 	}
 	encoded, err := json.Marshal(raw)
@@ -145,6 +151,7 @@ func objectFromProto(ctx context.Context, message proto.Message, previous types.
 // EmitDefaultValues is needed to read explicit false/zero settings, but an
 // unspecified enum represents an omitted setting rather than a valid selection.
 func normalizeProtoJSON(raw map[string]any, descriptor protoreflect.MessageDescriptor, previous types.Object) {
+	preserveNetworkAliasSpelling(raw, descriptor.FullName(), previous)
 	fields := descriptor.Fields()
 	prior := previous.Attributes()
 	for i := 0; i < fields.Len(); i++ {

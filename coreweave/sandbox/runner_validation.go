@@ -118,8 +118,8 @@ func validatePolicy(policy *sandboxv1.Policy) error {
 		}
 	}
 	for _, rule := range network.GetDefaultEgress() {
-		if rule.GetDnsName() != "" {
-			return fmt.Errorf("default_egress must not contain DNS-name destinations")
+		if rule.GetHttpsHostname() != "" {
+			return fmt.Errorf("default_egress must not contain HTTPS hostname destinations")
 		}
 	}
 	for _, rules := range [][]*sandboxv1.IngressRule{network.GetAllowedIngress(), network.GetDefaultIngress()} {
@@ -129,6 +129,33 @@ func validatePolicy(policy *sandboxv1.Policy) error {
 			}
 			if err := validatePorts(rule.GetPorts()); err != nil {
 				return err
+			}
+		}
+	}
+	return validateRuntimeClassMappings(policy.GetConstraints().GetSecurity())
+}
+
+func validateRuntimeClassMappings(security *sandboxv1.SecurityConstraints) error {
+	mappings := security.GetRuntimeClassMappings()
+	if len(mappings) == 0 {
+		return nil
+	}
+	if len(security.GetAllowedRuntimeClasses()) > 0 || security.GetDefaultCpuRuntimeClass() != "" || security.GetDefaultGpuRuntimeClass() != "" {
+		return fmt.Errorf("runtime_class_mappings cannot be combined with allowed_runtime_classes, default_cpu_runtime_class, or default_gpu_runtime_class")
+	}
+	seen := make(map[sandboxv1.RuntimeClass]bool, len(mappings))
+	for _, mapping := range mappings {
+		class := mapping.GetRuntimeClass()
+		if seen[class] {
+			return fmt.Errorf("runtime_class_mappings contains %s more than once", class)
+		}
+		seen[class] = true
+		switch mapping.GetTarget().(type) {
+		case nil:
+			return fmt.Errorf("each runtime class mapping must set exactly one of kubernetes_runtime_class_name or node_default")
+		case *sandboxv1.RuntimeClassMapping_NodeDefault:
+			if class != sandboxv1.RuntimeClass_RUNTIME_CLASS_CPU_DEFAULT && class != sandboxv1.RuntimeClass_RUNTIME_CLASS_GPU_DEFAULT {
+				return fmt.Errorf("node_default is permitted only for RUNTIME_CLASS_CPU_DEFAULT and RUNTIME_CLASS_GPU_DEFAULT, not %s", class)
 			}
 		}
 	}
