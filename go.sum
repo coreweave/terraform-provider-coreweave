@@ -16,10 +16,10 @@ buf.build/gen/go/coreweave/networking/connectrpc/go v1.19.1-20260121155637-a637e
 buf.build/gen/go/coreweave/networking/connectrpc/go v1.19.1-20260121155637-a637e7777165.2/go.mod h1:Ri2fOqnsxnYU4CdWVP0GNqzSYq7L+Zw1AV/ebdbNITs=
 buf.build/gen/go/coreweave/networking/protocolbuffers/go v1.36.11-20260121155637-a637e7777165.1 h1:HgaTPkFCzegYtbVOir7vdty10GHoFxMceoscwcH0x7s=
 buf.build/gen/go/coreweave/networking/protocolbuffers/go v1.36.11-20260121155637-a637e7777165.1/go.mod h1:dv5LhRYj3xPrMzvA33dyS2aWx4atitDIeGOz+kPGKwA=
-buf.build/gen/go/coreweave/sandbox/connectrpc/go v1.21.0-20260916025633-17c8b703536b.1 h1:2JNbvzpQMS6jf689/tZN8121DYoDDy026NTFY3y4fF8=
-buf.build/gen/go/coreweave/sandbox/connectrpc/go v1.21.0-20260916025633-17c8b703536b.1/go.mod h1:jWz3Xb6Y0/VENvG5ZSUOEpX6Jce5sOa8LrKwhiWM70U=
-buf.build/gen/go/coreweave/sandbox/protocolbuffers/go v1.36.12-20260916025633-17c8b703536b.2 h1:S9zu2ifY1yQB7NW1/fJJmwBhShviNaWxFkhd+0cmdrs=
-buf.build/gen/go/coreweave/sandbox/protocolbuffers/go v1.36.12-20260916025633-17c8b703536b.2/go.mod h1:0FQ2NQQ6Ab7XQ2QEEU0yzQXMHTej8rwlafLER6uehw4=
+buf.build/gen/go/coreweave/sandbox/connectrpc/go v1.21.0-20261006200456-c94c38b78284.1 h1:fNHFTSvXRdCN2GPz1edjoa4dhUJ+yaSGm+gYjGFBpzs=
+buf.build/gen/go/coreweave/sandbox/connectrpc/go v1.21.0-20261006200456-c94c38b78284.1/go.mod h1:9i9vY94h1qDySwBhD+0tsaqBivlqRM3Hy30wL2bi4vE=
+buf.build/gen/go/coreweave/sandbox/protocolbuffers/go v1.36.12-20261006200456-c94c38b78284.2 h1:ln5r2o+8ongxkWCks7P2xpvrMlXvBI9mYLmLVKUJosI=
+buf.build/gen/go/coreweave/sandbox/protocolbuffers/go v1.36.12-20261006200456-c94c38b78284.2/go.mod h1:0FQ2NQQ6Ab7XQ2QEEU0yzQXMHTej8rwlafLER6uehw4=
 buf.build/gen/go/coreweave/workload-federation/connectrpc/go v1.20.0-20260825153113-5bfae6057a98.1 h1:OdJCAsS8bDZV5ZSNLWEzV/5hU9FGagKbLw+0gjFR5Lw=
 buf.build/gen/go/coreweave/workload-federation/connectrpc/go v1.20.0-20260825153113-5bfae6057a98.1/go.mod h1:t37qa/EvhLfiQhrIqkJ+iM9UVDXoRXXsl3LoUROsvcc=
 buf.build/gen/go/coreweave/workload-federation/protocolbuffers/go v1.36.12-20260825153113-5bfae6057a98.1 h1:3NLSkOigc0Gs8SbdTzOHNFsuSdhxgQcAxb0ufPU0srM=

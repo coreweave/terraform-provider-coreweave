@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/netip"
+	"regexp"
 
 	sandboxv1 "buf.build/gen/go/coreweave/sandbox/protocolbuffers/go/coreweave/sandbox/v1"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
@@ -210,12 +211,12 @@ func policyConstraintsAttribute() schema.SingleNestedAttribute {
 			"max_memory":     optionalString("Maximum memory per container."),
 			"min_cpu":        optionalString("Minimum CPU per container."),
 			"min_memory":     optionalString("Minimum memory per container."),
-			"default_cpu":    optionalString("Default CPU per container."),
-			"default_memory": optionalString("Default memory per container."),
+			"default_cpu":    optionalString("Default CPU per container. When a container declares neither requests nor limits, a positive default also sets its CPU limit."),
+			"default_memory": optionalString("Default memory per container. When a container declares neither requests nor limits, a positive default also sets its memory limit."),
 			"max_gpu_count":  optionalInt("Maximum GPUs per container. Omitted means no cap; explicit zero forbids GPUs."),
 			"cpu_ceiling":    optionalString("Sum-of-requests CPU ceiling across the sandbox."),
 			"memory_ceiling": optionalString("Sum-of-requests memory ceiling across the sandbox."),
-			"require_limits": optionalBool("Require every container to declare requests and limits."),
+			"require_limits": optionalBool("Require every container to have requests and limits after defaults are applied."),
 		}),
 		"image": optionalObject("Image restrictions.", map[string]schema.Attribute{
 			"allowed_registries": optionalStrings("Allowed registry prefixes. Empty permits any registry."),
@@ -234,9 +235,10 @@ func policyConstraintsAttribute() schema.SingleNestedAttribute {
 			"allow_privileged":          optionalBool("Permit privileged containers."),
 			"allowed_capabilities":      optionalStrings("Linux capabilities containers may add. Empty permits none beyond defaults."),
 			"allowed_seccomp_profiles":  optionalStrings("Permitted seccomp profiles, such as RuntimeDefault or Unconfined."),
-			"allowed_runtime_classes":   optionalStrings("Runtime classes callers may explicitly select. Empty forbids caller-selected runtime classes."),
-			"default_cpu_runtime_class": optionalString("Default CPU runtime class. Must fit a nonempty runtime-class allowlist."),
-			"default_gpu_runtime_class": optionalString("Default GPU runtime class. Must fit a nonempty runtime-class allowlist."),
+			"allowed_runtime_classes":   optionalStrings("Runtime classes callers may explicitly select. Empty forbids caller-selected runtime classes. Cannot be combined with runtime_class_mappings."),
+			"default_cpu_runtime_class": optionalString("Default CPU runtime class. Must fit a nonempty runtime-class allowlist. Cannot be combined with runtime_class_mappings."),
+			"default_gpu_runtime_class": optionalString("Default GPU runtime class. Must fit a nonempty runtime-class allowlist. Cannot be combined with runtime_class_mappings."),
+			"runtime_class_mappings":    runtimeClassMappingsAttribute(),
 		}),
 		"instance":  optionalObject("Node instance-type restrictions.", map[string]schema.Attribute{"allowed_instance_types": optionalStrings("Allowed instance types. Empty permits any offered by the runner.")}),
 		"lifecycle": optionalObject("Lifetime defaults.", map[string]schema.Attribute{"default_lifetime_seconds": schema.Int64Attribute{Optional: true, MarkdownDescription: "Default sandbox lifetime in seconds; zero leaves the platform default. Maximum 30 days.", Validators: []validator.Int64{int64validator.Between(0, 2592000)}}}),
@@ -250,6 +252,36 @@ func policyConstraintsAttribute() schema.SingleNestedAttribute {
 		}),
 	})
 }
+
+// A set, not a list: each class appears at most once, and the server stores
+// mappings sorted by class, so configured order must not produce plan drift.
+func runtimeClassMappingsAttribute() schema.SetNestedAttribute {
+	class := enumAttribute("Portable runtime class provided by the target.", sandboxv1.RuntimeClass_name)
+	class.Optional = false
+	class.Required = true
+	return schema.SetNestedAttribute{
+		Optional:            true,
+		MarkdownDescription: "Bindings from portable runtime classes to concrete runtimes. A non-empty set switches the runner to mappings: a mapped class is available both for caller selection and as the automatic CPU or GPU default, an unmapped class is unavailable, and callers cannot pin a concrete runtime class. Omitting a default class disables automatic selection for that resource family. Each class appears at most once. Cannot be combined with allowed_runtime_classes, default_cpu_runtime_class, or default_gpu_runtime_class.",
+		NestedObject: schema.NestedAttributeObject{Attributes: map[string]schema.Attribute{
+			"runtime_class": class,
+			"kubernetes_runtime_class_name": schema.StringAttribute{
+				Optional:            true,
+				MarkdownDescription: "Kubernetes RuntimeClass name. Set exactly one of kubernetes_runtime_class_name or node_default.",
+				Validators: []validator.String{
+					stringvalidator.LengthBetween(1, 253),
+					stringvalidator.RegexMatches(dns1123Subdomain, "must be a valid Kubernetes RuntimeClass name (lowercase DNS-1123 subdomain)"),
+				},
+			},
+			"node_default": schema.BoolAttribute{
+				Optional:            true,
+				MarkdownDescription: "Set to true to use the node's default container runtime. Permitted only for `RUNTIME_CLASS_CPU_DEFAULT` and `RUNTIME_CLASS_GPU_DEFAULT`, and only serves CKS-mode placement outside the shared serverless pool.",
+				Validators:          []validator.Bool{trueValidator{}},
+			},
+		}},
+	}
+}
+
+var dns1123Subdomain = regexp.MustCompile(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$`)
 
 func networkRulesAttribute(egress bool, description string) schema.ListNestedAttribute {
 	attributes := map[string]schema.Attribute{
