@@ -117,7 +117,7 @@ func TestBucketPolicyResourceRaw(t *testing.T) {
 			name:         "limit-conditions",
 			resourceName: resourceName,
 			bucket:       bucket,
-			rawPolicy:    aws.String(`{"Version": "2012-10-17", "Statement": [{"Action":["s3:*"],"Effect":"Allow","Principal":{"CW":"*"},"Resource":["arn:aws:s3:::*"],"Sid":"allow-all"}, {"Sid": "AllowIfPrefixEquals", "Effect": "Allow", "Action": "s3:ListBucket", "Resource": "arn:aws:s3:::*", "Condition": {"StringEquals": {"s3:prefix": "projects"}}}, {"Sid": "DenyIfPrefixNotEquals", "Effect": "Deny", "Action": "s3:ListBucket", "Resource": "arn:aws:s3:::*", "Condition": {"StringNotEquals": {"s3:prefix": "projects"}}}]}`),
+			rawPolicy:    aws.String(`{"Version": "2012-10-17", "Statement": [{"Action":["s3:*"],"Effect":"Allow","Principal":{"CW":"*"},"Resource":["arn:aws:s3:::*"],"Sid":"allow-all"}, {"Sid": "AllowIfPrefixEquals", "Principal": {"CW": "*"}, "Effect": "Allow", "Action": "s3:ListBucket", "Resource": "arn:aws:s3:::*", "Condition": {"StringEquals": {"s3:prefix": "projects"}}}, {"Sid": "DenyIfPrefixNotEquals", "Principal": {"CW": "*"}, "Effect": "Deny", "Action": "s3:ListBucket", "Resource": "arn:aws:s3:::*", "Condition": {"StringNotEquals": {"s3:prefix": "projects"}}}]}`),
 			configPlanChecks: resource.ConfigPlanChecks{
 				PreApply: []plancheck.PlanCheck{
 					plancheck.ExpectResourceAction(fmt.Sprintf("coreweave_object_storage_bucket_policy.%s", resourceName), plancheck.ResourceActionUpdate),
