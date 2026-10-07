@@ -140,8 +140,8 @@ type AccessConfigurationResourceModel struct {
 	ID                types.String   `tfsdk:"id"`
 	Name              types.String   `tfsdk:"name"`
 	Etag              types.String   `tfsdk:"etag"`
-	CreateTime        types.String   `tfsdk:"create_time"`
-	UpdateTime        types.String   `tfsdk:"update_time"`
+	CreatedAt         types.String   `tfsdk:"created_at"`
+	UpdatedAt         types.String   `tfsdk:"updated_at"`
 	Revision          types.Int64    `tfsdk:"revision"`
 	Timeouts          timeouts.Value `tfsdk:"timeouts"`
 	PolicySets        types.Map      `tfsdk:"policy_sets"`
@@ -381,11 +381,11 @@ func (a *AccessConfigurationResourceModel) cleanUnknown() {
 	if a.Etag.IsUnknown() {
 		a.Etag = types.StringNull()
 	}
-	if a.CreateTime.IsUnknown() {
-		a.CreateTime = types.StringNull()
+	if a.CreatedAt.IsUnknown() {
+		a.CreatedAt = types.StringNull()
 	}
-	if a.UpdateTime.IsUnknown() {
-		a.UpdateTime = types.StringNull()
+	if a.UpdatedAt.IsUnknown() {
+		a.UpdatedAt = types.StringNull()
 	}
 	if a.Revision.IsUnknown() {
 		a.Revision = types.Int64Null()
@@ -438,7 +438,7 @@ func (a *AccessConfigurationResourceModel) Set(ctx context.Context, p *api.Regis
 	a.Etag = types.StringValue(p.Etag)
 	a.Revision = types.Int64Value(p.Revision)
 	a.AccessConfigState = types.StringValue(p.AccessConfigState.String())
-	a.CreateTime = timestamp(p.CreateTime)
-	a.UpdateTime = timestamp(p.UpdateTime)
+	a.CreatedAt = timestamp(p.CreateTime)
+	a.UpdatedAt = timestamp(p.UpdateTime)
 	return d
 }

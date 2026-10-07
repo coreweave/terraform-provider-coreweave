@@ -19,7 +19,7 @@ func TestAccNamespaceQuota(t *testing.T) {
 		CheckDestroy:             checkNamespaceDestroyed(t, name),
 		Steps: []resource.TestStep{
 			{Config: namespaceConfig(name, zone, "null"), ConfigStateChecks: []statecheck.StateCheck{statecheck.ExpectKnownValue(address, tfjsonpath.New("force_destroy"), knownvalue.Bool(false)), statecheck.ExpectKnownValue(address, tfjsonpath.New("storage_quota_bytes"), knownvalue.Null())}},
-			{ResourceName: address, ImportState: true, ImportStateVerify: true, ImportStateVerifyIgnore: []string{"content_status", "access_mode", "update_time", "updated_by"}},
+			{ResourceName: address, ImportState: true, ImportStateVerify: true, ImportStateVerifyIgnore: []string{"content_status", "access_mode", "updated_at", "updated_by"}},
 			{Config: namespaceConfig(name, zone, "0"), ConfigStateChecks: []statecheck.StateCheck{statecheck.ExpectKnownValue(address, tfjsonpath.New("storage_quota_bytes"), knownvalue.Int64Exact(0))}},
 			{Config: namespaceConfig(name, zone, "1048576"), ConfigStateChecks: []statecheck.StateCheck{statecheck.ExpectKnownValue(address, tfjsonpath.New("storage_quota_bytes"), knownvalue.Int64Exact(1048576))}},
 			{Config: namespaceConfig(name, zone, "null"), ConfigStateChecks: []statecheck.StateCheck{statecheck.ExpectKnownValue(address, tfjsonpath.New("storage_quota_bytes"), knownvalue.Null())}},

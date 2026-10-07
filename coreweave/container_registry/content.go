@@ -366,9 +366,9 @@ type ActorModel struct {
 
 // AccessModeModel describes effective namespace access and its reasons.
 type AccessModeModel struct {
-	Mode       types.String `tfsdk:"mode"`
-	Reasons    types.Set    `tfsdk:"reasons"`
-	UpdateTime types.String `tfsdk:"update_time"`
+	Mode      types.String `tfsdk:"mode"`
+	Reasons   types.Set    `tfsdk:"reasons"`
+	UpdatedAt types.String `tfsdk:"updated_at"`
 }
 
 // ContentStatusModel represents exact unsigned counters as Terraform numbers.
@@ -378,7 +378,7 @@ type ContentStatusModel struct {
 	ManifestCount   types.Number `tfsdk:"manifest_count"`
 	RepositoryCount types.Number `tfsdk:"repository_count"`
 	TagCount        types.Number `tfsdk:"tag_count"`
-	UpdateTime      types.String `tfsdk:"update_time"`
+	UpdatedAt       types.String `tfsdk:"updated_at"`
 }
 
 // actorValue preserves absent actor observations and propagates conversion diagnostics.
@@ -406,13 +406,13 @@ func namespaceObjects(ctx context.Context, n *api.RegistryNamespace) (created, u
 		}
 		value, diags := types.SetValueFrom(ctx, types.StringType, reasons)
 		d.Append(diags...)
-		access = &AccessModeModel{Mode: types.StringValue(n.AccessMode.Mode.String()), Reasons: value, UpdateTime: timestamp(n.AccessMode.UpdateTime)}
+		access = &AccessModeModel{Mode: types.StringValue(n.AccessMode.Mode.String()), Reasons: value, UpdatedAt: timestamp(n.AccessMode.UpdateTime)}
 	}
 	mode, diags = types.ObjectValueFrom(ctx, ts["access_mode"].(types.ObjectType).AttrTypes, access)
 	d.Append(diags...)
 	var status *ContentStatusModel
 	if c := n.ContentStatus; c != nil {
-		status = &ContentStatusModel{UsageBytes: number(c.UsageBytes), BlobCount: number(c.BlobCount), ManifestCount: number(c.ManifestCount), RepositoryCount: number(c.RepositoryCount), TagCount: number(c.TagCount), UpdateTime: timestamp(c.UpdateTime)}
+		status = &ContentStatusModel{UsageBytes: number(c.UsageBytes), BlobCount: number(c.BlobCount), ManifestCount: number(c.ManifestCount), RepositoryCount: number(c.RepositoryCount), TagCount: number(c.TagCount), UpdatedAt: timestamp(c.UpdateTime)}
 	}
 	content, diags = types.ObjectValueFrom(ctx, ts["content_status"].(types.ObjectType).AttrTypes, status)
 	d.Append(diags...)

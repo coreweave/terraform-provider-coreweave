@@ -22,7 +22,7 @@ Apply waits until the API reports the desired access revision as accepted. Actio
 ## Example Usage
 
 ```terraform
-variable "owner_org" {
+variable "org_id" {
   type = string
 }
 
@@ -39,7 +39,7 @@ resource "coreweave_container_registry_access_configuration" "images" {
       identity_selector = "COREWEAVE"
       rules = {
         pull = {
-          expression = "identity[\"org_id\"] == ${jsonencode(var.owner_org)} && \"read_registry_content\" in identity[\"roles\"] && request[\"type\"] == \"repository\" && request[\"action\"] == \"pull\""
+          expression = "identity[\"org_id\"] == ${jsonencode(var.org_id)} && \"read_registry_content\" in identity[\"roles\"] && request[\"type\"] == \"repository\" && request[\"action\"] == \"pull\""
         }
       }
     }
@@ -67,12 +67,12 @@ resource "coreweave_container_registry_access_configuration" "images" {
 ### Read-Only
 
 - `access_config_state` (String) Current access policy rollout state.
-- `create_time` (String) Creation timestamp in RFC3339 format.
+- `created_at` (String) Creation timestamp in RFC3339 format.
 - `etag` (String) Current concurrency token. Changes when the server updates the resource.
 - `id` (String) Terraform identifier for this resource.
 - `name` (String) Canonical API resource name.
 - `revision` (Number) Current desired policy revision.
-- `update_time` (String) Last update timestamp in RFC3339 format.
+- `updated_at` (String) Last update timestamp in RFC3339 format.
 
 <a id="nestedatt--policy_sets"></a>
 ### Nested Schema for `policy_sets`

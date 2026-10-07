@@ -52,15 +52,15 @@ resource "coreweave_container_registry_namespace" "images" {
 
 - `access_mode` (Attributes) Current effective namespace access mode. (see [below for nested schema](#nestedatt--access_mode))
 - `content_status` (Attributes) Server-reported storage usage and content counts. These observations may lag content changes. (see [below for nested schema](#nestedatt--content_status))
-- `create_time` (String) Creation timestamp in RFC3339 format.
+- `created_at` (String) Creation timestamp in RFC3339 format.
 - `created_by` (Attributes) Identity that created the namespace. (see [below for nested schema](#nestedatt--created_by))
 - `dns_name` (String) Registry hostname used for OCI pushes and pulls.
 - `etag` (String) Current concurrency token. Changes when the server updates the resource.
 - `id` (String) Terraform identifier for this resource.
 - `name` (String) Canonical API resource name.
-- `owner_org` (String) Organization that owns the namespace.
-- `state` (String) Current namespace provisioning state.
-- `update_time` (String) Last update timestamp in RFC3339 format.
+- `org_id` (String) Organization that owns the namespace.
+- `status` (String) Current namespace provisioning state.
+- `updated_at` (String) Last update timestamp in RFC3339 format.
 - `updated_by` (Attributes) Identity that last updated the namespace. (see [below for nested schema](#nestedatt--updated_by))
 
 <a id="nestedatt--initial_access_configuration"></a>
@@ -116,7 +116,7 @@ Read-Only:
 
 - `mode` (String) Effective access mode reported by the server.
 - `reasons` (Set of String) Server-reported reasons for the effective access mode.
-- `update_time` (String) Last update timestamp in RFC3339 format.
+- `updated_at` (String) Last update timestamp in RFC3339 format.
 
 
 <a id="nestedatt--content_status"></a>
@@ -128,7 +128,7 @@ Read-Only:
 - `manifest_count` (Number) Number of stored manifests.
 - `repository_count` (Number) Number of repositories.
 - `tag_count` (Number) Number of tags.
-- `update_time` (String) Last update timestamp in RFC3339 format.
+- `updated_at` (String) Last update timestamp in RFC3339 format.
 - `usage_bytes` (Number) Total stored content size in bytes.
 
 

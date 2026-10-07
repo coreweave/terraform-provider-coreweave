@@ -82,8 +82,8 @@ func (r *NamespaceResource) namespaceApply(ctx context.Context, a, old *Namespac
 	if e = r.read(ctx, a); e != nil {
 		return true, e
 	}
-	if a.State.ValueString() != "STATE_ACTIVE" {
-		return true, fmt.Errorf("namespace %s is %s after completion", name, a.State.ValueString())
+	if a.Status.ValueString() != "STATE_ACTIVE" {
+		return true, fmt.Errorf("namespace %s is %s after completion", name, a.Status.ValueString())
 	}
 	return true, saveRecovery(ctx, p, nil)
 }
@@ -214,11 +214,11 @@ type NamespaceResourceModel struct {
 	ID                         types.String   `tfsdk:"id"`
 	Name                       types.String   `tfsdk:"name"`
 	DNSName                    types.String   `tfsdk:"dns_name"`
-	OwnerOrg                   types.String   `tfsdk:"owner_org"`
-	State                      types.String   `tfsdk:"state"`
+	OrgID                      types.String   `tfsdk:"org_id"`
+	Status                     types.String   `tfsdk:"status"`
 	Etag                       types.String   `tfsdk:"etag"`
-	CreateTime                 types.String   `tfsdk:"create_time"`
-	UpdateTime                 types.String   `tfsdk:"update_time"`
+	CreatedAt                  types.String   `tfsdk:"created_at"`
+	UpdatedAt                  types.String   `tfsdk:"updated_at"`
 	NamespaceID                types.String   `tfsdk:"namespace_id"`
 	Zone                       types.String   `tfsdk:"zone"`
 	StorageQuotaBytes          types.Int64    `tfsdk:"storage_quota_bytes"`
@@ -474,20 +474,20 @@ func (a *NamespaceResourceModel) cleanUnknown() {
 	if a.DNSName.IsUnknown() {
 		a.DNSName = types.StringNull()
 	}
-	if a.OwnerOrg.IsUnknown() {
-		a.OwnerOrg = types.StringNull()
+	if a.OrgID.IsUnknown() {
+		a.OrgID = types.StringNull()
 	}
-	if a.State.IsUnknown() {
-		a.State = types.StringNull()
+	if a.Status.IsUnknown() {
+		a.Status = types.StringNull()
 	}
 	if a.Etag.IsUnknown() {
 		a.Etag = types.StringNull()
 	}
-	if a.CreateTime.IsUnknown() {
-		a.CreateTime = types.StringNull()
+	if a.CreatedAt.IsUnknown() {
+		a.CreatedAt = types.StringNull()
 	}
-	if a.UpdateTime.IsUnknown() {
-		a.UpdateTime = types.StringNull()
+	if a.UpdatedAt.IsUnknown() {
+		a.UpdatedAt = types.StringNull()
 	}
 	if a.NamespaceID.IsUnknown() {
 		a.NamespaceID = types.StringNull()
@@ -524,12 +524,12 @@ func (a *NamespaceResourceModel) Set(ctx context.Context, n *api.RegistryNamespa
 	a.Name = types.StringValue(n.Name)
 	a.NamespaceID = types.StringValue(strings.TrimPrefix(n.Name, "namespaces/"))
 	a.Zone = types.StringValue(n.Zone)
-	a.OwnerOrg = types.StringValue(n.OwnerOrg)
+	a.OrgID = types.StringValue(n.OwnerOrg)
 	a.DNSName = types.StringValue(n.DnsName)
-	a.State = types.StringValue(n.State.String())
+	a.Status = types.StringValue(n.State.String())
 	a.Etag = types.StringValue(n.Etag)
-	a.CreateTime = timestamp(n.CreateTime)
-	a.UpdateTime = timestamp(n.UpdateTime)
+	a.CreatedAt = timestamp(n.CreateTime)
+	a.UpdatedAt = timestamp(n.UpdateTime)
 	a.StorageQuotaBytes = types.Int64Null()
 	if n.StorageQuotaBytes != nil {
 		if *n.StorageQuotaBytes > uint64(1<<63-1) {

@@ -41,11 +41,11 @@ type NamespaceDataSourceModel struct {
 	ID                types.String   `tfsdk:"id"`
 	Name              types.String   `tfsdk:"name"`
 	DNSName           types.String   `tfsdk:"dns_name"`
-	OwnerOrg          types.String   `tfsdk:"owner_org"`
-	State             types.String   `tfsdk:"state"`
+	OrgID             types.String   `tfsdk:"org_id"`
+	Status            types.String   `tfsdk:"status"`
 	Etag              types.String   `tfsdk:"etag"`
-	CreateTime        types.String   `tfsdk:"create_time"`
-	UpdateTime        types.String   `tfsdk:"update_time"`
+	CreatedAt         types.String   `tfsdk:"created_at"`
+	UpdatedAt         types.String   `tfsdk:"updated_at"`
 	NamespaceID       types.String   `tfsdk:"namespace_id"`
 	Zone              types.String   `tfsdk:"zone"`
 	StorageQuotaBytes types.Int64    `tfsdk:"storage_quota_bytes"`
@@ -117,12 +117,12 @@ func (a *NamespaceDataSourceModel) Set(ctx context.Context, n *api.RegistryNames
 	a.Name = types.StringValue(n.Name)
 	a.NamespaceID = types.StringValue(strings.TrimPrefix(n.Name, "namespaces/"))
 	a.Zone = types.StringValue(n.Zone)
-	a.OwnerOrg = types.StringValue(n.OwnerOrg)
+	a.OrgID = types.StringValue(n.OwnerOrg)
 	a.DNSName = types.StringValue(n.DnsName)
-	a.State = types.StringValue(n.State.String())
+	a.Status = types.StringValue(n.State.String())
 	a.Etag = types.StringValue(n.Etag)
-	a.CreateTime = timestamp(n.CreateTime)
-	a.UpdateTime = timestamp(n.UpdateTime)
+	a.CreatedAt = timestamp(n.CreateTime)
+	a.UpdatedAt = timestamp(n.UpdateTime)
 	a.StorageQuotaBytes = types.Int64Null()
 	if n.StorageQuotaBytes != nil {
 		if *n.StorageQuotaBytes > uint64(1<<63-1) {
@@ -140,11 +140,11 @@ type NamespaceObservationModel struct {
 	ID                types.String `tfsdk:"id"`
 	Name              types.String `tfsdk:"name"`
 	DNSName           types.String `tfsdk:"dns_name"`
-	OwnerOrg          types.String `tfsdk:"owner_org"`
-	State             types.String `tfsdk:"state"`
+	OrgID             types.String `tfsdk:"org_id"`
+	Status            types.String `tfsdk:"status"`
 	Etag              types.String `tfsdk:"etag"`
-	CreateTime        types.String `tfsdk:"create_time"`
-	UpdateTime        types.String `tfsdk:"update_time"`
+	CreatedAt         types.String `tfsdk:"created_at"`
+	UpdatedAt         types.String `tfsdk:"updated_at"`
 	NamespaceID       types.String `tfsdk:"namespace_id"`
 	Zone              types.String `tfsdk:"zone"`
 	StorageQuotaBytes types.Int64  `tfsdk:"storage_quota_bytes"`

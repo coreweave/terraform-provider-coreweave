@@ -57,12 +57,12 @@ resource "coreweave_container_registry_lifecycle_policy" "images" {
 ### Read-Only
 
 - `applied_revision` (Number) Last lifecycle policy revision acknowledged by the worker. Acknowledgement does not indicate completed retention or garbage collection.
-- `create_time` (String) Creation timestamp in RFC3339 format.
+- `created_at` (String) Creation timestamp in RFC3339 format.
 - `etag` (String) Current concurrency token. Changes when the server updates the resource.
 - `id` (String) Terraform identifier for this resource.
 - `name` (String) Canonical API resource name.
 - `revision` (Number) Current desired policy revision.
-- `update_time` (String) Last update timestamp in RFC3339 format.
+- `updated_at` (String) Last update timestamp in RFC3339 format.
 
 <a id="nestedatt--rules"></a>
 ### Nested Schema for `rules`

@@ -1,4 +1,4 @@
-variable "owner_org" {
+variable "org_id" {
   type = string
 }
 
@@ -15,7 +15,7 @@ resource "coreweave_container_registry_access_configuration" "images" {
       identity_selector = "COREWEAVE"
       rules = {
         pull = {
-          expression = "identity[\"org_id\"] == ${jsonencode(var.owner_org)} && \"read_registry_content\" in identity[\"roles\"] && request[\"type\"] == \"repository\" && request[\"action\"] == \"pull\""
+          expression = "identity[\"org_id\"] == ${jsonencode(var.org_id)} && \"read_registry_content\" in identity[\"roles\"] && request[\"type\"] == \"repository\" && request[\"action\"] == \"pull\""
         }
       }
     }
