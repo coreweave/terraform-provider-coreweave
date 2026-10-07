@@ -11,6 +11,7 @@ import (
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
 	calleridentity "github.com/coreweave/terraform-provider-coreweave/coreweave/caller_identity"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave/cks"
+	containerregistry "github.com/coreweave/terraform-provider-coreweave/coreweave/container_registry"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave/inference"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave/networking"
 	objectstorage "github.com/coreweave/terraform-provider-coreweave/coreweave/object_storage"
@@ -247,6 +248,9 @@ func (p *CoreweaveProvider) Resources(ctx context.Context) []func() resource.Res
 		inference.NewInferenceCapacityClaimResource,
 		inference.NewInferenceGatewayResource,
 		workloadfederation.NewOIDCConfigResource,
+		containerregistry.NewNamespaceResource,
+		containerregistry.NewAccessConfigurationResource,
+		containerregistry.NewLifecyclePolicyResource,
 	}
 }
 
@@ -260,6 +264,9 @@ func (p *CoreweaveProvider) DataSources(ctx context.Context) []func() datasource
 		inference.NewCapacityClaimParametersDataSource,
 		inference.NewGatewayParametersDataSource,
 		workloadfederation.NewOIDCConfigDataSource,
+		containerregistry.NewNamespaceDataSource,
+		containerregistry.NewNamespacesDataSource,
+		containerregistry.NewZonesDataSource,
 	}
 }
 

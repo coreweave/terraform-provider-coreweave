@@ -15,6 +15,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/genproto/googleapis/rpc/errdetails"
 )
 
 var _ coreweave.AccessTokenSource = accessTokenSourceFunc(nil)
@@ -278,4 +279,41 @@ func TestHandleAPIError(t *testing.T) {
 			assert.Equal(t, tt.want, diagnostics)
 		})
 	}
+}
+
+// TestHandleAPIErrorWithoutDetails verifies rejected requests always produce diagnostics.
+func TestHandleAPIErrorWithoutDetails(t *testing.T) {
+	t.Parallel()
+	for _, code := range []connect.Code{connect.CodeNotFound, connect.CodeAlreadyExists, connect.CodeInvalidArgument, connect.CodeFailedPrecondition, connect.CodeResourceExhausted} {
+		t.Run(code.String(), func(t *testing.T) {
+			t.Parallel()
+			var diagnostics diag.Diagnostics
+			coreweave.HandleAPIError(t.Context(), connect.NewError(code, errors.New("rejected without details")), &diagnostics)
+			require.True(t, diagnostics.HasError())
+			require.Contains(t, diagnostics[0].Detail(), "rejected without details")
+		})
+	}
+}
+
+// TestHandleAPIErrorPreservesContext verifies shared diagnostics retain wrapping context and ErrorInfo.
+func TestHandleAPIErrorPreservesContext(t *testing.T) {
+	t.Parallel()
+	apiError := connect.NewError(connect.CodeFailedPrecondition, errors.New("request rejected"))
+	info, err := connect.NewErrorDetail(&errdetails.ErrorInfo{Reason: "ETAG_MISMATCH", Metadata: map[string]string{"current_etag": "new-etag"}})
+	require.NoError(t, err)
+	apiError.AddDetail(info)
+	precondition, err := connect.NewErrorDetail(&errdetails.PreconditionFailure{Violations: []*errdetails.PreconditionFailure_Violation{{Type: "etag", Description: "refresh the resource"}}})
+	require.NoError(t, err)
+	apiError.AddDetail(precondition)
+	var diagnostics diag.Diagnostics
+	coreweave.HandleAPIError(t.Context(), fmt.Errorf("updating resource: %w", apiError), &diagnostics)
+	require.True(t, diagnostics.HasError())
+	combined := ""
+	for _, diagnostic := range diagnostics {
+		require.Contains(t, diagnostic.Detail(), "updating resource")
+		require.Contains(t, diagnostic.Detail(), "ETAG_MISMATCH")
+		require.Contains(t, diagnostic.Detail(), "new-etag")
+		combined += diagnostic.Detail()
+	}
+	require.Contains(t, combined, "refresh the resource")
 }
