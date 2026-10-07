@@ -149,7 +149,7 @@ Required:
 
 Optional:
 
-- `path_prefix` (String) Path prefix holding snapshots. The snapshot identity is appended to this prefix.
+- `path_prefix` (String) Path prefix holding snapshots. Defaults to an empty string (bucket root). The snapshot identity is appended to this prefix.
 
 
 <a id="nestedatt--traffic"></a>
