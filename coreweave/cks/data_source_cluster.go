@@ -39,6 +39,21 @@ func (d *ClusterDataSource) Schema(ctx context.Context, req datasource.SchemaReq
 	resp.Schema = schema.Schema{
 		MarkdownDescription: "Query information about an existing CoreWeave Kubernetes Service (CKS) cluster by ID. See the [CKS API reference](https://docs.coreweave.com/products/cks/reference/cks-api).",
 		Attributes: map[string]schema.Attribute{
+			"public_access": schema.SingleNestedAttribute{
+				Computed:            true,
+				MarkdownDescription: "The cluster's direct public access configuration. CoreWeave-managed authentication is not currently supported. Its allowlist does not restrict legacy public ingress.",
+				Attributes: map[string]schema.Attribute{
+					"mode": schema.StringAttribute{
+						Computed:            true,
+						MarkdownDescription: publicAccessModeDescription,
+					},
+					"allow_cidrs": schema.SetAttribute{
+						Computed:            true,
+						ElementType:         types.StringType,
+						MarkdownDescription: allowCIDRsDescription,
+					},
+				},
+			},
 			"id": schema.StringAttribute{
 				MarkdownDescription: "The ID of the cluster.",
 				Required:            true,
@@ -60,7 +75,7 @@ func (d *ClusterDataSource) Schema(ctx context.Context, req datasource.SchemaReq
 				Computed:            true,
 			},
 			"public": schema.BoolAttribute{
-				MarkdownDescription: "Whether the cluster is public.",
+				MarkdownDescription: legacyPublicDescription,
 				Computed:            true,
 			},
 			"pod_cidr_name": schema.StringAttribute{
