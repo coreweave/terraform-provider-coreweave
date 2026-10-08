@@ -48,6 +48,16 @@
       "semanticCommitScope": null
     },
     {
+      // Connect v2 changes RPC signatures, transports, and interceptors.
+      // Keep the runtime and generated clients on v1 until the provider is migrated.
+      "matchManagers": ["gomod"],
+      "matchPackageNames": [
+        "connectrpc.com/connect",
+        "buf.build/gen/go/coreweave/*/connectrpc/go"
+      ],
+      "allowedVersions": "/^v?1\\./"
+    },
+    {
       "matchManagers": ["github-actions"],
       "semanticCommitType": "ci",
       "semanticCommitScope": "github-action",
