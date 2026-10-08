@@ -43,6 +43,7 @@ func (r *NamespaceResource) Metadata(_ context.Context, req resource.MetadataReq
 // namespaceApply preserves quota presence, bootstrap atomicity, and explicit force deletion.
 func (r *NamespaceResource) namespaceApply(ctx context.Context, a, old *NamespaceResourceModel, destroy bool, p privateData) (bool, error) {
 	creating := old == nil
+	mutating := creating || !a.StorageQuotaBytes.Equal(old.StorageQuotaBytes)
 	name := namespaceResourceName(a.Name.ValueString())
 	if !creating {
 		name = old.ID.ValueString()
@@ -82,7 +83,7 @@ func (r *NamespaceResource) namespaceApply(ctx context.Context, a, old *Namespac
 	if e = r.read(ctx, a); e != nil {
 		return true, e
 	}
-	if a.Status.ValueString() != "STATE_ACTIVE" {
+	if mutating && a.Status.ValueString() != "STATE_ACTIVE" {
 		return true, fmt.Errorf("namespace %s is %s after completion", name, a.Status.ValueString())
 	}
 	return true, saveRecovery(ctx, p, nil)

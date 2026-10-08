@@ -191,6 +191,45 @@ func TestNonActiveParentDoesNotBlockDestroy(t *testing.T) {
 	}
 }
 
+// TestNonActiveNamespaceAllowsForceDestroyUpdate persists local cleanup settings without mutating remote quota.
+func TestNonActiveNamespaceAllowsForceDestroyUpdate(t *testing.T) {
+	for _, status := range []api.RegistryNamespace_State{api.RegistryNamespace_STATE_FAILED, api.RegistryNamespace_STATE_UNSPECIFIED} {
+		t.Run(status.String(), func(t *testing.T) {
+			h := newHarness(t, "namespace")
+			created := h.apply(h.config(nil, false), tftypes.NewValue(h.typ, nil), nil)
+			noErrors(t, created.Diagnostics)
+			h.fake.namespace.State = status
+			var values map[string]tftypes.Value
+			require.NoError(t, h.config(nil, false).As(&values))
+			values["force_destroy"] = tftypes.NewValue(tftypes.Bool, true)
+			updated := h.apply(tftypes.NewValue(h.typ, values), h.decode(created.NewState), created.Private)
+			noErrors(t, updated.Diagnostics)
+			var state map[string]tftypes.Value
+			require.NoError(t, h.decode(updated.NewState).As(&state))
+			require.True(t, state["force_destroy"].Equal(tftypes.NewValue(tftypes.Bool, true)))
+			require.True(t, state["status"].Equal(tftypes.NewValue(tftypes.String, status.String())))
+			require.Empty(t, h.fake.updates)
+			deleted := h.destroy(updated.NewState, updated.Private)
+			noErrors(t, deleted.Diagnostics)
+			require.True(t, h.decode(deleted.NewState).IsNull())
+			require.Len(t, h.fake.deletes, 1)
+			require.True(t, h.fake.deletes[0].Force)
+		})
+	}
+}
+
+// TestNonActiveNamespaceQuotaUpdateRequiresActive retains the completion check for remote quota mutations.
+func TestNonActiveNamespaceQuotaUpdateRequiresActive(t *testing.T) {
+	h := newHarness(t, "namespace")
+	created := h.apply(h.config(nil, false), tftypes.NewValue(h.typ, nil), nil)
+	noErrors(t, created.Diagnostics)
+	h.fake.namespace.State = api.RegistryNamespace_STATE_FAILED
+	updated := h.apply(h.config(int64(1024), false), h.decode(created.NewState), created.Private)
+	require.NotEmpty(t, updated.Diagnostics)
+	require.Contains(t, updated.Diagnostics[0].Detail, "STATE_FAILED after completion")
+	require.Len(t, h.fake.updates, 1)
+}
+
 // TestPollingPermissionFailureKeepsAcceptedEvidence distinguishes a failed GET from a rejected write.
 func TestPollingPermissionFailureKeepsAcceptedEvidence(t *testing.T) {
 	h := newHarness(t, "access_configuration")
