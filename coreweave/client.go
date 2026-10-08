@@ -5,10 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync/atomic"
 	"time"
 
 	"buf.build/gen/go/coreweave/cks/connectrpc/go/coreweave/cks/v1beta1/cksv1beta1connect"
+	registryconnect "buf.build/gen/go/coreweave/container-registry-api/connectrpc/go/coreweave/registry/v1alpha1/registryv1alpha1connect"
 	"buf.build/gen/go/coreweave/cwobject/connectrpc/go/cwobject/v1/cwobjectv1connect"
 	"buf.build/gen/go/coreweave/inference/connectrpc/go/coreweave/inference/v1alpha1/inferencev1alpha1connect"
 	"buf.build/gen/go/coreweave/networking/connectrpc/go/coreweave/networking/v1beta1/networkingv1beta1connect"
@@ -78,6 +80,7 @@ func NewClientWithOptions(
 	authenticatedInterceptors := append([]connect.Interceptor{auth.NewConnectErrorInterceptor()}, interceptors...)
 
 	return &Client{
+		ContainerRegistry:       registryconnect.NewRegistryServiceClient(c, endpoint, connect.WithInterceptors(authenticatedInterceptors...)),
 		ClusterServiceClient:    cksv1beta1connect.NewClusterServiceClient(c, endpoint, connect.WithInterceptors(authenticatedInterceptors...)),
 		VPCServiceClient:        networkingv1beta1connect.NewVPCServiceClient(c, endpoint, connect.WithInterceptors(authenticatedInterceptors...)),
 		SandboxRunnerManagement: sandboxv1connect.NewRunnerManagementServiceClient(c, endpoint, connect.WithInterceptors(authenticatedInterceptors...)),
@@ -109,6 +112,7 @@ type InferenceClient struct {
 }
 
 type Client struct {
+	ContainerRegistry registryconnect.RegistryServiceClient
 	cksv1beta1connect.ClusterServiceClient
 	networkingv1beta1connect.VPCServiceClient
 	control_planev1beta1connect.WFControlPlaneServiceClient
@@ -133,8 +137,46 @@ func IsNotFoundError(err error) bool {
 	return errors.As(err, &connectErr) && connectErr.Code() == connect.CodeNotFound
 }
 
-//nolint:gocyclo
+// HandleAPIError preserves API summaries, wrapping context, and structured error information.
 func HandleAPIError(ctx context.Context, err error, diagnostics *diag.Diagnostics) {
+	var details diag.Diagnostics
+	handleAPIError(ctx, err, &details)
+	var apiErr *connect.Error
+	if !errors.As(err, &apiErr) {
+		diagnostics.Append(details...)
+		return
+	}
+	contextMessages := []string{}
+	if err.Error() != apiErr.Error() {
+		contextMessages = append(contextMessages, err.Error())
+	}
+	for _, detail := range apiErr.Details() {
+		value, valueErr := detail.Value()
+		if valueErr != nil {
+			continue
+		}
+		if info, ok := value.(*errdetails.ErrorInfo); ok {
+			if info.Reason != "" {
+				contextMessages = append(contextMessages, "Reason: "+info.Reason)
+			}
+			if etag := info.Metadata["current_etag"]; etag != "" {
+				contextMessages = append(contextMessages, "Current etag: "+etag)
+			}
+		}
+	}
+	for _, detail := range details {
+		message := detail.Detail()
+		if len(contextMessages) != 0 {
+			message = strings.Join(contextMessages, "\n") + "\n" + message
+		}
+		diagnostics.AddError(detail.Summary(), message)
+	}
+}
+
+// handleAPIError maps API status codes and their service-specific details to diagnostics.
+//
+//nolint:gocyclo
+func handleAPIError(ctx context.Context, err error, diagnostics *diag.Diagnostics) {
 	// Check if the error is a ConnectRPC error
 	var connectErr *connect.Error
 	if !errors.As(err, &connectErr) {
