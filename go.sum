@@ -12,10 +12,10 @@ buf.build/gen/go/coreweave/cwobject/connectrpc/go v1.20.0-20260831154917-08064e5
 buf.build/gen/go/coreweave/cwobject/connectrpc/go v1.20.0-20260831154917-08064e55742b.1/go.mod h1:isk49adM33HqNqQa8otV6ZnGC224oG3l3rBmVzPFuN0=
 buf.build/gen/go/coreweave/cwobject/protocolbuffers/go v1.36.12-20260831154917-08064e55742b.1 h1:IaWM6K1v1zpcJun459iDz0d2EZH1CZKr9tQ4B69Pjgw=
 buf.build/gen/go/coreweave/cwobject/protocolbuffers/go v1.36.12-20260831154917-08064e55742b.1/go.mod h1:LYJWc01KSOldvmulAIGE9ba7/HUr1QKQ6LRtPLLhdq4=
-buf.build/gen/go/coreweave/inference/connectrpc/go v1.20.0-20260825010541-7cc01a738b29.1 h1:Y/4tqYLfM7hq4Mp1Pj7qwUuaJjXCvlAgPpexNUrwWhA=
-buf.build/gen/go/coreweave/inference/connectrpc/go v1.20.0-20260825010541-7cc01a738b29.1/go.mod h1:8axC+BDS3Nkyp6MDwOOFFI24ONED8SjdCJeEbI/ZosY=
-buf.build/gen/go/coreweave/inference/protocolbuffers/go v1.36.12-20260825010541-7cc01a738b29.1 h1:P20RBcTtI8Rnl/yfzoCLIG+v+HjdA0qAcLhCtHm09gk=
-buf.build/gen/go/coreweave/inference/protocolbuffers/go v1.36.12-20260825010541-7cc01a738b29.1/go.mod h1:zdff/ACEwQQ64HB1H7pjlX0EBi9kueSLgttCWXrPvS8=
+buf.build/gen/go/coreweave/inference/connectrpc/go v1.21.0-20260922162625-b6d414f8513e.1 h1:meP5reNFzDtiOclaDi8Qd2qGchiXwL2IkX14Tw44v8o=
+buf.build/gen/go/coreweave/inference/connectrpc/go v1.21.0-20260922162625-b6d414f8513e.1/go.mod h1:f8bElzaQvNV6bx3bE9H5aE+xQMLzJdygABttMvSkDo0=
+buf.build/gen/go/coreweave/inference/protocolbuffers/go v1.36.12-20260922162625-b6d414f8513e.2 h1:Diqu/tA9FsXerYcxpk5VN6C0AXjzULvfz3f1Jzwho74=
+buf.build/gen/go/coreweave/inference/protocolbuffers/go v1.36.12-20260922162625-b6d414f8513e.2/go.mod h1:bs1E8vQPLh2l9lT5qRDvsoLlQaBPPFpb//YBoYfQlCE=
 buf.build/gen/go/coreweave/networking/connectrpc/go v1.19.1-20260121155637-a637e7777165.2 h1:7/T8Tbyq8JVWu5ZXznB84IdZ6zN/oXeDcebMaTc+eyc=
 buf.build/gen/go/coreweave/networking/connectrpc/go v1.19.1-20260121155637-a637e7777165.2/go.mod h1:Ri2fOqnsxnYU4CdWVP0GNqzSYq7L+Zw1AV/ebdbNITs=
 buf.build/gen/go/coreweave/networking/protocolbuffers/go v1.36.11-20260121155637-a637e7777165.1 h1:HgaTPkFCzegYtbVOir7vdty10GHoFxMceoscwcH0x7s=

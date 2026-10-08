@@ -79,6 +79,41 @@ $ make build
 
 ## Using the provider
 
+### HotLoad acceptance tests
+
+`TestInferenceHotLoadAcceptance` uses real Terraform against staging and consumes
+one GPU. It creates its own gateway and deployment, checks import and immutable
+replacement plans, completes a full update followed by a delta, and verifies
+refresh, no-op plans, operation import and retained history after terminal destroy.
+Harness cleanup targets only resources created by this test. No existing
+deployment IDs are accepted. Default CI skips this test.
+
+Before opting in, publish three valid, compatible checkpoints under a fresh,
+exclusive prefix: initial full, replacement full and an XOR delta based on the
+replacement full. Their metadata identities must be globally unique for this
+run, with the delta base matching the replacement full identity. The initial
+model path is `<prefix>/<initial-identity>`. Never use missing checkpoints as
+cancellation fixtures: they can quarantine a worker.
+
+Set `COREWEAVE_API_ENDPOINT=https://api.staging.coreweave.com` and
+`COREWEAVE_API_TOKEN` for a HotLoad-enabled staging organization, such as sa32a4.
+Also set `INFR_ZONE`, `INFR_INSTANCE_ID` (for example `gd-1xgh200`),
+`INFR_HOTLOAD_RUNTIME_VERSION` (a supported dynamo-vllm version),
+`INFR_HOTLOAD_BUCKET`, `INFR_HOTLOAD_PREFIX`, `INFR_HOTLOAD_INITIAL_IDENTITY`,
+`INFR_HOTLOAD_FULL_IDENTITY`, and `INFR_HOTLOAD_DELTA_IDENTITY`.
+
+```bash
+TF_ACC=1 INFR_HOTLOAD_ACCEPTANCE=1 \
+  go test ./coreweave/inference \
+  -run '^TestInferenceHotLoadAcceptance$' -count=1 -timeout=90m -v
+```
+
+Live cancellation is not exercised while staging returns `UNIMPLEMENTED`.
+Mock tests cover active cancellation, terminal destroy and state retention on
+cancellation errors, including `UNIMPLEMENTED`. If a live run fails with an
+active operation, cancellation may prevent automatic cleanup; inspect the
+reported test resource IDs instead of sweeping unrelated deployments.
+
 See the [CoreWeave Provider documentation](https://registry.terraform.io/providers/coreweave/coreweave/latest/docs) to get started using the CoreWeave provider.
 
 ## License

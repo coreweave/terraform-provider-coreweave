@@ -91,6 +91,7 @@ func NewClientWithOptions(
 		),
 		CWObjectClient: cwobjectv1connect.NewCWObjectClient(c, endpoint, connect.WithInterceptors(authenticatedInterceptors...)),
 		Inference: &InferenceClient{
+			HotLoadServiceClient:       inferencev1alpha1connect.NewHotLoadServiceClient(c, endpoint, connect.WithInterceptors(authenticatedInterceptors...)),
 			DeploymentServiceClient:    inferencev1alpha1connect.NewDeploymentServiceClient(c, endpoint, connect.WithInterceptors(authenticatedInterceptors...)),
 			CapacityClaimServiceClient: inferencev1alpha1connect.NewCapacityClaimServiceClient(c, endpoint, connect.WithInterceptors(authenticatedInterceptors...)),
 			GatewayServiceClient:       inferencev1alpha1connect.NewGatewayServiceClient(c, endpoint, connect.WithInterceptors(authenticatedInterceptors...)),
@@ -106,6 +107,7 @@ func NewClientWithOptions(
 
 // InferenceClient groups all inference service clients.
 type InferenceClient struct {
+	inferencev1alpha1connect.HotLoadServiceClient
 	inferencev1alpha1connect.DeploymentServiceClient
 	inferencev1alpha1connect.CapacityClaimServiceClient
 	inferencev1alpha1connect.GatewayServiceClient
