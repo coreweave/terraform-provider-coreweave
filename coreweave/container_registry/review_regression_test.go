@@ -87,15 +87,66 @@ func TestRefreshDoesNotWaitForPendingCreate(t *testing.T) {
 func TestRejectedSingletonCreateNeverOwnsExistingPolicy(t *testing.T) {
 	for _, kind := range []string{"access_configuration", "lifecycle_policy"} {
 		t.Run(kind, func(t *testing.T) {
+			for _, refreshFails := range []bool{false, true} {
+				t.Run(fmt.Sprintf("refresh_fails_%t", refreshFails), func(t *testing.T) {
+					h := newHarness(t, kind)
+					h.fake.policyError = connect.NewError(connect.CodeInvalidArgument, errors.New("invalid policy"))
+					if refreshFails {
+						h.fake.policyReadErrorAfter = 1
+						h.fake.policyReadError = connect.NewError(connect.CodePermissionDenied, errors.New("refresh denied"))
+					}
+					created := h.apply(h.withContent(h.config(nil, false)), tftypes.NewValue(h.typ, nil), nil)
+					require.NotEmpty(t, created.Diagnostics)
+					require.True(t, h.decode(created.NewState).IsNull())
+					require.Empty(t, created.Private)
+					require.Equal(t, 1, h.fake.policyReads, "a rejected write must not depend on a verification GET")
+					require.Empty(t, h.fake.accessUpdates)
+					require.Empty(t, h.fake.lifecycleUpdates)
+				})
+			}
+		})
+	}
+}
+
+// TestRejectedPolicyUpdateRetainsOwnership preserves existing state when rejection is followed by a failed refresh.
+func TestRejectedPolicyUpdateRetainsOwnership(t *testing.T) {
+	for _, kind := range []string{"access_configuration", "lifecycle_policy"} {
+		t.Run(kind, func(t *testing.T) {
 			h := newHarness(t, kind)
+			created := h.apply(h.config(nil, false), tftypes.NewValue(h.typ, nil), nil)
+			noErrors(t, created.Diagnostics)
 			h.fake.policyError = connect.NewError(connect.CodeInvalidArgument, errors.New("invalid policy"))
-			created := h.apply(h.withContent(h.config(nil, false)), tftypes.NewValue(h.typ, nil), nil)
-			require.NotEmpty(t, created.Diagnostics)
-			require.True(t, h.decode(created.NewState).IsNull())
+			h.fake.policyReads = 0
+			h.fake.policyReadErrorAfter = 1
+			h.fake.policyReadError = connect.NewError(connect.CodePermissionDenied, errors.New("refresh denied"))
+			updated := h.apply(h.withContent(h.config(nil, false)), h.decode(created.NewState), created.Private)
+			require.NotEmpty(t, updated.Diagnostics)
+			require.True(t, h.decode(updated.NewState).Equal(h.decode(created.NewState)))
+			require.Empty(t, updated.Private)
 			require.Empty(t, h.fake.accessUpdates)
 			require.Empty(t, h.fake.lifecycleUpdates)
 		})
 	}
+}
+
+// TestUncertainAccessCreateKeepsOwnershipWithoutRefresh preserves recovery after a lost write response and failed GET.
+func TestUncertainAccessCreateKeepsOwnershipWithoutRefresh(t *testing.T) {
+	h := newHarness(t, "access_configuration")
+	h.fake.uncertainAccess = true
+	h.fake.policyReadErrorAfter = 1
+	h.fake.policyReadError = connect.NewError(connect.CodePermissionDenied, errors.New("refresh denied"))
+	created := h.apply(h.withContent(h.config(nil, false)), tftypes.NewValue(h.typ, nil), nil)
+	require.NotEmpty(t, created.Diagnostics)
+	require.False(t, h.decode(created.NewState).IsNull())
+	require.NotEmpty(t, created.Private)
+	require.Len(t, h.fake.accessUpdates, 1)
+	h.fake.policyReadError = nil
+	read := h.refresh(created)
+	noErrors(t, read.Diagnostics)
+	var state map[string]tftypes.Value
+	require.NoError(t, h.decode(read.NewState).As(&state))
+	require.True(t, state["revision"].Equal(tftypes.NewValue(tftypes.Number, 2)))
+	require.Len(t, h.fake.accessUpdates, 1)
 }
 
 // TestSupersededAccessRecoveryClearsOnRefresh allows a new reviewed plan after another writer wins.

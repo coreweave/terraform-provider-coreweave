@@ -92,21 +92,27 @@ func (r *AccessConfigurationResource) accessApply(ctx context.Context, a, old *A
 		if err := saveRecovery(ctx, p, rec); err != nil {
 			return old != nil, err
 		}
-		res, e := r.client.UpdateRegistryAccessConfiguration(ctx, connect.NewRequest(q))
+		// A retry after a lost response can reject an already committed write on its old etag.
+		res, e := r.client.UpdateRegistryAccessConfiguration(coreweave.WithoutRetries(ctx), connect.NewRequest(q))
 		if e != nil {
+			if definitiveRejection(e) {
+				return old != nil, e
+			}
 			last, re := r.client.GetRegistryAccessConfiguration(ctx, connect.NewRequest(&api.GetRegistryAccessConfigurationRequest{Parent: parent}))
-			if re == nil {
-				if err := observe(last.Msg); err != nil {
+			outcomeErr := fmt.Errorf("access update outcome requires refresh and review (an identical concurrent write cannot be attributed safely): %w", e)
+			if re != nil {
+				return true, outcomeErr
+			}
+			if err := observe(last.Msg); err != nil {
+				return true, err
+			}
+			if last.Msg.Etag == current.Msg.Etag && last.Msg.Revision == current.Msg.Revision {
+				if err := saveRecovery(ctx, p, nil); err != nil {
 					return true, err
 				}
-				if last.Msg.Etag == current.Msg.Etag && last.Msg.Revision == current.Msg.Revision {
-					if err := saveRecovery(ctx, p, nil); err != nil {
-						return true, err
-					}
-					return old != nil || !definitiveRejection(e), e
-				}
+				return true, e
 			}
-			return true, fmt.Errorf("access update outcome requires refresh and review (an identical concurrent write cannot be attributed safely): %w", e)
+			return true, outcomeErr
 		}
 		revision = res.Msg.Revision
 		rec.Revision = revision

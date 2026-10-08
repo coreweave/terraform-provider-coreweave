@@ -62,7 +62,7 @@ func finishRecovery(ctx context.Context, p privateData, err error) error {
 		if loadErr != nil {
 			return loadErr
 		}
-		if rec != nil && rec.Operation == "" && (rec.Action == actionCreate || rec.Action == actionUpdate || rec.Action == actionDelete || rec.Action == recoveryLifecycle) {
+		if rec != nil && rec.Operation == "" && (rec.Action == actionCreate || rec.Action == actionUpdate || rec.Action == actionDelete || rec.Action == recoveryAccess || rec.Action == recoveryLifecycle) {
 			if saveErr := saveRecovery(ctx, p, nil); saveErr != nil {
 				return saveErr
 			}
