@@ -4,10 +4,10 @@ buf.build/gen/go/coreweave/cks/connectrpc/go v1.19.1-20260326215135-be22b90e1aa6
 buf.build/gen/go/coreweave/cks/connectrpc/go v1.19.1-20260326215135-be22b90e1aa6.2/go.mod h1:aCkr4xvjAVXYnCSfQFFaZ+g6vqd2t27+svGkCgwLKzo=
 buf.build/gen/go/coreweave/cks/protocolbuffers/go v1.36.11-20260326215135-be22b90e1aa6.1 h1:6VTjkKgYaRgrVlO2aq6RuCNVsV3+0J/4GM5HKX17VNM=
 buf.build/gen/go/coreweave/cks/protocolbuffers/go v1.36.11-20260326215135-be22b90e1aa6.1/go.mod h1:ByX23QBucj1Ao4H8Wn41segTqTbgOT4Sbjnm7AvLGYY=
-buf.build/gen/go/coreweave/container-registry-api/connectrpc/go v1.21.0-20261006020732-928e5e5b7735.1 h1:Q0TSxuSoxorGmryxS7YSrLLA/LDm8aj2JZAtVJ3JP4E=
-buf.build/gen/go/coreweave/container-registry-api/connectrpc/go v1.21.0-20261006020732-928e5e5b7735.1/go.mod h1:khucoA8SuniHkrtw/+qMZsyyLuWnqUA5QzmPjiIkjYU=
-buf.build/gen/go/coreweave/container-registry-api/protocolbuffers/go v1.36.12-20261006020732-928e5e5b7735.2 h1:uPco6FDqGltHx+S2AFhxoFk1DQOyln6VFsxMj+Y3Fi4=
-buf.build/gen/go/coreweave/container-registry-api/protocolbuffers/go v1.36.12-20261006020732-928e5e5b7735.2/go.mod h1:MhfNoJWKF7kSBqvRiLqkiOfEMkHFZt7XUmfCcD7Xbww=
+buf.build/gen/go/coreweave/container-registry-api/connectrpc/go v1.21.0-20261009031350-4d1490e50ed8.1 h1:Po6fZKyuFnEgpD8sE1yyyZYoknWaHM9+hPHnz84GIbU=
+buf.build/gen/go/coreweave/container-registry-api/connectrpc/go v1.21.0-20261009031350-4d1490e50ed8.1/go.mod h1:kRlzQwYkMQvyu6+mG+Wv/63Q2rig4daWfVKAGGc9qzc=
+buf.build/gen/go/coreweave/container-registry-api/protocolbuffers/go v1.36.12-20261009031350-4d1490e50ed8.2 h1:jCb3ReZj33BTf57F3ei7Rcomq8RF+sWwA2qcMLmVinY=
+buf.build/gen/go/coreweave/container-registry-api/protocolbuffers/go v1.36.12-20261009031350-4d1490e50ed8.2/go.mod h1:MhfNoJWKF7kSBqvRiLqkiOfEMkHFZt7XUmfCcD7Xbww=
 buf.build/gen/go/coreweave/cwobject/connectrpc/go v1.20.0-20260831154917-08064e55742b.1 h1:/E8vN6/S4jX3HwSQ/TkWiRh8CsBw0bJAdLWREC/OutM=
 buf.build/gen/go/coreweave/cwobject/connectrpc/go v1.20.0-20260831154917-08064e55742b.1/go.mod h1:isk49adM33HqNqQa8otV6ZnGC224oG3l3rBmVzPFuN0=
 buf.build/gen/go/coreweave/cwobject/protocolbuffers/go v1.36.12-20260831154917-08064e55742b.1 h1:IaWM6K1v1zpcJun459iDz0d2EZH1CZKr9tQ4B69Pjgw=
