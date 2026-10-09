@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.25.0](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.24.0...v0.25.0) (2026-10-09)
+
+
+### Features
+
+* **container_registry:** add sub-provider ([#458](https://github.com/coreweave/terraform-provider-coreweave/issues/458)) ([b64c278](https://github.com/coreweave/terraform-provider-coreweave/commit/b64c2785b17835f1c99c1d2c5c95181c8a59f333))
+* **inference:** Wait for the STATUS_UPDATING rollout to complete on update ([#449](https://github.com/coreweave/terraform-provider-coreweave/issues/449)) ([de8c5e0](https://github.com/coreweave/terraform-provider-coreweave/commit/de8c5e0ef15df7e9bfe9084c202f1049bc610d62))
+* **object_storage:** add bucket capacity caps support to Terraform ([#447](https://github.com/coreweave/terraform-provider-coreweave/issues/447)) ([1ea6d4c](https://github.com/coreweave/terraform-provider-coreweave/commit/1ea6d4cb7a33b43c14b62151030347c84ea4c724))
+
+
+### Bug Fixes
+
+* issuer-url shouldn't be unknown when updating cluster state ([#455](https://github.com/coreweave/terraform-provider-coreweave/issues/455)) ([81eeb2b](https://github.com/coreweave/terraform-provider-coreweave/commit/81eeb2b40cb0c2294e0a58c4610b1b104d5247b8))
+* **object_storage:** add missing principals to raw bucket policy test ([#459](https://github.com/coreweave/terraform-provider-coreweave/issues/459)) ([07cc3f8](https://github.com/coreweave/terraform-provider-coreweave/commit/07cc3f895ddf4c2e16d7aa2c0841f193498b1d29))
+* **sandbox:** support renamed HTTPS policy fields ([#451](https://github.com/coreweave/terraform-provider-coreweave/issues/451)) ([ddeaba1](https://github.com/coreweave/terraform-provider-coreweave/commit/ddeaba1a1749ee2f40eb8316189d87e8a4661c88))
+
 ## [0.24.0](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.23.0...v0.24.0) (2026-09-11)
 
 
