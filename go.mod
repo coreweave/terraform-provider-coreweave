@@ -15,8 +15,8 @@ require (
 	buf.build/gen/go/coreweave/networking/protocolbuffers/go v1.36.12-20260121155637-a637e7777165.2
 	buf.build/gen/go/coreweave/sandbox/connectrpc/go/v2 v2.0.0-20261006200456-c94c38b78284.1
 	buf.build/gen/go/coreweave/sandbox/protocolbuffers/go v1.36.12-20261006200456-c94c38b78284.2
-	buf.build/gen/go/coreweave/workload-federation/connectrpc/go/v2 v2.0.0-20260825153113-5bfae6057a98.1
-	buf.build/gen/go/coreweave/workload-federation/protocolbuffers/go v1.36.12-20260825153113-5bfae6057a98.2
+	buf.build/gen/go/coreweave/workload-federation/connectrpc/go/v2 v2.0.0-20261006215228-a9d5f40e7c67.1
+	buf.build/gen/go/coreweave/workload-federation/protocolbuffers/go v1.36.12-20261006215228-a9d5f40e7c67.2
 	buf.build/go/protovalidate v1.3.0
 	cloud.google.com/go/longrunning v0.9.0
 	connectrpc.com/connect/v2 v2.0.0
