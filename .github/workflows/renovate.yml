@@ -3,118 +3,59 @@ name: Renovate
 
 on:
   workflow_dispatch:
-    inputs:
-      runner:
-        type: string
-        description: "runner to use for non-reusable jobs"
-  # Run once a day at 3 AM UTC
-  schedule:
-    - cron: "0 3 * * *"
   push:
-    branches:
-    - main
+    branches: [main]
     paths:
-    - .github/renovate.json5
-    - .github/renovate/**.json5
-    - .github/workflows/renovate.yml
+      - .github/renovate.json5
+      - .github/renovate/**
+      - .github/workflows/renovate.yml
   pull_request:
-    types:
-    - opened
-    - reopened
-    - synchronize
+    types: [opened, reopened, synchronize]
     paths:
-    - .github/renovate.json5
-    - .github/renovate/**.json5
-    - .github/workflows/renovate.yml
+      - .github/renovate.json5
+      - .github/renovate/**
+      - .github/workflows/renovate.yml
+
+permissions:
+  contents: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-env:
-  CGO_ENABLED: '0'
-  GOPROXY: "https://proxy.golang.org,direct"
-
 jobs:
-  coalesce-inputs:
+  validate:
+    name: Renovate configuration
+    if: github.event_name != 'workflow_dispatch' || github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
-    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      with:
-        fetch-depth: 1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
-    - id: decide
-      run: |
-        if [[ -z "${{ inputs.runner }}" ]]; then
-          echo "runner=ubuntu-latest" >> "$GITHUB_OUTPUT"
-        else
-          echo "runner=${{ inputs.runner }}" >> "$GITHUB_OUTPUT"
-        fi
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        with:
+          node-version: '24.21.0'
 
-    # https://docs.github.com/en/actions/how-tos/writing-workflows/choosing-what-your-workflow-does/passing-information-between-jobs
-    outputs:
-      runner: ${{ steps.decide.outputs.runner }}
+      # The validator discovers global config in its working directory. An empty
+      # directory prevents a candidate config.js from being loaded as executable code.
+      - name: Validate repository configuration
+        working-directory: ${{ runner.temp }}
+        env:
+          LOG_LEVEL: info
+        run: |
+          validation_dir=$(mktemp -d)
+          trap 'rm -rf "$validation_dir"' EXIT
+          cd "$validation_dir"
+          npx --yes --package renovate@44.51.2 -- renovate-config-validator --strict --no-global "$GITHUB_WORKSPACE/.github/renovate.json5"
 
-  renovate:
-    name: Renovate
-    runs-on: ${{ needs.coalesce-inputs.outputs.runner }}
-    needs:
-    - coalesce-inputs
-    steps:
-    - name: Generate Token
-      uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
-      id: app-token
-      with:
-        app-id: ${{ secrets.ORG_RENOVATE_CLIENTID }}
-        private-key: ${{ secrets.ORG_RENOVATE_PRIVATEKEY }}
-        owner: ${{ github.repository_owner }}
-
-    - name: Checkout
-      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      with:
-        token: ${{ steps.app-token.outputs.token }}
-
-    - name: configure-git
-      shell: bash
-      run: |
-        git config --global user.email 'bot@renovateapp.com'
-        git config --global user.name 'Renovate Bot'
-
-    - uses: ./.github/actions/setup
-
-    - name: Pre-trust renovate mise workspace
-      shell: bash
-      run: |
-        # `trusted_config_paths` in the global mise config bypasses the trust check for
-        # all mise invocations sharing HOME, including the `go get` subprocess that
-        # Renovate spawns in updateArtifacts. Unlike the MISE_TRUSTED_CONFIG_PATHS env
-        # var (which the subprocess never inherits), the global config is always read
-        # from the filesystem.
-        mise settings set trusted_config_paths \
-          "/tmp/renovate/repos/github/${{ github.repository }}/.config/mise.toml"
-
-    - name: Cache Go modules and build cache
-      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-      with:
-        path: |
-          ~/.cache/go-build
-          ~/go/pkg/mod
-        key: ${{ runner.os }}-goreleaser-snapshot-go-${{ hashFiles('**/go.sum') }}
-
-    - name: renovate
-      run: |
-        npx renovate --allowed-env '*'
-      shell: bash
-      env:
-        LOG_LEVEL: debug
-        RENOVATE_CONFIG_FILE: ${{ github.workspace }}/.github/renovate.json5
-        RENOVATE_AUTODISCOVER: true
-        RENOVATE_AUTODISCOVER_FILTER: ${{ github.repository }}
-        RENOVATE_DETECT_HOST_RULES_FROM_ENV: true
-        RENOVATE_PLATFORM: github
-        RENOVATE_PLATFORM_COMMIT: true
-        RENOVATE_DRY_RUN: ${{ github.event_name == 'pull_request' && 'full' || null }}
-        RENOVATE_TOKEN: ${{ steps.app-token.outputs.token }}
-
-        DOCKER_GHCR_IO_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
-        DOCKER_GHCR_IO_USERNAME: "gitops"
+      - name: Verify validator behavior
+        working-directory: ${{ runner.temp }}
+        env:
+          LOG_LEVEL: info
+        run: |
+          validation_dir=$(mktemp -d)
+          trap 'rm -rf "$validation_dir"' EXIT
+          cd "$validation_dir"
+          npx --yes --package renovate@44.51.2 -- node "$GITHUB_WORKSPACE/.github/renovate/tests/validate.mjs"
