@@ -27,7 +27,7 @@ require (
 	github.com/hashicorp/go-cleanhttp v0.5.2
 	github.com/hashicorp/go-retryablehttp v0.7.8
 	github.com/hashicorp/go-uuid v1.0.3
-	github.com/hashicorp/hcl/v2 v2.24.0
+	github.com/hashicorp/hcl/v2 v2.25.0
 	github.com/hashicorp/terraform-plugin-framework v1.15.1
 	github.com/hashicorp/terraform-plugin-framework-jsontypes v0.2.0
 	github.com/hashicorp/terraform-plugin-framework-nettypes v0.3.0
@@ -38,7 +38,7 @@ require (
 	github.com/hashicorp/terraform-plugin-sdk/v2 v2.38.1
 	github.com/hashicorp/terraform-plugin-testing v1.11.0
 	github.com/stretchr/testify v1.11.1
-	github.com/zclconf/go-cty v1.17.0
+	github.com/zclconf/go-cty v1.19.0
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260810153831-ec0a7760b754
 	google.golang.org/protobuf v1.36.12
 )
@@ -52,6 +52,7 @@ require (
 	github.com/agext/levenshtein v1.2.2 // indirect
 	github.com/antlr4-go/antlr/v4 v4.13.1 // indirect
 	github.com/apparentlymart/go-textseg/v15 v15.0.0 // indirect
+	github.com/apparentlymart/go-textseg/v17 v17.0.1 // indirect
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.6 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/configsources v1.4.19 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.7.19 // indirect
