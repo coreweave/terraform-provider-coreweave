@@ -5,10 +5,9 @@ import (
 	"errors"
 	"fmt"
 
-	client "buf.build/gen/go/coreweave/container-registry-api/connectrpc/go/coreweave/registry/v1alpha1/registryv1alpha1connect"
+	client "buf.build/gen/go/coreweave/container-registry-api/connectrpc/go/v2/coreweave/registry/v1alpha1/registryv1alpha1connect"
 	api "buf.build/gen/go/coreweave/container-registry-api/protocolbuffers/go/coreweave/registry/v1alpha1"
 	"cloud.google.com/go/longrunning/autogen/longrunningpb"
-	"connectrpc.com/connect"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -162,9 +161,9 @@ func getOperation(ctx context.Context, c client.RegistryServiceClient, name stri
 	if err != nil {
 		return nil, err
 	}
-	response, err := c.GetOperation(ctx, connect.NewRequest(req))
+	response, err := c.GetOperation(ctx, req)
 	if err != nil {
 		return nil, err
 	}
-	return response.Msg, nil
+	return response, nil
 }

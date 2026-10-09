@@ -7,10 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"buf.build/gen/go/coreweave/inference/connectrpc/go/coreweave/inference/v1alpha1/inferencev1alpha1connect"
+	"buf.build/gen/go/coreweave/inference/connectrpc/go/v2/coreweave/inference/v1alpha1/inferencev1alpha1connect"
 	inferencev1 "buf.build/gen/go/coreweave/inference/protocolbuffers/go/coreweave/inference/v1alpha1"
-	"connectrpc.com/connect"
-
+	"connectrpc.com/connect/v2"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
 )
 
@@ -29,22 +28,22 @@ type stubDeploymentServiceClient struct {
 
 func (s stubDeploymentServiceClient) GetDeploymentParameters(
 	_ context.Context,
-	_ *connect.Request[inferencev1.GetDeploymentParametersRequest],
-) (*connect.Response[inferencev1.GetDeploymentParametersResponse], error) {
+	_ *inferencev1.GetDeploymentParametersRequest,
+) (*inferencev1.GetDeploymentParametersResponse, error) {
 	if s.err != nil {
 		return nil, s.err
 	}
-	return connect.NewResponse(s.resp), nil
+	return s.resp, nil
 }
 
 func (s stubDeploymentServiceClient) GetDeployment(
 	_ context.Context,
-	_ *connect.Request[inferencev1.GetDeploymentRequest],
-) (*connect.Response[inferencev1.GetDeploymentResponse], error) {
+	_ *inferencev1.GetDeploymentRequest,
+) (*inferencev1.GetDeploymentResponse, error) {
 	if s.getErr != nil {
 		return nil, s.getErr
 	}
-	return connect.NewResponse(s.getResp), nil
+	return s.getResp, nil
 }
 
 func paramsWithEngines(engines ...string) *inferencev1.GetDeploymentParametersResponse {
@@ -370,7 +369,7 @@ func TestDeletedRefresh(t *testing.T) {
 		wantErr    bool
 	}{
 		"not found completes deletion": {
-			getErr:    connect.NewError(connect.CodeNotFound, errors.New("gone")),
+			getErr:    connect.NewError(connect.CodeNotFound, "gone"),
 			wantState: deletedState,
 		},
 		"still ready keeps waiting": {
@@ -394,7 +393,7 @@ func TestDeletedRefresh(t *testing.T) {
 			wantState:  inferencev1.Status_STATUS_FAILED.String(),
 		},
 		"non-notfound error surfaces": {
-			getErr:    connect.NewError(connect.CodeUnavailable, errors.New("boom")),
+			getErr:    connect.NewError(connect.CodeUnavailable, "boom"),
 			wantState: inferencev1.Status_STATUS_UNSPECIFIED.String(),
 			wantErr:   true,
 		},

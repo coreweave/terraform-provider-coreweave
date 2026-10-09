@@ -6,9 +6,8 @@ import (
 	"strings"
 	"time"
 
-	client "buf.build/gen/go/coreweave/container-registry-api/connectrpc/go/coreweave/registry/v1alpha1/registryv1alpha1connect"
+	client "buf.build/gen/go/coreweave/container-registry-api/connectrpc/go/v2/coreweave/registry/v1alpha1/registryv1alpha1connect"
 	api "buf.build/gen/go/coreweave/container-registry-api/protocolbuffers/go/coreweave/registry/v1alpha1"
-	"connectrpc.com/connect"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
 	"github.com/hashicorp/terraform-plugin-framework-timeouts/resource/timeouts"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -61,12 +60,12 @@ func (r *AccessConfigurationResource) accessApply(ctx context.Context, a, old *A
 		}
 		return nil
 	}
-	current, e := r.client.GetRegistryAccessConfiguration(ctx, connect.NewRequest(&api.GetRegistryAccessConfigurationRequest{Parent: parent}))
+	current, e := r.client.GetRegistryAccessConfiguration(ctx, &api.GetRegistryAccessConfigurationRequest{Parent: parent})
 	if e != nil {
 		return old != nil, e
 	}
-	if old != nil && current.Msg.Etag != old.Etag.ValueString() {
-		return true, fmt.Errorf("access etag changed at %s (current %s); refresh and replan", parent, current.Msg.Etag)
+	if old != nil && current.Etag != old.Etag.ValueString() {
+		return true, fmt.Errorf("access etag changed at %s (current %s); refresh and replan", parent, current.Etag)
 	}
 	desired := &api.RegistryAccessConfiguration{}
 	if !destroy {
@@ -77,36 +76,36 @@ func (r *AccessConfigurationResource) accessApply(ctx context.Context, a, old *A
 			return old != nil, e
 		}
 	}
-	revision := current.Msg.Revision
-	if err := observe(current.Msg); err != nil {
+	revision := current.Revision
+	if err := observe(current); err != nil {
 		return old != nil, err
 	}
-	equal, err := equalAccess(ctx, desired, current.Msg)
+	equal, err := equalAccess(ctx, desired, current)
 	if err != nil {
 		return old != nil, err
 	}
 	if !equal {
 		desired.Name = parent + accessSuffix
-		q := &api.UpdateRegistryAccessConfigurationRequest{Parent: parent, Etag: current.Msg.Etag, RegistryAccessConfiguration: desired}
+		q := &api.UpdateRegistryAccessConfigurationRequest{Parent: parent, Etag: current.Etag, RegistryAccessConfiguration: desired}
 		rec := &recovery{Action: recoveryAccess}
 		if err := saveRecovery(ctx, p, rec); err != nil {
 			return old != nil, err
 		}
 		// A retry after a lost response can reject an already committed write on its old etag.
-		res, e := r.client.UpdateRegistryAccessConfiguration(coreweave.WithoutRetries(ctx), connect.NewRequest(q))
+		res, e := r.client.UpdateRegistryAccessConfiguration(coreweave.WithoutRetries(ctx), q)
 		if e != nil {
 			if definitiveRejection(e) {
 				return old != nil, e
 			}
-			last, re := r.client.GetRegistryAccessConfiguration(ctx, connect.NewRequest(&api.GetRegistryAccessConfigurationRequest{Parent: parent}))
+			last, re := r.client.GetRegistryAccessConfiguration(ctx, &api.GetRegistryAccessConfigurationRequest{Parent: parent})
 			outcomeErr := fmt.Errorf("access update outcome requires refresh and review (an identical concurrent write cannot be attributed safely): %w", e)
 			if re != nil {
 				return true, outcomeErr
 			}
-			if err := observe(last.Msg); err != nil {
+			if err := observe(last); err != nil {
 				return true, err
 			}
-			if last.Msg.Etag == current.Msg.Etag && last.Msg.Revision == current.Msg.Revision {
+			if last.Etag == current.Etag && last.Revision == current.Revision {
 				if err := saveRecovery(ctx, p, nil); err != nil {
 					return true, err
 				}
@@ -114,13 +113,13 @@ func (r *AccessConfigurationResource) accessApply(ctx context.Context, a, old *A
 			}
 			return true, outcomeErr
 		}
-		revision = res.Msg.Revision
+		revision = res.Revision
 		rec.Revision = revision
 		rec.Action = recoveryAccessAccepted
 		if err := saveRecovery(ctx, p, rec); err != nil {
 			return true, err
 		}
-		if err := observe(res.Msg); err != nil {
+		if err := observe(res); err != nil {
 			return true, err
 		}
 	} else {
@@ -343,11 +342,11 @@ func (r *AccessConfigurationResource) ImportState(ctx context.Context, req resou
 
 // read refreshes observations owned by this resource.
 func (r *AccessConfigurationResource) read(ctx context.Context, a *AccessConfigurationResourceModel) error {
-	res, err := r.client.GetRegistryAccessConfiguration(ctx, connect.NewRequest(&api.GetRegistryAccessConfigurationRequest{Parent: namespaceResourceName(a.Namespace.ValueString())}))
+	res, err := r.client.GetRegistryAccessConfiguration(ctx, &api.GetRegistryAccessConfigurationRequest{Parent: namespaceResourceName(a.Namespace.ValueString())})
 	if err != nil {
 		return err
 	}
-	return conversionError(a.Set(ctx, res.Msg))
+	return conversionError(a.Set(ctx, res))
 }
 
 // apply submits one concrete mutation and clears only terminal recovery evidence.

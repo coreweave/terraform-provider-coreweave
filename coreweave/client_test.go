@@ -6,16 +6,19 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
 	cksv1beta1 "buf.build/gen/go/coreweave/cks/protocolbuffers/go/coreweave/cks/v1beta1"
-	"connectrpc.com/connect"
+	"connectrpc.com/connect/v2"
+	"connectrpc.com/connect/v2/connectproto"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
+	"google.golang.org/protobuf/proto"
 )
 
 var _ coreweave.AccessTokenSource = accessTokenSourceFunc(nil)
@@ -77,6 +80,29 @@ func TestNewClientAuthenticatesRequests(t *testing.T) {
 	assert.Equal(t, "Bearer static-token", authorization)
 }
 
+func TestClientReadsLargeConnectResponses(t *testing.T) {
+	t.Parallel()
+
+	name := strings.Repeat("x", (4<<20)+1)
+	body, err := proto.Marshal(&cksv1beta1.GetClusterResponse{Cluster: &cksv1beta1.Cluster{Name: name}})
+	require.NoError(t, err)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "Bearer static-token", r.Header.Get("Authorization"))
+		w.Header().Set("Content-Type", "application/proto")
+		_, _ = w.Write(body)
+	}))
+	t.Cleanup(server.Close)
+
+	source := accessTokenSourceFunc(func(context.Context) (string, error) { return "static-token", nil })
+	client, err := coreweave.NewClient(server.URL, "https://objects.example.test", 5*time.Second, source, "test-user-agent")
+	require.NoError(t, err)
+	response, err := client.GetCluster(t.Context(), &cksv1beta1.GetClusterRequest{})
+	require.NoError(t, err)
+	require.NotNil(t, response.Cluster)
+	assert.Len(t, response.Cluster.Name, len(name))
+	assert.True(t, response.Cluster.Name == name)
+}
+
 func TestClientPropagatesTokenSourceErrors(t *testing.T) {
 	t.Parallel()
 
@@ -95,7 +121,7 @@ func TestClientPropagatesTokenSourceErrors(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Run("ConnectRPC", func(t *testing.T) {
-		_, err := client.GetCluster(t.Context(), connect.NewRequest(&cksv1beta1.GetClusterRequest{}))
+		_, err := client.GetCluster(t.Context(), &cksv1beta1.GetClusterRequest{})
 		require.ErrorContains(t, err, "getting access token: token refresh failed")
 
 		var connectErr *connect.Error
@@ -133,7 +159,7 @@ func TestClientPreservesTokenSourceCancellation(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	_, err = client.GetCluster(t.Context(), connect.NewRequest(&cksv1beta1.GetClusterRequest{}))
+	_, err = client.GetCluster(t.Context(), &cksv1beta1.GetClusterRequest{})
 	var connectErr *connect.Error
 	require.ErrorAs(t, err, &connectErr)
 	assert.Equal(t, connect.CodeCanceled, connectErr.Code())
@@ -220,7 +246,7 @@ func TestClientRefreshesTokenForConnectRetry(t *testing.T) {
 	client, err := coreweave.NewClient(server.URL, "https://objects.example.test", time.Second, source, "test-user-agent")
 	require.NoError(t, err)
 
-	_, err = client.GetCluster(t.Context(), connect.NewRequest(&cksv1beta1.GetClusterRequest{}))
+	_, err = client.GetCluster(t.Context(), &cksv1beta1.GetClusterRequest{})
 	require.Error(t, err)
 	assert.Equal(t, []string{"Bearer token-1", "Bearer token-2"}, authorizationHeaders)
 }
@@ -242,28 +268,28 @@ func TestHandleAPIError(t *testing.T) {
 			)},
 		}, {
 			name: "Internal error",
-			err:  connect.NewError(connect.CodeInternal, errors.New("Internal server error")),
+			err:  connect.NewError(connect.CodeInternal, "Internal server error"),
 			want: diag.Diagnostics{diag.NewErrorDiagnostic(
 				"Internal Error",
 				"An unexpected server error occurred: \"internal: Internal server error\". Please check the provider logs for more details.",
 			)},
 		}, {
 			name: "Canceled error",
-			err:  connect.NewError(connect.CodeCanceled, errors.New("token request canceled")),
+			err:  connect.NewError(connect.CodeCanceled, "token request canceled"),
 			want: diag.Diagnostics{diag.NewErrorDiagnostic(
 				"Request Canceled",
 				"canceled: token request canceled",
 			)},
 		}, {
 			name: "Deadline exceeded error",
-			err:  connect.NewError(connect.CodeDeadlineExceeded, errors.New("token request timed out")),
+			err:  connect.NewError(connect.CodeDeadlineExceeded, "token request timed out"),
 			want: diag.Diagnostics{diag.NewErrorDiagnostic(
 				"Request Timed Out",
 				"deadline_exceeded: token request timed out",
 			)},
 		}, {
 			name: "Unavailable error",
-			err:  connect.NewError(connect.CodeUnavailable, errors.New("identity provider unreachable")),
+			err:  connect.NewError(connect.CodeUnavailable, "identity provider unreachable"),
 			want: diag.Diagnostics{diag.NewErrorDiagnostic(
 				"Service Unavailable",
 				"unavailable: identity provider unreachable",
@@ -288,7 +314,7 @@ func TestHandleAPIErrorWithoutDetails(t *testing.T) {
 		t.Run(code.String(), func(t *testing.T) {
 			t.Parallel()
 			var diagnostics diag.Diagnostics
-			coreweave.HandleAPIError(t.Context(), connect.NewError(code, errors.New("rejected without details")), &diagnostics)
+			coreweave.HandleAPIError(t.Context(), connect.NewError(code, "rejected without details"), &diagnostics)
 			require.True(t, diagnostics.HasError())
 			require.Contains(t, diagnostics[0].Detail(), "rejected without details")
 		})
@@ -298,13 +324,13 @@ func TestHandleAPIErrorWithoutDetails(t *testing.T) {
 // TestHandleAPIErrorPreservesContext verifies shared diagnostics retain wrapping context and ErrorInfo.
 func TestHandleAPIErrorPreservesContext(t *testing.T) {
 	t.Parallel()
-	apiError := connect.NewError(connect.CodeFailedPrecondition, errors.New("request rejected"))
-	info, err := connect.NewErrorDetail(&errdetails.ErrorInfo{Reason: "ETAG_MISMATCH", Metadata: map[string]string{"current_etag": "new-etag"}})
+	apiError := connect.NewError(connect.CodeFailedPrecondition, "request rejected")
+	info, err := connectproto.NewErrorDetail(&errdetails.ErrorInfo{Reason: "ETAG_MISMATCH", Metadata: map[string]string{"current_etag": "new-etag"}})
 	require.NoError(t, err)
-	apiError.AddDetail(info)
-	precondition, err := connect.NewErrorDetail(&errdetails.PreconditionFailure{Violations: []*errdetails.PreconditionFailure_Violation{{Type: "etag", Description: "refresh the resource"}}})
+	apiError = apiError.WithDetail(info)
+	precondition, err := connectproto.NewErrorDetail(&errdetails.PreconditionFailure{Violations: []*errdetails.PreconditionFailure_Violation{{Type: "etag", Description: "refresh the resource"}}})
 	require.NoError(t, err)
-	apiError.AddDetail(precondition)
+	apiError = apiError.WithDetail(precondition)
 	var diagnostics diag.Diagnostics
 	coreweave.HandleAPIError(t.Context(), fmt.Errorf("updating resource: %w", apiError), &diagnostics)
 	require.True(t, diagnostics.HasError())

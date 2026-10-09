@@ -14,9 +14,10 @@ import (
 	"testing"
 	"time"
 
-	"buf.build/gen/go/coreweave/sandbox/connectrpc/go/coreweave/sandbox/v1/sandboxv1connect"
+	"buf.build/gen/go/coreweave/sandbox/connectrpc/go/v2/coreweave/sandbox/v1/sandboxv1connect"
 	sandboxv1 "buf.build/gen/go/coreweave/sandbox/protocolbuffers/go/coreweave/sandbox/v1"
-	"connectrpc.com/connect"
+	"connectrpc.com/connect/v2"
+	"connectrpc.com/connect/v2/connecthttp"
 	"github.com/coreweave/terraform-provider-coreweave/internal/provider"
 	tfresource "github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/plancheck"
@@ -48,19 +49,19 @@ type runnerServer struct {
 	missingOnUpdate bool
 }
 
-func (s *runnerServer) CreateManagedRunner(_ context.Context, req *connect.Request[sandboxv1.CreateManagedRunnerRequest]) (*connect.Response[sandboxv1.ManagedRunner], error) {
+func (s *runnerServer) CreateManagedRunner(_ context.Context, req *sandboxv1.CreateManagedRunnerRequest) (*sandboxv1.ManagedRunner, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.runner != nil {
-		return nil, connect.NewError(connect.CodeAlreadyExists, fmt.Errorf("runner already exists"))
+		return nil, connect.Errorf(connect.CodeAlreadyExists, "runner already exists")
 	}
-	if req.Msg.GetRequestId() == "" {
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("missing idempotency token"))
+	if req.GetRequestId() == "" {
+		return nil, connect.Errorf(connect.CodeInvalidArgument, "missing idempotency token")
 	}
-	if req.Msg.ManagedRunner.Policy == nil || len(req.Msg.ManagedRunner.ProfileBindings) != 0 || req.Msg.ManagedRunner.GetSpec().GetAllowPrivilegedProfileAnnotations() {
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("expected a policy and no legacy configuration"))
+	if req.ManagedRunner.Policy == nil || len(req.ManagedRunner.ProfileBindings) != 0 || req.ManagedRunner.GetSpec().GetAllowPrivilegedProfileAnnotations() {
+		return nil, connect.Errorf(connect.CodeInvalidArgument, "expected a policy and no legacy configuration")
 	}
-	s.runner = proto.Clone(req.Msg.ManagedRunner).(*sandboxv1.ManagedRunner)
+	s.runner = proto.Clone(req.ManagedRunner).(*sandboxv1.ManagedRunner)
 	sortRuntimeClassMappings(s.runner)
 	s.runner.Identity.Zone = strings.ToLower(s.runner.Identity.Zone)
 	if s.runner.Identity.RunnerGroupId == "" {
@@ -81,10 +82,10 @@ func (s *runnerServer) CreateManagedRunner(_ context.Context, req *connect.Reque
 	s.runner.ActiveRevision = 1
 	s.runner.TargetRevision = 1
 	s.creates++
-	return connect.NewResponse(proto.Clone(s.runner).(*sandboxv1.ManagedRunner)), nil
+	return proto.Clone(s.runner).(*sandboxv1.ManagedRunner), nil
 }
 
-func (s *runnerServer) GetManagedRunner(_ context.Context, req *connect.Request[sandboxv1.GetManagedRunnerRequest]) (*connect.Response[sandboxv1.ManagedRunner], error) {
+func (s *runnerServer) GetManagedRunner(_ context.Context, req *sandboxv1.GetManagedRunnerRequest) (*sandboxv1.ManagedRunner, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.deleting {
@@ -94,13 +95,13 @@ func (s *runnerServer) GetManagedRunner(_ context.Context, req *connect.Request[
 			s.deleting = false
 		}
 	}
-	if s.runner == nil || req.Msg.RunnerId != s.runner.Identity.RunnerId {
-		return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("runner not found"))
+	if s.runner == nil || req.RunnerId != s.runner.Identity.RunnerId {
+		return nil, connect.Errorf(connect.CodeNotFound, "runner not found")
 	}
-	return connect.NewResponse(proto.Clone(s.runner).(*sandboxv1.ManagedRunner)), nil
+	return proto.Clone(s.runner).(*sandboxv1.ManagedRunner), nil
 }
 
-func (s *runnerServer) UpdateManagedRunner(_ context.Context, req *connect.Request[sandboxv1.UpdateManagedRunnerRequest]) (*connect.Response[sandboxv1.ManagedRunner], error) {
+func (s *runnerServer) UpdateManagedRunner(_ context.Context, req *sandboxv1.UpdateManagedRunnerRequest) (*sandboxv1.ManagedRunner, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.missingOnUpdate {
@@ -108,24 +109,24 @@ func (s *runnerServer) UpdateManagedRunner(_ context.Context, req *connect.Reque
 		s.missingOnUpdate = false
 	}
 	if s.runner == nil {
-		return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("runner not found during update"))
+		return nil, connect.Errorf(connect.CodeNotFound, "runner not found during update")
 	}
-	paths := req.Msg.GetUpdateMask().GetPaths()
+	paths := req.GetUpdateMask().GetPaths()
 	if len(paths) == 0 || slices.Contains(paths, "*") {
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("an explicit update mask is required"))
+		return nil, connect.Errorf(connect.CodeInvalidArgument, "an explicit update mask is required")
 	}
 	if slices.Contains(paths, "policy") {
 		if s.staleOnUpdate {
 			s.runner.Etag = "concurrent-etag"
 			s.staleOnUpdate = false
 		}
-		if req.Msg.ManagedRunner.Etag != s.runner.Etag {
-			return nil, connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf("managed_runner.etag is stale; reload the runner and retry"))
+		if req.ManagedRunner.Etag != s.runner.Etag {
+			return nil, connect.Errorf(connect.CodeFailedPrecondition, "managed_runner.etag is stale; reload the runner and retry")
 		}
 	}
 	for _, mask := range paths {
-		if err := applyRunnerMask(s.runner.ProtoReflect(), req.Msg.ManagedRunner.ProtoReflect(), strings.Split(mask, ".")); err != nil {
-			return nil, connect.NewError(connect.CodeInvalidArgument, err)
+		if err := applyRunnerMask(s.runner.ProtoReflect(), req.ManagedRunner.ProtoReflect(), strings.Split(mask, ".")); err != nil {
+			return nil, connect.NewError(connect.CodeInvalidArgument, err.Error()).WithCause(err)
 		}
 	}
 	if s.runner.Identity.RunnerGroupId == "" {
@@ -136,7 +137,7 @@ func (s *runnerServer) UpdateManagedRunner(_ context.Context, req *connect.Reque
 	if slices.Contains(paths, "policy") {
 		s.runner.Etag = fmt.Sprintf("etag-%d", len(s.updates)+1)
 	}
-	return connect.NewResponse(proto.Clone(s.runner).(*sandboxv1.ManagedRunner)), nil
+	return proto.Clone(s.runner).(*sandboxv1.ManagedRunner), nil
 }
 
 // The API stores runtime class mappings sorted by class.
@@ -163,25 +164,26 @@ func applyRunnerMask(target, source protoreflect.Message, parts []string) error 
 	return nil
 }
 
-func (s *runnerServer) DeleteManagedRunner(_ context.Context, req *connect.Request[sandboxv1.DeleteManagedRunnerRequest]) (*connect.Response[emptypb.Empty], error) {
+func (s *runnerServer) DeleteManagedRunner(_ context.Context, req *sandboxv1.DeleteManagedRunnerRequest) (*emptypb.Empty, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if !req.Msg.AllowMissing {
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("allow_missing must be true"))
+	if !req.AllowMissing {
+		return nil, connect.Errorf(connect.CodeInvalidArgument, "allow_missing must be true")
 	}
 	s.deletes++
 	if s.runner != nil {
 		s.deleting = true
 	}
-	return connect.NewResponse(&emptypb.Empty{}), nil
+	return &emptypb.Empty{}, nil
 }
 
 func startRunnerServer(t *testing.T) *runnerServer {
 	t.Helper()
 	service := &runnerServer{}
-	route, handler := sandboxv1connect.NewRunnerManagementServiceHandler(service)
+	rpcServer := connect.NewServer()
+	sandboxv1connect.RegisterRunnerManagementServiceHandler(rpcServer, service)
 	mux := http.NewServeMux()
-	mux.Handle(route, handler)
+	connecthttp.Mount(mux, rpcServer, connecthttp.WithReadMaxBytes(0))
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "Bearer test-token" {
 			t.Errorf("missing bearer authentication")

@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	cwobjectv1 "buf.build/gen/go/coreweave/cwobject/protocolbuffers/go/cwobject/v1"
-	"connectrpc.com/connect"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
 	"github.com/coreweave/terraform-provider-coreweave/internal/provider"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
@@ -43,11 +42,11 @@ resource "coreweave_object_storage_access_key" "other" {
 			return fmt.Errorf("replacement changed the other key ID")
 		}
 		otherID = other.Primary.ID
-		info, err := client.GetAccessKeyInfo(context.Background(), connect.NewRequest(&cwobjectv1.GetAccessKeyInfoRequest{AccessKeyId: otherID}))
+		info, err := client.GetAccessKeyInfo(context.Background(), &cwobjectv1.GetAccessKeyInfoRequest{AccessKeyId: otherID})
 		if err != nil {
 			return err
 		}
-		if info.Msg.GetInfo().GetStatus() != "ACTIVE" {
+		if info.GetInfo().GetStatus() != "ACTIVE" {
 			return fmt.Errorf("other key is no longer active")
 		}
 		if firstID != "" && firstID != managed.Primary.ID {
@@ -93,14 +92,14 @@ resource "coreweave_object_storage_access_key" "other" {
 
 // Revocation retains metadata with DELETED status until the service removes it.
 func checkAccessKeyRevoked(client *coreweave.Client, id string) error {
-	response, err := client.GetAccessKeyInfo(context.Background(), connect.NewRequest(&cwobjectv1.GetAccessKeyInfoRequest{AccessKeyId: id}))
+	response, err := client.GetAccessKeyInfo(context.Background(), &cwobjectv1.GetAccessKeyInfoRequest{AccessKeyId: id})
 	if coreweave.IsNotFoundError(err) {
 		return nil
 	}
 	if err != nil {
 		return fmt.Errorf("read revoked test key %s: %w", id, err)
 	}
-	info := response.Msg.GetInfo()
+	info := response.GetInfo()
 	if info.GetAccessKeyId() != id || info.GetStatus() != "DELETED" {
 		return fmt.Errorf("test key %s was not revoked: API status %q", id, info.GetStatus())
 	}

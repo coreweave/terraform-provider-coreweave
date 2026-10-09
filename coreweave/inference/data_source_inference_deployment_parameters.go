@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	inferencev1 "buf.build/gen/go/coreweave/inference/protocolbuffers/go/coreweave/inference/v1alpha1"
-	"connectrpc.com/connect"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -125,13 +124,13 @@ func (d *InferenceDeploymentParametersDataSource) Configure(_ context.Context, r
 }
 
 func (d *InferenceDeploymentParametersDataSource) Read(ctx context.Context, _ datasource.ReadRequest, resp *datasource.ReadResponse) {
-	paramsResp, err := d.client.GetDeploymentParameters(ctx, connect.NewRequest(&inferencev1.GetDeploymentParametersRequest{}))
+	paramsResp, err := d.client.GetDeploymentParameters(ctx, &inferencev1.GetDeploymentParametersRequest{})
 	if err != nil {
 		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
 		return
 	}
 
-	msg := paramsResp.Msg
+	msg := paramsResp
 
 	var data InferenceDeploymentParametersDataSourceModel
 

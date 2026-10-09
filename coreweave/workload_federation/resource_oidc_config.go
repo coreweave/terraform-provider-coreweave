@@ -10,7 +10,6 @@ import (
 	"time"
 
 	controlplanev1beta1 "buf.build/gen/go/coreweave/workload-federation/protocolbuffers/go/coreweave/workload_federation/control_plane/v1beta1"
-	"connectrpc.com/connect"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -332,13 +331,13 @@ func (r *OIDCConfigResource) Create(ctx context.Context, req resource.CreateRequ
 		return
 	}
 
-	createResp, err := r.client.CreateOIDCConfig(ctx, connect.NewRequest(data.ToCreateRequest()))
+	createResp, err := r.client.CreateOIDCConfig(ctx, data.ToCreateRequest())
 	if err != nil {
 		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
 		return
 	}
 
-	if err := data.SetFromProto(createResp.Msg.GetConfig()); err != nil {
+	if err := data.SetFromProto(createResp.GetConfig()); err != nil {
 		resp.Diagnostics.AddError(
 			"OIDC Configuration ID Missing After Creation",
 			"The workload federation API reported a successful creation but did not return the created configuration or its ID. Terraform will not adopt a configuration by matching mutable fields. Locate the configuration in your organization and import it before applying again.",
@@ -355,9 +354,9 @@ func (r *OIDCConfigResource) Read(ctx context.Context, req resource.ReadRequest,
 		return
 	}
 
-	readResp, err := r.client.GetOIDCConfig(ctx, connect.NewRequest(&controlplanev1beta1.GetOIDCConfigRequest{
+	readResp, err := r.client.GetOIDCConfig(ctx, &controlplanev1beta1.GetOIDCConfigRequest{
 		Uid: data.ID.ValueString(),
-	}))
+	})
 	if err != nil {
 		if coreweave.IsNotFoundError(err) {
 			resp.State.RemoveResource(ctx)
@@ -367,7 +366,7 @@ func (r *OIDCConfigResource) Read(ctx context.Context, req resource.ReadRequest,
 		return
 	}
 
-	if err := data.SetFromProto(readResp.Msg.GetConfig()); err != nil {
+	if err := data.SetFromProto(readResp.GetConfig()); err != nil {
 		resp.Diagnostics.AddError("Unexpected API Response", fmt.Sprintf("The workload federation API returned an invalid OIDC configuration while reading state: %s.", err))
 		return
 	}
@@ -385,9 +384,9 @@ func (r *OIDCConfigResource) Update(ctx context.Context, req resource.UpdateRequ
 
 	updateReq := plan.ToUpdateRequest(&state)
 	if len(updateReq.UpdateMask.Paths) == 0 {
-		readResp, err := r.client.GetOIDCConfig(ctx, connect.NewRequest(&controlplanev1beta1.GetOIDCConfigRequest{
+		readResp, err := r.client.GetOIDCConfig(ctx, &controlplanev1beta1.GetOIDCConfigRequest{
 			Uid: state.ID.ValueString(),
-		}))
+		})
 		if err != nil {
 			if coreweave.IsNotFoundError(err) {
 				resp.Diagnostics.AddError(
@@ -402,7 +401,7 @@ func (r *OIDCConfigResource) Update(ctx context.Context, req resource.UpdateRequ
 
 		// Nothing was mutated, so the planned values stand; the read only exists to
 		// resolve computed attributes that are still unknown.
-		if err := plan.FillUnknownFromProto(readResp.Msg.GetConfig()); err != nil {
+		if err := plan.FillUnknownFromProto(readResp.GetConfig()); err != nil {
 			resp.Diagnostics.AddError("Unexpected API Response", fmt.Sprintf("The workload federation API returned an invalid OIDC configuration after a no-op update: %s.", err))
 			return
 		}
@@ -410,7 +409,7 @@ func (r *OIDCConfigResource) Update(ctx context.Context, req resource.UpdateRequ
 		return
 	}
 
-	updateResp, err := r.client.UpdateOIDCConfig(ctx, connect.NewRequest(updateReq))
+	updateResp, err := r.client.UpdateOIDCConfig(ctx, updateReq)
 	if err != nil {
 		if coreweave.IsNotFoundError(err) {
 			resp.Diagnostics.AddError(
@@ -423,15 +422,15 @@ func (r *OIDCConfigResource) Update(ctx context.Context, req resource.UpdateRequ
 		return
 	}
 
-	if err := plan.SetFromProto(updateResp.Msg.GetConfig()); err != nil {
-		readResp, readErr := r.client.GetOIDCConfig(ctx, connect.NewRequest(&controlplanev1beta1.GetOIDCConfigRequest{
+	if err := plan.SetFromProto(updateResp.GetConfig()); err != nil {
+		readResp, readErr := r.client.GetOIDCConfig(ctx, &controlplanev1beta1.GetOIDCConfigRequest{
 			Uid: state.ID.ValueString(),
-		}))
+		})
 		if readErr != nil {
 			coreweave.HandleAPIError(ctx, readErr, &resp.Diagnostics)
 			return
 		}
-		if readBackErr := plan.SetFromProto(readResp.Msg.GetConfig()); readBackErr != nil {
+		if readBackErr := plan.SetFromProto(readResp.GetConfig()); readBackErr != nil {
 			resp.Diagnostics.AddError("Unexpected API Response", fmt.Sprintf("The workload federation API returned an invalid OIDC configuration after update and the subsequent read could not recover it: %s.", readBackErr))
 			return
 		}
@@ -446,9 +445,9 @@ func (r *OIDCConfigResource) Delete(ctx context.Context, req resource.DeleteRequ
 		return
 	}
 
-	_, err := r.client.DeleteOIDCConfig(ctx, connect.NewRequest(&controlplanev1beta1.DeleteOIDCConfigRequest{
+	_, err := r.client.DeleteOIDCConfig(ctx, &controlplanev1beta1.DeleteOIDCConfigRequest{
 		Uid: data.ID.ValueString(),
-	}))
+	})
 	if err != nil && !coreweave.IsNotFoundError(err) {
 		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
 	}

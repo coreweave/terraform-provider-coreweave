@@ -6,7 +6,6 @@ import (
 	"fmt"
 
 	cksv1beta1 "buf.build/gen/go/coreweave/cks/protocolbuffers/go/coreweave/cks/v1beta1"
-	"connectrpc.com/connect"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/hashicorp/hcl/v2/hclwrite"
@@ -216,14 +215,14 @@ func (d *ClusterDataSource) Read(ctx context.Context, req datasource.ReadRequest
 		return
 	}
 
-	cluster, err := d.client.GetCluster(ctx, connect.NewRequest(&cksv1beta1.GetClusterRequest{
+	cluster, err := d.client.GetCluster(ctx, &cksv1beta1.GetClusterRequest{
 		Id: data.Id.ValueString(),
-	}))
+	})
 	if err != nil {
 		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
 		return
 	}
-	data.Set(cluster.Msg.Cluster)
+	data.Set(cluster.Cluster)
 	resp.Diagnostics.Append(resp.State.Set(ctx, data)...)
 }
 

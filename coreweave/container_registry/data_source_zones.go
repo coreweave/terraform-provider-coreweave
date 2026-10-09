@@ -6,9 +6,8 @@ import (
 	"sort"
 	"time"
 
-	client "buf.build/gen/go/coreweave/container-registry-api/connectrpc/go/coreweave/registry/v1alpha1/registryv1alpha1connect"
+	client "buf.build/gen/go/coreweave/container-registry-api/connectrpc/go/v2/coreweave/registry/v1alpha1/registryv1alpha1connect"
 	api "buf.build/gen/go/coreweave/container-registry-api/protocolbuffers/go/coreweave/registry/v1alpha1"
-	"connectrpc.com/connect"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
 	"github.com/hashicorp/terraform-plugin-framework-timeouts/datasource/timeouts"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -90,15 +89,15 @@ func (d *ZonesDataSource) Read(ctx context.Context, req datasource.ReadRequest, 
 		report(ctx, err, &resp.Diagnostics)
 		return
 	}
-	res, err := d.client.ListZones(c, connect.NewRequest(&api.ListZonesRequest{Zones: filters}))
+	res, err := d.client.ListZones(c, &api.ListZonesRequest{Zones: filters})
 	if err != nil {
 		report(ctx, err, &resp.Diagnostics)
 		return
 	}
-	sort.Slice(res.Msg.Zones, func(i, j int) bool { return res.Msg.Zones[i].Zone < res.Msg.Zones[j].Zone })
+	sort.Slice(res.Zones, func(i, j int) bool { return res.Zones[i].Zone < res.Zones[j].Zone })
 	elementType := zonesDataAttributes()["zones"].GetType().(types.ListType).ElemType
-	values := make([]ZoneObservationModel, len(res.Msg.Zones))
-	for i, zone := range res.Msg.Zones {
+	values := make([]ZoneObservationModel, len(res.Zones))
+	for i, zone := range res.Zones {
 		values[i] = ZoneObservationModel{Zone: types.StringValue(zone.Zone), Available: types.BoolValue(zone.Available)}
 	}
 	value, diags := types.ListValueFrom(ctx, elementType, values)

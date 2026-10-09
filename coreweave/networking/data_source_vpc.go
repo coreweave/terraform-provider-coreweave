@@ -6,7 +6,6 @@ import (
 	"fmt"
 
 	networkingv1beta1 "buf.build/gen/go/coreweave/networking/protocolbuffers/go/coreweave/networking/v1beta1"
-	"connectrpc.com/connect"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/hashicorp/hcl/v2/hclwrite"
@@ -171,15 +170,15 @@ func (d *VpcDataSource) Read(ctx context.Context, req datasource.ReadRequest, re
 		return
 	}
 
-	cluster, err := d.client.GetVPC(ctx, connect.NewRequest(&networkingv1beta1.GetVPCRequest{
+	cluster, err := d.client.GetVPC(ctx, &networkingv1beta1.GetVPCRequest{
 		Id: data.Id.ValueString(),
-	}))
+	})
 	if err != nil {
 		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
 		return
 	}
 
-	data.Set(cluster.Msg.Vpc)
+	data.Set(cluster.Vpc)
 	resp.Diagnostics.Append(resp.State.Set(ctx, data)...)
 }
 

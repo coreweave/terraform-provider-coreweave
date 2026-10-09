@@ -6,9 +6,8 @@ import (
 	"strings"
 	"time"
 
-	client "buf.build/gen/go/coreweave/container-registry-api/connectrpc/go/coreweave/registry/v1alpha1/registryv1alpha1connect"
+	client "buf.build/gen/go/coreweave/container-registry-api/connectrpc/go/v2/coreweave/registry/v1alpha1/registryv1alpha1connect"
 	api "buf.build/gen/go/coreweave/container-registry-api/protocolbuffers/go/coreweave/registry/v1alpha1"
-	"connectrpc.com/connect"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
 	"github.com/hashicorp/terraform-plugin-framework-timeouts/resource/timeouts"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -96,18 +95,18 @@ func (r *NamespaceResource) namespaceDelete(ctx context.Context, a *NamespaceRes
 	if e := saveRecovery(ctx, p, rec); e != nil {
 		return true, e
 	}
-	res, e := r.client.DeleteRegistryNamespace(ctx, connect.NewRequest(q))
+	res, e := r.client.DeleteRegistryNamespace(ctx, q)
 	if coreweave.IsNotFoundError(e) {
 		return true, saveRecovery(ctx, p, nil)
 	}
 	if e != nil {
 		return true, e
 	}
-	rec.Operation = res.Msg.Name
+	rec.Operation = res.Name
 	if err := saveRecovery(ctx, p, rec); err != nil {
 		return true, err
 	}
-	if e = waitOperation(ctx, r.client, res.Msg, &emptypb.Empty{}); e != nil {
+	if e = waitOperation(ctx, r.client, res, &emptypb.Empty{}); e != nil {
 		return true, e
 	}
 	err := poll(ctx, "namespace deletion "+name, func(ctx context.Context) (bool, error) {
@@ -148,17 +147,17 @@ func (r *NamespaceResource) namespaceCreate(ctx context.Context, a *NamespaceRes
 	if err := saveRecovery(ctx, p, rec); err != nil {
 		return false, err
 	}
-	res, e := r.client.CreateRegistryNamespace(ctx, connect.NewRequest(q))
+	res, e := r.client.CreateRegistryNamespace(ctx, q)
 	if e != nil {
 		return false, fmt.Errorf("create %s: %w; if the response was lost, inspect server operations and explicitly import the verified namespace; an existing name is not proof of ownership", name, e)
 	}
 	a.ID = types.StringValue(name)
-	rec.Operation = res.Msg.Name
+	rec.Operation = res.Name
 	if err := saveRecovery(ctx, p, rec); err != nil {
 		return true, err
 	}
 	result := new(api.RegistryNamespace)
-	e = waitOperation(ctx, r.client, res.Msg, result)
+	e = waitOperation(ctx, r.client, res, result)
 	if e != nil {
 		if last, readErr := getNamespace(ctx, r.client, name, false); readErr == nil {
 			_ = a.Set(ctx, last)
@@ -191,16 +190,16 @@ func (r *NamespaceResource) namespaceUpdate(ctx context.Context, a, old *Namespa
 	if err := saveRecovery(ctx, p, rec); err != nil {
 		return err
 	}
-	res, e := r.client.UpdateRegistryNamespace(ctx, connect.NewRequest(q))
+	res, e := r.client.UpdateRegistryNamespace(ctx, q)
 	if e != nil {
 		return e
 	}
-	rec.Operation = res.Msg.Name
+	rec.Operation = res.Name
 	if err := saveRecovery(ctx, p, rec); err != nil {
 		return err
 	}
 	result := new(api.RegistryNamespace)
-	if e = waitOperation(ctx, r.client, res.Msg, result); e != nil {
+	if e = waitOperation(ctx, r.client, res, result); e != nil {
 		return e
 	}
 	if result.Name != name {

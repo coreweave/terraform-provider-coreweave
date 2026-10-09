@@ -9,7 +9,7 @@ import (
 	"time"
 
 	networkingv1beta1 "buf.build/gen/go/coreweave/networking/protocolbuffers/go/coreweave/networking/v1beta1"
-	"connectrpc.com/connect"
+	"connectrpc.com/connect/v2"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/hashicorp/terraform-plugin-framework-nettypes/cidrtypes"
@@ -613,14 +613,14 @@ func (r *VpcResource) Create(ctx context.Context, req resource.CreateRequest, re
 		return
 	}
 
-	createResp, err := r.client.CreateVPC(ctx, connect.NewRequest(createReq))
+	createResp, err := r.client.CreateVPC(ctx, createReq)
 	if err != nil {
 		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
 		return
 	}
 
 	// set state once vpc is created
-	data.Set(createResp.Msg.Vpc)
+	data.Set(createResp.Vpc)
 	// if we fail to set state, return early as the resource will be orphaned
 	if diag := resp.State.Set(ctx, &data); diag.HasError() {
 		resp.Diagnostics.Append(diag...)
@@ -635,9 +635,9 @@ func (r *VpcResource) Create(ctx context.Context, req resource.CreateRequest, re
 		},
 		Target: []string{networkingv1beta1.VPC_STATUS_READY.String()},
 		Refresh: func() (result interface{}, state string, err error) {
-			resp, err := r.client.GetVPC(ctx, connect.NewRequest(&networkingv1beta1.GetVPCRequest{
-				Id: createResp.Msg.Vpc.Id,
-			}))
+			resp, err := r.client.GetVPC(ctx, &networkingv1beta1.GetVPCRequest{
+				Id: createResp.Vpc.Id,
+			})
 			if err != nil {
 				tflog.Error(ctx, "failed to fetch vpc resource", map[string]interface{}{
 					"error": err,
@@ -645,7 +645,7 @@ func (r *VpcResource) Create(ctx context.Context, req resource.CreateRequest, re
 				return nil, networkingv1beta1.VPC_STATUS_UNSPECIFIED.String(), err
 			}
 
-			return resp.Msg.Vpc, resp.Msg.Vpc.Status.String(), nil
+			return resp.Vpc, resp.Vpc.Status.String(), nil
 		},
 		Timeout: 20 * time.Minute,
 	}
@@ -680,9 +680,9 @@ func (r *VpcResource) Read(ctx context.Context, req resource.ReadRequest, resp *
 		return
 	}
 
-	vpc, err := r.client.GetVPC(ctx, connect.NewRequest(&networkingv1beta1.GetVPCRequest{
+	vpc, err := r.client.GetVPC(ctx, &networkingv1beta1.GetVPCRequest{
 		Id: data.Id.ValueString(),
-	}))
+	})
 	if err != nil {
 		if coreweave.IsNotFoundError(err) {
 			resp.State.RemoveResource(ctx)
@@ -693,7 +693,7 @@ func (r *VpcResource) Read(ctx context.Context, req resource.ReadRequest, resp *
 		return
 	}
 
-	data.Set(vpc.Msg.Vpc)
+	data.Set(vpc.Vpc)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -713,7 +713,7 @@ func (r *VpcResource) Update(ctx context.Context, req resource.UpdateRequest, re
 		return
 	}
 
-	updateResp, err := r.client.UpdateVPC(ctx, connect.NewRequest(updateReq))
+	updateResp, err := r.client.UpdateVPC(ctx, updateReq)
 	if err != nil {
 		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
 		return
@@ -727,9 +727,9 @@ func (r *VpcResource) Update(ctx context.Context, req resource.UpdateRequest, re
 		},
 		Target: []string{networkingv1beta1.VPC_STATUS_READY.String()},
 		Refresh: func() (result interface{}, state string, err error) {
-			resp, err := r.client.GetVPC(ctx, connect.NewRequest(&networkingv1beta1.GetVPCRequest{
-				Id: updateResp.Msg.Vpc.Id,
-			}))
+			resp, err := r.client.GetVPC(ctx, &networkingv1beta1.GetVPCRequest{
+				Id: updateResp.Vpc.Id,
+			})
 			if err != nil {
 				tflog.Error(ctx, "failed to fetch vpc resource", map[string]interface{}{
 					"error": err.Error(),
@@ -738,10 +738,10 @@ func (r *VpcResource) Update(ctx context.Context, req resource.UpdateRequest, re
 			}
 
 			tflog.Info(ctx, "fetching vpc", map[string]interface{}{
-				"vpc": resp.Msg.Vpc.String(),
+				"vpc": resp.Vpc.String(),
 			})
 
-			return resp.Msg.Vpc, resp.Msg.Vpc.Status.String(), nil
+			return resp.Vpc, resp.Vpc.Status.String(), nil
 		},
 		Timeout: 20 * time.Minute,
 	}
@@ -773,9 +773,9 @@ func (r *VpcResource) Delete(ctx context.Context, req resource.DeleteRequest, re
 		return
 	}
 
-	deleteResp, err := r.client.DeleteVPC(ctx, connect.NewRequest(&networkingv1beta1.DeleteVPCRequest{
+	deleteResp, err := r.client.DeleteVPC(ctx, &networkingv1beta1.DeleteVPCRequest{
 		Id: data.Id.ValueString(),
-	}))
+	})
 	if err != nil {
 		if coreweave.IsNotFoundError(err) {
 			return
@@ -791,9 +791,9 @@ func (r *VpcResource) Delete(ctx context.Context, req resource.DeleteRequest, re
 		},
 		Target: []string{""},
 		Refresh: func() (result interface{}, state string, err error) {
-			resp, err := r.client.GetVPC(ctx, connect.NewRequest(&networkingv1beta1.GetVPCRequest{
-				Id: deleteResp.Msg.Vpc.Id,
-			}))
+			resp, err := r.client.GetVPC(ctx, &networkingv1beta1.GetVPCRequest{
+				Id: deleteResp.Vpc.Id,
+			})
 			if err != nil {
 				var connectErr *connect.Error
 				if errors.As(err, &connectErr) && connectErr.Code() == connect.CodeNotFound {
@@ -806,7 +806,7 @@ func (r *VpcResource) Delete(ctx context.Context, req resource.DeleteRequest, re
 				return nil, networkingv1beta1.VPC_STATUS_UNSPECIFIED.String(), err
 			}
 
-			return resp.Msg.Vpc, resp.Msg.Vpc.Status.String(), nil
+			return resp.Vpc, resp.Vpc.Status.String(), nil
 		},
 		Timeout: 20 * time.Minute,
 	}

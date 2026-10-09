@@ -8,9 +8,10 @@ import (
 	"sync"
 	"testing"
 
-	"buf.build/gen/go/coreweave/cwobject/connectrpc/go/cwobject/v1/cwobjectv1connect"
+	"buf.build/gen/go/coreweave/cwobject/connectrpc/go/v2/cwobject/v1/cwobjectv1connect"
 	cwobjectv1 "buf.build/gen/go/coreweave/cwobject/protocolbuffers/go/cwobject/v1"
-	"connectrpc.com/connect"
+	"connectrpc.com/connect/v2"
+	"connectrpc.com/connect/v2/connecthttp"
 	"google.golang.org/protobuf/types/known/wrapperspb"
 )
 
@@ -63,7 +64,9 @@ func newFakeCWObject(t *testing.T, bucketName string, archiveEntitled bool) (str
 	}
 
 	mux := http.NewServeMux()
-	mux.Handle(cwobjectv1connect.NewCWObjectHandler(fake))
+	server := connect.NewServer()
+	cwobjectv1connect.RegisterCWObjectHandler(server, fake)
+	connecthttp.Mount(mux, server, connecthttp.WithReadMaxBytes(0))
 
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
@@ -156,12 +159,12 @@ func (b *fakeBucketSettings) toProto() *cwobjectv1.CWObjectBucketSettings {
 }
 
 func (f *fakeCWObject) SetBucketSettings(
-	_ context.Context, req *connect.Request[cwobjectv1.SetBucketSettingsRequest],
-) (*connect.Response[cwobjectv1.SetBucketSettingsResponse], error) {
-	settings := req.Msg.GetSettings()
+	_ context.Context, req *cwobjectv1.SetBucketSettingsRequest,
+) (*cwobjectv1.SetBucketSettingsResponse, error) {
+	settings := req.GetSettings()
 
 	if settings == nil {
-		return nil, connect.NewError(connect.CodeInvalidArgument, errMissingBucketSettings)
+		return nil, connect.NewError(connect.CodeInvalidArgument, errMissingBucketSettings.Error()).WithCause(errMissingBucketSettings)
 	}
 
 	f.mu.Lock()
@@ -170,7 +173,7 @@ func (f *fakeCWObject) SetBucketSettings(
 	f.setRequests = append(f.setRequests, settings)
 
 	if hasArchiveFields(settings) && !f.archiveEntitled {
-		return nil, connect.NewError(connect.CodePermissionDenied, errFeatureNotEntitled)
+		return nil, connect.NewError(connect.CodePermissionDenied, errFeatureNotEntitled.Error()).WithCause(errFeatureNotEntitled)
 	}
 
 	if hasArchiveFields(settings) {
@@ -179,16 +182,16 @@ func (f *fakeCWObject) SetBucketSettings(
 		}
 	}
 
-	stored, ok := f.buckets[req.Msg.GetBucketName()]
+	stored, ok := f.buckets[req.GetBucketName()]
 	if !ok {
-		return nil, connect.NewError(connect.CodeNotFound, errNotFound)
+		return nil, connect.NewError(connect.CodeNotFound, errNotFound.Error()).WithCause(errNotFound)
 	}
 
 	f.persist(stored, settings)
 
-	return connect.NewResponse(&cwobjectv1.SetBucketSettingsResponse{
+	return &cwobjectv1.SetBucketSettingsResponse{
 		Settings: f.sanitizeForOrg(stored.toProto()),
-	}), nil
+	}, nil
 }
 
 func (f *fakeCWObject) validateArchiveSettings(settings *cwobjectv1.CWObjectBucketSettings) error {
@@ -196,11 +199,11 @@ func (f *fakeCWObject) validateArchiveSettings(settings *cwobjectv1.CWObjectBuck
 	days := settings.GetArchiveAfterLastAccessDays()
 
 	if enabled.GetValue() && days == nil {
-		return connect.NewError(connect.CodeInvalidArgument, errArchiveDaysRequired)
+		return connect.NewError(connect.CodeInvalidArgument, errArchiveDaysRequired.Error()).WithCause(errArchiveDaysRequired)
 	}
 
 	if days != nil && days.GetValue() < f.archiveMinDays {
-		return connect.NewError(connect.CodeInvalidArgument, errArchiveDaysBelowMinimum)
+		return connect.NewError(connect.CodeInvalidArgument, errArchiveDaysBelowMinimum.Error()).WithCause(errArchiveDaysBelowMinimum)
 	}
 
 	return nil
@@ -249,20 +252,20 @@ func (f *fakeCWObject) persist(stored *fakeBucketSettings, settings *cwobjectv1.
 }
 
 func (f *fakeCWObject) GetBucketInfo(
-	_ context.Context, req *connect.Request[cwobjectv1.GetBucketInfoRequest],
-) (*connect.Response[cwobjectv1.GetBucketInfoResponse], error) {
+	_ context.Context, req *cwobjectv1.GetBucketInfoRequest,
+) (*cwobjectv1.GetBucketInfoResponse, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
-	stored, ok := f.buckets[req.Msg.GetBucketName()]
+	stored, ok := f.buckets[req.GetBucketName()]
 	if !ok {
-		return nil, connect.NewError(connect.CodeNotFound, errNotFound)
+		return nil, connect.NewError(connect.CodeNotFound, errNotFound.Error()).WithCause(errNotFound)
 	}
 
-	return connect.NewResponse(&cwobjectv1.GetBucketInfoResponse{
+	return &cwobjectv1.GetBucketInfoResponse{
 		Info: &cwobjectv1.BucketInfo{
-			Name:     req.Msg.GetBucketName(),
+			Name:     req.GetBucketName(),
 			Settings: f.sanitizeForOrg(stored.toProto()),
 		},
-	}), nil
+	}, nil
 }

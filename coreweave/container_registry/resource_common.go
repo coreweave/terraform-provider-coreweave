@@ -5,9 +5,9 @@ import (
 	"errors"
 	"fmt"
 
-	client "buf.build/gen/go/coreweave/container-registry-api/connectrpc/go/coreweave/registry/v1alpha1/registryv1alpha1connect"
+	client "buf.build/gen/go/coreweave/container-registry-api/connectrpc/go/v2/coreweave/registry/v1alpha1/registryv1alpha1connect"
 	api "buf.build/gen/go/coreweave/container-registry-api/protocolbuffers/go/coreweave/registry/v1alpha1"
-	"connectrpc.com/connect"
+	"connectrpc.com/connect/v2"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
 	"github.com/hashicorp/go-uuid"
 	"github.com/hashicorp/terraform-plugin-framework-timeouts/resource/timeouts"
@@ -40,14 +40,14 @@ func namespaceResourceName(name string) string {
 
 // getNamespace verifies parent existence and optional ACTIVE mutation admission.
 func getNamespace(ctx context.Context, c client.RegistryServiceClient, name string, active bool) (*api.RegistryNamespace, error) {
-	p, e := c.GetRegistryNamespace(ctx, connect.NewRequest(&api.GetRegistryNamespaceRequest{Name: name}))
+	p, e := c.GetRegistryNamespace(ctx, &api.GetRegistryNamespaceRequest{Name: name})
 	if e != nil {
 		return nil, e
 	}
-	if active && p.Msg.State != api.RegistryNamespace_STATE_ACTIVE {
-		return p.Msg, fmt.Errorf("parent %s is %s; policy mutation requires ACTIVE", name, p.Msg.State)
+	if active && p.State != api.RegistryNamespace_STATE_ACTIVE {
+		return p, fmt.Errorf("parent %s is %s; policy mutation requires ACTIVE", name, p.State)
 	}
-	return p.Msg, nil
+	return p, nil
 }
 
 // finishRecovery clears terminal failures but retains accepted work on polling errors.

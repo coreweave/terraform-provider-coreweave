@@ -9,7 +9,6 @@ import (
 	"time"
 
 	cwobjectv1 "buf.build/gen/go/coreweave/cwobject/protocolbuffers/go/cwobject/v1"
-	"connectrpc.com/connect"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -118,27 +117,27 @@ func (r *AccessKeyResource) Create(ctx context.Context, req resource.CreateReque
 		return
 	}
 	// Minting is not idempotent: a lost response cannot be recovered by repeating it.
-	created, err := r.client.CreateAccessKeyFromJWT(coreweave.WithoutRetries(ctx), connect.NewRequest(&cwobjectv1.CreateAccessKeyFromJWTRequest{DurationSeconds: wrapperspb.UInt32(uint32(data.DurationSeconds.ValueInt64())), Attributes: attributes})) // #nosec G115 -- schema validates the uint32 range.
+	created, err := r.client.CreateAccessKeyFromJWT(coreweave.WithoutRetries(ctx), &cwobjectv1.CreateAccessKeyFromJWTRequest{DurationSeconds: wrapperspb.UInt32(uint32(data.DurationSeconds.ValueInt64())), Attributes: attributes}) // #nosec G115 -- schema validates the uint32 range.
 	if err != nil {
 		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
 		resp.Diagnostics.AddWarning("Creation outcome may be unknown", "The create request was not retried. If the response was lost, inspect access keys with the service tooling before trying again; a created secret cannot be recovered.")
 		return
 	}
-	if created.Msg.AccessKeyId == "" {
+	if created.AccessKeyId == "" {
 		resp.Diagnostics.AddError("Invalid access-key response", "The API returned no key ID. Inspect access keys with the service tooling before trying again.")
 		return
 	}
-	data.ID = types.StringValue(created.Msg.AccessKeyId)
+	data.ID = types.StringValue(created.AccessKeyId)
 	data.SecretKey = types.StringNull()
-	if created.Msg.SecretKey != "" {
-		data.SecretKey = types.StringValue(created.Msg.SecretKey)
+	if created.SecretKey != "" {
+		data.SecretKey = types.StringValue(created.SecretKey)
 	}
-	data.PrincipalName = types.StringValue(created.Msg.PrincipalName)
-	data.Expiry = accessKeyExpiry(created.Msg.Expiry)
+	data.PrincipalName = types.StringValue(created.PrincipalName)
+	data.Expiry = accessKeyExpiry(created.Expiry)
 	data.OrgID = types.StringNull()
 	data.Status = types.StringNull()
 	if data.Attributes.IsUnknown() || data.Attributes.IsNull() {
-		attributes := created.Msg.Attributes
+		attributes := created.Attributes
 		if attributes == nil {
 			attributes = map[string]string{}
 		}
@@ -148,7 +147,7 @@ func (r *AccessKeyResource) Create(ctx context.Context, req resource.CreateReque
 	}
 	// Persist the creation-only secret and ID before any fallible follow-up read.
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
-	if created.Msg.SecretKey == "" {
+	if created.SecretKey == "" {
 		resp.Diagnostics.AddError("Missing access-key secret", "The API returned a key ID but no secret. The key remains tracked so it can be revoked; replace it to obtain a usable secret.")
 		return
 	}
@@ -164,12 +163,12 @@ func accessKeyExpiry(expiry *timestamppb.Timestamp) types.String {
 }
 
 func (r *AccessKeyResource) readInfo(ctx context.Context, data *accessKeyModel, diagnostics *diag.Diagnostics) {
-	info, err := r.client.GetAccessKeyInfo(ctx, connect.NewRequest(&cwobjectv1.GetAccessKeyInfoRequest{AccessKeyId: data.ID.ValueString()}))
+	info, err := r.client.GetAccessKeyInfo(ctx, &cwobjectv1.GetAccessKeyInfoRequest{AccessKeyId: data.ID.ValueString()})
 	if err != nil {
 		coreweave.HandleAPIError(ctx, err, diagnostics)
 		return
 	}
-	r.setInfo(ctx, data, info.Msg.Info, diagnostics)
+	r.setInfo(ctx, data, info.Info, diagnostics)
 }
 
 func (r *AccessKeyResource) setInfo(ctx context.Context, data *accessKeyModel, info *cwobjectv1.AccessKeyInfo, diagnostics *diag.Diagnostics) {
@@ -201,7 +200,7 @@ func (r *AccessKeyResource) Read(ctx context.Context, req resource.ReadRequest, 
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	info, err := r.client.GetAccessKeyInfo(ctx, connect.NewRequest(&cwobjectv1.GetAccessKeyInfoRequest{AccessKeyId: data.ID.ValueString()}))
+	info, err := r.client.GetAccessKeyInfo(ctx, &cwobjectv1.GetAccessKeyInfoRequest{AccessKeyId: data.ID.ValueString()})
 	if coreweave.IsNotFoundError(err) {
 		resp.State.RemoveResource(ctx)
 		return
@@ -210,11 +209,11 @@ func (r *AccessKeyResource) Read(ctx context.Context, req resource.ReadRequest, 
 		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
 		return
 	}
-	if info.Msg.Info != nil && info.Msg.Info.AccessKeyId == data.ID.ValueString() && info.Msg.Info.Status == "DELETED" {
+	if info.Info != nil && info.Info.AccessKeyId == data.ID.ValueString() && info.Info.Status == "DELETED" {
 		resp.State.RemoveResource(ctx)
 		return
 	}
-	r.setInfo(ctx, &data, info.Msg.Info, &resp.Diagnostics)
+	r.setInfo(ctx, &data, info.Info, &resp.Diagnostics)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -228,7 +227,7 @@ func (r *AccessKeyResource) Delete(ctx context.Context, req resource.DeleteReque
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	_, err := r.client.RevokeAccessKeyByAccessKey(ctx, connect.NewRequest(&cwobjectv1.RevokeAccessKeyByAccessKeyRequest{AccessKey: data.ID.ValueString()}))
+	_, err := r.client.RevokeAccessKeyByAccessKey(ctx, &cwobjectv1.RevokeAccessKeyByAccessKeyRequest{AccessKey: data.ID.ValueString()})
 	if err != nil && !coreweave.IsNotFoundError(err) {
 		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
 	}

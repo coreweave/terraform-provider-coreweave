@@ -7,7 +7,7 @@ import (
 	"os"
 	"time"
 
-	"connectrpc.com/connect"
+	"connectrpc.com/connect/v2"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
 	calleridentity "github.com/coreweave/terraform-provider-coreweave/coreweave/caller_identity"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave/cks"
@@ -210,14 +210,13 @@ func BuildClient(ctx context.Context, model CoreweaveProviderModel, tfVersion, p
 	userAgent := fmt.Sprintf("Terraform/%s terraform-provider-coreweave/%s (+https://github.com/coreweave/terraform-provider-coreweave)", tfVersion, providerVersion)
 
 	tokenSource := auth.NewStaticTokenSource(token)
-	userAgentInterceptor := connect.UnaryInterceptorFunc(
-		func(next connect.UnaryFunc) connect.UnaryFunc {
-			return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
-				req.Header().Set("User-Agent", userAgent)
-				return next(ctx, req)
-			}
-		},
-	)
+	userAgentInterceptor := func(next connect.ClientFunc) connect.ClientFunc {
+		return func(ctx context.Context, spec connect.Spec) (connect.ClientStream, error) {
+			info, _ := connect.CallInfoForClientContext(ctx)
+			info.RequestHeader().Set("User-Agent", userAgent)
+			return next(ctx, spec)
+		}
+	}
 
 	return coreweave.NewClientWithOptions(
 		endpoint,

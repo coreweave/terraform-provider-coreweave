@@ -19,7 +19,6 @@ import (
 	"time"
 
 	api "buf.build/gen/go/coreweave/container-registry-api/protocolbuffers/go/coreweave/registry/v1alpha1"
-	"connectrpc.com/connect"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
 	containerregistry "github.com/coreweave/terraform-provider-coreweave/coreweave/container_registry"
 	"github.com/coreweave/terraform-provider-coreweave/internal/provider"
@@ -55,11 +54,11 @@ func TestAccNamespaceBootstrap(t *testing.T) {
 					if err != nil {
 						return err
 					}
-					response, err := client.ContainerRegistry.GetRegistryAccessConfiguration(t.Context(), connect.NewRequest(&api.GetRegistryAccessConfigurationRequest{Parent: "namespaces/" + name}))
+					response, err := client.ContainerRegistry.GetRegistryAccessConfiguration(t.Context(), &api.GetRegistryAccessConfigurationRequest{Parent: "namespaces/" + name})
 					if err != nil {
 						return err
 					}
-					policy := response.Msg
+					policy := response
 					if !allow {
 						if len(policy.PolicySets) != 0 || policy.RequestIpAcl != nil {
 							return fmt.Errorf("empty bootstrap did not install deny-all")
@@ -110,7 +109,7 @@ func registerNonemptyNamespaceCleanup(t *testing.T, name, zone string) {
 			return
 		}
 		registry := configured.ContainerRegistry
-		namespace, err := registry.GetRegistryNamespace(ctx, connect.NewRequest(&api.GetRegistryNamespaceRequest{Name: "namespaces/" + name}))
+		namespace, err := registry.GetRegistryNamespace(ctx, &api.GetRegistryNamespaceRequest{Name: "namespaces/" + name})
 		if coreweave.IsNotFoundError(err) {
 			return
 		}
@@ -118,7 +117,7 @@ func registerNonemptyNamespaceCleanup(t *testing.T, name, zone string) {
 			t.Errorf("reading test namespace for cleanup: %s", err)
 			return
 		}
-		if namespace.Msg.Name != "namespaces/"+name || !sweepTarget(namespace.Msg, prefix, zone) {
+		if namespace.Name != "namespaces/"+name || !sweepTarget(namespace, prefix, zone) {
 			t.Errorf("refusing cleanup of namespace outside this test's name and zone")
 			return
 		}
@@ -127,12 +126,12 @@ func registerNonemptyNamespaceCleanup(t *testing.T, name, zone string) {
 			t.Errorf("generating namespace cleanup key: %s", err)
 			return
 		}
-		operation, err := registry.DeleteRegistryNamespace(ctx, connect.NewRequest(&api.DeleteRegistryNamespaceRequest{Name: namespace.Msg.Name, Force: true, IdempotencyKey: key}))
+		operation, err := registry.DeleteRegistryNamespace(ctx, &api.DeleteRegistryNamespaceRequest{Name: namespace.Name, Force: true, IdempotencyKey: key})
 		if coreweave.IsNotFoundError(err) {
 			return
 		}
 		if err == nil {
-			err = containerregistry.WaitOperation(ctx, registry, operation.Msg, &emptypb.Empty{})
+			err = containerregistry.WaitOperation(ctx, registry, operation, &emptypb.Empty{})
 		}
 		if err != nil {
 			t.Errorf("cleaning up nonempty test namespace: %s", err)
@@ -262,20 +261,20 @@ func pushAcceptanceImage(t *testing.T, name string) error {
 		return err
 	}
 	err = coreweave.PollUntil("bootstrap policy delivery", ctx, 3*time.Second, 5*time.Minute, func(ctx context.Context) (bool, error) {
-		response, err := configured.ContainerRegistry.GetRegistryAccessConfiguration(ctx, connect.NewRequest(&api.GetRegistryAccessConfigurationRequest{Parent: "namespaces/" + name}))
+		response, err := configured.ContainerRegistry.GetRegistryAccessConfiguration(ctx, &api.GetRegistryAccessConfigurationRequest{Parent: "namespaces/" + name})
 		if err != nil {
 			return false, err
 		}
-		return response.Msg.AccessConfigState == api.RegistryAccessConfiguration_ACCESS_CONFIG_STATE_ACCEPTED, nil
+		return response.AccessConfigState == api.RegistryAccessConfiguration_ACCESS_CONFIG_STATE_ACCEPTED, nil
 	})
 	if err != nil {
 		return err
 	}
-	namespace, err := configured.ContainerRegistry.GetRegistryNamespace(ctx, connect.NewRequest(&api.GetRegistryNamespaceRequest{Name: "namespaces/" + name}))
+	namespace, err := configured.ContainerRegistry.GetRegistryNamespace(ctx, &api.GetRegistryNamespaceRequest{Name: "namespaces/" + name})
 	if err != nil {
 		return err
 	}
-	base := "https://" + namespace.Msg.DnsName
+	base := "https://" + namespace.DnsName
 	client := &http.Client{Timeout: 30 * time.Second}
 	if err := waitRegistryEndpoint(ctx, client, base); err != nil {
 		return err

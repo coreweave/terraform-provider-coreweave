@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"time"
 
-	"connectrpc.com/connect"
+	"connectrpc.com/connect/v2"
 )
 
-type getterFunc[T any, X any] func(context.Context, *connect.Request[T]) (*connect.Response[X], error)
+type getterFunc[T any, X any] func(context.Context, *T) (*X, error)
 
 // WaitForDelete waits for a resource to be deleted by periodically calling a provided get function
 // until it returns a "not found" error or the context is canceled.
@@ -33,7 +33,7 @@ func WaitForDelete[R any, X any](ctx context.Context, timeout, interval time.Dur
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	for {
-		_, err := getFunc(ctx, connect.NewRequest(req))
+		_, err := getFunc(ctx, req)
 		if err != nil && connect.CodeOf(err) == connect.CodeNotFound {
 			return nil
 		} else if err != nil {

@@ -9,7 +9,9 @@ import (
 	"sync"
 	"testing"
 
-	client "buf.build/gen/go/coreweave/container-registry-api/connectrpc/go/coreweave/registry/v1alpha1/registryv1alpha1connect"
+	client "buf.build/gen/go/coreweave/container-registry-api/connectrpc/go/v2/coreweave/registry/v1alpha1/registryv1alpha1connect"
+	"connectrpc.com/connect/v2"
+	"connectrpc.com/connect/v2/connecthttp"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
 	"github.com/coreweave/terraform-provider-coreweave/internal/provider"
 	frameworkprovider "github.com/hashicorp/terraform-plugin-framework/provider"
@@ -43,10 +45,12 @@ type privateStateObserver struct {
 func fakeTerraformProviderFactories(t *testing.T, fake *fakeRegistry, observe *privateStateObserver) map[string]func() (tfprotov6.ProviderServer, error) {
 	t.Helper()
 	mux := http.NewServeMux()
-	mux.Handle(client.NewRegistryServiceHandler(fake))
+	srv := connect.NewServer()
+	client.RegisterRegistryServiceHandler(srv, fake)
+	connecthttp.Mount(mux, srv, connecthttp.WithReadMaxBytes(0))
 	server := httptest.NewServer(mux)
 	t.Cleanup(server.Close)
-	configured := &coreweave.Client{ContainerRegistry: client.NewRegistryServiceClient(server.Client(), server.URL)}
+	configured := &coreweave.Client{ContainerRegistry: client.NewRegistryServiceClient(connect.NewClient(connecthttp.NewTransport(server.Client(), server.URL, connecthttp.WithReadMaxBytes(0))))}
 	factory := providerserver.NewProtocol6WithError(&registryTestProvider{Provider: provider.New("test")(), client: configured})
 	return map[string]func() (tfprotov6.ProviderServer, error){"coreweave": func() (tfprotov6.ProviderServer, error) {
 		protocol, err := factory()

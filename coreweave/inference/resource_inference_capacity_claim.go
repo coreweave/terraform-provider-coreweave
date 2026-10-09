@@ -7,7 +7,6 @@ import (
 	"time"
 
 	inferencev1 "buf.build/gen/go/coreweave/inference/protocolbuffers/go/coreweave/inference/v1alpha1"
-	"connectrpc.com/connect"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/setvalidator"
@@ -219,14 +218,14 @@ func (r *InferenceCapacityClaimResource) Create(ctx context.Context, req resourc
 		return
 	}
 
-	createResp, err := r.client.CreateCapacityClaim(ctx, connect.NewRequest(createReq))
+	createResp, err := r.client.CreateCapacityClaim(ctx, createReq)
 	if err != nil {
 		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
 		return
 	}
 
 	// Save initial state before polling so the resource is tracked even if polling fails.
-	resp.Diagnostics.Append(setFromCapacityClaim(&data, createResp.Msg.GetCapacityClaim(), false)...)
+	resp.Diagnostics.Append(setFromCapacityClaim(&data, createResp.GetCapacityClaim(), false)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -235,7 +234,7 @@ func (r *InferenceCapacityClaimResource) Create(ctx context.Context, req resourc
 		return
 	}
 
-	claimID := createResp.Msg.GetCapacityClaim().GetSpec().GetId()
+	claimID := createResp.GetCapacityClaim().GetSpec().GetId()
 
 	conf := retry.StateChangeConf{
 		Pending: []string{
@@ -246,14 +245,14 @@ func (r *InferenceCapacityClaimResource) Create(ctx context.Context, req resourc
 			inferencev1.Status_STATUS_READY.String(),
 		},
 		Refresh: func() (interface{}, string, error) {
-			getResp, err := r.client.GetCapacityClaim(ctx, connect.NewRequest(&inferencev1.GetCapacityClaimRequest{
+			getResp, err := r.client.GetCapacityClaim(ctx, &inferencev1.GetCapacityClaimRequest{
 				Id: claimID,
-			}))
+			})
 			if err != nil {
 				tflog.Error(ctx, "failed to poll capacity claim", map[string]interface{}{"error": err.Error()})
 				return nil, inferencev1.Status_STATUS_UNSPECIFIED.String(), err
 			}
-			cc := getResp.Msg.GetCapacityClaim()
+			cc := getResp.GetCapacityClaim()
 			status := cc.GetStatus().GetStatus()
 			if status == inferencev1.Status_STATUS_ERROR || status == inferencev1.Status_STATUS_FAILED {
 				return cc, status.String(), errCapacityClaimFailed
@@ -294,9 +293,9 @@ func (r *InferenceCapacityClaimResource) Read(ctx context.Context, req resource.
 		return
 	}
 
-	getResp, err := r.client.GetCapacityClaim(ctx, connect.NewRequest(&inferencev1.GetCapacityClaimRequest{
+	getResp, err := r.client.GetCapacityClaim(ctx, &inferencev1.GetCapacityClaimRequest{
 		Id: data.ID.ValueString(),
-	}))
+	})
 	if err != nil {
 		if coreweave.IsNotFoundError(err) {
 			resp.State.RemoveResource(ctx)
@@ -306,7 +305,7 @@ func (r *InferenceCapacityClaimResource) Read(ctx context.Context, req resource.
 		return
 	}
 
-	resp.Diagnostics.Append(setFromCapacityClaim(&data, getResp.Msg.GetCapacityClaim(), false)...)
+	resp.Diagnostics.Append(setFromCapacityClaim(&data, getResp.GetCapacityClaim(), false)...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -323,7 +322,7 @@ func (r *InferenceCapacityClaimResource) Update(ctx context.Context, req resourc
 		return
 	}
 
-	updateResp, err := r.client.UpdateCapacityClaim(ctx, connect.NewRequest(updateReq))
+	updateResp, err := r.client.UpdateCapacityClaim(ctx, updateReq)
 	if err != nil {
 		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
 		return
@@ -331,7 +330,7 @@ func (r *InferenceCapacityClaimResource) Update(ctx context.Context, req resourc
 
 	// Save intermediate state before polling so an in-flight update is not lost
 	// if polling fails or times out.
-	resp.Diagnostics.Append(setFromCapacityClaim(&data, updateResp.Msg.GetCapacityClaim(), true)...)
+	resp.Diagnostics.Append(setFromCapacityClaim(&data, updateResp.GetCapacityClaim(), true)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -340,7 +339,7 @@ func (r *InferenceCapacityClaimResource) Update(ctx context.Context, req resourc
 		return
 	}
 
-	claimID := updateResp.Msg.GetCapacityClaim().GetSpec().GetId()
+	claimID := updateResp.GetCapacityClaim().GetSpec().GetId()
 
 	conf := retry.StateChangeConf{
 		Pending: []string{
@@ -352,14 +351,14 @@ func (r *InferenceCapacityClaimResource) Update(ctx context.Context, req resourc
 			inferencev1.Status_STATUS_READY.String(),
 		},
 		Refresh: func() (interface{}, string, error) {
-			getResp, err := r.client.GetCapacityClaim(ctx, connect.NewRequest(&inferencev1.GetCapacityClaimRequest{
+			getResp, err := r.client.GetCapacityClaim(ctx, &inferencev1.GetCapacityClaimRequest{
 				Id: claimID,
-			}))
+			})
 			if err != nil {
 				tflog.Error(ctx, "failed to poll capacity claim", map[string]interface{}{"error": err.Error()})
 				return nil, inferencev1.Status_STATUS_UNSPECIFIED.String(), err
 			}
-			cc := getResp.Msg.GetCapacityClaim()
+			cc := getResp.GetCapacityClaim()
 			status := cc.GetStatus().GetStatus()
 			if status == inferencev1.Status_STATUS_ERROR || status == inferencev1.Status_STATUS_FAILED {
 				return cc, status.String(), errCapacityClaimFailed
@@ -402,9 +401,9 @@ func (r *InferenceCapacityClaimResource) Delete(ctx context.Context, req resourc
 
 	claimID := data.ID.ValueString()
 
-	_, err := r.client.DeleteCapacityClaim(ctx, connect.NewRequest(&inferencev1.DeleteCapacityClaimRequest{
+	_, err := r.client.DeleteCapacityClaim(ctx, &inferencev1.DeleteCapacityClaimRequest{
 		Id: claimID,
-	}))
+	})
 	if err != nil {
 		if coreweave.IsNotFoundError(err) {
 			return
@@ -424,9 +423,9 @@ func (r *InferenceCapacityClaimResource) Delete(ctx context.Context, req resourc
 		},
 		Target: []string{deletedState},
 		Refresh: func() (interface{}, string, error) {
-			getResp, err := r.client.GetCapacityClaim(ctx, connect.NewRequest(&inferencev1.GetCapacityClaimRequest{
+			getResp, err := r.client.GetCapacityClaim(ctx, &inferencev1.GetCapacityClaimRequest{
 				Id: claimID,
-			}))
+			})
 			if err != nil {
 				if coreweave.IsNotFoundError(err) {
 					return struct{}{}, deletedState, nil
@@ -434,7 +433,7 @@ func (r *InferenceCapacityClaimResource) Delete(ctx context.Context, req resourc
 				tflog.Error(ctx, "failed to poll capacity claim deletion", map[string]interface{}{"error": err.Error()})
 				return nil, inferencev1.Status_STATUS_UNSPECIFIED.String(), err
 			}
-			cc := getResp.Msg.GetCapacityClaim()
+			cc := getResp.GetCapacityClaim()
 			return cc, cc.GetStatus().GetStatus().String(), nil
 		},
 		Timeout:    20 * time.Minute,

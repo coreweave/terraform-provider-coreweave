@@ -6,7 +6,6 @@ import (
 	"fmt"
 
 	cwobjectv1 "buf.build/gen/go/coreweave/cwobject/protocolbuffers/go/cwobject/v1"
-	"connectrpc.com/connect"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/hashicorp/hcl/v2/hclwrite"
@@ -146,13 +145,13 @@ func (b *BucketSettingsResource) Create(ctx context.Context, req resource.Create
 		Settings:   data.ToProtoObject(),
 	}
 
-	setResp, err := b.client.SetBucketSettings(ctx, connect.NewRequest(&setReq))
+	setResp, err := b.client.SetBucketSettings(ctx, &setReq)
 	if err != nil {
 		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
 		return
 	}
 
-	data.Set(setResp.Msg.Settings)
+	data.Set(setResp.Settings)
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 	if resp.Diagnostics.HasError() {
@@ -185,7 +184,7 @@ func (b *BucketSettingsResource) Delete(ctx context.Context, req resource.Delete
 		Settings:   &settings,
 	}
 
-	_, err := b.client.SetBucketSettings(ctx, connect.NewRequest(&deleteReq))
+	_, err := b.client.SetBucketSettings(ctx, &deleteReq)
 	if err != nil {
 		if coreweave.IsNotFoundError(err) {
 			resp.State.RemoveResource(ctx)
@@ -207,9 +206,9 @@ func (b *BucketSettingsResource) Read(ctx context.Context, req resource.ReadRequ
 		return
 	}
 
-	getResp, err := b.client.GetBucketInfo(ctx, connect.NewRequest(&cwobjectv1.GetBucketInfoRequest{
+	getResp, err := b.client.GetBucketInfo(ctx, &cwobjectv1.GetBucketInfoRequest{
 		BucketName: data.Bucket.ValueString(),
-	}))
+	})
 	if err != nil {
 		// The bucket is gone out-of-band; drop the settings so a subsequent plan
 		// can recreate them rather than reconciling against a bucket that is not there.
@@ -222,7 +221,7 @@ func (b *BucketSettingsResource) Read(ctx context.Context, req resource.ReadRequ
 		return
 	}
 
-	data.Set(getResp.Msg.Info.Settings)
+	data.Set(getResp.Info.Settings)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -330,13 +329,13 @@ func (b *BucketSettingsResource) Update(ctx context.Context, req resource.Update
 		Settings:   settings,
 	}
 
-	setResp, err := b.client.SetBucketSettings(ctx, connect.NewRequest(&setReq))
+	setResp, err := b.client.SetBucketSettings(ctx, &setReq)
 	if err != nil {
 		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
 		return
 	}
 
-	data.Set(setResp.Msg.Settings)
+	data.Set(setResp.Settings)
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 	if resp.Diagnostics.HasError() {
@@ -348,7 +347,7 @@ func (b *BucketSettingsResource) ImportState(ctx context.Context, req resource.I
 	getReq := cwobjectv1.GetBucketInfoRequest{
 		BucketName: req.ID,
 	}
-	getResp, err := b.client.GetBucketInfo(ctx, connect.NewRequest(&getReq))
+	getResp, err := b.client.GetBucketInfo(ctx, &getReq)
 	if err != nil {
 		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
 		return
@@ -356,7 +355,7 @@ func (b *BucketSettingsResource) ImportState(ctx context.Context, req resource.I
 
 	var data BucketSettingsModel
 	data.Bucket = types.StringValue(req.ID)
-	data.Set(getResp.Msg.Info.Settings)
+	data.Set(getResp.Info.Settings)
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 	if resp.Diagnostics.HasError() {

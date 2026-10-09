@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	controlplanev1beta1 "buf.build/gen/go/coreweave/workload-federation/protocolbuffers/go/coreweave/workload_federation/control_plane/v1beta1"
-	"connectrpc.com/connect"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -163,7 +162,7 @@ func (d *OIDCConfigDataSource) Read(ctx context.Context, req datasource.ReadRequ
 
 	var config *controlplanev1beta1.OIDCConfig
 	if !data.ID.IsNull() && !data.ID.IsUnknown() {
-		readResp, err := d.client.GetOIDCConfig(ctx, connect.NewRequest(&controlplanev1beta1.GetOIDCConfigRequest{Uid: data.ID.ValueString()}))
+		readResp, err := d.client.GetOIDCConfig(ctx, &controlplanev1beta1.GetOIDCConfigRequest{Uid: data.ID.ValueString()})
 		if err != nil {
 			if coreweave.IsNotFoundError(err) {
 				resp.Diagnostics.AddError(
@@ -175,14 +174,14 @@ func (d *OIDCConfigDataSource) Read(ctx context.Context, req datasource.ReadRequ
 			coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
 			return
 		}
-		config = readResp.Msg.GetConfig()
+		config = readResp.GetConfig()
 	} else {
-		listResp, err := d.client.ListOIDCConfigs(ctx, connect.NewRequest(&controlplanev1beta1.ListOIDCConfigsRequest{}))
+		listResp, err := d.client.ListOIDCConfigs(ctx, &controlplanev1beta1.ListOIDCConfigsRequest{})
 		if err != nil {
 			coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
 			return
 		}
-		config, err = selectOIDCConfigByIssuerAndAudience(listResp.Msg.GetConfigs(), data.IssuerURL.ValueString(), data.Audience.ValueString())
+		config, err = selectOIDCConfigByIssuerAndAudience(listResp.GetConfigs(), data.IssuerURL.ValueString(), data.Audience.ValueString())
 		if err != nil {
 			resp.Diagnostics.AddError("OIDC Configuration Lookup Failed", err.Error())
 			return

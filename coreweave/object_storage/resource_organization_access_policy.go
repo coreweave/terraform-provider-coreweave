@@ -6,7 +6,6 @@ import (
 	"fmt"
 
 	cwobjectv1 "buf.build/gen/go/coreweave/cwobject/protocolbuffers/go/cwobject/v1"
-	"connectrpc.com/connect"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
@@ -253,7 +252,7 @@ func (o *OrganizationAccessPolicyResource) Create(ctx context.Context, req resou
 		return
 	}
 
-	_, err := o.client.EnsureAccessPolicy(ctx, connect.NewRequest(policyReq))
+	_, err := o.client.EnsureAccessPolicy(ctx, policyReq)
 	if err != nil {
 		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
 		return
@@ -270,13 +269,13 @@ func (o *OrganizationAccessPolicyResource) Read(ctx context.Context, req resourc
 		return
 	}
 
-	policies, err := o.client.ListAccessPolicies(ctx, &connect.Request[cwobjectv1.ListAccessPoliciesRequest]{})
+	policies, err := o.client.ListAccessPolicies(ctx, &cwobjectv1.ListAccessPoliciesRequest{})
 	if err != nil {
 		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
 		return
 	}
 
-	for _, p := range policies.Msg.Policies {
+	for _, p := range policies.Policies {
 		if p.Name == data.Name.ValueString() {
 			data.Set(p)
 			resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
@@ -302,7 +301,7 @@ func (o *OrganizationAccessPolicyResource) Update(ctx context.Context, req resou
 		return
 	}
 
-	_, err := o.client.EnsureAccessPolicy(ctx, connect.NewRequest(policyReq))
+	_, err := o.client.EnsureAccessPolicy(ctx, policyReq)
 	if err != nil {
 		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
 		return
@@ -319,9 +318,9 @@ func (o *OrganizationAccessPolicyResource) Delete(ctx context.Context, req resou
 		return
 	}
 
-	_, err := o.client.DeleteAccessPolicy(ctx, connect.NewRequest(&cwobjectv1.DeleteAccessPolicyRequest{
+	_, err := o.client.DeleteAccessPolicy(ctx, &cwobjectv1.DeleteAccessPolicyRequest{
 		Name: data.Name.ValueString(),
-	}))
+	})
 	if err != nil {
 		if coreweave.IsNotFoundError(err) {
 			resp.State.RemoveResource(ctx)
@@ -334,13 +333,13 @@ func (o *OrganizationAccessPolicyResource) Delete(ctx context.Context, req resou
 }
 
 func (o *OrganizationAccessPolicyResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	policies, err := o.client.ListAccessPolicies(ctx, &connect.Request[cwobjectv1.ListAccessPoliciesRequest]{})
+	policies, err := o.client.ListAccessPolicies(ctx, &cwobjectv1.ListAccessPoliciesRequest{})
 	if err != nil {
 		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
 		return
 	}
 
-	for _, p := range policies.Msg.Policies {
+	for _, p := range policies.Policies {
 		if p.Name == req.ID {
 			data := OrganizationAccessPolicyResourceModel{}
 			data.Set(p)

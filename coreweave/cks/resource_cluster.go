@@ -9,7 +9,7 @@ import (
 	"time"
 
 	cksv1beta1 "buf.build/gen/go/coreweave/cks/protocolbuffers/go/coreweave/cks/v1beta1"
-	"connectrpc.com/connect"
+	"connectrpc.com/connect/v2"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/hashicorp/hcl/v2/hclwrite"
@@ -1114,14 +1114,14 @@ func (r *ClusterResource) Create(ctx context.Context, req resource.CreateRequest
 		return
 	}
 
-	createResp, err := r.client.CreateCluster(ctx, connect.NewRequest(data.ToCreateRequest(ctx)))
+	createResp, err := r.client.CreateCluster(ctx, data.ToCreateRequest(ctx))
 	if err != nil {
 		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
 		return
 	}
 
 	// set state once cluster is created
-	data.Set(createResp.Msg.Cluster)
+	data.Set(createResp.Cluster)
 	// if we fail to set state, return early as the resource will be orphaned
 	if diag := resp.State.Set(ctx, &data); diag.HasError() {
 		resp.Diagnostics.Append(diag...)
@@ -1136,9 +1136,9 @@ func (r *ClusterResource) Create(ctx context.Context, req resource.CreateRequest
 		},
 		Target: []string{cksv1beta1.Cluster_STATUS_RUNNING.String()},
 		Refresh: func() (result interface{}, state string, err error) {
-			resp, err := r.client.GetCluster(ctx, connect.NewRequest(&cksv1beta1.GetClusterRequest{
-				Id: createResp.Msg.Cluster.Id,
-			}))
+			resp, err := r.client.GetCluster(ctx, &cksv1beta1.GetClusterRequest{
+				Id: createResp.Cluster.Id,
+			})
 			if err != nil {
 				tflog.Error(ctx, "failed to fetch cluster resource", map[string]interface{}{
 					"error": err,
@@ -1146,11 +1146,11 @@ func (r *ClusterResource) Create(ctx context.Context, req resource.CreateRequest
 				return nil, cksv1beta1.Cluster_STATUS_UNSPECIFIED.String(), err
 			}
 
-			if resp.Msg.Cluster.Status == cksv1beta1.Cluster_STATUS_FAILED {
-				return resp.Msg.Cluster, resp.Msg.Cluster.Status.String(), errClusterCreationFailed
+			if resp.Cluster.Status == cksv1beta1.Cluster_STATUS_FAILED {
+				return resp.Cluster, resp.Cluster.Status.String(), errClusterCreationFailed
 			}
 
-			return resp.Msg.Cluster, resp.Msg.Cluster.Status.String(), nil
+			return resp.Cluster, resp.Cluster.Status.String(), nil
 		},
 		Timeout: 45 * time.Minute,
 	}
@@ -1188,9 +1188,9 @@ func (r *ClusterResource) Read(ctx context.Context, req resource.ReadRequest, re
 		return
 	}
 
-	cluster, err := r.client.GetCluster(ctx, connect.NewRequest(&cksv1beta1.GetClusterRequest{
+	cluster, err := r.client.GetCluster(ctx, &cksv1beta1.GetClusterRequest{
 		Id: data.Id.ValueString(),
-	}))
+	})
 	if err != nil {
 		if coreweave.IsNotFoundError(err) {
 			resp.State.RemoveResource(ctx)
@@ -1201,7 +1201,7 @@ func (r *ClusterResource) Read(ctx context.Context, req resource.ReadRequest, re
 		return
 	}
 
-	data.Set(cluster.Msg.Cluster)
+	data.Set(cluster.Cluster)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -1223,7 +1223,7 @@ func (r *ClusterResource) Update(ctx context.Context, req resource.UpdateRequest
 
 	updateReq := buildUpdateRequest(ctx, &data, &state)
 
-	updateResp, err := r.client.UpdateCluster(ctx, connect.NewRequest(updateReq))
+	updateResp, err := r.client.UpdateCluster(ctx, updateReq)
 	if err != nil {
 		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
 		return
@@ -1238,9 +1238,9 @@ func (r *ClusterResource) Update(ctx context.Context, req resource.UpdateRequest
 		},
 		Target: []string{cksv1beta1.Cluster_STATUS_RUNNING.String()},
 		Refresh: func() (result interface{}, state string, err error) {
-			resp, err := r.client.GetCluster(ctx, connect.NewRequest(&cksv1beta1.GetClusterRequest{
-				Id: updateResp.Msg.Cluster.Id,
-			}))
+			resp, err := r.client.GetCluster(ctx, &cksv1beta1.GetClusterRequest{
+				Id: updateResp.Cluster.Id,
+			})
 			if err != nil {
 				tflog.Error(ctx, "failed to fetch cluster resource", map[string]interface{}{
 					"error": err.Error(),
@@ -1248,7 +1248,7 @@ func (r *ClusterResource) Update(ctx context.Context, req resource.UpdateRequest
 				return nil, cksv1beta1.Cluster_STATUS_UNSPECIFIED.String(), err
 			}
 
-			return resp.Msg.Cluster, resp.Msg.Cluster.Status.String(), nil
+			return resp.Cluster, resp.Cluster.Status.String(), nil
 		},
 		Timeout: 20 * time.Minute,
 	}
@@ -1280,9 +1280,9 @@ func (r *ClusterResource) Delete(ctx context.Context, req resource.DeleteRequest
 		return
 	}
 
-	deleteResp, err := r.client.DeleteCluster(ctx, connect.NewRequest(&cksv1beta1.DeleteClusterRequest{
+	deleteResp, err := r.client.DeleteCluster(ctx, &cksv1beta1.DeleteClusterRequest{
 		Id: data.Id.ValueString(),
-	}))
+	})
 	if err != nil {
 		if coreweave.IsNotFoundError(err) {
 			return
@@ -1298,9 +1298,9 @@ func (r *ClusterResource) Delete(ctx context.Context, req resource.DeleteRequest
 		},
 		Target: []string{cksv1beta1.Cluster_STATUS_DELETED.String()},
 		Refresh: func() (result interface{}, state string, err error) {
-			resp, err := r.client.GetCluster(ctx, connect.NewRequest(&cksv1beta1.GetClusterRequest{
-				Id: deleteResp.Msg.Cluster.Id,
-			}))
+			resp, err := r.client.GetCluster(ctx, &cksv1beta1.GetClusterRequest{
+				Id: deleteResp.Cluster.Id,
+			})
 			if err != nil {
 				var connectErr *connect.Error
 				if errors.As(err, &connectErr) && connectErr.Code() == connect.CodeNotFound {
@@ -1313,7 +1313,7 @@ func (r *ClusterResource) Delete(ctx context.Context, req resource.DeleteRequest
 				return nil, cksv1beta1.Cluster_STATUS_UNSPECIFIED.String(), err
 			}
 
-			return resp.Msg.Cluster, resp.Msg.Cluster.Status.String(), nil
+			return resp.Cluster, resp.Cluster.Status.String(), nil
 		},
 		Timeout: 20 * time.Minute,
 	}

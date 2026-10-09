@@ -2,7 +2,6 @@ package containerregistry_test
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"maps"
 	"net/http"
@@ -11,11 +10,12 @@ import (
 	"sync"
 	"testing"
 
-	client "buf.build/gen/go/coreweave/container-registry-api/connectrpc/go/coreweave/registry/v1alpha1/registryv1alpha1connect"
+	client "buf.build/gen/go/coreweave/container-registry-api/connectrpc/go/v2/coreweave/registry/v1alpha1/registryv1alpha1connect"
 	api "buf.build/gen/go/coreweave/container-registry-api/protocolbuffers/go/coreweave/registry/v1alpha1"
 	"buf.build/go/protovalidate"
 	"cloud.google.com/go/longrunning/autogen/longrunningpb"
-	"connectrpc.com/connect"
+	"connectrpc.com/connect/v2"
+	"connectrpc.com/connect/v2/connecthttp"
 	"github.com/coreweave/terraform-provider-coreweave/internal/provider"
 	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
 	"github.com/hashicorp/terraform-plugin-go/tftypes"
@@ -57,75 +57,76 @@ type fakeRegistry struct {
 }
 
 // completed constructs a typed immediate LRO response.
-func completed(m proto.Message) *connect.Response[longrunningpb.Operation] {
+func completed(m proto.Message) *longrunningpb.Operation {
 	a, _ := anypb.New(m)
-	return connect.NewResponse(&longrunningpb.Operation{Name: "namespaces/example-images/operations/00000000-0000-4000-8000-000000000000", Done: true, Result: &longrunningpb.Operation_Response{Response: a}})
+	return &longrunningpb.Operation{Name: "namespaces/example-images/operations/00000000-0000-4000-8000-000000000000", Done: true, Result: &longrunningpb.Operation_Response{Response: a}}
 }
 
 // CreateRegistryNamespace records only input fields and creates the test-owned namespace.
-func (f *fakeRegistry) CreateRegistryNamespace(_ context.Context, q *connect.Request[api.CreateRegistryNamespaceRequest]) (*connect.Response[longrunningpb.Operation], error) {
+func (f *fakeRegistry) CreateRegistryNamespace(ctx context.Context, q *api.CreateRegistryNamespaceRequest) (*longrunningpb.Operation, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	if !canonicalUUIDv4(q.Msg.IdempotencyKey) {
-		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("idempotency key must be a canonical UUIDv4"))
+	if !canonicalUUIDv4(q.IdempotencyKey) {
+		return nil, connect.NewError(connect.CodeInvalidArgument, "idempotency key must be a canonical UUIDv4")
 	}
-	f.lastAuth = q.Header().Get("Authorization")
-	f.lastUserAgent = q.Header().Get("User-Agent")
-	f.creates = append(f.creates, proto.Clone(q.Msg).(*api.CreateRegistryNamespaceRequest))
+	info, _ := connect.CallInfoForServerContext(ctx)
+	f.lastAuth = info.RequestHeader().Get("Authorization")
+	f.lastUserAgent = info.RequestHeader().Get("User-Agent")
+	f.creates = append(f.creates, proto.Clone(q).(*api.CreateRegistryNamespaceRequest))
 	if f.transientCreate && len(f.creates) == 1 {
-		return nil, connect.NewError(connect.CodeUnavailable, errors.New("retry"))
+		return nil, connect.NewError(connect.CodeUnavailable, "retry")
 	}
 	if f.createError != nil {
 		return nil, f.createError
 	}
-	f.namespace = proto.Clone(q.Msg.RegistryNamespace).(*api.RegistryNamespace)
-	f.namespace.Name = "namespaces/" + q.Msg.RegistryNamespaceId
+	f.namespace = proto.Clone(q.RegistryNamespace).(*api.RegistryNamespace)
+	f.namespace.Name = "namespaces/" + q.RegistryNamespaceId
 	f.namespace.Etag = "namespace-1"
 	f.namespace.State = api.RegistryNamespace_STATE_ACTIVE
 	if f.pending {
-		return connect.NewResponse(&longrunningpb.Operation{Name: f.namespace.Name + "/operations/00000000-0000-4000-8000-000000000000"}), nil
+		return &longrunningpb.Operation{Name: f.namespace.Name + "/operations/00000000-0000-4000-8000-000000000000"}, nil
 	}
 	return completed(f.namespace), nil
 }
 
 // GetRegistryNamespace distinguishes absence from permission or transport failures.
-func (f *fakeRegistry) GetRegistryNamespace(_ context.Context, q *connect.Request[api.GetRegistryNamespaceRequest]) (*connect.Response[api.RegistryNamespace], error) {
+func (f *fakeRegistry) GetRegistryNamespace(_ context.Context, q *api.GetRegistryNamespaceRequest) (*api.RegistryNamespace, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	if err := protovalidate.Validate(q.Msg); err != nil {
-		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	if err := protovalidate.Validate(q); err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err.Error()).WithCause(err)
 	}
 
 	if f.readError != nil {
 		return nil, f.readError
 	}
 	if f.namespace == nil {
-		return nil, connect.NewError(connect.CodeNotFound, errors.New("missing"))
+		return nil, connect.NewError(connect.CodeNotFound, "missing")
 	}
-	return connect.NewResponse(proto.Clone(f.namespace).(*api.RegistryNamespace)), nil
+	return proto.Clone(f.namespace).(*api.RegistryNamespace), nil
 }
 
 // UpdateRegistryNamespace records quota pointer presence and update masks.
-func (f *fakeRegistry) UpdateRegistryNamespace(_ context.Context, q *connect.Request[api.UpdateRegistryNamespaceRequest]) (*connect.Response[longrunningpb.Operation], error) {
+func (f *fakeRegistry) UpdateRegistryNamespace(_ context.Context, q *api.UpdateRegistryNamespaceRequest) (*longrunningpb.Operation, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	if !canonicalUUIDv4(q.Msg.IdempotencyKey) {
-		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("idempotency key must be a canonical UUIDv4"))
+	if !canonicalUUIDv4(q.IdempotencyKey) {
+		return nil, connect.NewError(connect.CodeInvalidArgument, "idempotency key must be a canonical UUIDv4")
 	}
-	f.updates = append(f.updates, proto.Clone(q.Msg).(*api.UpdateRegistryNamespaceRequest))
-	f.namespace.StorageQuotaBytes = q.Msg.RegistryNamespace.StorageQuotaBytes
+	f.updates = append(f.updates, proto.Clone(q).(*api.UpdateRegistryNamespaceRequest))
+	f.namespace.StorageQuotaBytes = q.RegistryNamespace.StorageQuotaBytes
 	f.namespace.Etag = fmt.Sprintf("namespace-%d", len(f.updates)+1)
 	return completed(f.namespace), nil
 }
 
 // DeleteRegistryNamespace returns an ephemeral completed operation.
-func (f *fakeRegistry) DeleteRegistryNamespace(_ context.Context, q *connect.Request[api.DeleteRegistryNamespaceRequest]) (*connect.Response[longrunningpb.Operation], error) {
+func (f *fakeRegistry) DeleteRegistryNamespace(_ context.Context, q *api.DeleteRegistryNamespaceRequest) (*longrunningpb.Operation, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	if !canonicalUUIDv4(q.Msg.IdempotencyKey) {
-		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("idempotency key must be a canonical UUIDv4"))
+	if !canonicalUUIDv4(q.IdempotencyKey) {
+		return nil, connect.NewError(connect.CodeInvalidArgument, "idempotency key must be a canonical UUIDv4")
 	}
-	f.deletes = append(f.deletes, proto.Clone(q.Msg).(*api.DeleteRegistryNamespaceRequest))
+	f.deletes = append(f.deletes, proto.Clone(q).(*api.DeleteRegistryNamespaceRequest))
 	if f.deleteError != nil {
 		return nil, f.deleteError
 	}
@@ -134,7 +135,7 @@ func (f *fakeRegistry) DeleteRegistryNamespace(_ context.Context, q *connect.Req
 }
 
 // GetOperation models pending operations without incorrectly serving immediate completions.
-func (f *fakeRegistry) GetOperation(context.Context, *connect.Request[api.RegistryServiceGetOperationRequest]) (*connect.Response[longrunningpb.Operation], error) {
+func (f *fakeRegistry) GetOperation(context.Context, *api.RegistryServiceGetOperationRequest) (*longrunningpb.Operation, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.operationGets++
@@ -142,23 +143,23 @@ func (f *fakeRegistry) GetOperation(context.Context, *connect.Request[api.Regist
 		return nil, f.operationError
 	}
 	if f.operationResult != nil {
-		return connect.NewResponse(proto.Clone(f.operationResult).(*longrunningpb.Operation)), nil
+		return proto.Clone(f.operationResult).(*longrunningpb.Operation), nil
 	}
 	if f.operationFailure != nil {
-		return connect.NewResponse(&longrunningpb.Operation{Name: "namespaces/example-images/operations/00000000-0000-4000-8000-000000000000", Done: true, Result: &longrunningpb.Operation_Error{Error: f.operationFailure}}), nil
+		return &longrunningpb.Operation{Name: "namespaces/example-images/operations/00000000-0000-4000-8000-000000000000", Done: true, Result: &longrunningpb.Operation_Error{Error: f.operationFailure}}, nil
 	}
 	if f.pending {
-		return connect.NewResponse(&longrunningpb.Operation{Name: "namespaces/example-images/operations/00000000-0000-4000-8000-000000000000"}), nil
+		return &longrunningpb.Operation{Name: "namespaces/example-images/operations/00000000-0000-4000-8000-000000000000"}, nil
 	}
 	return completed(f.namespace), nil
 }
 
 // GetRegistryAccessConfiguration returns desired access state.
-func (f *fakeRegistry) GetRegistryAccessConfiguration(_ context.Context, q *connect.Request[api.GetRegistryAccessConfigurationRequest]) (*connect.Response[api.RegistryAccessConfiguration], error) {
+func (f *fakeRegistry) GetRegistryAccessConfiguration(_ context.Context, q *api.GetRegistryAccessConfigurationRequest) (*api.RegistryAccessConfiguration, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	if err := protovalidate.Validate(q.Msg); err != nil {
-		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	if err := protovalidate.Validate(q); err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err.Error()).WithCause(err)
 	}
 
 	f.policyReads++
@@ -166,7 +167,7 @@ func (f *fakeRegistry) GetRegistryAccessConfiguration(_ context.Context, q *conn
 		return nil, f.policyReadError
 	}
 	if f.access == nil {
-		return nil, connect.NewError(connect.CodeNotFound, errors.New("missing singleton"))
+		return nil, connect.NewError(connect.CodeNotFound, "missing singleton")
 	}
 	if len(f.accessUpdates) > 0 && f.pollAccessError != nil {
 		return nil, f.pollAccessError
@@ -176,30 +177,30 @@ func (f *fakeRegistry) GetRegistryAccessConfiguration(_ context.Context, q *conn
 		result.Revision--
 		f.lagAccess = false
 	}
-	return connect.NewResponse(result), nil
+	return result, nil
 }
 
 // UpdateRegistryAccessConfiguration replaces all content with an etag precondition.
-func (f *fakeRegistry) UpdateRegistryAccessConfiguration(_ context.Context, q *connect.Request[api.UpdateRegistryAccessConfigurationRequest]) (*connect.Response[api.RegistryAccessConfiguration], error) {
+func (f *fakeRegistry) UpdateRegistryAccessConfiguration(_ context.Context, q *api.UpdateRegistryAccessConfigurationRequest) (*api.RegistryAccessConfiguration, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	if q.Msg.RegistryAccessConfiguration.GetName() != q.Msg.Parent+"/accessConfiguration" {
-		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("access configuration name must match parent"))
+	if q.RegistryAccessConfiguration.GetName() != q.Parent+"/accessConfiguration" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, "access configuration name must match parent")
 	}
-	if q.Msg.Etag != f.access.Etag {
-		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New("etag mismatch"))
+	if q.Etag != f.access.Etag {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, "etag mismatch")
 	}
 	if f.policyError != nil {
 		return nil, f.policyError
 	}
-	f.accessUpdates = append(f.accessUpdates, proto.Clone(q.Msg).(*api.UpdateRegistryAccessConfigurationRequest))
+	f.accessUpdates = append(f.accessUpdates, proto.Clone(q).(*api.UpdateRegistryAccessConfigurationRequest))
 	step := f.revisionStep
 	if step == 0 {
 		step = 1
 	}
 	rev := f.access.Revision + step
-	f.access = proto.Clone(q.Msg.RegistryAccessConfiguration).(*api.RegistryAccessConfiguration)
-	f.access.Name = q.Msg.Parent + "/accessConfiguration"
+	f.access = proto.Clone(q.RegistryAccessConfiguration).(*api.RegistryAccessConfiguration)
+	f.access.Name = q.Parent + "/accessConfiguration"
 	f.access.Revision = rev
 	f.access.Etag = fmt.Sprintf("access-%d", rev)
 	f.access.AccessConfigState = api.RegistryAccessConfiguration_ACCESS_CONFIG_STATE_ACCEPTED
@@ -211,47 +212,47 @@ func (f *fakeRegistry) UpdateRegistryAccessConfiguration(_ context.Context, q *c
 		f.access.Revision++
 	}
 	if f.uncertainAccess && len(f.accessUpdates) == 1 {
-		return nil, connect.NewError(connect.CodeUnavailable, errors.New("response lost"))
+		return nil, connect.NewError(connect.CodeUnavailable, "response lost")
 	}
-	return connect.NewResponse(result), nil
+	return result, nil
 }
 
 // GetRegistryLifecyclePolicy returns desired lifecycle state and optional acknowledgement.
-func (f *fakeRegistry) GetRegistryLifecyclePolicy(_ context.Context, q *connect.Request[api.GetRegistryLifecyclePolicyRequest]) (*connect.Response[api.RegistryLifecyclePolicy], error) {
+func (f *fakeRegistry) GetRegistryLifecyclePolicy(_ context.Context, q *api.GetRegistryLifecyclePolicyRequest) (*api.RegistryLifecyclePolicy, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	if err := protovalidate.Validate(q.Msg); err != nil {
-		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	if err := protovalidate.Validate(q); err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err.Error()).WithCause(err)
 	}
 
 	f.policyReads++
 	if f.policyReadError != nil && f.policyReads > f.policyReadErrorAfter {
 		return nil, f.policyReadError
 	}
-	return connect.NewResponse(proto.Clone(f.lifecycle).(*api.RegistryLifecyclePolicy)), nil
+	return proto.Clone(f.lifecycle).(*api.RegistryLifecyclePolicy), nil
 }
 
 // UpdateRegistryLifecyclePolicy returns the compact acknowledgement, not a policy object.
-func (f *fakeRegistry) UpdateRegistryLifecyclePolicy(_ context.Context, q *connect.Request[api.UpdateRegistryLifecyclePolicyRequest]) (*connect.Response[longrunningpb.Operation], error) {
+func (f *fakeRegistry) UpdateRegistryLifecyclePolicy(_ context.Context, q *api.UpdateRegistryLifecyclePolicyRequest) (*longrunningpb.Operation, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	if !canonicalUUIDv4(q.Msg.IdempotencyKey) {
-		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("idempotency key must be a canonical UUIDv4"))
+	if !canonicalUUIDv4(q.IdempotencyKey) {
+		return nil, connect.NewError(connect.CodeInvalidArgument, "idempotency key must be a canonical UUIDv4")
 	}
-	if q.Msg.Etag != f.lifecycle.Etag {
-		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New("etag mismatch"))
+	if q.Etag != f.lifecycle.Etag {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, "etag mismatch")
 	}
 	if f.policyError != nil {
 		return nil, f.policyError
 	}
-	f.lifecycleUpdates = append(f.lifecycleUpdates, proto.Clone(q.Msg).(*api.UpdateRegistryLifecyclePolicyRequest))
+	f.lifecycleUpdates = append(f.lifecycleUpdates, proto.Clone(q).(*api.UpdateRegistryLifecyclePolicyRequest))
 	step := f.revisionStep
 	if step == 0 {
 		step = 1
 	}
 	rev := f.lifecycle.Revision + step
-	f.lifecycle = proto.Clone(q.Msg.RegistryLifecyclePolicy).(*api.RegistryLifecyclePolicy)
-	f.lifecycle.Name = q.Msg.Parent + "/lifecyclePolicy"
+	f.lifecycle = proto.Clone(q.RegistryLifecyclePolicy).(*api.RegistryLifecyclePolicy)
+	f.lifecycle.Name = q.Parent + "/lifecyclePolicy"
 	f.lifecycle.Revision = rev
 	f.lifecycle.AppliedRevision = &rev
 	if f.policyUnacknowledged {
@@ -294,7 +295,9 @@ func newHarness(t *testing.T, kind string) *harness {
 	t.Helper()
 	f := newFakeRegistry()
 	mux := http.NewServeMux()
-	mux.Handle(client.NewRegistryServiceHandler(f))
+	srv2 := connect.NewServer()
+	client.RegisterRegistryServiceHandler(srv2, f)
+	connecthttp.Mount(mux, srv2, connecthttp.WithReadMaxBytes(0))
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 	t.Setenv("COREWEAVE_API_ENDPOINT", srv.URL)
@@ -453,7 +456,7 @@ func TestFailedCreateKeepsPrivateState(t *testing.T) {
 // TestAlreadyExistsNeverAdopts verifies matching names are not ownership evidence.
 func TestAlreadyExistsNeverAdopts(t *testing.T) {
 	h := newHarness(t, "namespace")
-	h.fake.createError = connect.NewError(connect.CodeAlreadyExists, errors.New("exists"))
+	h.fake.createError = connect.NewError(connect.CodeAlreadyExists, "exists")
 	r := h.apply(h.config(nil, false), tftypes.NewValue(h.typ, nil), nil)
 	require.NotEmpty(t, r.Diagnostics)
 	require.True(t, h.decode(r.NewState).IsNull())
@@ -487,7 +490,7 @@ func TestNamespaceConflictAndNonemptyDelete(t *testing.T) {
 	updated := h.apply(h.config(int64(10), false), h.decode(r.NewState), r.Private)
 	require.NotEmpty(t, updated.Diagnostics)
 	require.Empty(t, h.fake.updates)
-	h.fake.deleteError = connect.NewError(connect.CodeFailedPrecondition, errors.New("nonempty"))
+	h.fake.deleteError = connect.NewError(connect.CodeFailedPrecondition, "nonempty")
 	d := h.destroy(r.NewState, r.Private)
 	require.NotEmpty(t, d.Diagnostics)
 	require.False(t, h.decode(d.NewState).IsNull())
@@ -683,19 +686,19 @@ func TestPolicyOmissionClearsOwnedContent(t *testing.T) {
 }
 
 // ListRegistryNamespaces serves discovery through the actual generated Connect handler.
-func (f *fakeRegistry) ListRegistryNamespaces(context.Context, *connect.Request[api.ListRegistryNamespacesRequest]) (*connect.Response[api.ListRegistryNamespacesResponse], error) {
+func (f *fakeRegistry) ListRegistryNamespaces(context.Context, *api.ListRegistryNamespacesRequest) (*api.ListRegistryNamespacesResponse, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	res := &api.ListRegistryNamespacesResponse{}
 	if f.namespace != nil {
 		res.RegistryNamespaces = []*api.RegistryNamespace{proto.Clone(f.namespace).(*api.RegistryNamespace)}
 	}
-	return connect.NewResponse(res), nil
+	return res, nil
 }
 
 // ListZones serves unsorted topology to verify stable Terraform output.
-func (f *fakeRegistry) ListZones(context.Context, *connect.Request[api.ListZonesRequest]) (*connect.Response[api.ListZonesResponse], error) {
-	return connect.NewResponse(&api.ListZonesResponse{Zones: []*api.Zone{{Zone: "US-ZZZ", Available: false}, {Zone: "US-AAA", Available: true}}}), nil
+func (f *fakeRegistry) ListZones(context.Context, *api.ListZonesRequest) (*api.ListZonesResponse, error) {
+	return &api.ListZonesResponse{Zones: []*api.Zone{{Zone: "US-ZZZ", Available: false}, {Zone: "US-AAA", Available: true}}}, nil
 }
 
 // TestDiscoveryProtocol verifies all discovery schemas and non-null empty lists.
@@ -754,7 +757,7 @@ func TestDeniedReadRetainsState(t *testing.T) {
 	h := newHarness(t, "namespace")
 	r := h.apply(h.config(nil, false), tftypes.NewValue(h.typ, nil), nil)
 	noErrors(t, r.Diagnostics)
-	h.fake.readError = connect.NewError(connect.CodePermissionDenied, errors.New("denied"))
+	h.fake.readError = connect.NewError(connect.CodePermissionDenied, "denied")
 	read, e := h.server.ReadResource(t.Context(), &tfprotov6.ReadResourceRequest{TypeName: h.name, CurrentState: r.NewState})
 	require.NoError(t, e)
 	require.NotEmpty(t, read.Diagnostics)

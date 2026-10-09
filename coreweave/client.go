@@ -9,15 +9,16 @@ import (
 	"sync/atomic"
 	"time"
 
-	"buf.build/gen/go/coreweave/cks/connectrpc/go/coreweave/cks/v1beta1/cksv1beta1connect"
-	registryconnect "buf.build/gen/go/coreweave/container-registry-api/connectrpc/go/coreweave/registry/v1alpha1/registryv1alpha1connect"
-	"buf.build/gen/go/coreweave/cwobject/connectrpc/go/cwobject/v1/cwobjectv1connect"
-	"buf.build/gen/go/coreweave/inference/connectrpc/go/coreweave/inference/v1alpha1/inferencev1alpha1connect"
-	"buf.build/gen/go/coreweave/networking/connectrpc/go/coreweave/networking/v1beta1/networkingv1beta1connect"
-	"buf.build/gen/go/coreweave/sandbox/connectrpc/go/coreweave/sandbox/v1/sandboxv1connect"
-	"buf.build/gen/go/coreweave/workload-federation/connectrpc/go/coreweave/workload_federation/control_plane/v1beta1/control_planev1beta1connect"
-	"connectrpc.com/connect"
-
+	"buf.build/gen/go/coreweave/cks/connectrpc/go/v2/coreweave/cks/v1beta1/cksv1beta1connect"
+	registryconnect "buf.build/gen/go/coreweave/container-registry-api/connectrpc/go/v2/coreweave/registry/v1alpha1/registryv1alpha1connect"
+	"buf.build/gen/go/coreweave/cwobject/connectrpc/go/v2/cwobject/v1/cwobjectv1connect"
+	"buf.build/gen/go/coreweave/inference/connectrpc/go/v2/coreweave/inference/v1alpha1/inferencev1alpha1connect"
+	"buf.build/gen/go/coreweave/networking/connectrpc/go/v2/coreweave/networking/v1beta1/networkingv1beta1connect"
+	"buf.build/gen/go/coreweave/sandbox/connectrpc/go/v2/coreweave/sandbox/v1/sandboxv1connect"
+	"buf.build/gen/go/coreweave/workload-federation/connectrpc/go/v2/coreweave/workload_federation/control_plane/v1beta1/control_planev1beta1connect"
+	"connectrpc.com/connect/v2"
+	"connectrpc.com/connect/v2/connecthttp"
+	"connectrpc.com/connect/v2/connectproto"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/coreweave/terraform-provider-coreweave/internal/auth"
 	retryablehttp "github.com/hashicorp/go-retryablehttp"
@@ -46,7 +47,7 @@ func tokenSourceCacheIdentity(source AccessTokenSource) string {
 }
 
 // NewClient constructs a client that resolves a token for each HTTP attempt.
-func NewClient(endpoint string, s3Endpoint string, timeout time.Duration, tokenSource AccessTokenSource, userAgent string, interceptors ...connect.Interceptor) (*Client, error) {
+func NewClient(endpoint string, s3Endpoint string, timeout time.Duration, tokenSource AccessTokenSource, userAgent string, interceptors ...connect.ClientInterceptor) (*Client, error) {
 	return NewClientWithOptions(endpoint, s3Endpoint, timeout, tokenSource, userAgent, ClientOptions{}, interceptors...)
 }
 
@@ -57,7 +58,7 @@ func NewClientWithOptions(
 	tokenSource AccessTokenSource,
 	userAgent string,
 	options ClientOptions,
-	interceptors ...connect.Interceptor,
+	interceptors ...connect.ClientInterceptor,
 ) (*Client, error) {
 	rc := retryablehttp.NewClient()
 	rc.HTTPClient.Timeout = timeout
@@ -77,23 +78,21 @@ func NewClientWithOptions(
 	rc.HTTPClient.Transport = authenticatedTransport
 
 	c := rc.StandardClient()
-	authenticatedInterceptors := append([]connect.Interceptor{auth.NewConnectErrorInterceptor()}, interceptors...)
+	authenticatedInterceptors := append([]connect.ClientInterceptor{auth.NewConnectErrorInterceptor()}, interceptors...)
+	// List operations and large API objects can exceed the transport's default read limit.
+	rpcClient := connect.NewClient(connecthttp.NewTransport(c, endpoint, connecthttp.WithReadMaxBytes(0)), authenticatedInterceptors...)
 
 	return &Client{
-		ContainerRegistry:       registryconnect.NewRegistryServiceClient(c, endpoint, connect.WithInterceptors(authenticatedInterceptors...)),
-		ClusterServiceClient:    cksv1beta1connect.NewClusterServiceClient(c, endpoint, connect.WithInterceptors(authenticatedInterceptors...)),
-		VPCServiceClient:        networkingv1beta1connect.NewVPCServiceClient(c, endpoint, connect.WithInterceptors(authenticatedInterceptors...)),
-		SandboxRunnerManagement: sandboxv1connect.NewRunnerManagementServiceClient(c, endpoint, connect.WithInterceptors(authenticatedInterceptors...)),
-		WFControlPlaneServiceClient: control_planev1beta1connect.NewWFControlPlaneServiceClient(
-			c,
-			endpoint,
-			connect.WithInterceptors(authenticatedInterceptors...),
-		),
-		CWObjectClient: cwobjectv1connect.NewCWObjectClient(c, endpoint, connect.WithInterceptors(authenticatedInterceptors...)),
+		ContainerRegistry:           registryconnect.NewRegistryServiceClient(rpcClient),
+		ClusterServiceClient:        cksv1beta1connect.NewClusterServiceClient(rpcClient),
+		VPCServiceClient:            networkingv1beta1connect.NewVPCServiceClient(rpcClient),
+		SandboxRunnerManagement:     sandboxv1connect.NewRunnerManagementServiceClient(rpcClient),
+		WFControlPlaneServiceClient: control_planev1beta1connect.NewWFControlPlaneServiceClient(rpcClient),
+		CWObjectClient:              cwobjectv1connect.NewCWObjectClient(rpcClient),
 		Inference: &InferenceClient{
-			DeploymentServiceClient:    inferencev1alpha1connect.NewDeploymentServiceClient(c, endpoint, connect.WithInterceptors(authenticatedInterceptors...)),
-			CapacityClaimServiceClient: inferencev1alpha1connect.NewCapacityClaimServiceClient(c, endpoint, connect.WithInterceptors(authenticatedInterceptors...)),
-			GatewayServiceClient:       inferencev1alpha1connect.NewGatewayServiceClient(c, endpoint, connect.WithInterceptors(authenticatedInterceptors...)),
+			DeploymentServiceClient:    inferencev1alpha1connect.NewDeploymentServiceClient(rpcClient),
+			CapacityClaimServiceClient: inferencev1alpha1connect.NewCapacityClaimServiceClient(rpcClient),
+			GatewayServiceClient:       inferencev1alpha1connect.NewGatewayServiceClient(rpcClient),
 		},
 		apiEndpoint:      endpoint,
 		httpClient:       c,
@@ -151,7 +150,7 @@ func HandleAPIError(ctx context.Context, err error, diagnostics *diag.Diagnostic
 		contextMessages = append(contextMessages, err.Error())
 	}
 	for _, detail := range apiErr.Details() {
-		value, valueErr := detail.Value()
+		value, valueErr := connectproto.UnmarshalErrorDetail(detail)
 		if valueErr != nil {
 			continue
 		}
@@ -196,7 +195,7 @@ func handleAPIError(ctx context.Context, err error, diagnostics *diag.Diagnostic
 	switch connectErr.Code() {
 	case connect.CodeNotFound:
 		for _, d := range details {
-			msg, valueErr := d.Value()
+			msg, valueErr := connectproto.UnmarshalErrorDetail(d)
 			if valueErr != nil {
 				diagnostics.AddError(connectErr.Error(), connectErr.Message())
 				break
@@ -213,7 +212,7 @@ func handleAPIError(ctx context.Context, err error, diagnostics *diag.Diagnostic
 		}
 	case connect.CodeAlreadyExists:
 		for _, d := range details {
-			msg, valueErr := d.Value()
+			msg, valueErr := connectproto.UnmarshalErrorDetail(d)
 			if valueErr != nil {
 				diagnostics.AddError(connectErr.Error(), connectErr.Message())
 				break
@@ -230,7 +229,7 @@ func handleAPIError(ctx context.Context, err error, diagnostics *diag.Diagnostic
 		}
 	case connect.CodeFailedPrecondition:
 		for _, d := range details {
-			msg, valueErr := d.Value()
+			msg, valueErr := connectproto.UnmarshalErrorDetail(d)
 			if valueErr != nil {
 				diagnostics.AddError(connectErr.Error(), connectErr.Message())
 				break
@@ -250,7 +249,7 @@ func handleAPIError(ctx context.Context, err error, diagnostics *diag.Diagnostic
 
 	case connect.CodeInvalidArgument:
 		for _, d := range details {
-			msg, valueErr := d.Value()
+			msg, valueErr := connectproto.UnmarshalErrorDetail(d)
 			if valueErr != nil {
 				diagnostics.AddError(connectErr.Error(), connectErr.Message())
 				break
@@ -300,7 +299,7 @@ func handleAPIError(ctx context.Context, err error, diagnostics *diag.Diagnostic
 
 	case connect.CodeResourceExhausted:
 		for _, d := range details {
-			msg, valueErr := d.Value()
+			msg, valueErr := connectproto.UnmarshalErrorDetail(d)
 			if valueErr != nil {
 				diagnostics.AddError(connectErr.Error(), connectErr.Message())
 				break

@@ -6,9 +6,8 @@ import (
 	"strings"
 	"time"
 
-	client "buf.build/gen/go/coreweave/container-registry-api/connectrpc/go/coreweave/registry/v1alpha1/registryv1alpha1connect"
+	client "buf.build/gen/go/coreweave/container-registry-api/connectrpc/go/v2/coreweave/registry/v1alpha1/registryv1alpha1connect"
 	api "buf.build/gen/go/coreweave/container-registry-api/protocolbuffers/go/coreweave/registry/v1alpha1"
-	"connectrpc.com/connect"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
 	"github.com/hashicorp/terraform-plugin-framework-timeouts/datasource/timeouts"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -99,9 +98,9 @@ func (d *NamespaceDataSource) Read(ctx context.Context, req datasource.ReadReque
 		report(ctx, fmt.Errorf("name must be known"), &resp.Diagnostics)
 		return
 	}
-	res, err := d.client.GetRegistryNamespace(c, connect.NewRequest(&api.GetRegistryNamespaceRequest{Name: namespaceResourceName(a.Name.ValueString())}))
+	res, err := d.client.GetRegistryNamespace(c, &api.GetRegistryNamespaceRequest{Name: namespaceResourceName(a.Name.ValueString())})
 	if err == nil {
-		resp.Diagnostics.Append(a.Set(ctx, res.Msg)...)
+		resp.Diagnostics.Append(a.Set(ctx, res)...)
 	}
 	if err != nil || resp.Diagnostics.HasError() {
 		report(ctx, err, &resp.Diagnostics)
