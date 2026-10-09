@@ -1,5 +1,6 @@
 ---
 name: Common Setup Steps
+description: Install repository-pinned development tools with Mise
 
 inputs: {}
 
