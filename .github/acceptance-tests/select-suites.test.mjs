@@ -5,12 +5,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { allSuites, selectSuites } from './select-suites.mjs';
+import { selectSuites } from './select-suites.mjs';
 
 const head = 'a'.repeat(40);
 const pr = (overrides = {}) => ({ state: 'open', head: { sha: head }, title: 'ci: update workflow', labels: [], ...overrides });
 const select = (metadata = pr(), files = [], subjects = []) => selectSuites(metadata, head, files, subjects);
-const everySuite = [...allSuites].sort();
+const everySuite = ['caller_identity', 'cks', 'container_registry', 'inference', 'networking', 'object_storage'];
 
 test('root module and shared provider changes always require every suite despite narrow labels', () => {
   for (const file of ['go.mod', 'go.sum', 'main.go', 'GNUmakefile', 'internal/testutil/helpers.go', 'internal/provider/provider.go', 'coreweave/client.go', 'coreweave/retry_test.go', 'coreweave/s3.go']) {
@@ -23,10 +23,15 @@ test('service paths, current labels, title and commit scopes combine without dup
     ['coreweave/networking/resource.go', 'coreweave/cks/resource.go'], ['test(container_registry): update coverage']),
   ['cks', 'container_registry', 'inference', 'networking']);
   assert.deepEqual(select(pr({ labels: [{ name: 'acceptance-test:all' }] })), everySuite);
-  for (const suite of allSuites) {
+  for (const suite of everySuite) {
     assert.deepEqual(select(pr(), [`coreweave/${suite}/resource_test.go`]), [suite]);
     assert.deepEqual(select(pr({ labels: [{ name: `acceptance-test:${suite}` }] })), [suite]);
   }
+});
+
+test('caller identity is selected explicitly by its label and scope', () => {
+  assert.deepEqual(select(pr({ labels: [{ name: 'acceptance-test:caller_identity' }] })), ['caller_identity']);
+  assert.deepEqual(select(pr({ title: 'test(caller_identity): validate identity' })), ['caller_identity']);
 });
 
 test('a rerun can use added or removed labels and the edited live title', () => {

@@ -6,10 +6,12 @@ Selection fetches the current PR title, labels, state, and head SHA. A rerun for
 
 Root module files, shared clients, test helpers, and provider changes select every suite. Service directories, conventional commit scopes in the current title or commit subjects, and acceptance labels add individual suites. Documentation and workflow changes alone select none.
 
+Changed files are compared against the tested merge revision, so updates already present on the base branch do not request extra suites. Moves between service directories select both the source and destination suites. Commit scopes come only from the PR's own commits.
+
 This check happens during selection, before queueing. A PR can still change while QA work is queued or running. Suite queue retention, checks after acquiring the suite lock, fast-check gating, and a current-revision aggregate are separate scheduling safeguards.
 
 Run the secret-free selection fixtures locally with:
 
 ```sh
-node --test .github/acceptance-tests/select-suites.test.mjs
+node --test .github/acceptance-tests/*.test.mjs
 ```

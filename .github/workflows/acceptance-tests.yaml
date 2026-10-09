@@ -29,7 +29,7 @@ jobs:
           node-version: '24.21.0'
 
       - name: Verify suite selection behavior
-        run: node --test .github/acceptance-tests/select-suites.test.mjs
+        run: node --test .github/acceptance-tests/*.test.mjs
 
       - name: Detect test suites to run
         id: changes
@@ -42,8 +42,7 @@ jobs:
           selection_dir=$(mktemp -d)
           trap 'rm -rf "$selection_dir"' EXIT
           gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" > "$selection_dir/pr.json"
-          git diff --name-only "$BASE_SHA...$HEAD_SHA" > "$selection_dir/files.txt"
-          git log --format=%s "$BASE_SHA..$HEAD_SHA" > "$selection_dir/subjects.txt"
+          bash .github/acceptance-tests/collect-changes.sh "$selection_dir"
           node .github/acceptance-tests/select-suites.mjs "$selection_dir/pr.json" "$HEAD_SHA" "$selection_dir/files.txt" "$selection_dir/subjects.txt"
 
   run-tests:
