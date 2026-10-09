@@ -15,6 +15,7 @@ import (
 	"github.com/coreweave/terraform-provider-coreweave/coreweave/inference"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave/networking"
 	objectstorage "github.com/coreweave/terraform-provider-coreweave/coreweave/object_storage"
+	"github.com/coreweave/terraform-provider-coreweave/coreweave/observability"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave/sandbox"
 	serviceaccount "github.com/coreweave/terraform-provider-coreweave/coreweave/service_account"
 	workloadfederation "github.com/coreweave/terraform-provider-coreweave/coreweave/workload_federation"
@@ -253,6 +254,13 @@ func (p *CoreweaveProvider) Resources(ctx context.Context) []func() resource.Res
 		containerregistry.NewNamespaceResource,
 		containerregistry.NewAccessConfigurationResource,
 		containerregistry.NewLifecyclePolicyResource,
+		observability.NewForwardingEndpointHTTPSResource,
+		observability.NewForwardingEndpointS3Resource,
+		observability.NewForwardingPipelineResource,
+		// observability.NewForwardingEndpointPrometheusResource is deliberately
+		// not registered: CreateEndpoint returns "endpoint type is not implemented
+		// yet: prometheus", so every apply would fail. Registering it later is
+		// additive; publishing a resource type name is permanent.
 	}
 }
 
@@ -269,6 +277,7 @@ func (p *CoreweaveProvider) DataSources(ctx context.Context) []func() datasource
 		containerregistry.NewNamespaceDataSource,
 		containerregistry.NewNamespacesDataSource,
 		containerregistry.NewZonesDataSource,
+		observability.NewTelemetryStreamDataSource,
 	}
 }
 

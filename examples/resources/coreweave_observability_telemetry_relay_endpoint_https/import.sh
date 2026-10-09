@@ -1,0 +1,1 @@
+terraform import coreweave_observability_telemetry_relay_endpoint_https.example my-https-endpoint
