@@ -46,6 +46,10 @@ jobs:
           node .github/acceptance-tests/select-suites.mjs "$selection_dir/pr.json" "$HEAD_SHA" "$selection_dir/files.txt" "$selection_dir/subjects.txt"
 
   run-tests:
+    permissions:
+      contents: read
+      pull-requests: read
+      packages: read
     needs: [detect-changes]
     if: needs.detect-changes.outputs.suites != '[]'
     strategy:
