@@ -3,8 +3,9 @@ module github.com/coreweave/terraform-provider-coreweave
 go 1.26.6
 
 require (
-	buf.build/gen/go/coreweave/cks/connectrpc/go v1.19.1-20260326215135-be22b90e1aa6.2
-	buf.build/gen/go/coreweave/cks/protocolbuffers/go v1.36.11-20260326215135-be22b90e1aa6.1
+	buf.build/gen/go/coreweave/cks/connectrpc/go v1.21.0-20260630171200-77e2aa82efe3.1
+	buf.build/gen/go/coreweave/cks/connectrpc/go/v2 v2.0.0-20260630171200-77e2aa82efe3.1
+	buf.build/gen/go/coreweave/cks/protocolbuffers/go v1.36.12-20260630171200-77e2aa82efe3.2
 	buf.build/gen/go/coreweave/container-registry-api/connectrpc/go v1.21.0-20261006020732-928e5e5b7735.1
 	buf.build/gen/go/coreweave/container-registry-api/protocolbuffers/go v1.36.12-20261006020732-928e5e5b7735.2
 	buf.build/gen/go/coreweave/cwobject/connectrpc/go v1.20.0-20260831154917-08064e55742b.1
