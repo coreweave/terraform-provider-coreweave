@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"connectrpc.com/connect"
+	"connectrpc.com/connect/v2"
 
 	networkingv1beta1 "buf.build/gen/go/coreweave/networking/protocolbuffers/go/coreweave/networking/v1beta1"
 	"github.com/coreweave/terraform-provider-coreweave/internal/testutil"
@@ -15,9 +15,9 @@ import (
 const resourceType = "coreweave_networking_vpc"
 
 type Client interface {
-	ListVPCs(context.Context, *connect.Request[networkingv1beta1.ListVPCsRequest]) (*connect.Response[networkingv1beta1.ListVPCsResponse], error)
-	GetVPC(context.Context, *connect.Request[networkingv1beta1.GetVPCRequest]) (*connect.Response[networkingv1beta1.GetVPCResponse], error)
-	DeleteVPC(context.Context, *connect.Request[networkingv1beta1.DeleteVPCRequest]) (*connect.Response[networkingv1beta1.DeleteVPCResponse], error)
+	ListVPCs(context.Context, *networkingv1beta1.ListVPCsRequest) (*networkingv1beta1.ListVPCsResponse, error)
+	GetVPC(context.Context, *networkingv1beta1.GetVPCRequest) (*networkingv1beta1.GetVPCResponse, error)
+	DeleteVPC(context.Context, *networkingv1beta1.DeleteVPCRequest) (*networkingv1beta1.DeleteVPCResponse, error)
 }
 
 type Config struct {
@@ -38,11 +38,11 @@ func New(client Client, config Config) (testutil.SweepConfig[*networkingv1beta1.
 	return testutil.SweepConfig[*networkingv1beta1.VPC]{
 		ResourceType: resourceType,
 		List: func(ctx context.Context) ([]*networkingv1beta1.VPC, error) {
-			response, err := client.ListVPCs(ctx, connect.NewRequest(&networkingv1beta1.ListVPCsRequest{}))
+			response, err := client.ListVPCs(ctx, &networkingv1beta1.ListVPCsRequest{})
 			if err != nil {
 				return nil, fmt.Errorf("list VPCs: %w", err)
 			}
-			return response.Msg.Items, nil
+			return response.Items, nil
 		},
 		Name: func(vpc *networkingv1beta1.VPC) string {
 			return vpc.GetName()
@@ -51,7 +51,7 @@ func New(client Client, config Config) (testutil.SweepConfig[*networkingv1beta1.
 			return strings.HasPrefix(vpc.GetName(), config.Prefix) && vpc.GetZone() == config.Zone
 		},
 		Delete: func(ctx context.Context, vpc *networkingv1beta1.VPC) error {
-			_, err := client.DeleteVPC(ctx, connect.NewRequest(&networkingv1beta1.DeleteVPCRequest{Id: vpc.GetId()}))
+			_, err := client.DeleteVPC(ctx, &networkingv1beta1.DeleteVPCRequest{Id: vpc.GetId()})
 			if connect.CodeOf(err) == connect.CodeNotFound {
 				return nil
 			}

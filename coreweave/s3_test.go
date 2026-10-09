@@ -22,9 +22,8 @@ import (
 	"testing"
 	"time"
 
-	cwobjectv1connect "buf.build/gen/go/coreweave/cwobject/connectrpc/go/cwobject/v1/cwobjectv1connect"
+	cwobjectv1connect "buf.build/gen/go/coreweave/cwobject/connectrpc/go/v2/cwobject/v1/cwobjectv1connect"
 	cwobjectv1 "buf.build/gen/go/coreweave/cwobject/protocolbuffers/go/cwobject/v1"
-	"connectrpc.com/connect"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsretry "github.com/aws/aws-sdk-go-v2/aws/retry"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
@@ -83,18 +82,18 @@ func testCACertificatePEM(t *testing.T) []byte {
 
 func (s *s3CWObjectClientStub) CreateAccessKeyFromJWT(
 	_ context.Context,
-	req *connect.Request[cwobjectv1.CreateAccessKeyFromJWTRequest],
-) (*connect.Response[cwobjectv1.CreateAccessKeyFromJWTResponse], error) {
+	req *cwobjectv1.CreateAccessKeyFromJWTRequest,
+) (*cwobjectv1.CreateAccessKeyFromJWTResponse, error) {
 	s.t.Helper()
 
-	if got, want := req.Msg.GetDurationSeconds().GetValue(), uint32(900); got != want {
+	if got, want := req.GetDurationSeconds().GetValue(), uint32(900); got != want {
 		s.t.Fatalf("access key lifetime = %d seconds, want %d", got, want)
 	}
 
-	return connect.NewResponse(&cwobjectv1.CreateAccessKeyFromJWTResponse{
+	return &cwobjectv1.CreateAccessKeyFromJWTResponse{
 		AccessKeyId: testS3AccessKey,
 		SecretKey:   testS3SecretKey,
-	}), nil
+	}, nil
 }
 
 func TestCreateS3Client_DefaultAWSConfiguration(t *testing.T) {
@@ -368,15 +367,14 @@ type principalS3CWObjectClientStub struct {
 }
 
 func (s *principalS3CWObjectClientStub) CreateAccessKeyFromJWT(
-	context.Context,
-	*connect.Request[cwobjectv1.CreateAccessKeyFromJWTRequest],
-) (*connect.Response[cwobjectv1.CreateAccessKeyFromJWTResponse], error) {
+	context.Context, *cwobjectv1.CreateAccessKeyFromJWTRequest,
+) (*cwobjectv1.CreateAccessKeyFromJWTResponse, error) {
 	s.calls.Add(1)
-	return connect.NewResponse(&cwobjectv1.CreateAccessKeyFromJWTResponse{
+	return &cwobjectv1.CreateAccessKeyFromJWTResponse{
 		AccessKeyId: s.accessKeyID,
 		SecretKey:   "secret-" + s.accessKeyID,
 		Expiry:      timestamppb.New(time.Now().Add(15 * time.Minute)),
-	}), nil
+	}, nil
 }
 
 func newS3CacheTestClient(t *testing.T, token string, service cwobjectv1connect.CWObjectClient) *Client {
@@ -503,19 +501,19 @@ type cancelAwareS3CWObjectClientStub struct {
 
 func (s *cancelAwareS3CWObjectClientStub) CreateAccessKeyFromJWT(
 	ctx context.Context,
-	_ *connect.Request[cwobjectv1.CreateAccessKeyFromJWTRequest],
-) (*connect.Response[cwobjectv1.CreateAccessKeyFromJWTResponse], error) {
+	_ *cwobjectv1.CreateAccessKeyFromJWTRequest,
+) (*cwobjectv1.CreateAccessKeyFromJWTResponse, error) {
 	s.calls.Add(1)
 	s.once.Do(func() { close(s.started) })
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	case <-s.release:
-		return connect.NewResponse(&cwobjectv1.CreateAccessKeyFromJWTResponse{
+		return &cwobjectv1.CreateAccessKeyFromJWTResponse{
 			AccessKeyId: testS3AccessKey,
 			SecretKey:   testS3SecretKey,
 			Expiry:      timestamppb.New(time.Now().Add(15 * time.Minute)),
-		}), nil
+		}, nil
 	}
 }
 
@@ -534,9 +532,8 @@ func (successfulListBucketsRoundTripper) RoundTrip(request *http.Request) (*http
 }
 
 func (s *blockingS3CWObjectClientStub) CreateAccessKeyFromJWT(
-	context.Context,
-	*connect.Request[cwobjectv1.CreateAccessKeyFromJWTRequest],
-) (*connect.Response[cwobjectv1.CreateAccessKeyFromJWTResponse], error) {
+	context.Context, *cwobjectv1.CreateAccessKeyFromJWTRequest,
+) (*cwobjectv1.CreateAccessKeyFromJWTResponse, error) {
 	s.calls.Add(1)
 	s.once.Do(func() { close(s.started) })
 	<-s.release

@@ -8,7 +8,6 @@ import (
 	"time"
 
 	api "buf.build/gen/go/coreweave/container-registry-api/protocolbuffers/go/coreweave/registry/v1alpha1"
-	"connectrpc.com/connect"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
 	"github.com/coreweave/terraform-provider-coreweave/internal/provider"
 	"github.com/hashicorp/go-uuid"
@@ -62,7 +61,7 @@ func checkNamespaceDestroyed(t *testing.T, name string) resource.TestCheckFunc {
 		if err != nil {
 			return err
 		}
-		_, err = client.ContainerRegistry.GetRegistryNamespace(ctx, connect.NewRequest(&api.GetRegistryNamespaceRequest{Name: "namespaces/" + name}))
+		_, err = client.ContainerRegistry.GetRegistryNamespace(ctx, &api.GetRegistryNamespaceRequest{Name: "namespaces/" + name})
 		if coreweave.IsNotFoundError(err) {
 			return nil
 		}

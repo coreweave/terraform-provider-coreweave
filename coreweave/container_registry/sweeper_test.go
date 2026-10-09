@@ -11,7 +11,6 @@ import (
 	"time"
 
 	api "buf.build/gen/go/coreweave/container-registry-api/protocolbuffers/go/coreweave/registry/v1alpha1"
-	"connectrpc.com/connect"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
 	containerregistry "github.com/coreweave/terraform-provider-coreweave/coreweave/container_registry"
 	"github.com/coreweave/terraform-provider-coreweave/internal/provider"
@@ -76,7 +75,7 @@ func sweepRegistryNamespaces(zone string) error {
 			if err != nil {
 				return err
 			}
-			response, err := registry.DeleteRegistryNamespace(ctx, connect.NewRequest(&api.DeleteRegistryNamespaceRequest{Name: n.Name, Force: true, IdempotencyKey: key}))
+			response, err := registry.DeleteRegistryNamespace(ctx, &api.DeleteRegistryNamespaceRequest{Name: n.Name, Force: true, IdempotencyKey: key})
 			if coreweave.IsNotFoundError(err) {
 				return nil
 			}
@@ -85,7 +84,7 @@ func sweepRegistryNamespaces(zone string) error {
 			}
 			ctx, cancel := context.WithTimeout(ctx, 20*time.Minute)
 			defer cancel()
-			return containerregistry.WaitOperation(ctx, registry, response.Msg, &emptypb.Empty{})
+			return containerregistry.WaitOperation(ctx, registry, response, &emptypb.Empty{})
 		},
 	})
 }

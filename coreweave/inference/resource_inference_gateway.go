@@ -7,7 +7,6 @@ import (
 	"time"
 
 	inferencev1 "buf.build/gen/go/coreweave/inference/protocolbuffers/go/coreweave/inference/v1alpha1"
-	"connectrpc.com/connect"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
 	"github.com/hashicorp/terraform-plugin-framework-nettypes/cidrtypes"
 	"github.com/hashicorp/terraform-plugin-framework-validators/resourcevalidator"
@@ -330,14 +329,14 @@ func (r *InferenceGatewayResource) Create(ctx context.Context, req resource.Crea
 		return
 	}
 
-	createResp, err := r.client.CreateGateway(ctx, connect.NewRequest(createReq))
+	createResp, err := r.client.CreateGateway(ctx, createReq)
 	if err != nil {
 		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
 		return
 	}
 
 	// Save initial state before polling so the resource is tracked even if polling fails.
-	resp.Diagnostics.Append(setFromGateway(&data, createResp.Msg.Gateway, false)...)
+	resp.Diagnostics.Append(setFromGateway(&data, createResp.Gateway, false)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -346,7 +345,7 @@ func (r *InferenceGatewayResource) Create(ctx context.Context, req resource.Crea
 		return
 	}
 
-	gatewayID := createResp.Msg.Gateway.GetSpec().GetId()
+	gatewayID := createResp.Gateway.GetSpec().GetId()
 
 	conf := retry.StateChangeConf{
 		Pending: []string{
@@ -355,14 +354,14 @@ func (r *InferenceGatewayResource) Create(ctx context.Context, req resource.Crea
 		},
 		Target: []string{inferencev1.Status_STATUS_READY.String()},
 		Refresh: func() (interface{}, string, error) {
-			getResp, err := r.client.GetGateway(ctx, connect.NewRequest(&inferencev1.GetGatewayRequest{
+			getResp, err := r.client.GetGateway(ctx, &inferencev1.GetGatewayRequest{
 				Id: gatewayID,
-			}))
+			})
 			if err != nil {
 				tflog.Error(ctx, "failed to poll gateway", map[string]interface{}{"error": err.Error()})
 				return nil, inferencev1.Status_STATUS_UNSPECIFIED.String(), err
 			}
-			gw := getResp.Msg.Gateway
+			gw := getResp.Gateway
 			status := gw.GetStatus().GetStatus()
 			if status == inferencev1.Status_STATUS_ERROR || status == inferencev1.Status_STATUS_FAILED {
 				return gw, status.String(), errGatewayFailed
@@ -403,9 +402,9 @@ func (r *InferenceGatewayResource) Read(ctx context.Context, req resource.ReadRe
 		return
 	}
 
-	getResp, err := r.client.GetGateway(ctx, connect.NewRequest(&inferencev1.GetGatewayRequest{
+	getResp, err := r.client.GetGateway(ctx, &inferencev1.GetGatewayRequest{
 		Id: data.ID.ValueString(),
-	}))
+	})
 	if err != nil {
 		if coreweave.IsNotFoundError(err) {
 			resp.State.RemoveResource(ctx)
@@ -415,7 +414,7 @@ func (r *InferenceGatewayResource) Read(ctx context.Context, req resource.ReadRe
 		return
 	}
 
-	resp.Diagnostics.Append(setFromGateway(&data, getResp.Msg.Gateway, false)...)
+	resp.Diagnostics.Append(setFromGateway(&data, getResp.Gateway, false)...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -432,7 +431,7 @@ func (r *InferenceGatewayResource) Update(ctx context.Context, req resource.Upda
 		return
 	}
 
-	updateResp, err := r.client.UpdateGateway(ctx, connect.NewRequest(updateReq))
+	updateResp, err := r.client.UpdateGateway(ctx, updateReq)
 	if err != nil {
 		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
 		return
@@ -440,7 +439,7 @@ func (r *InferenceGatewayResource) Update(ctx context.Context, req resource.Upda
 
 	// Save intermediate state before polling so an in-flight update is not lost
 	// if polling fails or times out.
-	resp.Diagnostics.Append(setFromGateway(&data, updateResp.Msg.Gateway, true)...)
+	resp.Diagnostics.Append(setFromGateway(&data, updateResp.Gateway, true)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -449,7 +448,7 @@ func (r *InferenceGatewayResource) Update(ctx context.Context, req resource.Upda
 		return
 	}
 
-	gatewayID := updateResp.Msg.Gateway.GetSpec().GetId()
+	gatewayID := updateResp.Gateway.GetSpec().GetId()
 
 	conf := retry.StateChangeConf{
 		Pending: []string{
@@ -459,14 +458,14 @@ func (r *InferenceGatewayResource) Update(ctx context.Context, req resource.Upda
 		},
 		Target: []string{inferencev1.Status_STATUS_READY.String()},
 		Refresh: func() (interface{}, string, error) {
-			getResp, err := r.client.GetGateway(ctx, connect.NewRequest(&inferencev1.GetGatewayRequest{
+			getResp, err := r.client.GetGateway(ctx, &inferencev1.GetGatewayRequest{
 				Id: gatewayID,
-			}))
+			})
 			if err != nil {
 				tflog.Error(ctx, "failed to poll gateway", map[string]interface{}{"error": err.Error()})
 				return nil, inferencev1.Status_STATUS_UNSPECIFIED.String(), err
 			}
-			gw := getResp.Msg.Gateway
+			gw := getResp.Gateway
 			status := gw.GetStatus().GetStatus()
 			if status == inferencev1.Status_STATUS_ERROR || status == inferencev1.Status_STATUS_FAILED {
 				return gw, status.String(), errGatewayFailed
@@ -509,9 +508,9 @@ func (r *InferenceGatewayResource) Delete(ctx context.Context, req resource.Dele
 
 	gatewayID := data.ID.ValueString()
 
-	_, err := r.client.DeleteGateway(ctx, connect.NewRequest(&inferencev1.DeleteGatewayRequest{
+	_, err := r.client.DeleteGateway(ctx, &inferencev1.DeleteGatewayRequest{
 		Id: gatewayID,
-	}))
+	})
 	if err != nil {
 		if coreweave.IsNotFoundError(err) {
 			return
@@ -533,9 +532,9 @@ func (r *InferenceGatewayResource) Delete(ctx context.Context, req resource.Dele
 		},
 		Target: []string{deletedState},
 		Refresh: func() (interface{}, string, error) {
-			getResp, err := r.client.GetGateway(ctx, connect.NewRequest(&inferencev1.GetGatewayRequest{
+			getResp, err := r.client.GetGateway(ctx, &inferencev1.GetGatewayRequest{
 				Id: gatewayID,
-			}))
+			})
 			if err != nil {
 				if coreweave.IsNotFoundError(err) {
 					return struct{}{}, deletedState, nil
@@ -543,7 +542,7 @@ func (r *InferenceGatewayResource) Delete(ctx context.Context, req resource.Dele
 				tflog.Error(ctx, "failed to poll gateway deletion", map[string]interface{}{"error": err.Error()})
 				return nil, inferencev1.Status_STATUS_UNSPECIFIED.String(), err
 			}
-			gw := getResp.Msg.Gateway
+			gw := getResp.Gateway
 			return gw, gw.GetStatus().GetStatus().String(), nil
 		},
 		Timeout:    20 * time.Minute,

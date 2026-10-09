@@ -10,7 +10,6 @@ import (
 	"time"
 
 	cwobjectv1 "buf.build/gen/go/coreweave/cwobject/protocolbuffers/go/cwobject/v1"
-	"connectrpc.com/connect"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	s3types "github.com/aws/aws-sdk-go-v2/service/s3/types"
@@ -40,12 +39,12 @@ func init() {
 				return fmt.Errorf("failed to build client: %w", err)
 			}
 
-			listResp, err := client.ListBucketInfo(ctx, connect.NewRequest(&cwobjectv1.ListBucketInfoRequest{}))
+			listResp, err := client.ListBucketInfo(ctx, &cwobjectv1.ListBucketInfoRequest{})
 			if err != nil {
 				return fmt.Errorf("failed to list buckets: %w", err)
 			}
 
-			for _, info := range listResp.Msg.GetInfo() {
+			for _, info := range listResp.GetInfo() {
 				name := info.GetName()
 				location := info.GetLocation()
 
@@ -89,12 +88,12 @@ func init() {
 				return fmt.Errorf("failed to build client: %w", err)
 			}
 
-			listResp, err := client.ListAccessPolicies(ctx, connect.NewRequest(&cwobjectv1.ListAccessPoliciesRequest{}))
+			listResp, err := client.ListAccessPolicies(ctx, &cwobjectv1.ListAccessPoliciesRequest{})
 			if err != nil {
 				return fmt.Errorf("failed to list org access policies: %w", err)
 			}
 
-			for _, policy := range listResp.Msg.GetPolicies() {
+			for _, policy := range listResp.GetPolicies() {
 				name := policy.GetName()
 				if !strings.HasPrefix(name, AcceptanceTestPrefix) {
 					log.Printf("skipping org access policy %s because it does not have prefix %s", name, AcceptanceTestPrefix)
@@ -107,7 +106,7 @@ func init() {
 					continue
 				}
 
-				_, err := client.DeleteAccessPolicy(ctx, connect.NewRequest(&cwobjectv1.DeleteAccessPolicyRequest{Name: name}))
+				_, err := client.DeleteAccessPolicy(ctx, &cwobjectv1.DeleteAccessPolicyRequest{Name: name})
 				if err != nil {
 					if coreweave.IsNotFoundError(err) {
 						log.Printf("org access policy %s already deleted", name)

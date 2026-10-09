@@ -7,7 +7,6 @@ import (
 	"time"
 
 	sandboxv1 "buf.build/gen/go/coreweave/sandbox/protocolbuffers/go/coreweave/sandbox/v1"
-	"connectrpc.com/connect"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
 	"github.com/hashicorp/go-uuid"
 	"github.com/hashicorp/terraform-plugin-framework-jsontypes/jsontypes"
@@ -299,12 +298,12 @@ func (r *ManagedRunnerResource) Create(ctx context.Context, req resource.CreateR
 		resp.Diagnostics.AddError("Unable to Generate Request ID", err.Error())
 		return
 	}
-	created, err := r.client.SandboxRunnerManagement.CreateManagedRunner(ctx, connect.NewRequest(&sandboxv1.CreateManagedRunnerRequest{ManagedRunner: runner, RequestId: requestID}))
+	created, err := r.client.SandboxRunnerManagement.CreateManagedRunner(ctx, &sandboxv1.CreateManagedRunnerRequest{ManagedRunner: runner, RequestId: requestID})
 	if err != nil {
 		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
 		return
 	}
-	if err := data.setRunner(ctx, created.Msg); err != nil {
+	if err := data.setRunner(ctx, created); err != nil {
 		resp.Diagnostics.AddError("Invalid Managed Runner Response", err.Error())
 		return
 	}
@@ -317,7 +316,7 @@ func (r *ManagedRunnerResource) Read(ctx context.Context, req resource.ReadReque
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	result, err := r.client.SandboxRunnerManagement.GetManagedRunner(ctx, connect.NewRequest(&sandboxv1.GetManagedRunnerRequest{RunnerId: data.ID.ValueString()}))
+	result, err := r.client.SandboxRunnerManagement.GetManagedRunner(ctx, &sandboxv1.GetManagedRunnerRequest{RunnerId: data.ID.ValueString()})
 	if coreweave.IsNotFoundError(err) {
 		resp.State.RemoveResource(ctx)
 		return
@@ -326,7 +325,7 @@ func (r *ManagedRunnerResource) Read(ctx context.Context, req resource.ReadReque
 		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
 		return
 	}
-	if err := data.setRunner(ctx, result.Msg); err != nil {
+	if err := data.setRunner(ctx, result); err != nil {
 		resp.Diagnostics.AddError("Invalid Managed Runner Response", err.Error())
 		return
 	}
@@ -345,20 +344,20 @@ func (r *ManagedRunnerResource) Update(ctx context.Context, req resource.UpdateR
 		resp.Diagnostics.AddError("Invalid Managed Runner Update", err.Error())
 		return
 	}
-	var result *connect.Response[sandboxv1.ManagedRunner]
+	var result *sandboxv1.ManagedRunner
 	if len(request.UpdateMask.Paths) == 0 {
-		result, err = r.client.SandboxRunnerManagement.GetManagedRunner(ctx, connect.NewRequest(&sandboxv1.GetManagedRunnerRequest{RunnerId: previous.ID.ValueString()}))
+		result, err = r.client.SandboxRunnerManagement.GetManagedRunner(ctx, &sandboxv1.GetManagedRunnerRequest{RunnerId: previous.ID.ValueString()})
 	} else {
-		result, err = r.client.SandboxRunnerManagement.UpdateManagedRunner(ctx, connect.NewRequest(request))
+		result, err = r.client.SandboxRunnerManagement.UpdateManagedRunner(ctx, request)
 	}
 	if err != nil {
 		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
 		return
 	}
 	if len(request.UpdateMask.Paths) == 0 {
-		err = data.setNoOpRunner(ctx, result.Msg)
+		err = data.setNoOpRunner(ctx, result)
 	} else {
-		err = data.setRunner(ctx, result.Msg)
+		err = data.setRunner(ctx, result)
 	}
 	if err != nil {
 		resp.Diagnostics.AddError("Invalid Managed Runner Response", err.Error())
@@ -373,7 +372,7 @@ func (r *ManagedRunnerResource) Delete(ctx context.Context, req resource.DeleteR
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	_, err := r.client.SandboxRunnerManagement.DeleteManagedRunner(ctx, connect.NewRequest(&sandboxv1.DeleteManagedRunnerRequest{RunnerId: data.ID.ValueString(), AllowMissing: true}))
+	_, err := r.client.SandboxRunnerManagement.DeleteManagedRunner(ctx, &sandboxv1.DeleteManagedRunnerRequest{RunnerId: data.ID.ValueString(), AllowMissing: true})
 	if coreweave.IsNotFoundError(err) {
 		return
 	}
@@ -388,7 +387,7 @@ func (r *ManagedRunnerResource) Delete(ctx context.Context, req resource.DeleteR
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 	for {
-		_, err := r.client.SandboxRunnerManagement.GetManagedRunner(ctx, connect.NewRequest(&sandboxv1.GetManagedRunnerRequest{RunnerId: data.ID.ValueString()}))
+		_, err := r.client.SandboxRunnerManagement.GetManagedRunner(ctx, &sandboxv1.GetManagedRunnerRequest{RunnerId: data.ID.ValueString()})
 		if coreweave.IsNotFoundError(err) {
 			return
 		}

@@ -10,7 +10,6 @@ import (
 	"time"
 
 	inferencev1 "buf.build/gen/go/coreweave/inference/protocolbuffers/go/coreweave/inference/v1alpha1"
-	"connectrpc.com/connect"
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/setvalidator"
@@ -119,14 +118,14 @@ func resourcesApplied(d *inferencev1.Deployment) bool {
 // failed apply) returns errDeploymentFailed.
 func (r *InferenceDeploymentResource) resourcesAppliedRefresh(ctx context.Context, deploymentID string) retry.StateRefreshFunc {
 	return func() (interface{}, string, error) {
-		getResp, err := r.client.GetDeployment(ctx, connect.NewRequest(&inferencev1.GetDeploymentRequest{
+		getResp, err := r.client.GetDeployment(ctx, &inferencev1.GetDeploymentRequest{
 			Id: deploymentID,
-		}))
+		})
 		if err != nil {
 			tflog.Error(ctx, "failed to poll deployment", map[string]interface{}{"error": err.Error()})
 			return nil, inferencev1.Status_STATUS_UNSPECIFIED.String(), err
 		}
-		d := getResp.Msg.Deployment
+		d := getResp.Deployment
 		status := d.GetStatus().GetStatus()
 		if status == inferencev1.Status_STATUS_ERROR || status == inferencev1.Status_STATUS_FAILED {
 			return d, status.String(), errDeploymentFailed
@@ -145,14 +144,14 @@ func (r *InferenceDeploymentResource) resourcesAppliedRefresh(ctx context.Contex
 // returns errDeploymentFailed.
 func (r *InferenceDeploymentResource) rolloutRefresh(ctx context.Context, deploymentID string) retry.StateRefreshFunc {
 	return func() (interface{}, string, error) {
-		getResp, err := r.client.GetDeployment(ctx, connect.NewRequest(&inferencev1.GetDeploymentRequest{
+		getResp, err := r.client.GetDeployment(ctx, &inferencev1.GetDeploymentRequest{
 			Id: deploymentID,
-		}))
+		})
 		if err != nil {
 			tflog.Error(ctx, "failed to poll deployment", map[string]interface{}{"error": err.Error()})
 			return nil, inferencev1.Status_STATUS_UNSPECIFIED.String(), err
 		}
-		d := getResp.Msg.Deployment
+		d := getResp.Deployment
 		status := d.GetStatus().GetStatus()
 		if status == inferencev1.Status_STATUS_ERROR || status == inferencev1.Status_STATUS_FAILED {
 			return d, status.String(), errDeploymentFailed
@@ -165,9 +164,9 @@ func (r *InferenceDeploymentResource) rolloutRefresh(ctx context.Context, deploy
 // API returns NotFound and the live status otherwise.
 func (r *InferenceDeploymentResource) deletedRefresh(ctx context.Context, deploymentID string) retry.StateRefreshFunc {
 	return func() (interface{}, string, error) {
-		getResp, err := r.client.GetDeployment(ctx, connect.NewRequest(&inferencev1.GetDeploymentRequest{
+		getResp, err := r.client.GetDeployment(ctx, &inferencev1.GetDeploymentRequest{
 			Id: deploymentID,
-		}))
+		})
 		if err != nil {
 			if coreweave.IsNotFoundError(err) {
 				return struct{}{}, deletedState, nil
@@ -175,7 +174,7 @@ func (r *InferenceDeploymentResource) deletedRefresh(ctx context.Context, deploy
 			tflog.Error(ctx, "failed to poll deployment deletion", map[string]interface{}{"error": err.Error()})
 			return nil, inferencev1.Status_STATUS_UNSPECIFIED.String(), err
 		}
-		d := getResp.Msg.Deployment
+		d := getResp.Deployment
 		return d, d.GetStatus().GetStatus().String(), nil
 	}
 }
@@ -557,13 +556,13 @@ func (r *InferenceDeploymentResource) ModifyPlan(ctx context.Context, req resour
 func (r *InferenceDeploymentResource) validateEngineAvailable(ctx context.Context, engine string) diag.Diagnostics {
 	var diags diag.Diagnostics
 
-	paramsResp, err := r.client.GetDeploymentParameters(ctx, connect.NewRequest(&inferencev1.GetDeploymentParametersRequest{}))
+	paramsResp, err := r.client.GetDeploymentParameters(ctx, &inferencev1.GetDeploymentParametersRequest{})
 	if err != nil {
 		coreweave.HandleAPIError(ctx, err, &diags)
 		return diags
 	}
 
-	runtimeVersions := paramsResp.Msg.GetRuntimeParameters().GetRuntimeVersions()
+	runtimeVersions := paramsResp.GetRuntimeParameters().GetRuntimeVersions()
 	if len(runtimeVersions) == 0 {
 		return diags
 	}
@@ -598,14 +597,14 @@ func (r *InferenceDeploymentResource) Create(ctx context.Context, req resource.C
 		return
 	}
 
-	createResp, err := r.client.CreateDeployment(ctx, connect.NewRequest(createReq))
+	createResp, err := r.client.CreateDeployment(ctx, createReq)
 	if err != nil {
 		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
 		return
 	}
 
 	// Save initial state before polling so the resource is tracked even if polling fails.
-	resp.Diagnostics.Append(setFromDeployment(&data, createResp.Msg.Deployment, false)...)
+	resp.Diagnostics.Append(setFromDeployment(&data, createResp.Deployment, false)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -614,7 +613,7 @@ func (r *InferenceDeploymentResource) Create(ctx context.Context, req resource.C
 		return
 	}
 
-	deploymentID := createResp.Msg.Deployment.GetSpec().GetId()
+	deploymentID := createResp.Deployment.GetSpec().GetId()
 
 	conf := retry.StateChangeConf{
 		Pending: []string{
@@ -657,9 +656,9 @@ func (r *InferenceDeploymentResource) Read(ctx context.Context, req resource.Rea
 		return
 	}
 
-	getResp, err := r.client.GetDeployment(ctx, connect.NewRequest(&inferencev1.GetDeploymentRequest{
+	getResp, err := r.client.GetDeployment(ctx, &inferencev1.GetDeploymentRequest{
 		Id: data.ID.ValueString(),
-	}))
+	})
 	if err != nil {
 		if coreweave.IsNotFoundError(err) {
 			resp.State.RemoveResource(ctx)
@@ -669,7 +668,7 @@ func (r *InferenceDeploymentResource) Read(ctx context.Context, req resource.Rea
 		return
 	}
 
-	resp.Diagnostics.Append(setFromDeployment(&data, getResp.Msg.Deployment, false)...)
+	resp.Diagnostics.Append(setFromDeployment(&data, getResp.Deployment, false)...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -713,7 +712,7 @@ func (r *InferenceDeploymentResource) Update(ctx context.Context, req resource.U
 		return
 	}
 
-	updateResp, err := r.client.UpdateDeployment(ctx, connect.NewRequest(updateReq))
+	updateResp, err := r.client.UpdateDeployment(ctx, updateReq)
 	if err != nil {
 		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
 		return
@@ -721,7 +720,7 @@ func (r *InferenceDeploymentResource) Update(ctx context.Context, req resource.U
 
 	// Save intermediate state before polling so an in-flight update is not lost
 	// if polling fails or times out.
-	resp.Diagnostics.Append(setFromDeployment(&data, updateResp.Msg.Deployment, true)...)
+	resp.Diagnostics.Append(setFromDeployment(&data, updateResp.Deployment, true)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -730,7 +729,7 @@ func (r *InferenceDeploymentResource) Update(ctx context.Context, req resource.U
 		return
 	}
 
-	deploymentID := updateResp.Msg.Deployment.GetSpec().GetId()
+	deploymentID := updateResp.Deployment.GetSpec().GetId()
 
 	conf := r.updateStateChangeConf(ctx, deploymentID, data.Disabled.ValueBool())
 
@@ -789,9 +788,9 @@ func (r *InferenceDeploymentResource) Delete(ctx context.Context, req resource.D
 
 	deploymentID := data.ID.ValueString()
 
-	_, err := r.client.DeleteDeployment(ctx, connect.NewRequest(&inferencev1.DeleteDeploymentRequest{
+	_, err := r.client.DeleteDeployment(ctx, &inferencev1.DeleteDeploymentRequest{
 		Id: deploymentID,
-	}))
+	})
 	if err != nil {
 		if coreweave.IsNotFoundError(err) {
 			return

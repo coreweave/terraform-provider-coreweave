@@ -9,7 +9,6 @@ import (
 	"time"
 
 	cwobjectv1 "buf.build/gen/go/coreweave/cwobject/protocolbuffers/go/cwobject/v1"
-	"connectrpc.com/connect"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsretry "github.com/aws/aws-sdk-go-v2/aws/retry"
 	"github.com/aws/aws-sdk-go-v2/credentials"
@@ -124,9 +123,9 @@ func (c *Client) currentTime() time.Time {
 }
 
 func (c *Client) createS3Client(ctx context.Context, zone string) (*s3.Client, *cwobjectv1.CreateAccessKeyFromJWTResponse, error) {
-	resp, err := c.CreateAccessKeyFromJWT(ctx, connect.NewRequest(&cwobjectv1.CreateAccessKeyFromJWTRequest{
+	resp, err := c.CreateAccessKeyFromJWT(ctx, &cwobjectv1.CreateAccessKeyFromJWTRequest{
 		DurationSeconds: wrapperspb.UInt32(60 * 15), // 15 minutes
-	}))
+	})
 	if err != nil {
 		return nil, nil, err
 	}
@@ -140,8 +139,8 @@ func (c *Client) createS3Client(ctx context.Context, zone string) (*s3.Client, *
 	s3Client := s3.New(s3.Options{
 		BaseEndpoint: aws.String(c.s3Endpoint),
 		Credentials: aws.NewCredentialsCache(credentials.NewStaticCredentialsProvider(
-			resp.Msg.AccessKeyId,
-			resp.Msg.SecretKey,
+			resp.AccessKeyId,
+			resp.SecretKey,
 			"",
 		)),
 		HTTPClient:                 httpClient,
@@ -152,7 +151,7 @@ func (c *Client) createS3Client(ctx context.Context, zone string) (*s3.Client, *
 		ResponseChecksumValidation: aws.ResponseChecksumValidationWhenSupported,
 		UsePathStyle:               false,
 	})
-	return s3Client, resp.Msg, nil
+	return s3Client, resp, nil
 }
 
 func (c *Client) S3Client(ctx context.Context, zone string) (*s3.Client, error) {

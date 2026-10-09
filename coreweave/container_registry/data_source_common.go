@@ -6,10 +6,9 @@ import (
 	"sort"
 	"strings"
 
-	client "buf.build/gen/go/coreweave/container-registry-api/connectrpc/go/coreweave/registry/v1alpha1/registryv1alpha1connect"
+	client "buf.build/gen/go/coreweave/container-registry-api/connectrpc/go/v2/coreweave/registry/v1alpha1/registryv1alpha1connect"
 	api "buf.build/gen/go/coreweave/container-registry-api/protocolbuffers/go/coreweave/registry/v1alpha1"
 	"buf.build/go/protovalidate"
-	"connectrpc.com/connect"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
@@ -86,18 +85,18 @@ func listNamespaces(ctx context.Context, c client.RegistryServiceClient) ([]*api
 	names := map[string]bool{}
 	token := ""
 	for {
-		res, e := c.ListRegistryNamespaces(ctx, connect.NewRequest(&api.ListRegistryNamespacesRequest{PageSize: 200, PageToken: token}))
+		res, e := c.ListRegistryNamespaces(ctx, &api.ListRegistryNamespacesRequest{PageSize: 200, PageToken: token})
 		if e != nil {
 			return nil, e
 		}
-		for _, n := range res.Msg.RegistryNamespaces {
+		for _, n := range res.RegistryNamespaces {
 			if names[n.Name] {
 				return nil, fmt.Errorf("duplicate namespace %s across pages", n.Name)
 			}
 			names[n.Name] = true
 			out = append(out, n)
 		}
-		token = res.Msg.NextPageToken
+		token = res.NextPageToken
 		if token == "" {
 			break
 		}

@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	inferencev1 "buf.build/gen/go/coreweave/inference/protocolbuffers/go/coreweave/inference/v1alpha1"
-	"connectrpc.com/connect"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -75,13 +74,13 @@ func (d *CapacityClaimParametersDataSource) Configure(_ context.Context, req dat
 }
 
 func (d *CapacityClaimParametersDataSource) Read(ctx context.Context, _ datasource.ReadRequest, resp *datasource.ReadResponse) {
-	paramsResp, err := d.client.GetCapacityClaimParameters(ctx, connect.NewRequest(&inferencev1.GetCapacityClaimParametersRequest{}))
+	paramsResp, err := d.client.GetCapacityClaimParameters(ctx, &inferencev1.GetCapacityClaimParametersRequest{})
 	if err != nil {
 		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
 		return
 	}
 
-	msg := paramsResp.Msg
+	msg := paramsResp
 
 	var data CapacityClaimParametersDataSourceModel
 

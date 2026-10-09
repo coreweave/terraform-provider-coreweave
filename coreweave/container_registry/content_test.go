@@ -8,10 +8,10 @@ import (
 	"testing"
 	"time"
 
-	client "buf.build/gen/go/coreweave/container-registry-api/connectrpc/go/coreweave/registry/v1alpha1/registryv1alpha1connect"
+	client "buf.build/gen/go/coreweave/container-registry-api/connectrpc/go/v2/coreweave/registry/v1alpha1/registryv1alpha1connect"
 	api "buf.build/gen/go/coreweave/container-registry-api/protocolbuffers/go/coreweave/registry/v1alpha1"
 	"cloud.google.com/go/longrunning/autogen/longrunningpb"
-	"connectrpc.com/connect"
+	"connectrpc.com/connect/v2"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/stretchr/testify/require"
@@ -31,35 +31,35 @@ type pollingClient struct {
 }
 
 // GetRegistryAccessConfiguration returns scripted rollout observations.
-func (c *pollingClient) GetRegistryAccessConfiguration(context.Context, *connect.Request[api.GetRegistryAccessConfigurationRequest]) (*connect.Response[api.RegistryAccessConfiguration], error) {
+func (c *pollingClient) GetRegistryAccessConfiguration(context.Context, *api.GetRegistryAccessConfigurationRequest) (*api.RegistryAccessConfiguration, error) {
 	i := min(c.calls, len(c.access)-1)
 	c.calls++
-	return connect.NewResponse(c.access[i]), nil
+	return c.access[i], nil
 }
 
 // GetRegistryLifecyclePolicy returns scripted home-region acknowledgements.
-func (c *pollingClient) GetRegistryLifecyclePolicy(context.Context, *connect.Request[api.GetRegistryLifecyclePolicyRequest]) (*connect.Response[api.RegistryLifecyclePolicy], error) {
+func (c *pollingClient) GetRegistryLifecyclePolicy(context.Context, *api.GetRegistryLifecyclePolicyRequest) (*api.RegistryLifecyclePolicy, error) {
 	i := min(c.calls, len(c.lifecycle)-1)
 	c.calls++
-	return connect.NewResponse(c.lifecycle[i]), nil
+	return c.lifecycle[i], nil
 }
 
 // ListRegistryNamespaces records opaque tokens and page-size limits.
-func (c *pollingClient) ListRegistryNamespaces(_ context.Context, q *connect.Request[api.ListRegistryNamespacesRequest]) (*connect.Response[api.ListRegistryNamespacesResponse], error) {
-	if q.Msg.PageSize != 200 {
+func (c *pollingClient) ListRegistryNamespaces(_ context.Context, q *api.ListRegistryNamespacesRequest) (*api.ListRegistryNamespacesResponse, error) {
+	if q.PageSize != 200 {
 		return nil, errors.New("unexpected page size")
 	}
-	c.tokens = append(c.tokens, q.Msg.PageToken)
+	c.tokens = append(c.tokens, q.PageToken)
 	i := min(c.calls, len(c.pages)-1)
 	c.calls++
-	return connect.NewResponse(c.pages[i]), nil
+	return c.pages[i], nil
 }
 
 // GetOperation returns scripted operation states.
-func (c *pollingClient) GetOperation(context.Context, *connect.Request[api.RegistryServiceGetOperationRequest]) (*connect.Response[longrunningpb.Operation], error) {
+func (c *pollingClient) GetOperation(context.Context, *api.RegistryServiceGetOperationRequest) (*longrunningpb.Operation, error) {
 	i := min(c.calls, len(c.operations)-1)
 	c.calls++
-	return connect.NewResponse(c.operations[i]), nil
+	return c.operations[i], nil
 }
 
 // TestExactRevisionWaits rejects newer content even if that content was accepted.

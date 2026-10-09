@@ -7,10 +7,11 @@ import (
 	"strings"
 	"time"
 
-	client "buf.build/gen/go/coreweave/container-registry-api/connectrpc/go/coreweave/registry/v1alpha1/registryv1alpha1connect"
+	client "buf.build/gen/go/coreweave/container-registry-api/connectrpc/go/v2/coreweave/registry/v1alpha1/registryv1alpha1connect"
 	api "buf.build/gen/go/coreweave/container-registry-api/protocolbuffers/go/coreweave/registry/v1alpha1"
 	"cloud.google.com/go/longrunning/autogen/longrunningpb"
-	"connectrpc.com/connect"
+	"connectrpc.com/connect/v2"
+	"connectrpc.com/connect/v2/connectproto"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"google.golang.org/protobuf/proto"
@@ -102,14 +103,14 @@ func operationResult(op *longrunningpb.Operation, result proto.Message) (bool, e
 		if status.Code < 1 || status.Code > 16 {
 			return true, fmt.Errorf("operation %s returned invalid status code %d", op.Name, status.Code)
 		}
-		e := connect.NewError(connect.Code(status.Code), fmt.Errorf("operation %s: %s", op.Name, status.Message))
+		e := connect.Errorf(connect.Code(status.Code), "operation %s: %s", op.Name, status.Message)
 		for _, d := range status.Details {
 			m, err := d.UnmarshalNew()
 			if err != nil {
 				continue
 			}
-			if detail, err := connect.NewErrorDetail(m); err == nil {
-				e.AddDetail(detail)
+			if detail, err := connectproto.NewErrorDetail(m); err == nil {
+				e = e.WithDetail(detail)
 			}
 		}
 		return true, &terminalOperationError{e}
@@ -161,11 +162,11 @@ func remainingTimeout(ctx context.Context) time.Duration {
 func waitAccess(ctx context.Context, c client.RegistryServiceClient, parent string, revision int64) (*api.RegistryAccessConfiguration, error) {
 	var last *api.RegistryAccessConfiguration
 	err := poll(ctx, "access policy "+parent, func(ctx context.Context) (bool, error) {
-		response, err := c.GetRegistryAccessConfiguration(ctx, connect.NewRequest(&api.GetRegistryAccessConfigurationRequest{Parent: parent}))
+		response, err := c.GetRegistryAccessConfiguration(ctx, &api.GetRegistryAccessConfigurationRequest{Parent: parent})
 		if err != nil {
 			return false, err
 		}
-		last = response.Msg
+		last = response
 		if last.Revision > revision {
 			return false, fmt.Errorf("competing writer at %s: expected revision %d, got %d; refresh and replan", parent, revision, last.Revision)
 		}
@@ -181,11 +182,11 @@ func waitAccess(ctx context.Context, c client.RegistryServiceClient, parent stri
 func waitLifecycle(ctx context.Context, c client.RegistryServiceClient, parent string, revision int64) (*api.RegistryLifecyclePolicy, error) {
 	var last *api.RegistryLifecyclePolicy
 	err := poll(ctx, "lifecycle policy "+parent, func(ctx context.Context) (bool, error) {
-		response, err := c.GetRegistryLifecyclePolicy(ctx, connect.NewRequest(&api.GetRegistryLifecyclePolicyRequest{Parent: parent}))
+		response, err := c.GetRegistryLifecyclePolicy(ctx, &api.GetRegistryLifecyclePolicyRequest{Parent: parent})
 		if err != nil {
 			return false, err
 		}
-		last = response.Msg
+		last = response
 		if last.Revision > revision {
 			return false, fmt.Errorf("competing writer at %s: expected revision %d, got %d; refresh and replan", parent, revision, last.Revision)
 		}

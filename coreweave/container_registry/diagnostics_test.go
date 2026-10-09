@@ -8,7 +8,8 @@ import (
 	"testing"
 
 	api "buf.build/gen/go/coreweave/container-registry-api/protocolbuffers/go/coreweave/registry/v1alpha1"
-	"connectrpc.com/connect"
+	"connectrpc.com/connect/v2"
+	"connectrpc.com/connect/v2/connectproto"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
@@ -29,11 +30,11 @@ func TestReportIncludesContextAndEveryDetail(t *testing.T) {
 		{connect.CodeFailedPrecondition, &errdetails.PreconditionFailure{Violations: []*errdetails.PreconditionFailure_Violation{{Type: "etag", Description: "stale etag"}}}, "stale etag"},
 		{connect.CodeResourceExhausted, &errdetails.QuotaFailure{Violations: []*errdetails.QuotaFailure_Violation{{Subject: "namespace", Description: "quota exhausted"}}}, "quota exhausted"},
 	} {
-		err := connect.NewError(tc.code, errors.New("request rejected"))
+		err := connect.NewError(tc.code, "request rejected")
 		for _, m := range []proto.Message{&errdetails.ErrorInfo{Reason: "REJECTED"}, tc.detail} {
-			detail, e := connect.NewErrorDetail(m)
+			detail, e := connectproto.NewErrorDetail(m)
 			require.NoError(t, e)
-			err.AddDetail(detail)
+			err = err.WithDetail(detail)
 		}
 		var diagnostics diag.Diagnostics
 		report(t.Context(), fmt.Errorf("updating registry policy: %w", err), &diagnostics)

@@ -10,7 +10,6 @@ import (
 	"time"
 
 	inferencev1 "buf.build/gen/go/coreweave/inference/protocolbuffers/go/coreweave/inference/v1alpha1"
-	"connectrpc.com/connect"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
 	"github.com/coreweave/terraform-provider-coreweave/internal/provider"
 	"github.com/coreweave/terraform-provider-coreweave/internal/testutil"
@@ -86,7 +85,7 @@ func init() {
 				return fmt.Errorf("failed to build client: %w", err)
 			}
 
-			listResp, err := client.Inference.ListDeployments(ctx, connect.NewRequest(&inferencev1.ListDeploymentsRequest{}))
+			listResp, err := client.Inference.ListDeployments(ctx, &inferencev1.ListDeploymentsRequest{})
 			if err != nil {
 				if coreweave.IsNotFoundError(err) {
 					log.Println("[INFO] No deployments found. Skipping sweeper.")
@@ -95,7 +94,7 @@ func init() {
 				return fmt.Errorf("failed to list deployments: %w", err)
 			}
 
-			for _, d := range listResp.Msg.GetItems() {
+			for _, d := range listResp.GetItems() {
 				name := d.GetSpec().GetName()
 				if !strings.HasPrefix(name, AcceptanceTestPrefix) {
 					continue
@@ -108,7 +107,7 @@ func init() {
 				id := d.GetSpec().GetId()
 				fmt.Printf("sweeping inference deployment: %s (%s)\n", name, id)
 
-				_, err := client.Inference.DeleteDeployment(ctx, connect.NewRequest(&inferencev1.DeleteDeploymentRequest{Id: id}))
+				_, err := client.Inference.DeleteDeployment(ctx, &inferencev1.DeleteDeploymentRequest{Id: id})
 				if err != nil {
 					return fmt.Errorf("failed to delete deployment %s: %w", name, err)
 				}
@@ -138,7 +137,7 @@ func init() {
 				return fmt.Errorf("failed to build client: %w", err)
 			}
 
-			listResp, err := client.Inference.ListCapacityClaims(ctx, connect.NewRequest(&inferencev1.ListCapacityClaimsRequest{}))
+			listResp, err := client.Inference.ListCapacityClaims(ctx, &inferencev1.ListCapacityClaimsRequest{})
 			if err != nil {
 				if coreweave.IsNotFoundError(err) {
 					log.Println("[INFO] No capacity claims found. Skipping sweeper.")
@@ -147,7 +146,7 @@ func init() {
 				return fmt.Errorf("failed to list capacity claims: %w", err)
 			}
 
-			for _, d := range listResp.Msg.GetCapacityClaims() {
+			for _, d := range listResp.GetCapacityClaims() {
 				name := d.GetSpec().GetName()
 				if !strings.HasPrefix(name, AcceptanceTestPrefix) {
 					continue
@@ -160,7 +159,7 @@ func init() {
 				id := d.GetSpec().GetId()
 				fmt.Printf("sweeping inference capacity claim: %s (%s)\n", name, id)
 
-				_, err := client.Inference.DeleteCapacityClaim(ctx, connect.NewRequest(&inferencev1.DeleteCapacityClaimRequest{Id: id}))
+				_, err := client.Inference.DeleteCapacityClaim(ctx, &inferencev1.DeleteCapacityClaimRequest{Id: id})
 				if err != nil {
 					return fmt.Errorf("failed to delete capacity claim %s: %w", name, err)
 				}
@@ -190,7 +189,7 @@ func init() {
 				return fmt.Errorf("failed to build client: %w", err)
 			}
 
-			listResp, err := client.Inference.ListGateways(ctx, connect.NewRequest(&inferencev1.ListGatewaysRequest{}))
+			listResp, err := client.Inference.ListGateways(ctx, &inferencev1.ListGatewaysRequest{})
 			if err != nil {
 				if coreweave.IsNotFoundError(err) {
 					log.Println("[INFO] No gateways found. Skipping sweeper.")
@@ -199,7 +198,7 @@ func init() {
 				return fmt.Errorf("failed to list gateways: %w", err)
 			}
 
-			for _, d := range listResp.Msg.GetItems() {
+			for _, d := range listResp.GetItems() {
 				name := d.GetSpec().GetName()
 				if !strings.HasPrefix(name, AcceptanceTestPrefix) {
 					continue
@@ -212,7 +211,7 @@ func init() {
 				id := d.GetSpec().GetId()
 				fmt.Printf("sweeping inference gateway: %s (%s)\n", name, id)
 
-				_, err := client.Inference.DeleteGateway(ctx, connect.NewRequest(&inferencev1.DeleteGatewayRequest{Id: id}))
+				_, err := client.Inference.DeleteGateway(ctx, &inferencev1.DeleteGatewayRequest{Id: id})
 				if err != nil {
 					return fmt.Errorf("failed to delete gateway %s: %w", name, err)
 				}

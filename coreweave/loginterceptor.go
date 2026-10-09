@@ -2,24 +2,22 @@ package coreweave
 
 import (
 	"context"
-	"fmt"
-	"reflect"
+	"errors"
+	"io"
 
-	"connectrpc.com/connect"
+	"connectrpc.com/connect/v2"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"google.golang.org/protobuf/encoding/prototext"
 	"google.golang.org/protobuf/proto"
 )
 
-const (
-	logMessageKey = "message"
-)
+const logMessageKey = "message"
 
-func tfLogBaseFields(req connect.AnyRequest) map[string]any {
+func tfLogBaseFields(info *connect.CallInfo) map[string]any {
 	return map[string]any{
-		"procedure":  req.Spec().Procedure,
-		"streamType": req.Spec().StreamType.String(),
-		"peer":       req.Peer().Protocol + "://" + req.Peer().Addr,
+		"procedure":  info.Spec.Procedure,
+		"streamType": info.Spec.StreamType.String(),
+		"peer":       info.Protocol + "://" + info.PeerAddr,
 	}
 }
 
@@ -31,52 +29,86 @@ func logFormatMessage(message proto.Message) string {
 	}.Format(message)
 }
 
-func tfLogRequest(ctx context.Context, req connect.AnyRequest) {
-	reqFields := tfLogBaseFields(req)
-
-	// This is tricky, because AnyRequest does not expose the underlying proto message directly, but always has it (for unary requests).
-	if reqMsg, ok := reflect.ValueOf(req).Elem().FieldByName("Msg").Interface().(proto.Message); ok {
-		reqFields[logMessageKey] = logFormatMessage(reqMsg)
-	} else {
-		tflog.Error(ctx, fmt.Sprintf("failed to get request message for logging; %T.Msg is not a proto.Message", req))
+func tfLogRequest(ctx context.Context, info *connect.CallInfo, msg any) {
+	fields := tfLogBaseFields(info)
+	if message, ok := msg.(proto.Message); ok {
+		fields[logMessageKey] = logFormatMessage(message)
 	}
-
-	tflog.Debug(ctx, "sending API request", reqFields)
+	tflog.Debug(ctx, "sending API request", fields)
 }
 
-func tfLogResponse(ctx context.Context, req connect.AnyRequest, resp connect.AnyResponse, err error) {
-	respFields := tfLogBaseFields(req)
-
+func tfLogResponse(ctx context.Context, info *connect.CallInfo, msg any, err error) {
+	fields := tfLogBaseFields(info)
 	if err != nil {
-		respFields["error"] = err.Error()
-	}
-
-	// Similarly to request, not knowing the type of AnyResponse means that we have to use reflection to get to the underlying proto message.
-	respValue := reflect.ValueOf(resp)
-	if !respValue.IsValid() || respValue.IsNil() {
-		tflog.Debug(ctx, "got nil or invalid API response", respFields)
-		// Special case, we can't get much more info out of it.
+		fields["error"] = err.Error()
+		tflog.Debug(ctx, "got nil or invalid API response", fields)
 		return
-	} else if respMsgAttr, ok := respValue.Elem().FieldByName("Msg").Interface().(proto.Message); ok {
-		respFields[logMessageKey] = logFormatMessage(respMsgAttr)
-	} else {
-		tflog.Error(ctx, fmt.Sprintf("failed to get response message for logging; %T.Msg is not a proto.Message", resp))
 	}
-
-	tflog.Debug(ctx, "received API response", respFields)
+	if message, ok := msg.(proto.Message); ok {
+		fields[logMessageKey] = logFormatMessage(message)
+	}
+	tflog.Debug(ctx, "received API response", fields)
 }
 
-func TFLogInterceptor() connect.Interceptor {
-	return connect.UnaryInterceptorFunc(func(uf connect.UnaryFunc) connect.UnaryFunc {
-		return func(
-			ctx context.Context,
-			req connect.AnyRequest,
-		) (connect.AnyResponse, error) {
-			tfLogRequest(ctx, req)
-			resp, err := uf(ctx, req)
-			tfLogResponse(ctx, req, resp, err)
-
-			return resp, err
+func TFLogInterceptor() connect.ClientInterceptor {
+	return func(next connect.ClientFunc) connect.ClientFunc {
+		return func(ctx context.Context, spec connect.Spec) (connect.ClientStream, error) {
+			stream, err := next(ctx, spec)
+			info, _ := connect.CallInfoForClientContext(ctx)
+			if err != nil {
+				tfLogResponse(ctx, info, nil, err)
+				return nil, err
+			}
+			return &loggingClientStream{ClientStream: stream, ctx: ctx, info: info}, nil
 		}
-	})
+	}
+}
+
+// Connect opens HTTP requests lazily, so RPC logging follows the stream's
+// message operations rather than just its initialization.
+type loggingClientStream struct {
+	connect.ClientStream
+	ctx  context.Context
+	info *connect.CallInfo
+}
+
+func (s *loggingClientStream) SendHeaders() error {
+	err := s.ClientStream.SendHeaders()
+	if err != nil {
+		tfLogResponse(s.ctx, s.info, nil, err)
+	}
+	return err
+}
+
+func (s *loggingClientStream) Send(msg any) error {
+	tfLogRequest(s.ctx, s.info, msg)
+	err := s.ClientStream.Send(msg)
+	if err != nil {
+		tfLogResponse(s.ctx, s.info, nil, err)
+	}
+	return err
+}
+
+func (s *loggingClientStream) CloseSend() error {
+	err := s.ClientStream.CloseSend()
+	if err != nil {
+		tfLogResponse(s.ctx, s.info, nil, err)
+	}
+	return err
+}
+
+func (s *loggingClientStream) Receive(msg any) error {
+	err := s.ClientStream.Receive(msg)
+	if !errors.Is(err, io.EOF) {
+		tfLogResponse(s.ctx, s.info, msg, err)
+	}
+	return err
+}
+
+func (s *loggingClientStream) Close() error {
+	err := s.ClientStream.Close()
+	if err != nil {
+		tfLogResponse(s.ctx, s.info, nil, err)
+	}
+	return err
 }

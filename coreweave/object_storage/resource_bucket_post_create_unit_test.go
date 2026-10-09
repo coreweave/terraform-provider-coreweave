@@ -11,9 +11,10 @@ import (
 	"testing"
 	"time"
 
-	"buf.build/gen/go/coreweave/cwobject/connectrpc/go/cwobject/v1/cwobjectv1connect"
+	"buf.build/gen/go/coreweave/cwobject/connectrpc/go/v2/cwobject/v1/cwobjectv1connect"
 	cwobjectv1 "buf.build/gen/go/coreweave/cwobject/protocolbuffers/go/cwobject/v1"
-	"connectrpc.com/connect"
+	"connectrpc.com/connect/v2"
+	"connectrpc.com/connect/v2/connecthttp"
 	"github.com/coreweave/terraform-provider-coreweave/internal/provider"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
@@ -58,8 +59,9 @@ func newPostCreateInvalidRegionFake(t *testing.T) (string, *postCreateInvalidReg
 
 	fake := &postCreateInvalidRegionFake{}
 	mux := http.NewServeMux()
-	path, handler := cwobjectv1connect.NewCWObjectHandler(fake)
-	mux.Handle(path, handler)
+	rpcServer := connect.NewServer()
+	cwobjectv1connect.RegisterCWObjectHandler(rpcServer, fake)
+	connecthttp.Mount(mux, rpcServer, connecthttp.WithReadMaxBytes(0))
 	mux.HandleFunc("/", fake.handleS3)
 
 	server := httptest.NewServer(mux)
@@ -81,13 +83,13 @@ func newPostCreateInvalidRegionFake(t *testing.T) (string, *postCreateInvalidReg
 
 func (f *postCreateInvalidRegionFake) CreateAccessKeyFromJWT(
 	_ context.Context,
-	_ *connect.Request[cwobjectv1.CreateAccessKeyFromJWTRequest],
-) (*connect.Response[cwobjectv1.CreateAccessKeyFromJWTResponse], error) {
-	return connect.NewResponse(&cwobjectv1.CreateAccessKeyFromJWTResponse{
+	_ *cwobjectv1.CreateAccessKeyFromJWTRequest,
+) (*cwobjectv1.CreateAccessKeyFromJWTResponse, error) {
+	return &cwobjectv1.CreateAccessKeyFromJWTResponse{
 		AccessKeyId: "test-access-key",
 		SecretKey:   "test-secret-key",
 		Expiry:      timestamppb.New(time.Now().Add(time.Hour)),
-	}), nil
+	}, nil
 }
 
 func (f *postCreateInvalidRegionFake) handleS3(w http.ResponseWriter, r *http.Request) {

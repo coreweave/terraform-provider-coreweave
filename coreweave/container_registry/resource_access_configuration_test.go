@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	api "buf.build/gen/go/coreweave/container-registry-api/protocolbuffers/go/coreweave/registry/v1alpha1"
-	"connectrpc.com/connect"
 	"github.com/coreweave/terraform-provider-coreweave/internal/provider"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/knownvalue"
@@ -82,11 +81,11 @@ func checkAccessReset(t *testing.T, name string) resource.TestCheckFunc {
 		if err != nil {
 			return err
 		}
-		response, err := client.ContainerRegistry.GetRegistryAccessConfiguration(t.Context(), connect.NewRequest(&api.GetRegistryAccessConfigurationRequest{Parent: "namespaces/" + name}))
+		response, err := client.ContainerRegistry.GetRegistryAccessConfiguration(t.Context(), &api.GetRegistryAccessConfigurationRequest{Parent: "namespaces/" + name})
 		if err != nil {
 			return err
 		}
-		if len(response.Msg.PolicySets) != 0 || response.Msg.RequestIpAcl != nil || response.Msg.AccessConfigState != api.RegistryAccessConfiguration_ACCESS_CONFIG_STATE_ACCEPTED {
+		if len(response.PolicySets) != 0 || response.RequestIpAcl != nil || response.AccessConfigState != api.RegistryAccessConfiguration_ACCESS_CONFIG_STATE_ACCEPTED {
 			return fmt.Errorf("destroy did not reset access to accepted deny-all without an ACL")
 		}
 		return nil

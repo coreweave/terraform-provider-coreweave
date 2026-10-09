@@ -10,7 +10,7 @@ import (
 
 	cksv1beta1 "buf.build/gen/go/coreweave/cks/protocolbuffers/go/coreweave/cks/v1beta1"
 	networkingv1beta1 "buf.build/gen/go/coreweave/networking/protocolbuffers/go/coreweave/networking/v1beta1"
-	"connectrpc.com/connect"
+	"connectrpc.com/connect/v2"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
 	"github.com/coreweave/terraform-provider-coreweave/internal/provider"
 	"github.com/coreweave/terraform-provider-coreweave/internal/testutil"
@@ -37,9 +37,9 @@ const (
 )
 
 type clusterSweepClient interface {
-	ListClusters(context.Context, *connect.Request[cksv1beta1.ListClustersRequest]) (*connect.Response[cksv1beta1.ListClustersResponse], error)
-	GetCluster(context.Context, *connect.Request[cksv1beta1.GetClusterRequest]) (*connect.Response[cksv1beta1.GetClusterResponse], error)
-	DeleteCluster(context.Context, *connect.Request[cksv1beta1.DeleteClusterRequest]) (*connect.Response[cksv1beta1.DeleteClusterResponse], error)
+	ListClusters(context.Context, *cksv1beta1.ListClustersRequest) (*cksv1beta1.ListClustersResponse, error)
+	GetCluster(context.Context, *cksv1beta1.GetClusterRequest) (*cksv1beta1.GetClusterResponse, error)
+	DeleteCluster(context.Context, *cksv1beta1.DeleteClusterRequest) (*cksv1beta1.DeleteClusterResponse, error)
 }
 
 type clusterSweepOptions struct {
@@ -77,11 +77,11 @@ func newClusterSweepConfig(client clusterSweepClient, zone string, options clust
 	return testutil.SweepConfig[*cksv1beta1.Cluster]{
 		ResourceType: cksClusterSweeperName,
 		List: func(ctx context.Context) ([]*cksv1beta1.Cluster, error) {
-			response, err := client.ListClusters(ctx, connect.NewRequest(&cksv1beta1.ListClustersRequest{}))
+			response, err := client.ListClusters(ctx, &cksv1beta1.ListClustersRequest{})
 			if err != nil {
 				return nil, fmt.Errorf("list clusters: %w", err)
 			}
-			return response.Msg.Items, nil
+			return response.Items, nil
 		},
 		Name: func(cluster *cksv1beta1.Cluster) string {
 			return cluster.GetName()
@@ -116,17 +116,17 @@ func deleteCluster(ctx context.Context, client clusterSweepClient, listedCluster
 		case <-time.After(retryDelay):
 		}
 
-		response, err := client.GetCluster(ctx, connect.NewRequest(&cksv1beta1.GetClusterRequest{Id: listedCluster.GetId()}))
+		response, err := client.GetCluster(ctx, &cksv1beta1.GetClusterRequest{Id: listedCluster.GetId()})
 		if connect.CodeOf(err) == connect.CodeNotFound {
 			return nil
 		}
 		if err != nil {
 			return fmt.Errorf("get cluster %s: %w", listedCluster.GetName(), err)
 		}
-		cluster = response.Msg.Cluster
+		cluster = response.Cluster
 	}
 
-	_, err := client.DeleteCluster(ctx, connect.NewRequest(&cksv1beta1.DeleteClusterRequest{Id: listedCluster.GetId()}))
+	_, err := client.DeleteCluster(ctx, &cksv1beta1.DeleteClusterRequest{Id: listedCluster.GetId()})
 	if connect.CodeOf(err) == connect.CodeNotFound {
 		return nil
 	}
@@ -223,26 +223,26 @@ type fakeClusterSweepClient struct {
 	getResponseIdx int
 }
 
-func (*fakeClusterSweepClient) ListClusters(context.Context, *connect.Request[cksv1beta1.ListClustersRequest]) (*connect.Response[cksv1beta1.ListClustersResponse], error) {
-	return connect.NewResponse(&cksv1beta1.ListClustersResponse{}), nil
+func (*fakeClusterSweepClient) ListClusters(context.Context, *cksv1beta1.ListClustersRequest) (*cksv1beta1.ListClustersResponse, error) {
+	return &cksv1beta1.ListClustersResponse{}, nil
 }
 
-func (client *fakeClusterSweepClient) GetCluster(_ context.Context, request *connect.Request[cksv1beta1.GetClusterRequest]) (*connect.Response[cksv1beta1.GetClusterResponse], error) {
-	client.getIDs = append(client.getIDs, request.Msg.GetId())
+func (client *fakeClusterSweepClient) GetCluster(_ context.Context, request *cksv1beta1.GetClusterRequest) (*cksv1beta1.GetClusterResponse, error) {
+	client.getIDs = append(client.getIDs, request.GetId())
 	if client.getError != nil {
 		return nil, client.getError
 	}
 	response := client.getResponses[client.getResponseIdx]
 	client.getResponseIdx++
-	return connect.NewResponse(&cksv1beta1.GetClusterResponse{Cluster: response}), nil
+	return &cksv1beta1.GetClusterResponse{Cluster: response}, nil
 }
 
-func (client *fakeClusterSweepClient) DeleteCluster(_ context.Context, request *connect.Request[cksv1beta1.DeleteClusterRequest]) (*connect.Response[cksv1beta1.DeleteClusterResponse], error) {
-	client.deletedIDs = append(client.deletedIDs, request.Msg.GetId())
+func (client *fakeClusterSweepClient) DeleteCluster(_ context.Context, request *cksv1beta1.DeleteClusterRequest) (*cksv1beta1.DeleteClusterResponse, error) {
+	client.deletedIDs = append(client.deletedIDs, request.GetId())
 	if client.deleteError != nil {
 		return nil, client.deleteError
 	}
-	return connect.NewResponse(&cksv1beta1.DeleteClusterResponse{}), nil
+	return &cksv1beta1.DeleteClusterResponse{}, nil
 }
 
 func TestCKSSweeperRegistrations(t *testing.T) {
@@ -378,10 +378,10 @@ func TestClusterSweepDeleteBehavior(t *testing.T) {
 	}{
 		{name: "stable delete and post-delete wait", status: cksv1beta1.Cluster_STATUS_RUNNING, wantDeleteCalls: 1, wantWaitCalls: 1},
 		{name: "transitional states retry until stable", status: cksv1beta1.Cluster_STATUS_CREATING, getResponses: []*cksv1beta1.Cluster{{Status: cksv1beta1.Cluster_STATUS_UPGRADING}, {Status: cksv1beta1.Cluster_STATUS_RUNNING}}, wantGetCalls: 2, wantDeleteCalls: 1, wantWaitCalls: 1},
-		{name: "deleting retries until not found", status: cksv1beta1.Cluster_STATUS_DELETING, getError: connect.NewError(connect.CodeNotFound, assert.AnError), wantGetCalls: 1, wantWaitCalls: 1},
-		{name: "refresh API failure", status: cksv1beta1.Cluster_STATUS_CREATING, getError: connect.NewError(connect.CodeUnavailable, assert.AnError), wantError: "get cluster", wantGetCalls: 1},
-		{name: "delete not found succeeds", status: cksv1beta1.Cluster_STATUS_RUNNING, deleteError: connect.NewError(connect.CodeNotFound, assert.AnError), wantDeleteCalls: 1, wantWaitCalls: 1},
-		{name: "delete API failure", status: cksv1beta1.Cluster_STATUS_RUNNING, deleteError: connect.NewError(connect.CodeUnavailable, assert.AnError), wantError: "delete cluster", wantDeleteCalls: 1},
+		{name: "deleting retries until not found", status: cksv1beta1.Cluster_STATUS_DELETING, getError: connect.NewError(connect.CodeNotFound, assert.AnError.Error()).WithCause(assert.AnError), wantGetCalls: 1, wantWaitCalls: 1},
+		{name: "refresh API failure", status: cksv1beta1.Cluster_STATUS_CREATING, getError: connect.NewError(connect.CodeUnavailable, assert.AnError.Error()).WithCause(assert.AnError), wantError: "get cluster", wantGetCalls: 1},
+		{name: "delete not found succeeds", status: cksv1beta1.Cluster_STATUS_RUNNING, deleteError: connect.NewError(connect.CodeNotFound, assert.AnError.Error()).WithCause(assert.AnError), wantDeleteCalls: 1, wantWaitCalls: 1},
+		{name: "delete API failure", status: cksv1beta1.Cluster_STATUS_RUNNING, deleteError: connect.NewError(connect.CodeUnavailable, assert.AnError.Error()).WithCause(assert.AnError), wantError: "delete cluster", wantDeleteCalls: 1},
 		{name: "post-delete polling failure", status: cksv1beta1.Cluster_STATUS_RUNNING, waitError: assert.AnError, wantError: "wait for cluster deletion", wantDeleteCalls: 1, wantWaitCalls: 1},
 	}
 

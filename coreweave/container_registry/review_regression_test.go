@@ -2,13 +2,12 @@ package containerregistry_test
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"testing"
 	"time"
 
 	api "buf.build/gen/go/coreweave/container-registry-api/protocolbuffers/go/coreweave/registry/v1alpha1"
-	"connectrpc.com/connect"
+	"connectrpc.com/connect/v2"
 	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
 	"github.com/hashicorp/terraform-plugin-go/tftypes"
 	"github.com/stretchr/testify/require"
@@ -46,7 +45,7 @@ func TestRefreshNeverReplaysForceDelete(t *testing.T) {
 	values["force_destroy"] = tftypes.NewValue(tftypes.Bool, true)
 	created := h.apply(tftypes.NewValue(h.typ, values), tftypes.NewValue(h.typ, nil), nil)
 	noErrors(t, created.Diagnostics)
-	h.fake.deleteError = connect.NewError(connect.CodeUnavailable, errors.New("response lost"))
+	h.fake.deleteError = connect.NewError(connect.CodeUnavailable, "response lost")
 	deleted := h.destroy(created.NewState, created.Private)
 	require.NotEmpty(t, deleted.Diagnostics)
 	require.NotEmpty(t, deleted.Private)
@@ -90,10 +89,10 @@ func TestRejectedSingletonCreateNeverOwnsExistingPolicy(t *testing.T) {
 			for _, refreshFails := range []bool{false, true} {
 				t.Run(fmt.Sprintf("refresh_fails_%t", refreshFails), func(t *testing.T) {
 					h := newHarness(t, kind)
-					h.fake.policyError = connect.NewError(connect.CodeInvalidArgument, errors.New("invalid policy"))
+					h.fake.policyError = connect.NewError(connect.CodeInvalidArgument, "invalid policy")
 					if refreshFails {
 						h.fake.policyReadErrorAfter = 1
-						h.fake.policyReadError = connect.NewError(connect.CodePermissionDenied, errors.New("refresh denied"))
+						h.fake.policyReadError = connect.NewError(connect.CodePermissionDenied, "refresh denied")
 					}
 					created := h.apply(h.withContent(h.config(nil, false)), tftypes.NewValue(h.typ, nil), nil)
 					require.NotEmpty(t, created.Diagnostics)
@@ -115,10 +114,10 @@ func TestRejectedPolicyUpdateRetainsOwnership(t *testing.T) {
 			h := newHarness(t, kind)
 			created := h.apply(h.config(nil, false), tftypes.NewValue(h.typ, nil), nil)
 			noErrors(t, created.Diagnostics)
-			h.fake.policyError = connect.NewError(connect.CodeInvalidArgument, errors.New("invalid policy"))
+			h.fake.policyError = connect.NewError(connect.CodeInvalidArgument, "invalid policy")
 			h.fake.policyReads = 0
 			h.fake.policyReadErrorAfter = 1
-			h.fake.policyReadError = connect.NewError(connect.CodePermissionDenied, errors.New("refresh denied"))
+			h.fake.policyReadError = connect.NewError(connect.CodePermissionDenied, "refresh denied")
 			updated := h.apply(h.withContent(h.config(nil, false)), h.decode(created.NewState), created.Private)
 			require.NotEmpty(t, updated.Diagnostics)
 			require.True(t, h.decode(updated.NewState).Equal(h.decode(created.NewState)))
@@ -134,7 +133,7 @@ func TestUncertainAccessCreateKeepsOwnershipWithoutRefresh(t *testing.T) {
 	h := newHarness(t, "access_configuration")
 	h.fake.uncertainAccess = true
 	h.fake.policyReadErrorAfter = 1
-	h.fake.policyReadError = connect.NewError(connect.CodePermissionDenied, errors.New("refresh denied"))
+	h.fake.policyReadError = connect.NewError(connect.CodePermissionDenied, "refresh denied")
 	created := h.apply(h.withContent(h.config(nil, false)), tftypes.NewValue(h.typ, nil), nil)
 	require.NotEmpty(t, created.Diagnostics)
 	require.False(t, h.decode(created.NewState).IsNull())
@@ -233,7 +232,7 @@ func TestNonActiveNamespaceQuotaUpdateRequiresActive(t *testing.T) {
 // TestPollingPermissionFailureKeepsAcceptedEvidence distinguishes a failed GET from a rejected write.
 func TestPollingPermissionFailureKeepsAcceptedEvidence(t *testing.T) {
 	h := newHarness(t, "access_configuration")
-	h.fake.pollAccessError = connect.NewError(connect.CodePermissionDenied, errors.New("poll denied"))
+	h.fake.pollAccessError = connect.NewError(connect.CodePermissionDenied, "poll denied")
 	created := h.apply(h.withContent(h.config(nil, false)), tftypes.NewValue(h.typ, nil), nil)
 	require.NotEmpty(t, created.Diagnostics)
 	require.NotEmpty(t, created.Private)
@@ -278,9 +277,9 @@ func TestAbsentCreateWithTerminalOrExpiredOperation(t *testing.T) {
 			created := h.apply(h.shortTimeout(h.config(nil, false), "create"), tftypes.NewValue(h.typ, nil), nil)
 			require.NotEmpty(t, created.Diagnostics)
 			if expired {
-				h.fake.operationError = connect.NewError(connect.CodeNotFound, errors.New("expired terminal operation"))
+				h.fake.operationError = connect.NewError(connect.CodeNotFound, "expired terminal operation")
 			} else {
-				h.fake.operationResult = completed(h.fake.namespace).Msg
+				h.fake.operationResult = completed(h.fake.namespace)
 			}
 			h.fake.namespace = nil
 			read := h.refresh(created)
@@ -318,8 +317,8 @@ func TestFailedPolicyUpdateRetainsPriorState(t *testing.T) {
 			h := newHarness(t, kind)
 			created := h.apply(h.config(nil, false), tftypes.NewValue(h.typ, nil), nil)
 			noErrors(t, created.Diagnostics)
-			h.fake.readError = connect.NewError(connect.CodePermissionDenied, errors.New("parent read denied"))
-			h.fake.policyReadError = connect.NewError(connect.CodePermissionDenied, errors.New("policy refresh denied"))
+			h.fake.readError = connect.NewError(connect.CodePermissionDenied, "parent read denied")
+			h.fake.policyReadError = connect.NewError(connect.CodePermissionDenied, "policy refresh denied")
 			h.fake.policyReads = 0
 			failed := h.apply(h.withContent(h.config(nil, false)), h.decode(created.NewState), created.Private)
 			require.NotEmpty(t, failed.Diagnostics)
@@ -375,7 +374,7 @@ func TestFailedPolicyRecoveryKeepsNewObservation(t *testing.T) {
 			h.fake.lifecycle.Etag = "lifecycle-3"
 			h.fake.policyReads = 0
 			h.fake.policyReadErrorAfter = 1
-			h.fake.policyReadError = connect.NewError(connect.CodePermissionDenied, errors.New("fallback refresh denied"))
+			h.fake.policyReadError = connect.NewError(connect.CodePermissionDenied, "fallback refresh denied")
 			failed := h.apply(config, h.decode(created.NewState), created.Private)
 			require.NotEmpty(t, failed.Diagnostics)
 			var state map[string]tftypes.Value
@@ -394,7 +393,7 @@ func TestFailedAccessUpdateKeepsResponse(t *testing.T) {
 	noErrors(t, created.Diagnostics)
 	h.fake.policyReads = 0
 	h.fake.policyReadErrorAfter = 1
-	h.fake.policyReadError = connect.NewError(connect.CodePermissionDenied, errors.New("poll and refresh denied"))
+	h.fake.policyReadError = connect.NewError(connect.CodePermissionDenied, "poll and refresh denied")
 	desired := h.withContent(h.config(nil, false))
 	failed := h.apply(desired, h.decode(created.NewState), created.Private)
 	require.NotEmpty(t, failed.Diagnostics)

@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	api "buf.build/gen/go/coreweave/container-registry-api/protocolbuffers/go/coreweave/registry/v1alpha1"
-	"connectrpc.com/connect"
 	"github.com/coreweave/terraform-provider-coreweave/internal/provider"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/knownvalue"
@@ -61,11 +60,11 @@ func checkLifecycleReset(t *testing.T, name string) resource.TestCheckFunc {
 		if err != nil {
 			return err
 		}
-		response, err := client.ContainerRegistry.GetRegistryLifecyclePolicy(t.Context(), connect.NewRequest(&api.GetRegistryLifecyclePolicyRequest{Parent: "namespaces/" + name}))
+		response, err := client.ContainerRegistry.GetRegistryLifecyclePolicy(t.Context(), &api.GetRegistryLifecyclePolicyRequest{Parent: "namespaces/" + name})
 		if err != nil {
 			return err
 		}
-		policy := response.Msg
+		policy := response
 		if policy.Enabled || len(policy.Rules) != 0 || policy.AppliedRevision == nil || *policy.AppliedRevision != policy.Revision {
 			return fmt.Errorf("destroy did not acknowledge disabled, empty lifecycle policy")
 		}

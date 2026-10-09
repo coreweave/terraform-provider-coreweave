@@ -2,7 +2,6 @@ package objectstorage_test
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"maps"
 	"net/http"
@@ -13,9 +12,10 @@ import (
 	"testing"
 	"time"
 
-	"buf.build/gen/go/coreweave/cwobject/connectrpc/go/cwobject/v1/cwobjectv1connect"
+	"buf.build/gen/go/coreweave/cwobject/connectrpc/go/v2/cwobject/v1/cwobjectv1connect"
 	cwobjectv1 "buf.build/gen/go/coreweave/cwobject/protocolbuffers/go/cwobject/v1"
-	"connectrpc.com/connect"
+	"connectrpc.com/connect/v2"
+	"connectrpc.com/connect/v2/connecthttp"
 	"github.com/coreweave/terraform-provider-coreweave/internal/provider"
 	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
 	"github.com/hashicorp/terraform-plugin-go/tftypes"
@@ -46,7 +46,9 @@ func newAccessKeyFake(t *testing.T) *accessKeyFake {
 	t.Helper()
 	fake := &accessKeyFake{keys: map[string]*cwobjectv1.AccessKeyInfo{"unrelated": {AccessKeyId: "unrelated", PrincipalName: "coreweave/caller", OrgId: "org-test", Status: "ACTIVE"}}}
 	mux := http.NewServeMux()
-	mux.Handle(cwobjectv1connect.NewCWObjectHandler(fake))
+	server := connect.NewServer()
+	cwobjectv1connect.RegisterCWObjectHandler(server, fake)
+	connecthttp.Mount(mux, server, connecthttp.WithReadMaxBytes(0))
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 	t.Setenv("COREWEAVE_API_ENDPOINT", srv.URL)
@@ -54,55 +56,55 @@ func newAccessKeyFake(t *testing.T) *accessKeyFake {
 	return fake
 }
 
-func (f *accessKeyFake) CreateAccessKeyFromJWT(_ context.Context, req *connect.Request[cwobjectv1.CreateAccessKeyFromJWTRequest]) (*connect.Response[cwobjectv1.CreateAccessKeyFromJWTResponse], error) {
+func (f *accessKeyFake) CreateAccessKeyFromJWT(_ context.Context, req *cwobjectv1.CreateAccessKeyFromJWTRequest) (*cwobjectv1.CreateAccessKeyFromJWTResponse, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.creates++
 	if f.createError != nil {
 		return nil, f.createError
 	}
-	if req.Msg.DurationSeconds == nil {
-		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("duration required"))
+	if req.DurationSeconds == nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, "duration required")
 	}
 	id := fmt.Sprintf("managed-%d", f.creates)
 	expiry := timestamppb.New(time.Time{})
-	if req.Msg.DurationSeconds.Value > 0 {
-		expiry = timestamppb.New(time.Now().Add(time.Duration(req.Msg.DurationSeconds.Value) * time.Second))
+	if req.DurationSeconds.Value > 0 {
+		expiry = timestamppb.New(time.Now().Add(time.Duration(req.DurationSeconds.Value) * time.Second))
 	}
-	f.keys[id] = &cwobjectv1.AccessKeyInfo{AccessKeyId: id, PrincipalName: "coreweave/caller", OrgId: "org-test", Status: "ACTIVE", Expiry: expiry, Attributes: maps.Clone(req.Msg.Attributes)}
+	f.keys[id] = &cwobjectv1.AccessKeyInfo{AccessKeyId: id, PrincipalName: "coreweave/caller", OrgId: "org-test", Status: "ACTIVE", Expiry: expiry, Attributes: maps.Clone(req.Attributes)}
 	secret := "creation-secret-" + id
 	if f.missingSecret {
 		secret = ""
 	}
-	return connect.NewResponse(&cwobjectv1.CreateAccessKeyFromJWTResponse{AccessKeyId: id, SecretKey: secret, PrincipalName: "coreweave/caller", Expiry: expiry, Attributes: maps.Clone(req.Msg.Attributes)}), nil
+	return &cwobjectv1.CreateAccessKeyFromJWTResponse{AccessKeyId: id, SecretKey: secret, PrincipalName: "coreweave/caller", Expiry: expiry, Attributes: maps.Clone(req.Attributes)}, nil
 }
-func (f *accessKeyFake) GetAccessKeyInfo(_ context.Context, req *connect.Request[cwobjectv1.GetAccessKeyInfoRequest]) (*connect.Response[cwobjectv1.GetAccessKeyInfoResponse], error) {
+func (f *accessKeyFake) GetAccessKeyInfo(_ context.Context, req *cwobjectv1.GetAccessKeyInfoRequest) (*cwobjectv1.GetAccessKeyInfoResponse, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.readError != nil {
 		return nil, f.readError
 	}
 	if f.missingInfo {
-		return connect.NewResponse(&cwobjectv1.GetAccessKeyInfoResponse{}), nil
+		return &cwobjectv1.GetAccessKeyInfoResponse{}, nil
 	}
-	key, ok := f.keys[req.Msg.AccessKeyId]
+	key, ok := f.keys[req.AccessKeyId]
 	if !ok {
-		return nil, connect.NewError(connect.CodeNotFound, errors.New("missing"))
+		return nil, connect.NewError(connect.CodeNotFound, "missing")
 	}
-	return connect.NewResponse(&cwobjectv1.GetAccessKeyInfoResponse{Info: proto.Clone(key).(*cwobjectv1.AccessKeyInfo)}), nil
+	return &cwobjectv1.GetAccessKeyInfoResponse{Info: proto.Clone(key).(*cwobjectv1.AccessKeyInfo)}, nil
 }
-func (f *accessKeyFake) RevokeAccessKeyByAccessKey(_ context.Context, req *connect.Request[cwobjectv1.RevokeAccessKeyByAccessKeyRequest]) (*connect.Response[emptypb.Empty], error) {
+func (f *accessKeyFake) RevokeAccessKeyByAccessKey(_ context.Context, req *cwobjectv1.RevokeAccessKeyByAccessKeyRequest) (*emptypb.Empty, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.revocations = append(f.revocations, req.Msg.AccessKey)
+	f.revocations = append(f.revocations, req.AccessKey)
 	if f.deleteError != nil {
 		return nil, f.deleteError
 	}
-	if _, ok := f.keys[req.Msg.AccessKey]; !ok {
-		return nil, connect.NewError(connect.CodeNotFound, errors.New("missing"))
+	if _, ok := f.keys[req.AccessKey]; !ok {
+		return nil, connect.NewError(connect.CodeNotFound, "missing")
 	}
-	f.keys[req.Msg.AccessKey].Status = "DELETED"
-	return connect.NewResponse(&emptypb.Empty{}), nil
+	f.keys[req.AccessKey].Status = "DELETED"
+	return &emptypb.Empty{}, nil
 }
 
 type accessKeyHarness struct {
@@ -356,7 +358,7 @@ func TestAccessKeyFailureStateAndRetry(t *testing.T) {
 	})
 	t.Run("create sent once", func(t *testing.T) {
 		h := newAccessKeyHarness(t)
-		h.fake.createError = connect.NewError(connect.CodeUnavailable, errors.New("lost response"))
+		h.fake.createError = connect.NewError(connect.CodeUnavailable, "lost response")
 		c := h.create(h.config(0, nil))
 		require.True(t, diagsHaveErrors(c.Diagnostics))
 		require.Equal(t, 1, h.fake.creates)
@@ -364,7 +366,7 @@ func TestAccessKeyFailureStateAndRetry(t *testing.T) {
 	})
 	t.Run("follow-up read retains secret", func(t *testing.T) {
 		h := newAccessKeyHarness(t)
-		h.fake.readError = connect.NewError(connect.CodePermissionDenied, errors.New("denied"))
+		h.fake.readError = connect.NewError(connect.CodePermissionDenied, "denied")
 		c := h.create(h.config(0, nil))
 		require.True(t, diagsHaveErrors(c.Diagnostics))
 		require.False(t, h.decode(c.NewState).IsNull())
@@ -378,7 +380,7 @@ func TestAccessKeyFailureStateAndRetry(t *testing.T) {
 	t.Run("failed read and delete retain state", func(t *testing.T) {
 		h := newAccessKeyHarness(t)
 		c := h.create(h.config(0, nil))
-		h.fake.readError = connect.NewError(connect.CodePermissionDenied, errors.New("denied"))
+		h.fake.readError = connect.NewError(connect.CodePermissionDenied, "denied")
 		r := h.read(c.NewState)
 		require.True(t, diagsHaveErrors(r.Diagnostics))
 		require.True(t, h.decode(c.NewState).Equal(h.decode(r.NewState)))

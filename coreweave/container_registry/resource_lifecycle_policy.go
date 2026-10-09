@@ -6,9 +6,8 @@ import (
 	"strings"
 	"time"
 
-	client "buf.build/gen/go/coreweave/container-registry-api/connectrpc/go/coreweave/registry/v1alpha1/registryv1alpha1connect"
+	client "buf.build/gen/go/coreweave/container-registry-api/connectrpc/go/v2/coreweave/registry/v1alpha1/registryv1alpha1connect"
 	api "buf.build/gen/go/coreweave/container-registry-api/protocolbuffers/go/coreweave/registry/v1alpha1"
-	"connectrpc.com/connect"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
 	"github.com/hashicorp/terraform-plugin-framework-timeouts/resource/timeouts"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -61,12 +60,12 @@ func (r *LifecyclePolicyResource) lifecycleApply(ctx context.Context, a, old *Li
 		}
 		return nil
 	}
-	current, e := r.client.GetRegistryLifecyclePolicy(ctx, connect.NewRequest(&api.GetRegistryLifecyclePolicyRequest{Parent: parent}))
+	current, e := r.client.GetRegistryLifecyclePolicy(ctx, &api.GetRegistryLifecyclePolicyRequest{Parent: parent})
 	if e != nil {
 		return old != nil, e
 	}
-	if old != nil && current.Msg.Etag != old.Etag.ValueString() {
-		return true, fmt.Errorf("lifecycle etag changed at %s (current %s); refresh and replan", parent, current.Msg.Etag)
+	if old != nil && current.Etag != old.Etag.ValueString() {
+		return true, fmt.Errorf("lifecycle etag changed at %s (current %s); refresh and replan", parent, current.Etag)
 	}
 	desired := &api.RegistryLifecyclePolicy{}
 	if !destroy {
@@ -77,11 +76,11 @@ func (r *LifecyclePolicyResource) lifecycleApply(ctx context.Context, a, old *Li
 			return old != nil, e
 		}
 	}
-	revision := current.Msg.Revision
-	if err := observe(current.Msg); err != nil {
+	revision := current.Revision
+	if err := observe(current); err != nil {
 		return old != nil, err
 	}
-	equal, err := equalLifecycle(ctx, desired, current.Msg)
+	equal, err := equalLifecycle(ctx, desired, current)
 	if err != nil {
 		return old != nil, err
 	}
@@ -90,21 +89,21 @@ func (r *LifecyclePolicyResource) lifecycleApply(ctx context.Context, a, old *Li
 		if e != nil {
 			return old != nil, e
 		}
-		q := &api.UpdateRegistryLifecyclePolicyRequest{Parent: parent, Etag: current.Msg.Etag, RegistryLifecyclePolicy: desired, IdempotencyKey: key}
+		q := &api.UpdateRegistryLifecyclePolicyRequest{Parent: parent, Etag: current.Etag, RegistryLifecyclePolicy: desired, IdempotencyKey: key}
 		rec := &recovery{Action: recoveryLifecycle}
 		if err := saveRecovery(ctx, p, rec); err != nil {
 			return old != nil, err
 		}
-		res, e := r.client.UpdateRegistryLifecyclePolicy(ctx, connect.NewRequest(q))
+		res, e := r.client.UpdateRegistryLifecyclePolicy(ctx, q)
 		if e != nil {
 			return old != nil || !definitiveRejection(e), e
 		}
-		rec.Operation = res.Msg.Name
+		rec.Operation = res.Name
 		if err := saveRecovery(ctx, p, rec); err != nil {
 			return true, err
 		}
 		ack := new(api.UpdateRegistryLifecyclePolicyResponse)
-		if e = waitOperation(ctx, r.client, res.Msg, ack); e != nil {
+		if e = waitOperation(ctx, r.client, res, ack); e != nil {
 			return true, e
 		}
 		if ack.Name != parent+lifecycleSuffix {
@@ -336,11 +335,11 @@ func (r *LifecyclePolicyResource) ImportState(ctx context.Context, req resource.
 
 // read refreshes observations owned by this resource.
 func (r *LifecyclePolicyResource) read(ctx context.Context, a *LifecyclePolicyResourceModel) error {
-	res, err := r.client.GetRegistryLifecyclePolicy(ctx, connect.NewRequest(&api.GetRegistryLifecyclePolicyRequest{Parent: namespaceResourceName(a.Namespace.ValueString())}))
+	res, err := r.client.GetRegistryLifecyclePolicy(ctx, &api.GetRegistryLifecyclePolicyRequest{Parent: namespaceResourceName(a.Namespace.ValueString())})
 	if err != nil {
 		return err
 	}
-	return conversionError(a.Set(ctx, res.Msg))
+	return conversionError(a.Set(ctx, res))
 }
 
 // apply submits one concrete mutation and clears only terminal recovery evidence.

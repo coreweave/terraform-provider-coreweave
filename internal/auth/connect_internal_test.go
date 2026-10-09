@@ -7,7 +7,7 @@ import (
 	"net/url"
 	"testing"
 
-	"connectrpc.com/connect"
+	"connectrpc.com/connect/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -37,7 +37,7 @@ func TestClassifyError(t *testing.T) {
 			wantUntouched: true,
 		},
 		"already classified by the server": {
-			err:           connect.NewError(connect.CodeNotFound, errors.New("no such cluster")),
+			err:           connect.NewError(connect.CodeNotFound, "no such cluster"),
 			wantUntouched: true,
 		},
 		"canceled": {

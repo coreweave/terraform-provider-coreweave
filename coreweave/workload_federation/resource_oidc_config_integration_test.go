@@ -10,9 +10,10 @@ import (
 	"sync"
 	"testing"
 
-	"buf.build/gen/go/coreweave/workload-federation/connectrpc/go/coreweave/workload_federation/control_plane/v1beta1/control_planev1beta1connect"
+	"buf.build/gen/go/coreweave/workload-federation/connectrpc/go/v2/coreweave/workload_federation/control_plane/v1beta1/control_planev1beta1connect"
 	controlplanev1beta1 "buf.build/gen/go/coreweave/workload-federation/protocolbuffers/go/coreweave/workload_federation/control_plane/v1beta1"
-	"connectrpc.com/connect"
+	"connectrpc.com/connect/v2"
+	"connectrpc.com/connect/v2/connecthttp"
 	"github.com/coreweave/terraform-provider-coreweave/internal/provider"
 	"github.com/hashicorp/go-uuid"
 	tfresource "github.com/hashicorp/terraform-plugin-testing/helper/resource"
@@ -43,18 +44,18 @@ func cloneOIDCConfig(config *controlplanev1beta1.OIDCConfig) *controlplanev1beta
 	return proto.Clone(config).(*controlplanev1beta1.OIDCConfig)
 }
 
-func (s *oidcConfigTestServer) GetOIDCConfig(_ context.Context, req *connect.Request[controlplanev1beta1.GetOIDCConfigRequest]) (*connect.Response[controlplanev1beta1.GetOIDCConfigResponse], error) {
+func (s *oidcConfigTestServer) GetOIDCConfig(_ context.Context, req *controlplanev1beta1.GetOIDCConfigRequest) (*controlplanev1beta1.GetOIDCConfigResponse, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	config, ok := s.configs[req.Msg.GetUid()]
+	config, ok := s.configs[req.GetUid()]
 	if !ok {
-		return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("OIDC config not found"))
+		return nil, connect.Errorf(connect.CodeNotFound, "OIDC config not found")
 	}
-	return connect.NewResponse(&controlplanev1beta1.GetOIDCConfigResponse{Config: cloneOIDCConfig(config)}), nil
+	return &controlplanev1beta1.GetOIDCConfigResponse{Config: cloneOIDCConfig(config)}, nil
 }
 
-func (s *oidcConfigTestServer) ListOIDCConfigs(context.Context, *connect.Request[controlplanev1beta1.ListOIDCConfigsRequest]) (*connect.Response[controlplanev1beta1.ListOIDCConfigsResponse], error) {
+func (s *oidcConfigTestServer) ListOIDCConfigs(context.Context, *controlplanev1beta1.ListOIDCConfigsRequest) (*controlplanev1beta1.ListOIDCConfigsResponse, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -62,73 +63,73 @@ func (s *oidcConfigTestServer) ListOIDCConfigs(context.Context, *connect.Request
 	for _, config := range s.configs {
 		configs = append(configs, cloneOIDCConfig(config))
 	}
-	return connect.NewResponse(&controlplanev1beta1.ListOIDCConfigsResponse{Configs: configs}), nil
+	return &controlplanev1beta1.ListOIDCConfigsResponse{Configs: configs}, nil
 }
 
-func (s *oidcConfigTestServer) CreateOIDCConfig(_ context.Context, req *connect.Request[controlplanev1beta1.CreateOIDCConfigRequest]) (*connect.Response[controlplanev1beta1.CreateOIDCConfigResponse], error) {
+func (s *oidcConfigTestServer) CreateOIDCConfig(_ context.Context, req *controlplanev1beta1.CreateOIDCConfigRequest) (*controlplanev1beta1.CreateOIDCConfigResponse, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	id, err := uuid.GenerateUUID()
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInternal, err)
+		return nil, connect.NewError(connect.CodeInternal, err.Error()).WithCause(err)
 	}
 	now := timestamppb.Now()
 	config := &controlplanev1beta1.OIDCConfig{
 		Uid:         id,
 		OrgUid:      "test-organization",
-		Name:        req.Msg.GetName(),
-		Description: req.Msg.Description,
-		IssuerUrl:   req.Msg.GetIssuerUrl(),
-		Audience:    req.Msg.GetAudience(),
+		Name:        req.GetName(),
+		Description: req.Description,
+		IssuerUrl:   req.GetIssuerUrl(),
+		Audience:    req.GetAudience(),
 		CreatedAt:   now,
 		UpdatedAt:   now,
 	}
-	if req.Msg.HasActive() && !req.Msg.GetActive() {
+	if req.HasActive() && !req.GetActive() {
 		config.DeactivatedAt = now
 	}
 	s.configs[id] = config
 	if s.emptyCreateResponse {
 		s.emptyCreateResponse = false
-		return connect.NewResponse(&controlplanev1beta1.CreateOIDCConfigResponse{}), nil
+		return &controlplanev1beta1.CreateOIDCConfigResponse{}, nil
 	}
 	responseConfig := cloneOIDCConfig(config)
 	if s.emptyCreateResponseUID {
 		s.emptyCreateResponseUID = false
 		responseConfig.Uid = ""
 	}
-	return connect.NewResponse(&controlplanev1beta1.CreateOIDCConfigResponse{Config: responseConfig}), nil
+	return &controlplanev1beta1.CreateOIDCConfigResponse{Config: responseConfig}, nil
 }
 
-func (s *oidcConfigTestServer) UpdateOIDCConfig(_ context.Context, req *connect.Request[controlplanev1beta1.UpdateOIDCConfigRequest]) (*connect.Response[controlplanev1beta1.UpdateOIDCConfigResponse], error) {
+func (s *oidcConfigTestServer) UpdateOIDCConfig(_ context.Context, req *controlplanev1beta1.UpdateOIDCConfigRequest) (*controlplanev1beta1.UpdateOIDCConfigResponse, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if len(req.Msg.GetUpdateMask().GetPaths()) == 0 {
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("update mask must contain at least one path"))
+	if len(req.GetUpdateMask().GetPaths()) == 0 {
+		return nil, connect.Errorf(connect.CodeInvalidArgument, "update mask must contain at least one path")
 	}
 	if s.notFoundOnNextUpdateCall {
 		s.notFoundOnNextUpdateCall = false
-		return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("OIDC config not found"))
+		return nil, connect.Errorf(connect.CodeNotFound, "OIDC config not found")
 	}
 
-	config, ok := s.configs[req.Msg.GetUid()]
+	config, ok := s.configs[req.GetUid()]
 	if !ok {
-		return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("OIDC config not found"))
+		return nil, connect.Errorf(connect.CodeNotFound, "OIDC config not found")
 	}
 	now := timestamppb.Now()
-	for _, field := range req.Msg.GetUpdateMask().GetPaths() {
+	for _, field := range req.GetUpdateMask().GetPaths() {
 		switch field {
 		case "name":
-			config.Name = req.Msg.GetName()
+			config.Name = req.GetName()
 		case "description":
-			config.Description = req.Msg.Description
+			config.Description = req.Description
 		case "issuer_url":
-			config.IssuerUrl = req.Msg.GetIssuerUrl()
+			config.IssuerUrl = req.GetIssuerUrl()
 		case "audience":
-			config.Audience = req.Msg.GetAudience()
+			config.Audience = req.GetAudience()
 		case "active":
-			if req.Msg.GetActive() {
+			if req.GetActive() {
 				config.DeactivatedAt = nil
 			} else {
 				config.DeactivatedAt = now
@@ -138,20 +139,20 @@ func (s *oidcConfigTestServer) UpdateOIDCConfig(_ context.Context, req *connect.
 	config.UpdatedAt = now
 	if s.emptyUpdateResponse {
 		s.emptyUpdateResponse = false
-		return connect.NewResponse(&controlplanev1beta1.UpdateOIDCConfigResponse{}), nil
+		return &controlplanev1beta1.UpdateOIDCConfigResponse{}, nil
 	}
-	return connect.NewResponse(&controlplanev1beta1.UpdateOIDCConfigResponse{Config: cloneOIDCConfig(config)}), nil
+	return &controlplanev1beta1.UpdateOIDCConfigResponse{Config: cloneOIDCConfig(config)}, nil
 }
 
-func (s *oidcConfigTestServer) DeleteOIDCConfig(_ context.Context, req *connect.Request[controlplanev1beta1.DeleteOIDCConfigRequest]) (*connect.Response[controlplanev1beta1.DeleteOIDCConfigResponse], error) {
+func (s *oidcConfigTestServer) DeleteOIDCConfig(_ context.Context, req *controlplanev1beta1.DeleteOIDCConfigRequest) (*controlplanev1beta1.DeleteOIDCConfigResponse, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if _, ok := s.configs[req.Msg.GetUid()]; !ok {
-		return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("OIDC config not found"))
+	if _, ok := s.configs[req.GetUid()]; !ok {
+		return nil, connect.Errorf(connect.CodeNotFound, "OIDC config not found")
 	}
-	delete(s.configs, req.Msg.GetUid())
-	return connect.NewResponse(&controlplanev1beta1.DeleteOIDCConfigResponse{}), nil
+	delete(s.configs, req.GetUid())
+	return &controlplanev1beta1.DeleteOIDCConfigResponse{}, nil
 }
 
 func (s *oidcConfigTestServer) removeAll() {
@@ -215,9 +216,10 @@ func (s *oidcConfigTestServer) checkEmpty(*terraform.State) error {
 func startOIDCConfigTestServer(t *testing.T) (*oidcConfigTestServer, *httptest.Server) {
 	t.Helper()
 	service := newOIDCConfigTestServer()
-	path, handler := control_planev1beta1connect.NewWFControlPlaneServiceHandler(service)
+	rpcServer := connect.NewServer()
+	control_planev1beta1connect.RegisterWFControlPlaneServiceHandler(rpcServer, service)
 	mux := http.NewServeMux()
-	mux.Handle(path, handler)
+	connecthttp.Mount(mux, rpcServer, connecthttp.WithReadMaxBytes(0))
 	server := httptest.NewServer(mux)
 	t.Cleanup(server.Close)
 

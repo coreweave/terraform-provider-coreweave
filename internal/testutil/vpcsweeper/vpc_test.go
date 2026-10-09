@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"connectrpc.com/connect"
+	"connectrpc.com/connect/v2"
 
 	networkingv1beta1 "buf.build/gen/go/coreweave/networking/protocolbuffers/go/coreweave/networking/v1beta1"
 	"github.com/coreweave/terraform-provider-coreweave/internal/testutil/vpcsweeper"
@@ -28,27 +28,27 @@ const (
 	testZone   = "zone-a"
 )
 
-func (client *fakeClient) ListVPCs(context.Context, *connect.Request[networkingv1beta1.ListVPCsRequest]) (*connect.Response[networkingv1beta1.ListVPCsResponse], error) {
+func (client *fakeClient) ListVPCs(context.Context, *networkingv1beta1.ListVPCsRequest) (*networkingv1beta1.ListVPCsResponse, error) {
 	if client.listError != nil {
 		return nil, client.listError
 	}
-	return connect.NewResponse(&networkingv1beta1.ListVPCsResponse{}), nil
+	return &networkingv1beta1.ListVPCsResponse{}, nil
 }
 
-func (client *fakeClient) DeleteVPC(_ context.Context, request *connect.Request[networkingv1beta1.DeleteVPCRequest]) (*connect.Response[networkingv1beta1.DeleteVPCResponse], error) {
-	client.deletedIDs = append(client.deletedIDs, request.Msg.GetId())
+func (client *fakeClient) DeleteVPC(_ context.Context, request *networkingv1beta1.DeleteVPCRequest) (*networkingv1beta1.DeleteVPCResponse, error) {
+	client.deletedIDs = append(client.deletedIDs, request.GetId())
 	if client.deleteError != nil {
 		return nil, client.deleteError
 	}
-	return connect.NewResponse(&networkingv1beta1.DeleteVPCResponse{}), nil
+	return &networkingv1beta1.DeleteVPCResponse{}, nil
 }
 
-func (client *fakeClient) GetVPC(_ context.Context, request *connect.Request[networkingv1beta1.GetVPCRequest]) (*connect.Response[networkingv1beta1.GetVPCResponse], error) {
-	client.requestedGetID = request.Msg.GetId()
+func (client *fakeClient) GetVPC(_ context.Context, request *networkingv1beta1.GetVPCRequest) (*networkingv1beta1.GetVPCResponse, error) {
+	client.requestedGetID = request.GetId()
 	if client.getError != nil {
 		return nil, client.getError
 	}
-	return connect.NewResponse(&networkingv1beta1.GetVPCResponse{}), nil
+	return &networkingv1beta1.GetVPCResponse{}, nil
 }
 
 func TestNewValidatesSelectors(t *testing.T) {
@@ -104,10 +104,10 @@ func TestConfigDeletesListedID(t *testing.T) {
 		wantError string
 		wantGet   bool
 	}{
-		{name: "delete not found succeeds", client: &fakeClient{deleteError: connect.NewError(connect.CodeNotFound, errors.New("gone"))}},
+		{name: "delete not found succeeds", client: &fakeClient{deleteError: connect.NewError(connect.CodeNotFound, "gone")}},
 		{name: "delete failure", client: &fakeClient{deleteError: errors.New("unavailable")}, wantError: "delete VPC: unavailable"},
-		{name: "post-delete polling succeeds", client: &fakeClient{getError: connect.NewError(connect.CodeNotFound, errors.New("gone"))}, wantGet: true},
-		{name: "post-delete polling fails", client: &fakeClient{getError: connect.NewError(connect.CodeUnavailable, errors.New("API unavailable"))}, wantError: "wait for VPC deletion", wantGet: true},
+		{name: "post-delete polling succeeds", client: &fakeClient{getError: connect.NewError(connect.CodeNotFound, "gone")}, wantGet: true},
+		{name: "post-delete polling fails", client: &fakeClient{getError: connect.NewError(connect.CodeUnavailable, "API unavailable")}, wantError: "wait for VPC deletion", wantGet: true},
 	}
 
 	for _, tt := range tests {
