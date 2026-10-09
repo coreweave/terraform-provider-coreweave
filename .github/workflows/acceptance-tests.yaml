@@ -3,7 +3,7 @@ name: Acceptance Tests
 
 'on':
   pull_request:
-    types: [opened, synchronize, reopened, labeled]
+    types: [opened, synchronize, reopened]
     paths-ignore:
       - '**/*.md'
       - 'docs/**'
@@ -15,87 +15,35 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       suites: ${{ steps.changes.outputs.suites }}
-    env:
-      LABELS: ${{ toJson(github.event.pull_request.labels.*.name) }}
-      PR_TITLE: ${{ github.event.pull_request.title }}
+    permissions:
+      contents: read
+      pull-requests: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        with:
+          node-version: '24.21.0'
+
+      - name: Verify suite selection behavior
+        run: node --test .github/acceptance-tests/*.test.mjs
 
       - name: Detect test suites to run
         id: changes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
-          # Available test suites - add new suites here
-          ALL_SUITES="caller_identity cks networking object_storage inference container_registry"
-
-          get_suite_dir() {
-            echo "coreweave/$1"
-          }
-
-          has_label() {
-            jq -e --arg label "$1" 'any(. == $label)' >/dev/null <<< "$LABELS"
-          }
-
-          # Get PR labels and changed files
-          git fetch origin ${{ github.event.pull_request.base.ref }}
-          CHANGED_FILES=$(git diff --name-only origin/${{ github.event.pull_request.base.ref }}...HEAD)
-          COMMIT_SUBJECTS=$(git log --format="%s" origin/${{ github.event.pull_request.base.ref }}...HEAD)
-          SCOPES=$(printf '%s\n%s' "$PR_TITLE" "$COMMIT_SUBJECTS" | sed -nE 's/^[a-z][a-z0-9_-]*\(([^)]+)\)[!]?:.*/\1/p')
-
-          ACTIVE_SUITES=()
-
-          # Core files that affect all test suites
-          if echo "$CHANGED_FILES" | grep -qE "^(go\.(mod|sum)|main\.go|GNUmakefile|internal/testutil/.*|coreweave/(client|retry|s3)(_test)?\.go)$"; then
-            ACTIVE_SUITES=($ALL_SUITES)
-            echo "Running all suites due to core file changes"
-          fi
-
-          # Check for run-all label
-          if has_label "acceptance-test:all"; then
-            ACTIVE_SUITES=($ALL_SUITES)
-            echo "Running all suites due to label"
-          else
-            # Check individual suite labels and file changes
-            for suite in $ALL_SUITES; do
-              dir=$(get_suite_dir "$suite")
-
-              # Check individual suite label
-              if has_label "acceptance-test:$suite"; then
-                ACTIVE_SUITES+=("$suite")
-                echo "✓ $suite: enabled by label"
-              # Check commit scope in PR title and commit messages
-              elif echo "$SCOPES" | grep -qx "$suite"; then
-                ACTIVE_SUITES+=("$suite")
-                echo "✓ $suite: enabled by commit scope"
-              # Check internal/provider (affects all suites)
-              elif echo "$CHANGED_FILES" | grep -q "^internal/provider/"; then
-                ACTIVE_SUITES+=("$suite")
-                echo "✓ $suite: enabled by internal/provider changes"
-              # Check suite's own directory
-              elif echo "$CHANGED_FILES" | grep -q "^$dir/"; then
-                ACTIVE_SUITES+=("$suite")
-                echo "✓ $suite: enabled by $dir changes"
-              else
-                echo "✗ $suite: no relevant changes"
-              fi
-            done
-          fi
-
-          # Build JSON array for matrix using jq
-          if [ ${#ACTIVE_SUITES[@]} -eq 0 ]; then
-            echo "suites=[]" >> $GITHUB_OUTPUT
-            echo "No test suites to run"
-          else
-            # Remove duplicates and build JSON with jq
-            UNIQUE_SUITES=($(printf "%s\n" "${ACTIVE_SUITES[@]}" | sort -u))
-            JSON_ARRAY='[]'
-            for suite in "${UNIQUE_SUITES[@]}"; do
-              JSON_ARRAY=$(jq -c --arg suite "$suite" '(. + [$suite])' <<< "$JSON_ARRAY")
-            done
-            echo "suites=$JSON_ARRAY" >> $GITHUB_OUTPUT
-            echo "Test suites to run: ${UNIQUE_SUITES[*]}"
-          fi
+          selection_dir=$(mktemp -d)
+          trap 'rm -rf "$selection_dir"' EXIT
+          gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" > "$selection_dir/pr.json"
+          bash .github/acceptance-tests/collect-changes.sh "$selection_dir"
+          node .github/acceptance-tests/select-suites.mjs "$selection_dir/pr.json" "$HEAD_SHA" "$selection_dir/files.txt" "$selection_dir/subjects.txt"
 
   run-tests:
     needs: [detect-changes]
