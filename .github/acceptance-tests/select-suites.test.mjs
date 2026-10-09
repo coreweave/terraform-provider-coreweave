@@ -9,7 +9,7 @@ import { selectSuites } from './select-suites.mjs';
 
 const head = 'a'.repeat(40);
 const repository = 'public/fixture';
-const expectedSuites = ['caller_identity', 'cks', 'container_registry', 'inference', 'networking', 'object_storage'];
+const expectedSuites = ['caller_identity', 'cks', 'container_registry', 'inference', 'networking', 'object_storage', 'observability'];
 const pr = (overrides = {}) => ({ state: 'open', head: { sha: head, ref: 'renovate/dependencies', repo: { full_name: repository } },
   base: { ref: 'main', repo: { full_name: repository } }, ...overrides });
 const release = () => pr({ head: { ...pr().head, ref: 'release-please--branches--main' } });
