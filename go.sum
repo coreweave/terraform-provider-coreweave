@@ -16,10 +16,10 @@ buf.build/gen/go/coreweave/inference/connectrpc/go/v2 v2.0.0-20260825010541-7cc0
 buf.build/gen/go/coreweave/inference/connectrpc/go/v2 v2.0.0-20260825010541-7cc01a738b29.1/go.mod h1:YEMNwPiIRoIzEguHlOqFRgK/U4CUWwLyj5y3IQcw4aM=
 buf.build/gen/go/coreweave/inference/protocolbuffers/go v1.36.12-20260825010541-7cc01a738b29.2 h1:obnTfonX3Yeb870Rl0OTmWuzAkiZZXg93LvV7Kam8WM=
 buf.build/gen/go/coreweave/inference/protocolbuffers/go v1.36.12-20260825010541-7cc01a738b29.2/go.mod h1:bs1E8vQPLh2l9lT5qRDvsoLlQaBPPFpb//YBoYfQlCE=
-buf.build/gen/go/coreweave/networking/connectrpc/go/v2 v2.0.0-20260121155637-a637e7777165.1 h1:Xitd5QDSF+aHHSE9n2n4RqzbpDrE0dR1kEc7UtuXLlo=
-buf.build/gen/go/coreweave/networking/connectrpc/go/v2 v2.0.0-20260121155637-a637e7777165.1/go.mod h1:wlxC9dT9DePR0FJEDojQQkwB0pu3JzAC7Yj3mohZUDY=
-buf.build/gen/go/coreweave/networking/protocolbuffers/go v1.36.12-20260121155637-a637e7777165.2 h1:Pcl9vEgeNQ6fYPCrCzpJiUqwJJ3ukJ4PYNz7cogCY3E=
-buf.build/gen/go/coreweave/networking/protocolbuffers/go v1.36.12-20260121155637-a637e7777165.2/go.mod h1:jzTRsEbgvpKTPMbylyvyy9ktsmD5gzn5tcZOhGCgP+I=
+buf.build/gen/go/coreweave/networking/connectrpc/go/v2 v2.0.0-20260903175031-bfceb1d95ae7.1 h1:mfPKHWNg1oXLRPNMsIaZrgkYGWlYVeI/yzlsL66bwGM=
+buf.build/gen/go/coreweave/networking/connectrpc/go/v2 v2.0.0-20260903175031-bfceb1d95ae7.1/go.mod h1:h4t3uJqY9gC4MejRjh9eMNeYkVn61LYUblLZGtZiZqs=
+buf.build/gen/go/coreweave/networking/protocolbuffers/go v1.36.12-20260903175031-bfceb1d95ae7.2 h1:voMVoILtqd2E5+MHI1pexSPaZra59rLpujXdBHxDtMs=
+buf.build/gen/go/coreweave/networking/protocolbuffers/go v1.36.12-20260903175031-bfceb1d95ae7.2/go.mod h1:qKdLX13V3ARCVkiEC3KBAB0KtRtaM01bDBkSh/FM930=
 buf.build/gen/go/coreweave/sandbox/connectrpc/go/v2 v2.0.0-20261006200456-c94c38b78284.1 h1:XsE4LnOSEnQUNCHFT0kIZEKVOYa7i5/Gbw43N0w0yrw=
 buf.build/gen/go/coreweave/sandbox/connectrpc/go/v2 v2.0.0-20261006200456-c94c38b78284.1/go.mod h1:Qs0BHHVgOzRUrD9GZfezFO/WrDZDLDM5Ees40wvGy/s=
 buf.build/gen/go/coreweave/sandbox/protocolbuffers/go v1.36.12-20261006200456-c94c38b78284.2 h1:ln5r2o+8ongxkWCks7P2xpvrMlXvBI9mYLmLVKUJosI=
