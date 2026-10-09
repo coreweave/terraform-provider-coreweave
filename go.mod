@@ -3,6 +3,8 @@ module github.com/coreweave/terraform-provider-coreweave
 go 1.26.6
 
 require (
+	bsr.core-services.ingress.coreweave.com/gen/go/coreweave/o11y-mgmt/connectrpc/go v1.20.0-20261008020820-045ef14917da.1
+	bsr.core-services.ingress.coreweave.com/gen/go/coreweave/o11y-mgmt/protocolbuffers/go v1.36.11-20261008020820-045ef14917da.1
 	buf.build/gen/go/coreweave/cks/connectrpc/go v1.19.1-20260326215135-be22b90e1aa6.2
 	buf.build/gen/go/coreweave/cks/protocolbuffers/go v1.36.11-20260326215135-be22b90e1aa6.1
 	buf.build/gen/go/coreweave/container-registry-api/connectrpc/go v1.21.0-20261006020732-928e5e5b7735.1
@@ -32,6 +34,7 @@ require (
 	github.com/hashicorp/terraform-plugin-framework-jsontypes v0.2.0
 	github.com/hashicorp/terraform-plugin-framework-nettypes v0.3.0
 	github.com/hashicorp/terraform-plugin-framework-timeouts v0.5.0
+	github.com/hashicorp/terraform-plugin-framework-timetypes v0.5.0
 	github.com/hashicorp/terraform-plugin-framework-validators v0.18.0
 	github.com/hashicorp/terraform-plugin-go v0.29.0
 	github.com/hashicorp/terraform-plugin-log v0.9.0
@@ -39,6 +42,7 @@ require (
 	github.com/hashicorp/terraform-plugin-testing v1.11.0
 	github.com/stretchr/testify v1.11.1
 	github.com/zclconf/go-cty v1.17.0
+	golang.org/x/sync v0.20.0
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260810153831-ec0a7760b754
 	google.golang.org/protobuf v1.36.12
 )
@@ -98,7 +102,6 @@ require (
 	golang.org/x/exp v0.0.0-20250813145105-42675adae3e6 // indirect
 	golang.org/x/mod v0.35.0 // indirect
 	golang.org/x/net v0.55.0 // indirect
-	golang.org/x/sync v0.20.0 // indirect
 	golang.org/x/sys v0.45.0 // indirect
 	golang.org/x/text v0.37.0 // indirect
 	golang.org/x/tools v0.44.0 // indirect

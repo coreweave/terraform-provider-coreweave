@@ -18,6 +18,7 @@ import (
 	"buf.build/gen/go/coreweave/workload-federation/connectrpc/go/coreweave/workload_federation/control_plane/v1beta1/control_planev1beta1connect"
 	"connectrpc.com/connect"
 
+	"bsr.core-services.ingress.coreweave.com/gen/go/coreweave/o11y-mgmt/connectrpc/go/coreweave/telemetryrelay/svc/cluster/v1beta1/clusterv1beta1connect"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/coreweave/terraform-provider-coreweave/internal/auth"
 	retryablehttp "github.com/hashicorp/go-retryablehttp"
@@ -90,6 +91,11 @@ func NewClientWithOptions(
 			connect.WithInterceptors(authenticatedInterceptors...),
 		),
 		CWObjectClient: cwobjectv1connect.NewCWObjectClient(c, endpoint, connect.WithInterceptors(authenticatedInterceptors...)),
+		TelemetryRelayServiceClient: clusterv1beta1connect.NewTelemetryRelayServiceClient(
+			c,
+			endpoint,
+			connect.WithInterceptors(authenticatedInterceptors...),
+		),
 		Inference: &InferenceClient{
 			DeploymentServiceClient:    inferencev1alpha1connect.NewDeploymentServiceClient(c, endpoint, connect.WithInterceptors(authenticatedInterceptors...)),
 			CapacityClaimServiceClient: inferencev1alpha1connect.NewCapacityClaimServiceClient(c, endpoint, connect.WithInterceptors(authenticatedInterceptors...)),
@@ -117,6 +123,7 @@ type Client struct {
 	networkingv1beta1connect.VPCServiceClient
 	control_planev1beta1connect.WFControlPlaneServiceClient
 	cwobjectv1connect.CWObjectClient
+	clusterv1beta1connect.TelemetryRelayServiceClient
 
 	Inference               *InferenceClient
 	SandboxRunnerManagement sandboxv1connect.RunnerManagementServiceClient

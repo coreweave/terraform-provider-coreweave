@@ -1,0 +1,1 @@
+terraform import coreweave_observability_telemetry_relay_endpoint_s3.example my-s3-endpoint
