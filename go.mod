@@ -14,6 +14,7 @@ require (
 	buf.build/gen/go/coreweave/networking/connectrpc/go v1.19.1-20260121155637-a637e7777165.2
 	buf.build/gen/go/coreweave/networking/protocolbuffers/go v1.36.11-20260121155637-a637e7777165.1
 	buf.build/gen/go/coreweave/sandbox/connectrpc/go v1.21.0-20261006200456-c94c38b78284.1
+	buf.build/gen/go/coreweave/sandbox/connectrpc/go/v2 v2.0.0-20261006200456-c94c38b78284.1
 	buf.build/gen/go/coreweave/sandbox/protocolbuffers/go v1.36.12-20261006200456-c94c38b78284.2
 	buf.build/gen/go/coreweave/workload-federation/connectrpc/go v1.20.0-20260825153113-5bfae6057a98.1
 	buf.build/gen/go/coreweave/workload-federation/protocolbuffers/go v1.36.12-20260825153113-5bfae6057a98.1
