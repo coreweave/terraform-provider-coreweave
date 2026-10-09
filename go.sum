@@ -14,8 +14,13 @@ buf.build/gen/go/coreweave/cwobject/protocolbuffers/go v1.36.12-20260831154917-0
 buf.build/gen/go/coreweave/cwobject/protocolbuffers/go v1.36.12-20260831154917-08064e55742b.1/go.mod h1:LYJWc01KSOldvmulAIGE9ba7/HUr1QKQ6LRtPLLhdq4=
 buf.build/gen/go/coreweave/inference/connectrpc/go v1.20.0-20260825010541-7cc01a738b29.1 h1:Y/4tqYLfM7hq4Mp1Pj7qwUuaJjXCvlAgPpexNUrwWhA=
 buf.build/gen/go/coreweave/inference/connectrpc/go v1.20.0-20260825010541-7cc01a738b29.1/go.mod h1:8axC+BDS3Nkyp6MDwOOFFI24ONED8SjdCJeEbI/ZosY=
+buf.build/gen/go/coreweave/inference/connectrpc/go v1.21.0-20261008185853-22f8f31f8962.1 h1:fX6Ko5k3iXJLFdTUXeCkgmPvogyw26DiMC0j6n687B0=
+buf.build/gen/go/coreweave/inference/connectrpc/go v1.21.0-20261008185853-22f8f31f8962.1/go.mod h1:ELkKz4zINrtNRLYPlaZpx6jGxZF6XwCbWkfkucT8u4s=
+buf.build/gen/go/coreweave/inference/connectrpc/go/v2 v2.0.0-20261008185853-22f8f31f8962.1/go.mod h1:bAG83CQ+xl3d41X3P152kako7rxVVUGCK+pOv66bRTM=
 buf.build/gen/go/coreweave/inference/protocolbuffers/go v1.36.12-20260825010541-7cc01a738b29.1 h1:P20RBcTtI8Rnl/yfzoCLIG+v+HjdA0qAcLhCtHm09gk=
 buf.build/gen/go/coreweave/inference/protocolbuffers/go v1.36.12-20260825010541-7cc01a738b29.1/go.mod h1:zdff/ACEwQQ64HB1H7pjlX0EBi9kueSLgttCWXrPvS8=
+buf.build/gen/go/coreweave/inference/protocolbuffers/go v1.36.12-20261008185853-22f8f31f8962.2 h1:haBD6Mnv1Hx9xiqpDrIlDq0uDnfmQEgizA6/WPJtlAQ=
+buf.build/gen/go/coreweave/inference/protocolbuffers/go v1.36.12-20261008185853-22f8f31f8962.2/go.mod h1:bs1E8vQPLh2l9lT5qRDvsoLlQaBPPFpb//YBoYfQlCE=
 buf.build/gen/go/coreweave/networking/connectrpc/go v1.19.1-20260121155637-a637e7777165.2 h1:7/T8Tbyq8JVWu5ZXznB84IdZ6zN/oXeDcebMaTc+eyc=
 buf.build/gen/go/coreweave/networking/connectrpc/go v1.19.1-20260121155637-a637e7777165.2/go.mod h1:Ri2fOqnsxnYU4CdWVP0GNqzSYq7L+Zw1AV/ebdbNITs=
 buf.build/gen/go/coreweave/networking/protocolbuffers/go v1.36.11-20260121155637-a637e7777165.1 h1:HgaTPkFCzegYtbVOir7vdty10GHoFxMceoscwcH0x7s=
