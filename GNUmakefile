@@ -58,7 +58,7 @@ fmt:
 test:
 	go test -v -cover -timeout=120s -parallel=10 ./...
 
-SUITES?=caller_identity cks networking object_storage inference container_registry
+SUITES?=caller_identity cks networking object_storage inference container_registry observability
 
 testacc-sweep:
 	@set -e; for suite in $(SUITES); do \

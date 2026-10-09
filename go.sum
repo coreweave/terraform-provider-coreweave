@@ -1,3 +1,7 @@
+bsr.core-services.ingress.coreweave.com/gen/go/coreweave/o11y-mgmt/connectrpc/go v1.20.0-20261008020820-045ef14917da.1 h1:0pHtEydnB5lxsQy161nrcfdKj+TLF3ugT0Rj0qhkbug=
+bsr.core-services.ingress.coreweave.com/gen/go/coreweave/o11y-mgmt/connectrpc/go v1.20.0-20261008020820-045ef14917da.1/go.mod h1:WrHZtTGChrk9dbZmIFb1+D/dp6tmCxfAUXqQjoWC2WQ=
+bsr.core-services.ingress.coreweave.com/gen/go/coreweave/o11y-mgmt/protocolbuffers/go v1.36.11-20261008020820-045ef14917da.1 h1:u5mSTDHJqiMGo/JO1DRw6mo9DHyGHsTxhS73/P6xAck=
+bsr.core-services.ingress.coreweave.com/gen/go/coreweave/o11y-mgmt/protocolbuffers/go v1.36.11-20261008020820-045ef14917da.1/go.mod h1:ZnNZiI3KTPnQ6RfDqYAKiJdCaBwwk3xJUZUg+bOfeww=
 buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.36.12-20260825204119-511051f7f437.2 h1:NbnlmV26O7oZ1iM5tsCI+GEx+3ZSdrhvnKQ/eWSrLiY=
 buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.36.12-20260825204119-511051f7f437.2/go.mod h1:TCt1lluMFnctISJXvkIQ4x3ABrPuUKCWKyjKdkJNBpw=
 buf.build/gen/go/coreweave/cks/connectrpc/go v1.19.1-20260326215135-be22b90e1aa6.2 h1:G09Jax7e3xVX1QWaINr6P/5w8jaCoe5uAvMw5WAuCAI=
@@ -164,6 +168,8 @@ github.com/hashicorp/terraform-plugin-framework-nettypes v0.3.0 h1:cEiRvdFAhFniv
 github.com/hashicorp/terraform-plugin-framework-nettypes v0.3.0/go.mod h1:SDIm7W2x3Bs9otNC0ysbaSQ7H4H/EPimoACTy+7Z9rU=
 github.com/hashicorp/terraform-plugin-framework-timeouts v0.5.0 h1:I/N0g/eLZ1ZkLZXUQ0oRSXa8YG/EF0CEuQP1wXdrzKw=
 github.com/hashicorp/terraform-plugin-framework-timeouts v0.5.0/go.mod h1:t339KhmxnaF4SzdpxmqW8HnQBHVGYazwtfxU0qCs4eE=
+github.com/hashicorp/terraform-plugin-framework-timetypes v0.5.0 h1:v3DapR8gsp3EM8fKMh6up9cJUFQ2iRaFsYLP8UJnCco=
+github.com/hashicorp/terraform-plugin-framework-timetypes v0.5.0/go.mod h1:c3PnGE9pHBDfdEVG9t1S1C9ia5LW+gkFR0CygXlM8ak=
 github.com/hashicorp/terraform-plugin-framework-validators v0.18.0 h1:OQnlOt98ua//rCw+QhBbSqfW3QbwtVrcdWeQN5gI3Hw=
 github.com/hashicorp/terraform-plugin-framework-validators v0.18.0/go.mod h1:lZvZvagw5hsJwuY7mAY6KUz45/U6fiDR0CzQAwWD0CA=
 github.com/hashicorp/terraform-plugin-go v0.29.0 h1:1nXKl/nSpaYIUBU1IG/EsDOX0vv+9JxAltQyDMpq5mU=
