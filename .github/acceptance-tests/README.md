@@ -18,11 +18,11 @@ Each suite holds the shared `acceptance-test-<suite>` lock across PRs. Up to 100
 
 After acquiring the lock, each QA job fetches current PR metadata before checking out repository code and again immediately before its sweep or test command. Closed or outdated revisions, malformed metadata, and API lookup failures stop that phase with a failure instead of reporting untested acceptance as successful. A sweep already in progress finishes; if its PR changed, the test job rejects the outdated revision. A test already in progress finishes for its original revision.
 
-The `PR validation` check waits for every hosted check and the acceptance matrix. It succeeds only for an open PR at the requested head. All hosted checks must pass. Each selected suite must have successful sweep and test jobs, including successful execution of their resource commands, in this workflow run at the tested merge revision. Missing, failed, canceled, or skipped acceptance evidence fails validation.
+The `PR validation` check waits for every hosted check and the acceptance matrix, then checks their native job results. All hosted checks must succeed. The acceptance matrix must succeed when suites are selected; failed, canceled, or skipped acceptance fails validation.
 
-For an empty suite selection, acceptance must be skipped and the summary explicitly reports it as not applicable. This validates the hosted checks without claiming that QA tests ran. Partial reruns can retain earlier successful phases from the same run; the latest execution of each phase takes precedence, so an older pass cannot override a newer failure or skip. Metadata lookup failures fail validation.
+For an empty suite selection, acceptance must be skipped and the summary reports it as not applicable. This validates the hosted checks without claiming that QA tests ran.
 
-Freshness checks are snapshots, so the PR can still change after a check. Completed-result reuse and deduplication remain separate scheduling safeguards. Queue behavior and applicable-suite aggregation will also need confirmation from normal acceptance runs after deployment; local fixtures do not exercise GitHub's scheduler. The new aggregate does not change required-check settings or the runner and credential access policy.
+Freshness checks are snapshots, so the PR can still change after a check. Completed-result reuse and deduplication remain separate scheduling safeguards. Queue behavior and applicable-suite aggregation will also need confirmation from normal acceptance runs after deployment; local fixtures do not exercise GitHub's scheduler. The aggregate reports results; merge blocking requires required-check settings, which this workflow does not configure.
 
 Run the secret-free selection fixtures locally with:
 

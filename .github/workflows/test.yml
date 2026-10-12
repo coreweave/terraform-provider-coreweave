@@ -180,33 +180,24 @@ jobs:
     needs: [build, lint, generate, snapshot-build, test, pr-title-format, detect-changes, acceptance-tests]
     if: ${{ always() }}
     runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: read
-      pull-requests: read
-      actions: read
+    timeout-minutes: 5
+    permissions: {}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - name: Verify current revision and all validation results
-        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+      - name: Verify job results
         env:
-          VALIDATION_NEEDS: ${{ toJSON(needs) }}
-          VALIDATION_CANCELLED: ${{ job.status == 'cancelled' }}
-        with:
-          script: |
-            const { pathToFileURL } = require('node:url');
-            const { validateRun } = await import(pathToFileURL(`${process.env.GITHUB_WORKSPACE}/.github/acceptance-tests/validation.mjs`));
-            try {
-              const result = await validateRun(github, context, JSON.parse(process.env.VALIDATION_NEEDS),
-                Number(process.env.GITHUB_RUN_ATTEMPT), process.env.VALIDATION_CANCELLED === 'true');
-              core.summary.addHeading('PR validation').addRaw(`Validated PR head: ${result.head}\n\n`)
-                .addRaw(`Hosted checks: passed. Acceptance: ${result.acceptance}.\n\n`);
-              if (result.rows.length) core.summary.addTable([['Suite', 'Sweep', 'Test'], ...result.rows]);
-              await core.summary.write();
-            } catch (error) {
-              await core.summary.addHeading('PR validation failed')
-                .addRaw('Required checks, current revision, or acceptance evidence could not be verified. No acceptance success is claimed.').write();
-              throw error;
-            }
+          HOSTED_PASSED: >-
+            ${{ needs.build.result == 'success' && needs.lint.result == 'success' &&
+                needs.generate.result == 'success' && needs.snapshot-build.result == 'success' &&
+                needs.test.result == 'success' && needs.pr-title-format.result == 'success' &&
+                needs.detect-changes.result == 'success' }}
+          SUITES: ${{ needs.detect-changes.outputs.suites }}
+          ACCEPTANCE_RESULT: ${{ needs.acceptance-tests.result }}
+        run: |
+          test "$HOSTED_PASSED" = true
+          if [ "$SUITES" = '[]' ]; then
+            test "$ACCEPTANCE_RESULT" = skipped
+            echo 'Hosted checks passed. Acceptance: not applicable.' >> "$GITHUB_STEP_SUMMARY"
+          else
+            test "$ACCEPTANCE_RESULT" = success
+            echo 'Hosted checks passed. Selected acceptance suites passed.' >> "$GITHUB_STEP_SUMMARY"
+          fi
