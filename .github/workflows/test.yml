@@ -184,20 +184,16 @@ jobs:
     permissions: {}
     steps:
       - name: Verify job results
+        uses: re-actors/alls-green@05ac9388f0aebcb5727afa17fcccfecd6f8ec5fe # v1.2.2
+        with:
+          jobs: ${{ toJSON(needs) }}
+          allowed-skips: ${{ needs.detect-changes.outputs.suites == '[]' && 'acceptance-tests' || '' }}
+      - name: Summarize acceptance result
         env:
-          HOSTED_PASSED: >-
-            ${{ needs.build.result == 'success' && needs.lint.result == 'success' &&
-                needs.generate.result == 'success' && needs.snapshot-build.result == 'success' &&
-                needs.test.result == 'success' && needs.pr-title-format.result == 'success' &&
-                needs.detect-changes.result == 'success' }}
           SUITES: ${{ needs.detect-changes.outputs.suites }}
-          ACCEPTANCE_RESULT: ${{ needs.acceptance-tests.result }}
         run: |
-          test "$HOSTED_PASSED" = true
           if [ "$SUITES" = '[]' ]; then
-            test "$ACCEPTANCE_RESULT" = skipped
             echo 'Hosted checks passed. Acceptance: not applicable.' >> "$GITHUB_STEP_SUMMARY"
           else
-            test "$ACCEPTANCE_RESULT" = success
             echo 'Hosted checks passed. Selected acceptance suites passed.' >> "$GITHUB_STEP_SUMMARY"
           fi

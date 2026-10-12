@@ -18,9 +18,9 @@ Each suite holds the shared `acceptance-test-<suite>` lock across PRs. Up to 100
 
 After acquiring the lock, each QA job fetches current PR metadata before checking out repository code and again immediately before its sweep or test command. Closed or outdated revisions, malformed metadata, and API lookup failures stop that phase with a failure instead of reporting untested acceptance as successful. A sweep already in progress finishes; if its PR changed, the test job rejects the outdated revision. A test already in progress finishes for its original revision.
 
-The `PR validation` check waits for every hosted check and the acceptance matrix, then checks their native job results. All hosted checks must succeed. The acceptance matrix must succeed when suites are selected; failed, canceled, or skipped acceptance fails validation.
+The `PR validation` check waits for every hosted check and the acceptance matrix, then uses the pinned `re-actors/alls-green` action to check their native job results. All hosted checks must succeed. The acceptance matrix must succeed when suites are selected; failed, canceled, or skipped acceptance fails validation.
 
-For an empty suite selection, acceptance must be skipped and the summary reports it as not applicable. This validates the hosted checks without claiming that QA tests ran.
+For an empty suite selection, the workflow skips acceptance and `alls-green` allows that skip. The summary reports acceptance as not applicable without claiming that QA tests ran.
 
 Freshness checks are snapshots, so the PR can still change after a check. Completed-result reuse and deduplication remain separate scheduling safeguards. Queue behavior and applicable-suite aggregation will also need confirmation from normal acceptance runs after deployment; local fixtures do not exercise GitHub's scheduler. The aggregate reports results; merge blocking requires required-check settings, which this workflow does not configure.
 
