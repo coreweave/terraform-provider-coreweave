@@ -152,7 +152,7 @@ jobs:
           bash .github/acceptance-tests/collect-changes.sh "$selection_dir"
           node .github/acceptance-tests/select-suites.mjs "$selection_dir/pr.json" "$HEAD_SHA" "$selection_dir/files.txt" "$selection_dir/subjects.txt"
 
-  run-tests:
+  acceptance-tests:
     permissions:
       contents: read
       pull-requests: read

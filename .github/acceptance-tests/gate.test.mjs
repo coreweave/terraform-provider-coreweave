@@ -11,7 +11,7 @@ const job = id => {
 };
 
 test('QA depends on selection, compilation, lint and module/unit checks', () => {
-  const qa = job('run-tests');
+  const qa = job('acceptance-tests');
   const dependencies = /^    needs: \[([^\]]+)\]$/m.exec(qa);
   assert.ok(dependencies, 'QA must declare its prerequisites');
   assert.deepEqual(dependencies[1].split(',').map(id => id.trim()).sort(), ['build', 'detect-changes', 'lint', 'test']);
