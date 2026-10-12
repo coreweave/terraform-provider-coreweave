@@ -8,7 +8,11 @@ Root module files, shared clients, test helpers, and provider changes select eve
 
 Changed files are compared against the tested merge revision, so updates already present on the base branch do not request extra suites. Moves between service directories select both the source and destination suites. Commit scopes come only from the PR's own commits.
 
-This check happens during selection, before queueing. A PR can still change while QA work is queued or running. Suite queue retention, checks after acquiring the suite lock, fast-check gating, and a current-revision aggregate are separate scheduling safeguards.
+Each suite holds the shared `acceptance-test-<suite>` lock across PRs. Up to 100 pending runs are retained; additional arrivals are canceled when the queue is full. New arrivals do not cancel a running sweep or test.
+
+After acquiring the lock, each QA job fetches current PR metadata before checking out repository code and again immediately before its sweep or test command. Closed or outdated revisions, malformed metadata, and API lookup failures stop that phase with a failure instead of reporting untested acceptance as successful. A sweep already in progress finishes; if its PR changed, the test job rejects the outdated revision. A test already in progress finishes for its original revision.
+
+Freshness checks are snapshots, so the PR can still change after a check. Fast-check gating, deduplication, and a current-revision aggregate remain separate scheduling safeguards. Queue behavior will also need confirmation from normal acceptance runs after deployment; local fixtures do not exercise GitHub's scheduler.
 
 Run the secret-free selection fixtures locally with:
 
