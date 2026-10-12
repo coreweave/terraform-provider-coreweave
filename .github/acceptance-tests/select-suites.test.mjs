@@ -45,6 +45,12 @@ test('documentation, workflow changes and irrelevant labels select no QA suites'
     ['README.md', 'docs/index.md', '.github/workflows/acceptance-tests.yaml', 'coreweave/cks-extra/resource.go']), []);
 });
 
+test('documentation-only changes remain outside QA despite suite labels and scopes', () => {
+  assert.deepEqual(select(pr({ title: 'test(cks): update examples', labels: [{ name: 'acceptance-test:all' }] }),
+    ['README.md', 'coreweave/cks/README.md', 'docs/index.md', 'examples/main.tf', 'LICENSE'], ['test(networking): update docs']), []);
+  assert.deepEqual(select(pr(), ['coreweave/cks/resource.go', 'docs/index.md']), ['cks']);
+});
+
 test('closed, stale and malformed metadata fail closed instead of emitting an empty selection', () => {
   for (const metadata of [pr({ state: 'closed' }), pr({ head: { sha: 'b'.repeat(40) } }), pr({ head: null }),
     pr({ title: null }), pr({ labels: null }), pr({ labels: [{}] }), null]) {

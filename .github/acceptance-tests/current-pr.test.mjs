@@ -14,7 +14,7 @@ const context = (overrides = {}) => ({ eventName: 'pull_request', repo: { owner:
   payload: { pull_request: { number: 7, head: { sha: head } } }, ...overrides });
 
 test('the caller explicitly grants the reusable QA jobs their read permissions', () => {
-  const caller = readFileSync(new URL('../workflows/acceptance-tests.yaml', import.meta.url), 'utf8');
+  const caller = readFileSync(new URL('../workflows/test.yml', import.meta.url), 'utf8');
   const job = caller.split('\n  run-tests:\n')[1];
   assert.ok(job, 'the acceptance caller job exists');
   const permissions = /^    permissions:\n((?:      .*\n)+)/m.exec(job);
