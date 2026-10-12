@@ -1,12 +1,9 @@
 # Terraform Provider testing workflow.
 name: Tests
 
-# This GitHub action runs your tests for each pull request and push.
-# Optionally, you can turn it on using a schedule for regular testing.
 on:
   pull_request:
-    paths-ignore:
-      - 'README.md'
+    types: [opened, synchronize, reopened]
 
 # Testing only needs permissions to read the repository contents.
 permissions:
@@ -46,7 +43,7 @@ jobs:
       snapshot: true
       native: false
 
-  # Run acceptance tests in a matrix with Terraform CLI versions
+  # Check module consistency and unit tests before QA acceptance
   test:
     name: Tests
     needs: build
@@ -120,3 +117,54 @@ jobs:
           EOF
             exit 1
           }
+
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      suites: ${{ steps.changes.outputs.suites }}
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        with:
+          node-version: '24.21.0'
+
+      - name: Verify suite selection behavior
+        run: node --test .github/acceptance-tests/*.test.mjs
+
+      - name: Detect test suites to run
+        id: changes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          selection_dir=$(mktemp -d)
+          trap 'rm -rf "$selection_dir"' EXIT
+          gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" > "$selection_dir/pr.json"
+          bash .github/acceptance-tests/collect-changes.sh "$selection_dir"
+          node .github/acceptance-tests/select-suites.mjs "$selection_dir/pr.json" "$HEAD_SHA" "$selection_dir/files.txt" "$selection_dir/subjects.txt"
+
+  acceptance-tests:
+    permissions:
+      contents: read
+      pull-requests: read
+      packages: read
+    needs: [detect-changes, build, lint, test]
+    if: needs.detect-changes.outputs.suites != '[]'
+    strategy:
+      # A failed suite must not cancel independent suites or their cleanup.
+      fail-fast: false
+      matrix:
+        suite: ${{ fromJson(needs.detect-changes.outputs.suites) }}
+    uses: ./.github/workflows/acceptance-test.yaml
+    with:
+      suite: ${{ matrix.suite }}
+    secrets: inherit

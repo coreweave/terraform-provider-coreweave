@@ -11,6 +11,12 @@ export function selectSuites(pr, expectedHead, files, subjects) {
     throw new Error('PR metadata is missing its title or labels.');
   }
 
+  // Preserve the acceptance path exclusions while the PR workflow runs on every change.
+  if (files.length > 0 && files.every(file => file.endsWith('.md') || file.startsWith('docs/') ||
+      file.startsWith('examples/') || file === 'LICENSE')) {
+    return [];
+  }
+
   const labels = new Set(pr.labels.map(label => label.name));
   const scopes = new Set([pr.title, ...subjects].flatMap(subject => {
     const match = /^[a-z][a-z0-9_-]*\(([^)]+)\)!?:/.exec(subject);
