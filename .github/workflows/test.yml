@@ -62,12 +62,17 @@ jobs:
     name: Validate PR title
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+      pull-requests: read
     steps:
       - name: Ensure PR title matches conventional commits format
         id: check_pr_title
         env:
-          PR_TITLE: ${{ github.event.pull_request.title }}
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
+          PR_TITLE=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq .title)
           re_types="build|chore|ci|deps|docs|feat|fix|perf|refactor|revert|style|test"
           re_scope="\([[:alnum:]._\/-]+\)"
           re_emoji="(\p{Emoji}[[:space:]]{1,2})"
@@ -81,15 +86,16 @@ jobs:
           tests_failed=0
 
           function run_test() {
-            readonly input="${1}"
+            local input="${1}"
 
-            echo "Input string: "${input}"
+            echo "Input string: ${input}"
 
             if grep --color=always -P "$re_full" <<< "${input}"; then
               echo "Test Passed! ✅"
             else
               tests_failed=$((tests_failed + 1))
               echo "Test Failed! 🔻"
+            fi
           }
 
           echo "testing a PR title that renovate would make"
@@ -168,3 +174,26 @@ jobs:
     with:
       suite: ${{ matrix.suite }}
     secrets: inherit
+
+  validation:
+    name: PR validation
+    needs: [build, lint, generate, snapshot-build, test, pr-title-format, detect-changes, acceptance-tests]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Verify job results
+        uses: re-actors/alls-green@05ac9388f0aebcb5727afa17fcccfecd6f8ec5fe # v1.2.2
+        with:
+          jobs: ${{ toJSON(needs) }}
+          allowed-skips: ${{ needs.detect-changes.outputs.suites == '[]' && 'acceptance-tests' || '' }}
+      - name: Summarize acceptance result
+        env:
+          SUITES: ${{ needs.detect-changes.outputs.suites }}
+        run: |
+          if [ "$SUITES" = '[]' ]; then
+            echo 'Hosted checks passed. Acceptance: not applicable.' >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'Hosted checks passed. Selected acceptance suites passed.' >> "$GITHUB_STEP_SUMMARY"
+          fi
