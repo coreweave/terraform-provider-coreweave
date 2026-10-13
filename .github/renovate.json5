@@ -155,8 +155,7 @@
       "matchUpdateTypes": ["minor", "patch", "digest", "pin"],
       "groupName": "inference generated clients",
       "groupSlug": "coreweave-inference-clients",
-      "semanticCommitScope": "inference",
-      "addLabels": ["acceptance-test:inference"]
+      "semanticCommitScope": "inference"
     },
     {
       "matchManagers": ["gomod"],

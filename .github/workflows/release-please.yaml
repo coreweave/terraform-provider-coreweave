@@ -1,39 +1,39 @@
 name: Release Please
 
-# 1. Run release-please on every push to main
-# 2. When release-please creates a release, trigger the release job to publish via GoReleaser
 on:
   push:
-    branches:
-      - main
-  workflow_dispatch:  # Allow manual triggering
+    branches: [main]
+  workflow_dispatch:
 
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
+
+concurrency:
+  group: release-please
+  cancel-in-progress: false
 
 jobs:
   release-please:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
+      # App-authored PR updates trigger the Tests workflow.
+      - name: Create release PR token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        id: app-token
+        with:
+          client-id: ${{ secrets.ORG_RENOVATE_CLIENTID }}
+          private-key: ${{ secrets.ORG_RENOVATE_PRIVATEKEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: write
+          permission-workflows: write
+          permission-pull-requests: write
+          permission-issues: write
       - name: Run Release Please
         uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
-        id: release
         with:
-          # DO NOT set `release-type` here.
-          # Setting `release-type` here causes release-please to drop our settings.
+          token: ${{ steps.app-token.outputs.token }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
-    outputs:
-      releases: ${{ toJson(steps.release.outputs) }}
-      paths_released: ${{ steps.release.outputs.paths_released }}
-
-  release:
-    needs: release-please
-    if: ${{ contains(needs.release-please.outputs.paths_released, '.') }}
-    permissions:
-      contents: write
-    secrets: inherit
-    uses: ./.github/workflows/release.yml
-    with:
-      git-tag: ${{ fromJson(needs.release-please.outputs.releases).tag_name }}
+          skip-github-release: true
