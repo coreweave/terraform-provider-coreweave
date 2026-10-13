@@ -62,7 +62,7 @@ jobs:
           cd "$validation_dir"
           npx --yes --package renovate@44.51.2 -- node "$GITHUB_WORKSPACE/.github/renovate/tests/validate.mjs"
 
-      - name: Verify dependency grouping and migration gates
+      - name: Verify dependency grouping and creation limits
         working-directory: ${{ runner.temp }}
         env:
           LOG_LEVEL: info

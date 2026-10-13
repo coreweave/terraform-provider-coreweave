@@ -21,9 +21,6 @@ const { filterVersions } = await load('workers/repository/process/lookup/filter'
 const { filterInternalChecks } = await load('workers/repository/process/lookup/filter-checks');
 const versioning = await load('modules/versioning/index');
 const { branchifyUpgrades } = await load('workers/repository/updates/branchify');
-const { processBranch } = await load('workers/repository/update/branch/index');
-const { setPlatformApi } = await load('modules/platform/index');
-const { platformScmImpls, setPlatformScmApi } = await load('modules/platform/scm');
 const repository = fileURLToPath(new URL('../../../', import.meta.url));
 GlobalConfig.set({ localDir: repository, dryRun: 'full' });
 const { init } = await load('logger/index');
@@ -31,10 +28,10 @@ await init();
 const resolved = await resolveConfigPresets(JSON5.parse(readFileSync(join(repository, '.github/renovate.json5'), 'utf8')));
 const config = mergeChildConfig(getConfig(), resolved.config);
 Object.assign(config, { baseBranch: 'main', repoIsOnboarded: true, errors: [], warnings: [],
-  dependencyDashboardChecks: {}, semanticCommits: 'enabled' });
+  semanticCommits: 'enabled' });
 
 assert.equal(config.pruneStaleBranches, false);
-assert.equal(config.dependencyDashboardApproval, true);
+assert.equal(config.dependencyDashboardApproval, false);
 assert.equal(config.prConcurrentLimit, 3);
 assert.equal(config.prHourlyLimit, 2);
 assert.notEqual(config.prCreation, 'approval');
@@ -98,12 +95,12 @@ const cases = [
 for (const [dep, expected] of cases) {
   const effective = await resolve(dep, {updateType: 'patch'});
   assert.equal(effective.groupSlug, expected, dep.depName);
-  assert.equal(effective.dependencyDashboardApproval, true);
+  assert.equal(effective.dependencyDashboardApproval, false);
 }
 for (const dep of [module('cloud.google.com/go/longrunning'), cases.at(-2)[0]]) {
   const effective = await resolve(dep, {updateType: 'major'});
   assert.equal(effective.groupName, null);
-  assert.equal(effective.dependencyDashboardApproval, true);
+  assert.equal(effective.dependencyDashboardApproval, false);
 }
 for (const dep of [module('github.com/aws/smithy-go'), module('github.com/stretchr/testify')]) {
   const security = await resolve(dep, {updateType: 'patch', isVulnerabilityAlert: true, ...config.vulnerabilityAlerts});
@@ -134,25 +131,10 @@ for (const family of ['cks', 'networking', 'cwobject', 'inference', 'container-r
 }
 assert.equal(planned.branches.find(branch => branch.groupSlug === 'aws-sdk').upgrades.length, 4);
 
-// The platform reads are local stubs. Any attempt to write a branch is a test failure.
-setPlatformApi('local');
-let existing = new Set();
-platformScmImpls.set('fixture', class {
-  branchExists(name) { return Promise.resolve(existing.has(name)); }
-  commitAndPush() { throw new Error('Unexpected branch write'); }
-});
-setPlatformScmApi('fixture');
-const { getConcurrentBranchesCount } = await load('workers/repository/process/limits');
-for (const count of [0, 19, 24]) {
-  existing = new Set(Array.from({length: count}, (_, index) => `renovate/retained-${index}`));
-  assert.equal(await getConcurrentBranchesCount(planned.branches), 0, 'Retained stale branches need not count toward the new branch budget.');
-  for (const branch of planned.branches) {
-    const result = await processBranch(branch);
-    assert.equal(result.result, 'needs-approval', branch.branchName);
-    assert.equal(result.branchExists, false);
-  }
+for (const branch of planned.branches) {
+  assert.equal(branch.dependencyDashboardApproval, false);
 }
-console.log(`PASS: ${planned.branches.length} planned routine groups create zero branches with 0, 19 or 24 retained branches`);
+console.log(`PASS: ${planned.branches.length} routine groups are planned without dashboard approval`);
 
 const securityFiles = {gomod: [{packageFile: 'go.mod', deps: ['github.com/aws/smithy-go', 'github.com/stretchr/testify'].map(depName => ({
   ...module(depName), packageName: depName, isVulnerabilityAlert: true, force: {...config.vulnerabilityAlerts},
@@ -161,16 +143,15 @@ const securityFiles = {gomod: [{packageFile: 'go.mod', deps: ['github.com/aws/sm
 const securityBranches = (await branchifyUpgrades(config, securityFiles)).branches;
 assert.equal(securityBranches.length, 2);
 const {setCount, isLimitReached} = await load('workers/global/limits');
+for (const [concurrent, hourly, reached] of [[0, 0, false], [2, 1, false], [3, 0, true], [0, 2, true]]) {
+  setCount('ConcurrentPRs', concurrent);
+  setCount('HourlyPRs', hourly);
+  for (const branch of planned.branches) {
+    assert.equal(isLimitReached('ConcurrentPRs', branch), reached);
+  }
+}
 setCount('ConcurrentPRs', 24);
 setCount('HourlyPRs', 24);
-assert.equal(isLimitReached('ConcurrentPRs', planned.branches[0]), true);
-const withoutApprovalGate = await processBranch({...planned.branches[0], dependencyDashboardApproval: false});
-assert.equal(withoutApprovalGate.result, 'branch-limit-reached');
-const released = await branchifyUpgrades({...config, packageRules: config.packageRules.map(rule =>
-  rule.groupSlug === 'aws-sdk' ? {...rule, dependencyDashboardApproval: false} : rule)}, packageFiles);
-for (const branch of released.branches) {
-  assert.equal(branch.dependencyDashboardApproval, branch.groupSlug !== 'aws-sdk');
-}
 for (const branch of securityBranches) {
   assert.equal(branch.isVulnerabilityAlert, true);
   assert.equal(branch.dependencyDashboardApproval, false);
@@ -179,4 +160,4 @@ for (const branch of securityBranches) {
   assert.equal(checkMinimumReleaseAge(branch, young).isPending, false);
   assert.equal(isLimitReached('ConcurrentPRs', branch), false);
 }
-console.log('PASS: security branch planning bypasses routine groups, approvals, age and creation budgets');
+console.log('PASS: routine creation budgets are enforced; security updates bypass groups, age and budgets');

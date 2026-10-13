@@ -245,7 +245,6 @@
       "matchJsonata": ["isVulnerabilityAlert = true"],
       "groupName": null,
       "groupSlug": null,
-      "dependencyDashboardApproval": false,
       "minimumReleaseAge": "0 days"
     }
   ],
@@ -253,9 +252,7 @@
   "prHourlyLimit": 2,
   // Retain old update branches until replacements are merged and cleanup is approved.
   "pruneStaleBranches": false,
-  "dependencyDashboardApproval": true,
   "vulnerabilityAlerts": {
-    "dependencyDashboardApproval": false,
     "groupName": null,
     "groupSlug": null,
     "minimumReleaseAge": "0 days",
