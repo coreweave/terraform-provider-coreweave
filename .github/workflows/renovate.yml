@@ -62,16 +62,6 @@ jobs:
           cd "$validation_dir"
           npx --yes --package renovate@44.51.2 -- node "$GITHUB_WORKSPACE/.github/renovate/tests/validate.mjs"
 
-      - name: Verify dependency grouping policy
-        working-directory: ${{ runner.temp }}
-        env:
-          LOG_LEVEL: info
-        run: |
-          validation_dir=$(mktemp -d)
-          trap 'rm -rf "$validation_dir"' EXIT
-          cd "$validation_dir"
-          npx --yes --package renovate@44.51.2 -- node "$GITHUB_WORKSPACE/.github/renovate/tests/grouping.mjs"
-
   renovate:
     name: Renovate
     needs: validate

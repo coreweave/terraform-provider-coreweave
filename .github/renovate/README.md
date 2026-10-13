@@ -17,11 +17,7 @@ npx --yes --package "renovate@$RENOVATE_VERSION" -- node "$REPO/.github/renovate
 
 The public fixtures check invalid settings, global-only settings, required migrations, and executable global-config isolation. The validator runs from a temporary directory so candidate `config.js` files cannot supply executable global configuration, and it inspects artifact commands without executing them.
 
-```sh
-npx --yes --package "renovate@$RENOVATE_VERSION" -- node "$REPO/.github/renovate/tests/grouping.mjs"
-```
-
-The grouping fixtures check the repository's resolved grouping, Go version constraints, release-age policy, and security exceptions using public synthetic updates. They intentionally use internal APIs from the pinned Renovate package; check those imports and fixtures when upgrading Renovate. They do not write branches or run acceptance tests or artifact commands.
+Validation uses the supported `renovate-config-validator` CLI from the workflow's pinned package. The fixtures have no separate version pin or dependency on Renovate's internal JavaScript APIs. These checks validate configuration and validator isolation; they do not simulate dependency resolution or grouping behavior.
 
 ## Dependency groups
 
