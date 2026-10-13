@@ -19,6 +19,7 @@ import (
 )
 
 const (
+	s3LogBucketField                = "bucket"
 	bucketPropagationTimeout        = 5 * time.Minute
 	bucketPropagationInitialBackoff = 500 * time.Millisecond
 	bucketPropagationMaxBackoff     = 5 * time.Second
@@ -104,13 +105,13 @@ func runS3Phase(
 		delay := options.delay(attemptNumber)
 		errorClass, errorCode := s3ErrorMetadata(err)
 		logFields := map[string]interface{}{
-			"attempt":     attemptNumber,
-			"bucket":      metadata.bucket,
-			"elapsed":     options.now().Sub(started).String(),
-			"error_class": errorClass,
-			"error_code":  errorCode,
-			"next_delay":  delay.String(),
-			"phase":       metadata.phase,
+			"attempt":        attemptNumber,
+			s3LogBucketField: metadata.bucket,
+			"elapsed":        options.now().Sub(started).String(),
+			"error_class":    errorClass,
+			"error_code":     errorCode,
+			"next_delay":     delay.String(),
+			"phase":          metadata.phase,
 		}
 		if metadata.zone != "" {
 			logFields["zone"] = metadata.zone

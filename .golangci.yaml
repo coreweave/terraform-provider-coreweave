@@ -120,6 +120,13 @@ linters:
       - path: ^coreweave/[^/]+/(data_source|resource)_[^/]+\.go$
         linters:
           - goconst
+      - path: ^coreweave/(container_registry/schema|sandbox/runner_schema)\.go$
+        linters:
+          - goconst
+      - path: ^coreweave/container_registry/review_regression_test\.go$
+        source: '"(access_configuration|rules)"'
+        linters:
+          - goconst
       - path: ^coreweave/cks/update_mask_test\.go$
         linters:
           - goconst

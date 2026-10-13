@@ -34,8 +34,10 @@ import (
 )
 
 const (
-	testS3AccessKey = "test-access-key"
-	testS3SecretKey = "test-secret-key"
+	testS3Endpoint      = "https://objects.example.test"
+	testS3CacheIdentity = "test-token"
+	testS3AccessKey     = "test-access-key"
+	testS3SecretKey     = "test-secret-key"
 )
 
 type s3CWObjectClientStub struct {
@@ -116,7 +118,7 @@ func TestCreateS3Client_DefaultAWSConfiguration(t *testing.T) {
 
 	client := &Client{
 		CWObjectClient: &s3CWObjectClientStub{t: t},
-		s3Endpoint:     "https://objects.example.test",
+		s3Endpoint:     testS3Endpoint,
 	}
 
 	s3Client, keyInfo, err := client.createS3Client(t.Context(), "US-TEST-01A")
@@ -134,7 +136,7 @@ func TestCreateS3Client_DefaultAWSConfiguration(t *testing.T) {
 
 func TestCreateS3Client_IgnoresAWSConfiguration(t *testing.T) {
 	const (
-		endpoint = "https://objects.example.test"
+		endpoint = testS3Endpoint
 		zone     = "US-TEST-01A"
 		profile  = "coreweave-s3-test"
 	)
@@ -324,7 +326,7 @@ func TestCreateS3Client_UsesOneBoundedRetryLayer(t *testing.T) {
 	transport := &countingRoundTripper{}
 	client := &Client{
 		CWObjectClient:   &s3CWObjectClientStub{t: t},
-		s3Endpoint:       "https://objects.example.test",
+		s3Endpoint:       testS3Endpoint,
 		s3AttemptTimeout: 7 * time.Second,
 		s3HTTPTransport:  transport,
 		s3Retryer: func() aws.Retryer {
@@ -381,8 +383,8 @@ func newS3CacheTestClient(t *testing.T, token string, service cwobjectv1connect.
 	t.Helper()
 
 	client, err := NewClient(
-		"https://api.example.test",
-		"https://objects.example.test",
+		testAPIEndpoint,
+		testS3Endpoint,
 		time.Second,
 		auth.NewStaticTokenSource(token),
 		"test-user-agent",
@@ -555,9 +557,9 @@ func TestS3ClientWaitersShareRefreshFailure(t *testing.T) {
 	}
 	client := &Client{
 		CWObjectClient:  stub,
-		apiEndpoint:     "https://api.example.test",
-		s3Endpoint:      "https://objects.example.test",
-		s3CacheIdentity: "test-token",
+		apiEndpoint:     testAPIEndpoint,
+		s3Endpoint:      testS3Endpoint,
+		s3CacheIdentity: testS3CacheIdentity,
 	}
 
 	type result struct {
@@ -616,10 +618,10 @@ func TestS3ClientCanceledLeaderDoesNotFailHealthyWaiter(t *testing.T) {
 	}
 	client := &Client{
 		CWObjectClient:  stub,
-		apiEndpoint:     "https://api.example.test",
-		s3Endpoint:      "https://objects.example.test",
+		apiEndpoint:     testAPIEndpoint,
+		s3Endpoint:      testS3Endpoint,
 		s3HTTPTransport: successfulListBucketsRoundTripper{},
-		s3CacheIdentity: "test-token",
+		s3CacheIdentity: testS3CacheIdentity,
 	}
 	type result struct {
 		client *s3.Client
@@ -684,9 +686,9 @@ func TestS3ClientServesUnexpiredClientDuringRefresh(t *testing.T) {
 	sharedS3ClientCache.accessKeyInfo = &cwobjectv1.CreateAccessKeyFromJWTResponse{
 		Expiry: timestamppb.New(now.Add(time.Minute)),
 	}
-	sharedS3ClientCache.apiEndpoint = "https://api.example.test"
-	sharedS3ClientCache.endpoint = "https://objects.example.test"
-	sharedS3ClientCache.authIdentity = "test-token"
+	sharedS3ClientCache.apiEndpoint = testAPIEndpoint
+	sharedS3ClientCache.endpoint = testS3Endpoint
+	sharedS3ClientCache.authIdentity = testS3CacheIdentity
 	sharedS3ClientCache.attemptTimeout = DefaultS3AttemptTimeout
 	sharedS3ClientCache.mu.Unlock()
 
@@ -697,9 +699,9 @@ func TestS3ClientServesUnexpiredClientDuringRefresh(t *testing.T) {
 	}
 	client := &Client{
 		CWObjectClient:  stub,
-		apiEndpoint:     "https://api.example.test",
-		s3Endpoint:      "https://objects.example.test",
-		s3CacheIdentity: "test-token",
+		apiEndpoint:     testAPIEndpoint,
+		s3Endpoint:      testS3Endpoint,
+		s3CacheIdentity: testS3CacheIdentity,
 		s3Now:           func() time.Time { return now },
 	}
 
@@ -748,8 +750,8 @@ func TestS3RetryerClassificationAndBackoffCap(t *testing.T) {
 
 	retryer := newS3Retryer()
 	certificateErr := &url.Error{
-		Op:  "Get",
-		URL: "https://objects.example.test",
+		Op:  testURLErrorGetOperation,
+		URL: testS3Endpoint,
 		Err: &tls.CertificateVerificationError{Err: errors.New("unknown authority")},
 	}
 	if retryer.IsErrorRetryable(certificateErr) {

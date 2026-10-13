@@ -20,6 +20,8 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
+const testFirstNamespaceName = "namespaces/aaa"
+
 type pollingClient struct {
 	client.RegistryServiceClient
 	access     []*api.RegistryAccessConfiguration
@@ -115,15 +117,15 @@ func TestOperationCompletion(t *testing.T) {
 
 // TestPagination rejects repeated tokens and duplicate objects, and sorts complete results.
 func TestPagination(t *testing.T) {
-	c := &pollingClient{pages: []*api.ListRegistryNamespacesResponse{{RegistryNamespaces: []*api.RegistryNamespace{{Name: "namespaces/zzz"}}, NextPageToken: "opaque+/="}, {RegistryNamespaces: []*api.RegistryNamespace{{Name: "namespaces/aaa"}}}}}
+	c := &pollingClient{pages: []*api.ListRegistryNamespacesResponse{{RegistryNamespaces: []*api.RegistryNamespace{{Name: "namespaces/zzz"}}, NextPageToken: "opaque+/="}, {RegistryNamespaces: []*api.RegistryNamespace{{Name: testFirstNamespaceName}}}}}
 	out, e := listNamespaces(t.Context(), c)
 	require.NoError(t, e)
-	require.Equal(t, "namespaces/aaa", out[0].Name)
+	require.Equal(t, testFirstNamespaceName, out[0].Name)
 	require.Equal(t, []string{"", "opaque+/="}, c.tokens)
 	c = &pollingClient{pages: []*api.ListRegistryNamespacesResponse{{NextPageToken: "loop"}}}
 	_, e = listNamespaces(t.Context(), c)
 	require.ErrorContains(t, e, "repeated")
-	c = &pollingClient{pages: []*api.ListRegistryNamespacesResponse{{RegistryNamespaces: []*api.RegistryNamespace{{Name: "namespaces/aaa"}, {Name: "namespaces/aaa"}}}}}
+	c = &pollingClient{pages: []*api.ListRegistryNamespacesResponse{{RegistryNamespaces: []*api.RegistryNamespace{{Name: testFirstNamespaceName}, {Name: testFirstNamespaceName}}}}}
 	_, e = listNamespaces(t.Context(), c)
 	require.ErrorContains(t, e, "duplicate")
 }

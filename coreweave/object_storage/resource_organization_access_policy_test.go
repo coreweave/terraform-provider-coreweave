@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math/rand/v2"
+	"strings"
 	"testing"
 
 	objectstorage "github.com/coreweave/terraform-provider-coreweave/coreweave/object_storage"
@@ -97,9 +98,32 @@ func createOrgAccessPolicyTestStep(ctx context.Context, t *testing.T, opts orgAc
 	}
 }
 
+func orgAccessPolicyTestNames() (initial, replacement string) {
+	initial = fmt.Sprintf("%sorg-policy-%016x", AcceptanceTestPrefix, rand.Uint64())
+	return initial, initial + "-require-replace"
+}
+
+func TestOrganizationAccessPolicyTestNames(t *testing.T) {
+	t.Parallel()
+
+	initial, replacement := orgAccessPolicyTestNames()
+	if initial == replacement {
+		t.Fatal("replacement requires a different policy name")
+	}
+	for _, name := range []string{initial, replacement} {
+		if len(name) > 64 {
+			t.Fatalf("policy name exceeds the API's 64-character limit: %q", name)
+		}
+		if !strings.HasPrefix(name, AcceptanceTestPrefix) || strings.ContainsAny(name, "*/?") {
+			t.Fatalf("policy name must retain the cleanup prefix without resource wildcards: %q", name)
+		}
+	}
+}
+
 func TestOrganizationAccessPolicyResource(t *testing.T) {
-	randomInt := rand.IntN(100)
-	policyName := fmt.Sprintf("%stest-org-access-policy-%d", AcceptanceTestPrefix, randomInt)
+	policyName, replacementPolicyName := orgAccessPolicyTestNames()
+	// Policy CRUD must not alter permissions for buckets used by parallel tests.
+	resources := types.SetValueMust(types.StringType, []attr.Value{types.StringValue(policyName)})
 
 	ctx := context.Background()
 	resource.ParallelTest(t, resource.TestCase{
@@ -122,9 +146,7 @@ func TestOrganizationAccessPolicyResource(t *testing.T) {
 							Actions: types.SetValueMust(types.StringType, []attr.Value{
 								types.StringValue("s3:CreateBucket"),
 							}),
-							Resources: types.SetValueMust(types.StringType, []attr.Value{
-								types.StringValue("my-specific-bucket/*"),
-							}),
+							Resources: resources,
 							Principals: types.SetValueMust(types.StringType, []attr.Value{
 								types.StringValue("*"),
 							}),
@@ -149,9 +171,7 @@ func TestOrganizationAccessPolicyResource(t *testing.T) {
 							Actions: types.SetValueMust(types.StringType, []attr.Value{
 								types.StringValue("s3:CreateBucket"),
 							}),
-							Resources: types.SetValueMust(types.StringType, []attr.Value{
-								types.StringValue("*"),
-							}),
+							Resources: resources,
 							Principals: types.SetValueMust(types.StringType, []attr.Value{
 								types.StringValue("*"),
 							}),
@@ -162,9 +182,7 @@ func TestOrganizationAccessPolicyResource(t *testing.T) {
 							Actions: types.SetValueMust(types.StringType, []attr.Value{
 								types.StringValue("s3:DeleteBucket"),
 							}),
-							Resources: types.SetValueMust(types.StringType, []attr.Value{
-								types.StringValue("*"),
-							}),
+							Resources: resources,
 							Principals: types.SetValueMust(types.StringType, []attr.Value{
 								types.StringValue("role/Viewer"),
 							}),
@@ -189,9 +207,7 @@ func TestOrganizationAccessPolicyResource(t *testing.T) {
 							Actions: types.SetValueMust(types.StringType, []attr.Value{
 								types.StringValue("s3:CreateBucket"),
 							}),
-							Resources: types.SetValueMust(types.StringType, []attr.Value{
-								types.StringValue("*"),
-							}),
+							Resources: resources,
 							Principals: types.SetValueMust(types.StringType, []attr.Value{
 								types.StringValue("*"),
 							}),
@@ -216,9 +232,7 @@ func TestOrganizationAccessPolicyResource(t *testing.T) {
 							Actions: types.SetValueMust(types.StringType, []attr.Value{
 								types.StringValue("s3:CreateBucket"),
 							}),
-							Resources: types.SetValueMust(types.StringType, []attr.Value{
-								types.StringValue("*"),
-							}),
+							Resources: resources,
 							Principals: types.SetValueMust(types.StringType, []attr.Value{
 								types.StringValue("*"),
 							}),
@@ -235,7 +249,7 @@ func TestOrganizationAccessPolicyResource(t *testing.T) {
 					},
 				},
 				Policy: objectstorage.OrganizationAccessPolicyResourceModel{
-					Name: types.StringValue(fmt.Sprintf("%s-require-replace", policyName)),
+					Name: types.StringValue(replacementPolicyName),
 					Statements: []objectstorage.PolicyStatementResourceModel{
 						{
 							Name:   types.StringValue(policyName),
@@ -243,9 +257,7 @@ func TestOrganizationAccessPolicyResource(t *testing.T) {
 							Actions: types.SetValueMust(types.StringType, []attr.Value{
 								types.StringValue("s3:CreateBucket"),
 							}),
-							Resources: types.SetValueMust(types.StringType, []attr.Value{
-								types.StringValue("*"),
-							}),
+							Resources: resources,
 							Principals: types.SetValueMust(types.StringType, []attr.Value{
 								types.StringValue("*"),
 							}),
@@ -260,7 +272,7 @@ func TestOrganizationAccessPolicyResource(t *testing.T) {
 				ResourceName:                         fmt.Sprintf("coreweave_object_storage_organization_access_policy.%s", "policy"),
 				ImportState:                          true,
 				ImportStateVerifyIdentifierAttribute: "name",
-				ImportStateId:                        fmt.Sprintf("%s-require-replace", policyName),
+				ImportStateId:                        replacementPolicyName,
 			},
 		},
 	})
