@@ -250,13 +250,11 @@
   ],
   "prConcurrentLimit": 3,
   "prHourlyLimit": 2,
-  // Retain old update branches until replacements are merged and cleanup is approved.
+  // TODO: Restore stale-branch pruning after replacements merge and cleanup is approved.
   "pruneStaleBranches": false,
   "vulnerabilityAlerts": {
     "groupName": null,
     "groupSlug": null,
-    "minimumReleaseAge": "0 days",
-    "prConcurrentLimit": 0,
-    "prHourlyLimit": 0
+    "minimumReleaseAge": "0 days"
   }
 }

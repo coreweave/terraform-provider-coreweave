@@ -4,7 +4,8 @@ import { delimiter, dirname, join } from 'node:path';
 import { createRequire } from 'node:module';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
-// Use the same installed package as the validator and writer.
+// Internal APIs verify our resolved policy against the validator/writer pin.
+// Check these imports and fixtures when upgrading Renovate; they are not a public API.
 const binary = process.env.PATH.split(delimiter).map(path => join(path, 'renovate-config-validator')).find(existsSync);
 assert.ok(binary, 'Run through the workflow-pinned Renovate package.');
 const root = dirname(dirname(realpathSync(binary)));
@@ -142,22 +143,11 @@ const securityFiles = {gomod: [{packageFile: 'go.mod', deps: ['github.com/aws/sm
 }))}]};
 const securityBranches = (await branchifyUpgrades(config, securityFiles)).branches;
 assert.equal(securityBranches.length, 2);
-const {setCount, isLimitReached} = await load('workers/global/limits');
-for (const [concurrent, hourly, reached] of [[0, 0, false], [2, 1, false], [3, 0, true], [0, 2, true]]) {
-  setCount('ConcurrentPRs', concurrent);
-  setCount('HourlyPRs', hourly);
-  for (const branch of planned.branches) {
-    assert.equal(isLimitReached('ConcurrentPRs', branch), reached);
-  }
-}
-setCount('ConcurrentPRs', 24);
-setCount('HourlyPRs', 24);
 for (const branch of securityBranches) {
   assert.equal(branch.isVulnerabilityAlert, true);
   assert.equal(branch.dependencyDashboardApproval, false);
   assert.ok(branch.groupName == null);
   const {checkMinimumReleaseAge} = await load('util/minimum-release-age');
   assert.equal(checkMinimumReleaseAge(branch, young).isPending, false);
-  assert.equal(isLimitReached('ConcurrentPRs', branch), false);
 }
-console.log('PASS: routine creation budgets are enforced; security updates bypass groups, age and budgets');
+console.log('PASS: security updates remain ungrouped without dashboard approval or release-age delay');

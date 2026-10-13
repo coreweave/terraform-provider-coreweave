@@ -21,7 +21,7 @@ The public fixtures check invalid settings, global-only settings, required migra
 npx --yes --package "renovate@$RENOVATE_VERSION" -- node "$REPO/.github/renovate/tests/grouping.mjs"
 ```
 
-The grouping fixtures use that same package's rule resolver, release filters, branch planner, and creation limits with public synthetic updates. They do not write branches or run acceptance tests or artifact commands.
+The grouping fixtures check the repository's resolved grouping, Go version constraints, release-age policy, and security exceptions using public synthetic updates. They intentionally use internal APIs from the pinned Renovate package; check those imports and fixtures when upgrading Renovate. They do not write branches or run acceptance tests or artifact commands.
 
 ## Dependency groups
 
@@ -33,4 +33,4 @@ Automated Go version updates stay within the minor allowed by the configuration.
 
 Renovate automatically creates update PRs without Dependency Dashboard approval, subject to a normal budget of three concurrent PRs and two new PRs per hour. Security alerts bypass that budget. No new automerge or GitHub administrative settings are configured.
 
-Stale bot branches remain available while grouped replacements are reviewed. A new grouped PR may coexist with superseded PRs, and preserved stale branches may not count toward the creation budget. Closing superseded PRs or deleting their branches requires explicit approval after their replacements merge.
+Stale bot branches remain available while grouped replacements are reviewed. A new grouped PR may coexist with superseded PRs, and preserved stale branches may not count toward the creation budget. Closing superseded PRs or deleting their branches requires explicit approval after their replacements merge. Restore stale-branch pruning after that cleanup is approved.
