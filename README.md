@@ -7,7 +7,7 @@ Copyright (c) 2024-2025 CoreWeave, Inc.
 ## Requirements
 
 - [Terraform](https://developer.hashicorp.com/terraform/downloads) >= 1.0
-- [Go](https://golang.org/doc/install) >= 1.25
+- [Go](https://golang.org/doc/install): use the version pinned in [.config/mise.toml](.config/mise.toml)
 
 ## Development
 

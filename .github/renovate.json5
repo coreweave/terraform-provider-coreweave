@@ -219,7 +219,7 @@
     {
       "matchPackageNames": ["go", "golang/go"],
       // Raise the minor cap only with a reviewed Go/linter pair that passes lint.
-      "allowedVersions": "<1.27.0",
+      "allowedVersions": "<1.28.0",
       "minimumReleaseAge": "7 days"
     },
     {

@@ -11,6 +11,12 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 )
 
+const (
+	testConvergenceBucket            = "target"
+	testAccessDeniedCode             = "AccessDenied"
+	testBucketPolicyApplicationPhase = "bucket policy application"
+)
+
 func TestIsBucketSubresourceMutationRetryableS3Error(t *testing.T) {
 	t.Parallel()
 
@@ -18,14 +24,14 @@ func TestIsBucketSubresourceMutationRetryableS3Error(t *testing.T) {
 		err  error
 		want bool
 	}{
-		"InvalidRegion": {err: &smithy.GenericAPIError{Code: errInvalidRegion}, want: true},
-		"HTTP 503":      {err: responseErrorWithCause(t, 503, errors.New("unavailable")), want: true},
-		"NoSuchBucket":  {err: &smithy.GenericAPIError{Code: ErrNoSuchBucket}},
-		"NotFound":      {err: &smithy.GenericAPIError{Code: errNotFound}},
-		"NoSuchTagSet":  {err: &smithy.GenericAPIError{Code: errNoSuchTagSet}},
-		"HTTP 404":      {err: responseErrorWithCause(t, 404, errors.New("not found"))},
-		"AccessDenied":  {err: &smithy.GenericAPIError{Code: "AccessDenied"}},
-		"HTTP 400":      {err: responseErrorWithCause(t, 400, &smithy.GenericAPIError{Code: "BadRequest"})},
+		"InvalidRegion":      {err: &smithy.GenericAPIError{Code: errInvalidRegion}, want: true},
+		"HTTP 503":           {err: responseErrorWithCause(t, 503, errors.New("unavailable")), want: true},
+		"NoSuchBucket":       {err: &smithy.GenericAPIError{Code: ErrNoSuchBucket}},
+		"NotFound":           {err: &smithy.GenericAPIError{Code: errNotFound}},
+		"NoSuchTagSet":       {err: &smithy.GenericAPIError{Code: errNoSuchTagSet}},
+		"HTTP 404":           {err: responseErrorWithCause(t, 404, errors.New("not found"))},
+		testAccessDeniedCode: {err: &smithy.GenericAPIError{Code: testAccessDeniedCode}},
+		"HTTP 400":           {err: responseErrorWithCause(t, 400, &smithy.GenericAPIError{Code: "BadRequest"})},
 	}
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -65,7 +71,7 @@ func TestRunBucketMutationPhaseUsesMutationClassifier(t *testing.T) {
 			waits := 0
 			err := runBucketMutationPhase(
 				t.Context(),
-				s3PhaseMetadata{phase: "test mutation", bucket: "target"},
+				s3PhaseMetadata{phase: "test mutation", bucket: testConvergenceBucket},
 				immediateS3PhaseOptions(&waits),
 				func(context.Context) error {
 					if calls >= len(test.errors) {
@@ -112,7 +118,7 @@ func TestRunBucketReadbackPhaseUsesStableConvergence(t *testing.T) {
 			},
 		},
 		"permanent error stops after match": {
-			samples:   []sample{{matched: true}, {err: &smithy.GenericAPIError{Code: "AccessDenied"}}},
+			samples:   []sample{{matched: true}, {err: &smithy.GenericAPIError{Code: testAccessDeniedCode}}},
 			wantError: true,
 		},
 	}
@@ -124,7 +130,7 @@ func TestRunBucketReadbackPhaseUsesStableConvergence(t *testing.T) {
 			waits := 0
 			err := runBucketReadbackPhase(
 				t.Context(),
-				s3PhaseMetadata{phase: "test readback", bucket: "target"},
+				s3PhaseMetadata{phase: "test readback", bucket: testConvergenceBucket},
 				immediateS3PhaseOptions(&waits),
 				func(context.Context) (bool, error) {
 					if calls >= len(test.samples) {
@@ -152,7 +158,7 @@ func TestRunBucketReadbackPhaseTriesImmediatelyAndSpansConfirmationWindow(t *tes
 	waits := []time.Duration{}
 	err := runBucketReadbackPhase(
 		t.Context(),
-		s3PhaseMetadata{phase: "test readback", bucket: "target"},
+		s3PhaseMetadata{phase: "test readback", bucket: testConvergenceBucket},
 		s3PhaseOptions{
 			now:   time.Now,
 			delay: func(int) time.Duration { return 0 },
@@ -187,7 +193,7 @@ func TestRunBucketMutationPhaseHonorsCanceledContext(t *testing.T) {
 	waits := 0
 	err := runBucketMutationPhase(
 		ctx,
-		s3PhaseMetadata{phase: "test mutation", bucket: "target"},
+		s3PhaseMetadata{phase: "test mutation", bucket: testConvergenceBucket},
 		immediateS3PhaseOptions(&waits),
 		func(context.Context) error {
 			calls++
@@ -208,7 +214,7 @@ func TestRunBucketMutationPhaseReportsBoundedFailure(t *testing.T) {
 	calls := 0
 	err := runBucketMutationPhase(
 		t.Context(),
-		s3PhaseMetadata{phase: "bucket policy application", bucket: "target"},
+		s3PhaseMetadata{phase: testBucketPolicyApplicationPhase, bucket: testConvergenceBucket},
 		s3PhaseOptions{
 			delay: func(int) time.Duration { return 0 },
 			wait: func(context.Context, time.Duration) error {
@@ -235,7 +241,7 @@ func TestRunBucketMutationPhaseReportsBoundedFailure(t *testing.T) {
 	if !errors.As(err, &phaseErr) {
 		t.Fatalf("runBucketMutationPhase() error type = %T, want *s3PhaseError", err)
 	}
-	if calls != 1 || phaseErr.attempts != 1 || phaseErr.phase != "bucket policy application" {
+	if calls != 1 || phaseErr.attempts != 1 || phaseErr.phase != testBucketPolicyApplicationPhase {
 		t.Fatalf("calls = %d, phase error = %#v; want one bucket policy application attempt", calls, phaseErr)
 	}
 	if message := err.Error(); !strings.Contains(message, "bucket policy application failed after 1 attempt") {
@@ -246,12 +252,12 @@ func TestRunBucketMutationPhaseReportsBoundedFailure(t *testing.T) {
 	}
 
 	var diagnostics diag.Diagnostics
-	handleS3Error(err, &diagnostics, "target")
+	handleS3Error(err, &diagnostics, testConvergenceBucket)
 	if len(diagnostics.Errors()) != 1 {
 		t.Fatalf("handleS3Error() diagnostics = %v, want one error", diagnostics)
 	}
 	detail := diagnostics.Errors()[0].Detail()
-	for _, expected := range []string{"bucket policy application", "1 attempt", "PutBucketPolicy", errInvalidRegion, context.DeadlineExceeded.Error()} {
+	for _, expected := range []string{testBucketPolicyApplicationPhase, "1 attempt", "PutBucketPolicy", errInvalidRegion, context.DeadlineExceeded.Error()} {
 		if !strings.Contains(detail, expected) {
 			t.Fatalf("handleS3Error() detail = %q, want %q", detail, expected)
 		}
@@ -267,7 +273,7 @@ func TestRunBucketReadbackPhaseReportsExhaustedSharedBudget(t *testing.T) {
 	calls := 0
 	err := runBucketReadbackPhase(
 		ctx,
-		s3PhaseMetadata{phase: "bucket policy readback", bucket: "target"},
+		s3PhaseMetadata{phase: "bucket policy readback", bucket: testConvergenceBucket},
 		s3PhaseOptions{},
 		func(context.Context) (bool, error) {
 			calls++
@@ -293,7 +299,7 @@ func TestRunS3PhaseDoesNotMislabelIndependentDeadline(t *testing.T) {
 
 	err := runS3Phase(
 		ctx,
-		s3PhaseMetadata{phase: "ambiguous bucket create reconciliation", bucket: "target"},
+		s3PhaseMetadata{phase: "ambiguous bucket create reconciliation", bucket: testConvergenceBucket},
 		s3PhaseOptions{},
 		func(context.Context) (bool, error) {
 			t.Fatal("attempt called with an expired context")

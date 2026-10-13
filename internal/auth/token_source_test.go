@@ -14,6 +14,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const (
+	testAPIEndpoint         = "https://api.example.test"
+	testInsecureAPIEndpoint = "http://api.example.test"
+	invalidEndpointMessage  = "must be an absolute http or https URL"
+)
+
 type tokenSourceFunc func(context.Context) (string, error)
 
 func (f tokenSourceFunc) Token(ctx context.Context) (string, error) {
@@ -64,11 +70,11 @@ func TestTransportGetsTokenForEachAttempt(t *testing.T) {
 		authorizationHeaders = append(authorizationHeaders, req.Header.Get("Authorization"))
 		return &http.Response{StatusCode: http.StatusOK, Body: http.NoBody}, nil
 	})
-	transport, err := auth.NewTransport(base, source, "https://api.example.test")
+	transport, err := auth.NewTransport(base, source, testAPIEndpoint)
 	require.NoError(t, err)
 
 	for range tokens {
-		req, reqErr := http.NewRequestWithContext(t.Context(), http.MethodGet, "https://api.example.test", nil)
+		req, reqErr := http.NewRequestWithContext(t.Context(), http.MethodGet, testAPIEndpoint, nil)
 		require.NoError(t, reqErr)
 		_, roundTripErr := transport.RoundTrip(req)
 		require.NoError(t, roundTripErr)
@@ -88,9 +94,9 @@ func TestTransportReturnsTypedTokenSourceError(t *testing.T) {
 		baseCalled = true
 		return &http.Response{StatusCode: http.StatusOK, Body: http.NoBody}, nil
 	})
-	transport, err := auth.NewTransport(base, source, "https://api.example.test")
+	transport, err := auth.NewTransport(base, source, testAPIEndpoint)
 	require.NoError(t, err)
-	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "https://api.example.test", nil)
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, testAPIEndpoint, nil)
 	require.NoError(t, err)
 	_, err = transport.RoundTrip(req)
 
@@ -108,42 +114,42 @@ func TestTransportAuthenticatesOnlyTheConfiguredOrigin(t *testing.T) {
 		wantAuthemitted bool
 	}{
 		"same origin": {
-			endpoint:        "https://api.example.test",
-			requestURL:      "https://api.example.test",
+			endpoint:        testAPIEndpoint,
+			requestURL:      testAPIEndpoint,
 			wantAuthemitted: true,
 		},
 		"host differing only in case": {
-			endpoint:        "https://api.example.test",
+			endpoint:        testAPIEndpoint,
 			requestURL:      "https://API.EXAMPLE.TEST",
 			wantAuthemitted: true,
 		},
 		"redirect to another host": {
-			endpoint:        "https://api.example.test",
+			endpoint:        testAPIEndpoint,
 			requestURL:      "https://redirected.example.test",
 			wantAuthemitted: false,
 		},
 		"same host upgraded to https": {
-			endpoint:        "http://api.example.test",
-			requestURL:      "https://api.example.test",
+			endpoint:        testInsecureAPIEndpoint,
+			requestURL:      testAPIEndpoint,
 			wantAuthemitted: true,
 		},
 		"same host downgraded to http": {
-			endpoint:        "https://api.example.test",
-			requestURL:      "http://api.example.test",
+			endpoint:        testAPIEndpoint,
+			requestURL:      testInsecureAPIEndpoint,
 			wantAuthemitted: false,
 		},
 		"explicit default https port": {
-			endpoint:        "https://api.example.test",
+			endpoint:        testAPIEndpoint,
 			requestURL:      "https://api.example.test:443",
 			wantAuthemitted: true,
 		},
 		"explicit default http port": {
 			endpoint:        "http://api.example.test:80",
-			requestURL:      "http://api.example.test",
+			requestURL:      testInsecureAPIEndpoint,
 			wantAuthemitted: true,
 		},
 		"non-default port": {
-			endpoint:        "https://api.example.test",
+			endpoint:        testAPIEndpoint,
 			requestURL:      "https://api.example.test:8443",
 			wantAuthemitted: false,
 		},
@@ -195,19 +201,19 @@ func TestNewTransportRejectsUnusableEndpoints(t *testing.T) {
 		},
 		"empty": {
 			endpoint: "",
-			wantErr:  "must be an absolute http or https URL",
+			wantErr:  invalidEndpointMessage,
 		},
 		"no scheme or host": {
 			endpoint: "api.example.test/v1",
-			wantErr:  "must be an absolute http or https URL",
+			wantErr:  invalidEndpointMessage,
 		},
 		"scheme-relative": {
 			endpoint: "//api.example.test",
-			wantErr:  "must be an absolute http or https URL",
+			wantErr:  invalidEndpointMessage,
 		},
 		"non-http scheme": {
 			endpoint: "ftp://api.example.test",
-			wantErr:  "must be an absolute http or https URL",
+			wantErr:  invalidEndpointMessage,
 		},
 	}
 
@@ -235,7 +241,7 @@ func TestNewTransportRequiresATokenSource(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			transport, err := auth.NewTransport(nil, source, "https://api.example.test")
+			transport, err := auth.NewTransport(nil, source, testAPIEndpoint)
 
 			require.ErrorContains(t, err, "access token source is required")
 			assert.Nil(t, transport)
@@ -267,7 +273,7 @@ func TestTransportWarnsWhenAuthenticationIsSkipped(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, entries, 1)
 	assert.Equal(t, "warn", entries[0]["@level"])
-	assert.Equal(t, "https://api.example.test", entries[0]["request_origin"])
+	assert.Equal(t, testAPIEndpoint, entries[0]["request_origin"])
 	assert.Equal(t, "https://api.example.test:8443", entries[0]["configured_origin"])
 	assert.NotContains(t, logbuf.String(), "do-not-log")
 }
@@ -280,7 +286,7 @@ func TestTransportClosesRequestBodyOnError(t *testing.T) {
 	newRequest := func(t *testing.T, body *trackedBody) *http.Request {
 		t.Helper()
 
-		req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, "https://api.example.test", body)
+		req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, testAPIEndpoint, body)
 		require.NoError(t, err)
 		return req
 	}
@@ -291,7 +297,7 @@ func TestTransportClosesRequestBodyOnError(t *testing.T) {
 		source := tokenSourceFunc(func(context.Context) (string, error) {
 			return "", errors.New("exchange unavailable")
 		})
-		transport, err := auth.NewTransport(nil, source, "https://api.example.test")
+		transport, err := auth.NewTransport(nil, source, testAPIEndpoint)
 		require.NoError(t, err)
 
 		body := &trackedBody{}
@@ -320,7 +326,7 @@ func TestTransportForwardsCloseIdleConnections(t *testing.T) {
 	t.Parallel()
 
 	base := &closeIdleRoundTripper{}
-	transport, err := auth.NewTransport(base, auth.NewStaticTokenSource("token"), "https://api.example.test")
+	transport, err := auth.NewTransport(base, auth.NewStaticTokenSource("token"), testAPIEndpoint)
 	require.NoError(t, err)
 
 	closer, ok := transport.(interface{ CloseIdleConnections() })

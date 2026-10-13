@@ -98,8 +98,9 @@ func createOrgAccessPolicyTestStep(ctx context.Context, t *testing.T, opts orgAc
 }
 
 func TestOrganizationAccessPolicyResource(t *testing.T) {
-	randomInt := rand.IntN(100)
-	policyName := fmt.Sprintf("%stest-org-access-policy-%d", AcceptanceTestPrefix, randomInt)
+	policyName := fmt.Sprintf("%stest-org-access-policy-%016x", AcceptanceTestPrefix, rand.Uint64())
+	// Policy CRUD must not alter permissions for buckets used by parallel tests.
+	resources := types.SetValueMust(types.StringType, []attr.Value{types.StringValue(policyName)})
 
 	ctx := context.Background()
 	resource.ParallelTest(t, resource.TestCase{
@@ -122,9 +123,7 @@ func TestOrganizationAccessPolicyResource(t *testing.T) {
 							Actions: types.SetValueMust(types.StringType, []attr.Value{
 								types.StringValue("s3:CreateBucket"),
 							}),
-							Resources: types.SetValueMust(types.StringType, []attr.Value{
-								types.StringValue("my-specific-bucket/*"),
-							}),
+							Resources: resources,
 							Principals: types.SetValueMust(types.StringType, []attr.Value{
 								types.StringValue("*"),
 							}),
@@ -149,9 +148,7 @@ func TestOrganizationAccessPolicyResource(t *testing.T) {
 							Actions: types.SetValueMust(types.StringType, []attr.Value{
 								types.StringValue("s3:CreateBucket"),
 							}),
-							Resources: types.SetValueMust(types.StringType, []attr.Value{
-								types.StringValue("*"),
-							}),
+							Resources: resources,
 							Principals: types.SetValueMust(types.StringType, []attr.Value{
 								types.StringValue("*"),
 							}),
@@ -162,9 +159,7 @@ func TestOrganizationAccessPolicyResource(t *testing.T) {
 							Actions: types.SetValueMust(types.StringType, []attr.Value{
 								types.StringValue("s3:DeleteBucket"),
 							}),
-							Resources: types.SetValueMust(types.StringType, []attr.Value{
-								types.StringValue("*"),
-							}),
+							Resources: resources,
 							Principals: types.SetValueMust(types.StringType, []attr.Value{
 								types.StringValue("role/Viewer"),
 							}),
@@ -189,9 +184,7 @@ func TestOrganizationAccessPolicyResource(t *testing.T) {
 							Actions: types.SetValueMust(types.StringType, []attr.Value{
 								types.StringValue("s3:CreateBucket"),
 							}),
-							Resources: types.SetValueMust(types.StringType, []attr.Value{
-								types.StringValue("*"),
-							}),
+							Resources: resources,
 							Principals: types.SetValueMust(types.StringType, []attr.Value{
 								types.StringValue("*"),
 							}),
@@ -216,9 +209,7 @@ func TestOrganizationAccessPolicyResource(t *testing.T) {
 							Actions: types.SetValueMust(types.StringType, []attr.Value{
 								types.StringValue("s3:CreateBucket"),
 							}),
-							Resources: types.SetValueMust(types.StringType, []attr.Value{
-								types.StringValue("*"),
-							}),
+							Resources: resources,
 							Principals: types.SetValueMust(types.StringType, []attr.Value{
 								types.StringValue("*"),
 							}),
@@ -243,9 +234,7 @@ func TestOrganizationAccessPolicyResource(t *testing.T) {
 							Actions: types.SetValueMust(types.StringType, []attr.Value{
 								types.StringValue("s3:CreateBucket"),
 							}),
-							Resources: types.SetValueMust(types.StringType, []attr.Value{
-								types.StringValue("*"),
-							}),
+							Resources: resources,
 							Principals: types.SetValueMust(types.StringType, []attr.Value{
 								types.StringValue("*"),
 							}),

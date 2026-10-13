@@ -20,6 +20,11 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
+const (
+	testSweepNamespaceName = "namespaces/q-tfacc-cr-0123abcd"
+	namespaceResourceType  = "coreweave_container_registry_namespace"
+)
+
 // registryTestPrefix requires a recognizable, explicitly selected test namespace prefix.
 func registryTestPrefix() (string, error) {
 	prefix := os.Getenv("COREWEAVE_CONTAINER_REGISTRY_TEST_PREFIX")
@@ -63,7 +68,7 @@ func sweepRegistryNamespaces(zone string) error {
 	}
 	registry := c.ContainerRegistry
 	return testutil.Sweep(ctx, runtime, testutil.SweepConfig[*api.RegistryNamespace]{
-		ResourceType: "coreweave_container_registry_namespace",
+		ResourceType: namespaceResourceType,
 		// Collect every page before deleting so offset-based pagination cannot skip shifted rows.
 		List: func(ctx context.Context) ([]*api.RegistryNamespace, error) {
 			return containerregistry.ListNamespaces(ctx, registry)
@@ -91,7 +96,7 @@ func sweepRegistryNamespaces(zone string) error {
 
 // init registers actual namespace cleanup with the acceptance-test runner.
 func init() {
-	resource.AddTestSweepers("coreweave_container_registry_namespace", &resource.Sweeper{Name: "coreweave_container_registry_namespace", F: sweepRegistryNamespaces})
+	resource.AddTestSweepers(namespaceResourceType, &resource.Sweeper{Name: namespaceResourceType, F: sweepRegistryNamespaces})
 }
 
 // TestMain enables the testing helper's sweeper command-line flags.
@@ -103,12 +108,12 @@ func TestSweepScope(t *testing.T) {
 		name, zone string
 		want       bool
 	}{
-		{"namespaces/q-tfacc-cr-0123abcd", "US-LAB-01A", true},
-		{"namespaces/cw-bitnami", "US-LAB-01A", false},
-		{"namespaces/q-tfacc-cr-0123abcd", "US-EAST-14A", false},
-		{"namespaces/q-tfacc-cr-0123abcd-extra", "US-LAB-01A", false},
+		{testSweepNamespaceName, testutil.AcceptanceTestZone, true},
+		{"namespaces/cw-bitnami", testutil.AcceptanceTestZone, false},
+		{testSweepNamespaceName, "US-EAST-14A", false},
+		{"namespaces/q-tfacc-cr-0123abcd-extra", testutil.AcceptanceTestZone, false},
 	} {
-		require.Equal(t, tc.want, sweepTarget(&api.RegistryNamespace{Name: tc.name, Zone: tc.zone}, "q-tfacc-cr-", "US-LAB-01A"))
+		require.Equal(t, tc.want, sweepTarget(&api.RegistryNamespace{Name: tc.name, Zone: tc.zone}, "q-tfacc-cr-", testutil.AcceptanceTestZone))
 	}
 	t.Setenv("COREWEAVE_CONTAINER_REGISTRY_TEST_PREFIX", "cw-")
 	_, err := registryTestPrefix()
@@ -118,14 +123,14 @@ func TestSweepScope(t *testing.T) {
 // TestSweeperDeletesOnlySelectedNamespace exercises registered cleanup against the Connect harness.
 func TestSweeperDeletesOnlySelectedNamespace(t *testing.T) {
 	h := newHarness(t, "namespace")
-	t.Setenv("COREWEAVE_CONTAINER_REGISTRY_TEST_ZONE", "US-LAB-01A")
+	t.Setenv("COREWEAVE_CONTAINER_REGISTRY_TEST_ZONE", testutil.AcceptanceTestZone)
 	t.Setenv("COREWEAVE_CONTAINER_REGISTRY_TEST_PREFIX", "q-tfacc-cr-")
 	t.Setenv("SWEEP_DRY_RUN", "true")
-	h.fake.namespace.Name = "namespaces/q-tfacc-cr-0123abcd"
-	require.NoError(t, sweepRegistryNamespaces("US-LAB-01A"))
+	h.fake.namespace.Name = testSweepNamespaceName
+	require.NoError(t, sweepRegistryNamespaces(testutil.AcceptanceTestZone))
 	require.Empty(t, h.fake.deletes)
 	t.Setenv("SWEEP_DRY_RUN", "false")
-	require.NoError(t, sweepRegistryNamespaces("US-LAB-01A"))
+	require.NoError(t, sweepRegistryNamespaces(testutil.AcceptanceTestZone))
 	require.Len(t, h.fake.deletes, 1)
 	require.True(t, h.fake.deletes[0].Force)
 	require.Nil(t, h.fake.namespace)

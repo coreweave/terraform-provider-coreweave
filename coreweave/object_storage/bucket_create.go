@@ -157,9 +157,9 @@ func createBucketSafelyWithOptions(
 	}
 
 	tflog.Warn(ctx, "reconciled an ambiguous S3 create response", map[string]interface{}{
-		"bucket": bucket,
-		"phase":  "create",
-		"zone":   zone,
+		s3LogBucketField: bucket,
+		"phase":          "create",
+		"zone":           zone,
 	})
 	return nil
 }

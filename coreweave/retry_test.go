@@ -11,16 +11,22 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const (
+	testRequestURL           = "https://example.test"
+	testURLErrorGetOperation = "Get"
+	testAPIEndpoint          = "https://api.example.test"
+)
+
 func TestBaseRetryPolicyRejectsWrappedPermanentRequestErrors(t *testing.T) {
 	t.Parallel()
 
 	tests := map[string]error{
-		"redirect exhaustion": &url.Error{Op: "Get", URL: "https://example.test", Err: errors.New("stopped after 10 redirects")},
-		"invalid scheme":      &url.Error{Op: "Get", URL: "example.test", Err: errors.New("unsupported protocol scheme")},
-		"invalid header":      &url.Error{Op: "Get", URL: "https://example.test", Err: errors.New("invalid header field value")},
+		"redirect exhaustion": &url.Error{Op: testURLErrorGetOperation, URL: testRequestURL, Err: errors.New("stopped after 10 redirects")},
+		"invalid scheme":      &url.Error{Op: testURLErrorGetOperation, URL: "example.test", Err: errors.New("unsupported protocol scheme")},
+		"invalid header":      &url.Error{Op: testURLErrorGetOperation, URL: testRequestURL, Err: errors.New("invalid header field value")},
 		"certificate": &url.Error{
-			Op:  "Get",
-			URL: "https://example.test",
+			Op:  testURLErrorGetOperation,
+			URL: testRequestURL,
 			Err: &tls.CertificateVerificationError{Err: errors.New("certificate is not trusted")},
 		},
 	}
@@ -40,7 +46,7 @@ func TestRetryPolicyTransportErrors(t *testing.T) {
 	t.Parallel()
 
 	urlErr := func(err error) error {
-		return &url.Error{Op: "Get", URL: "https://api.example.test", Err: err}
+		return &url.Error{Op: testURLErrorGetOperation, URL: testAPIEndpoint, Err: err}
 	}
 
 	tests := map[string]struct {
