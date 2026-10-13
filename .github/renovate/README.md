@@ -15,4 +15,24 @@ npx --yes --package "renovate@$RENOVATE_VERSION" -- renovate-config-validator --
 npx --yes --package "renovate@$RENOVATE_VERSION" -- node "$REPO/.github/renovate/tests/validate.mjs"
 ```
 
-The public fixtures check invalid settings, global-only settings, required migrations, and executable global-config isolation. The validator runs from a temporary directory so candidate `config.js` files cannot supply executable global configuration, and it inspects artifact commands without executing them. These checks validate configuration; dependency grouping and branch planning require separate checks.
+The public fixtures check invalid settings, global-only settings, required migrations, and executable global-config isolation. The validator runs from a temporary directory so candidate `config.js` files cannot supply executable global configuration, and it inspects artifact commands without executing them.
+
+```sh
+npx --yes --package "renovate@$RENOVATE_VERSION" -- node "$REPO/.github/renovate/tests/grouping.mjs"
+```
+
+The grouping fixtures use that same package's rule resolver, release filters, branch planner, and approval gate with public synthetic updates. Platform reads are stubbed and branch writes are forbidden; they do not run acceptance tests or artifact commands.
+
+## Dependency groups
+
+Routine updates group Go patches across both modules and Mise, Terraform plugin libraries including testing and framework helpers, generated Connect/protobuf clients by schema family, AWS SDK with Smithy, remaining Go modules, documentation tools, GitHub Actions, CI containers, and development tools. Mise's runtime and action share a group. Linter updates have their own group so they cannot block Go patches.
+
+Automated Go version updates stay within the minor allowed by the configuration. Raising that cap requires a manual Go/linter upgrade that passes the repository's fast checks. Routine Go and linter releases wait seven days; generated client and runner-image releases retain their existing age exception. Major upgrades stay separate for manual review. Security alerts are ungrouped and bypass routine approval and age requirements.
+
+## Group migration
+
+New routine groups require Dependency Dashboard approval while manual replacements are reviewed in sequence. Leave dashboard checkboxes unchecked for groups that overlap those replacements. After a group's manual replacement merges and its superseded PR cleanup is approved, a configuration PR can set `dependencyDashboardApproval: false` in that group's package rule. Keep the root approval setting enabled for the remaining groups.
+
+Stale bot branches remain available; closing superseded PRs or deleting their branches requires explicit approval. Removing the root approval setting and restoring normal pruning are separate configuration changes after the migration and cleanup are complete.
+
+The normal creation budget is three concurrent PRs and two new PRs per hour. Preserved stale branches may not count toward that budget, so the dashboard gate prevents competing replacements independently of the limits. Security alerts bypass the normal budget. No new automerge or GitHub administrative settings are configured.
