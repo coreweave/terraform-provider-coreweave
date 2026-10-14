@@ -828,6 +828,142 @@ func TestClusterResource_Tailscale(t *testing.T) {
 	})
 }
 
+var (
+	kubeAPICIDRSetType     = types.SetType{ElemType: types.StringType}
+	kubeAPIPublicAttrTypes = map[string]attr.Type{"allow_cidrs": kubeAPICIDRSetType, "deny_cidrs": kubeAPICIDRSetType}
+	kubeAPIAccessAttrTypes = map[string]attr.Type{"public": types.ObjectType{AttrTypes: kubeAPIPublicAttrTypes}}
+)
+
+func kubeAPICIDRs(values ...string) types.Set {
+	elements := make([]attr.Value, len(values))
+	for i, v := range values {
+		elements[i] = types.StringValue(v)
+	}
+	return types.SetValueMust(types.StringType, elements)
+}
+
+func kubeAPIAccessObject(public attr.Value) types.Object {
+	return types.ObjectValueMust(kubeAPIAccessAttrTypes, map[string]attr.Value{"public": public})
+}
+
+func kubeAPIPublicAccess(allow, deny types.Set) types.Object {
+	return kubeAPIAccessObject(types.ObjectValueMust(kubeAPIPublicAttrTypes, map[string]attr.Value{
+		"allow_cidrs": allow,
+		"deny_cidrs":  deny,
+	}))
+}
+
+func TestClusterResource_KubeAPIAccess(t *testing.T) {
+	config := generateResourceNames(t, "cks-api-access")
+	zone := testutil.AcceptanceTestZone
+	kubeVersion := testutil.AcceptanceTestKubeVersion
+
+	vpc := defaultVpc(config.VPCName, zone)
+
+	base := &cks.ClusterResourceModel{
+		VpcId:               types.StringValue(fmt.Sprintf("coreweave_networking_vpc.%s.id", config.ResourceName)),
+		Name:                types.StringValue(config.ClusterName),
+		Zone:                types.StringValue(zone),
+		Version:             types.StringValue(kubeVersion),
+		Public:              types.BoolValue(false),
+		PodCidrName:         types.StringValue("pod-cidr"),
+		ServiceCidrName:     types.StringValue("service-cidr"),
+		InternalLBCidrNames: types.ListValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr")}),
+		KubeAPIAccess:       types.ObjectNull(kubeAPIAccessAttrTypes),
+	}
+
+	withAccess := func(access types.Object) cks.ClusterResourceModel {
+		return with(*base, func(c *cks.ClusterResourceModel) {
+			c.KubeAPIAccess = access
+		})
+	}
+	allow := kubeAPICIDRs("203.0.113.0/24", "2001:db8::/32")
+	nullCIDRs := types.SetNull(types.StringType)
+
+	publicOnly := withAccess(kubeAPIPublicAccess(nullCIDRs, nullCIDRs))
+	allowOnly := withAccess(kubeAPIPublicAccess(allow, nullCIDRs))
+	allowAndDeny := withAccess(kubeAPIPublicAccess(allow, kubeAPICIDRs("203.0.113.128/25")))
+	emptyCIDRs := withAccess(kubeAPIPublicAccess(kubeAPICIDRs(), kubeAPICIDRs()))
+
+	expectAction := func(action plancheck.ResourceActionType) resource.ConfigPlanChecks {
+		return resource.ConfigPlanChecks{
+			PreApply: []plancheck.PlanCheck{
+				plancheck.ExpectResourceAction(config.FullResourceName, action),
+			},
+		}
+	}
+
+	ctx := t.Context()
+
+	steps := []resource.TestStep{
+		// Step 1: create with public = {}
+		createClusterTestStep(ctx, t, testStepConfig{
+			TestName:         "create with kube_api_access public",
+			ConfigPlanChecks: expectAction(plancheck.ResourceActionCreate),
+			Resources:        config,
+			cluster:          publicOnly,
+			vpc:              *vpc,
+		}),
+		// Step 2: add allow_cidrs
+		createClusterTestStep(ctx, t, testStepConfig{
+			TestName:         "add allow_cidrs",
+			ConfigPlanChecks: expectAction(plancheck.ResourceActionUpdate),
+			Resources:        config,
+			cluster:          allowOnly,
+			vpc:              *vpc,
+		}),
+		// Step 3: add deny_cidrs
+		createClusterTestStep(ctx, t, testStepConfig{
+			TestName:         "add deny_cidrs",
+			ConfigPlanChecks: expectAction(plancheck.ResourceActionUpdate),
+			Resources:        config,
+			cluster:          allowAndDeny,
+			vpc:              *vpc,
+		}),
+		// Step 4: reapply same config, expect noop
+		{
+			PreConfig: func() {
+				t.Log("Reapplying kube_api_access config to verify noop (roundtrip)")
+			},
+			Config:           networking.MustRenderVpcResource(ctx, config.ResourceName, vpc) + "\n" + cks.MustRenderClusterResource(ctx, config.ResourceName, &allowAndDeny),
+			ConfigPlanChecks: expectAction(plancheck.ResourceActionNoop),
+		},
+		// Step 5: import verify while allow and deny cidrs are set
+		{
+			PreConfig: func() {
+				t.Log("Beginning coreweave_cks_cluster import test (kube_api_access)")
+			},
+			ResourceName:      config.FullResourceName,
+			ImportState:       true,
+			ImportStateVerify: true,
+		},
+		// Step 6: clear allow and deny cidrs
+		createClusterTestStep(ctx, t, testStepConfig{
+			TestName:         "clear allow and deny cidrs",
+			ConfigPlanChecks: expectAction(plancheck.ResourceActionUpdate),
+			Resources:        config,
+			cluster:          emptyCIDRs,
+			vpc:              *vpc,
+		}),
+		// Step 7: remove kube_api_access block
+		createClusterTestStep(ctx, t, testStepConfig{
+			TestName:         "remove kube_api_access block",
+			ConfigPlanChecks: expectAction(plancheck.ResourceActionUpdate),
+			Resources:        config,
+			cluster:          *base,
+			vpc:              *vpc,
+		}),
+	}
+
+	resource.ParallelTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+		PreCheck: func() {
+			testutil.SetEnvDefaults()
+		},
+		Steps: steps,
+	})
+}
+
 func TestClusterResource_Kubelet(t *testing.T) {
 	config := generateResourceNames(t, "cks-kubelet")
 	zone := testutil.AcceptanceTestZone
@@ -1367,20 +1503,6 @@ func TestClusterResource_AdditionalServerSANs(t *testing.T) {
 func TestMustRenderClusterResourceKubeAPIAccess(t *testing.T) {
 	t.Parallel()
 
-	cidrSetType := types.SetType{ElemType: types.StringType}
-	publicType := map[string]attr.Type{"allow_cidrs": cidrSetType, "deny_cidrs": cidrSetType}
-	accessType := map[string]attr.Type{"public": types.ObjectType{AttrTypes: publicType}}
-	cidrs := func(values ...string) types.Set {
-		elements := make([]attr.Value, len(values))
-		for i, v := range values {
-			elements[i] = types.StringValue(v)
-		}
-		return types.SetValueMust(types.StringType, elements)
-	}
-	access := func(public attr.Value) types.Object {
-		return types.ObjectValueMust(accessType, map[string]attr.Value{"public": public})
-	}
-
 	const header = `resource "coreweave_cks_cluster" "test" {
   name                   = "test"
   zone                   = "US-LAB-01A"
@@ -1397,31 +1519,31 @@ func TestMustRenderClusterResourceKubeAPIAccess(t *testing.T) {
 		want   string
 	}{
 		"null is omitted": {
-			access: types.ObjectNull(accessType),
+			access: types.ObjectNull(kubeAPIAccessAttrTypes),
 			want:   "",
 		},
 		"empty object is preserved": {
-			access: access(types.ObjectNull(publicType)),
+			access: kubeAPIAccessObject(types.ObjectNull(kubeAPIPublicAttrTypes)),
 			want:   "  kube_api_access        = {}\n",
 		},
 		"empty public is preserved": {
-			access: access(types.ObjectValueMust(publicType, map[string]attr.Value{
+			access: kubeAPIAccessObject(types.ObjectValueMust(kubeAPIPublicAttrTypes, map[string]attr.Value{
 				"allow_cidrs": types.SetNull(types.StringType),
 				"deny_cidrs":  types.SetNull(types.StringType),
 			})),
 			want: "  kube_api_access = {\n    public = {}\n  }\n",
 		},
 		"allow and deny": {
-			access: access(types.ObjectValueMust(publicType, map[string]attr.Value{
-				"allow_cidrs": cidrs("203.0.113.0/24", "2001:db8::/32"),
-				"deny_cidrs":  cidrs("203.0.113.128/25"),
+			access: kubeAPIAccessObject(types.ObjectValueMust(kubeAPIPublicAttrTypes, map[string]attr.Value{
+				"allow_cidrs": kubeAPICIDRs("203.0.113.0/24", "2001:db8::/32"),
+				"deny_cidrs":  kubeAPICIDRs("203.0.113.128/25"),
 			})),
 			want: "  kube_api_access = {\n    public = {\n      allow_cidrs = [\"2001:db8::/32\", \"203.0.113.0/24\"]\n      deny_cidrs  = [\"203.0.113.128/25\"]\n    }\n  }\n",
 		},
 		"empty sets are preserved": {
-			access: access(types.ObjectValueMust(publicType, map[string]attr.Value{
-				"allow_cidrs": cidrs(),
-				"deny_cidrs":  cidrs(),
+			access: kubeAPIAccessObject(types.ObjectValueMust(kubeAPIPublicAttrTypes, map[string]attr.Value{
+				"allow_cidrs": kubeAPICIDRs(),
+				"deny_cidrs":  kubeAPICIDRs(),
 			})),
 			want: "  kube_api_access = {\n    public = {\n      allow_cidrs = []\n      deny_cidrs  = []\n    }\n  }\n",
 		},
