@@ -66,7 +66,7 @@ func runnerSpecAttribute() schema.SingleNestedAttribute {
 			"maintenance_policy": optionalObject("Update scheduling in UTC. Exclusions take precedence over windows.", map[string]schema.Attribute{
 				"windows": optionalObjects("Recurring update windows. An empty list permits updates at any time outside exclusions.", map[string]schema.Attribute{
 					"cron":             schema.StringAttribute{Required: true, MarkdownDescription: "Five-field cron expression in UTC, for example `0 2 * * SAT`.", Validators: []validator.String{stringvalidator.LengthAtLeast(1)}},
-					"duration_seconds": schema.Int64Attribute{Required: true, MarkdownDescription: "Window duration in seconds (60–604800).", Validators: []validator.Int64{int64validator.Between(60, 604800)}},
+					"duration_seconds": schema.Int64Attribute{Required: true, MarkdownDescription: "Window duration in seconds (60-604800).", Validators: []validator.Int64{int64validator.Between(60, 604800)}},
 				}),
 				"exclusions": optionalObjects("One-time periods during which updates cannot start.", map[string]schema.Attribute{
 					"start_time": schema.StringAttribute{Required: true, MarkdownDescription: "Inclusive RFC 3339 start timestamp."},

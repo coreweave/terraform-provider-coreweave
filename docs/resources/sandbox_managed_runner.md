@@ -530,7 +530,7 @@ Optional:
 Required:
 
 - `cron` (String) Five-field cron expression in UTC, for example `0 2 * * SAT`.
-- `duration_seconds` (Number) Window duration in seconds (60–604800).
+- `duration_seconds` (Number) Window duration in seconds (60-604800).
 
 
 
