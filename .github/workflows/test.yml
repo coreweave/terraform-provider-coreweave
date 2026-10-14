@@ -155,12 +155,24 @@ jobs:
           gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" > "$selection_dir/pr.json"
           node .github/acceptance-tests/select-suites.mjs "$selection_dir/pr.json" "$HEAD_SHA" "$GITHUB_REPOSITORY"
 
+  approve-acceptance:
+    name: Approve release acceptance
+    needs: [select-acceptance, build, lint, test]
+    if: needs.select-acceptance.outputs.suites != '[]'
+    runs-on: ubuntu-latest
+    permissions: {}
+    environment:
+      name: release-acceptance
+      url: ${{ github.event.pull_request.html_url }}
+    steps:
+      - run: echo 'Human approval received; release acceptance can start.'
+
   acceptance-tests:
     permissions:
       contents: read
       pull-requests: read
       packages: read
-    needs: [select-acceptance, build, lint, test]
+    needs: [select-acceptance, build, lint, test, approve-acceptance]
     if: needs.select-acceptance.outputs.suites != '[]'
     strategy:
       # A failed suite must not cancel independent suites or their cleanup.
@@ -174,7 +186,7 @@ jobs:
 
   validation:
     name: PR validation
-    needs: [build, lint, generate, snapshot-build, test, pr-title-format, select-acceptance, acceptance-tests]
+    needs: [build, lint, generate, snapshot-build, test, pr-title-format, select-acceptance, approve-acceptance, acceptance-tests]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -184,7 +196,7 @@ jobs:
         uses: re-actors/alls-green@05ac9388f0aebcb5727afa17fcccfecd6f8ec5fe # v1.2.2
         with:
           jobs: ${{ toJSON(needs) }}
-          allowed-skips: ${{ needs.select-acceptance.outputs.suites == '[]' && 'acceptance-tests' || '' }}
+          allowed-skips: ${{ needs.select-acceptance.outputs.suites == '[]' && 'approve-acceptance,acceptance-tests' || '' }}
       - name: Summarize acceptance result
         env:
           SUITES: ${{ needs.select-acceptance.outputs.suites }}
@@ -197,7 +209,7 @@ jobs:
 
   release-acceptance:
     name: Release acceptance
-    needs: [select-acceptance, validation, acceptance-tests]
+    needs: [select-acceptance, approve-acceptance, validation, acceptance-tests]
     if: needs.select-acceptance.outputs.suites != '[]'
     runs-on: ubuntu-latest
     permissions: {}
