@@ -198,6 +198,14 @@
       "semanticCommitScope": "tools"
     },
     {
+      // Major Go updates require this opt-in before Renovate will run tidy.
+      // The v0-to-v1 transition keeps the existing import path.
+      "matchManagers": ["gomod"],
+      "matchPackageNames": ["cloud.google.com/go/longrunning"],
+      "matchUpdateTypes": ["major"],
+      "postUpdateOptions": ["gomodTidy", "gomodUpdateImportPaths"]
+    },
+    {
       "matchManagers": ["gomod"],
       "matchPackageNames": ["github.com/hashicorp/terraform-plugin-testing", "github.com/stretchr/testify"],
       "semanticCommitType": "test",
