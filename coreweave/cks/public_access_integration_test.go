@@ -35,7 +35,6 @@ const (
 	kubeAPIClusterAddress    = "coreweave_cks_cluster.test"
 	kubeAPIDataSourceAddress = "data.coreweave_cks_cluster.test"
 	kubeAPILegacyEndpoint    = "https://legacy.example.test"
-	kubeAPIEndpoint          = "https://kube-api.example.test:6443"
 	kubeAPIOtherEndpoint     = "https://kube-api-2.example.test:443"
 	kubeAPIGateMessage       = "kube API access configuration is not enabled for this organization"
 	kubeAPIPolicy            = `{ public = { allow_cidrs = ["203.0.113.0/24"] } }`
@@ -46,7 +45,7 @@ var (
 	errKubeAPIInvalidCIDR = regexp.MustCompile(`Invalid CIDR prefix`)
 	errKubeAPIUpgrade     = regexp.MustCompile(`(?is)cannot\s+change\s+during\s+a\s+Kubernetes\s+upgrade`)
 	errKubeAPIGate        = regexp.MustCompile(`(?s)Unauthorized.*permission_denied`)
-	testCAPEMA            = []byte("-----BEGIN CERTIFICATE-----\nMIIBszCCAVmgAwIBAgIUQ0FfRklSU1Q=\n-----END CERTIFICATE-----\n")
+	testCAPEMA            = []byte(cks.KubeAPIAccessCACertPEM)
 	testCAPEMB            = []byte("-----BEGIN CERTIFICATE-----\nMIIBszCCAVmgAwIBAgIUQ0FfUk9UQVRFRA==\n-----END CERTIFICATE-----\n" +
 		"-----BEGIN CERTIFICATE-----\nMIIBszCCAVmgAwIBAgIUQ0FfQlVORExF\n-----END CERTIFICATE-----\n")
 )
@@ -262,10 +261,6 @@ func accessDisabled() *cksv1beta1.KubeAPIAccess {
 	return &cksv1beta1.KubeAPIAccess{}
 }
 
-func accessPublic(allow, deny []string) *cksv1beta1.KubeAPIAccess {
-	return &cksv1beta1.KubeAPIAccess{Public: &cksv1beta1.PublicKubeAPIAccess{AllowCidrs: allow, DenyCidrs: deny}}
-}
-
 func observed(endpoint *string, status cksv1beta1.PublicKubeAPIAccessStatus_Status, ca []byte) *cksv1beta1.KubeAPIAccessStatus {
 	return &cksv1beta1.KubeAPIAccessStatus{Public: &cksv1beta1.PublicKubeAPIAccessStatus{Endpoint: endpoint, Status: status}, CaData: ca}
 }
@@ -283,25 +278,13 @@ func accessEqual(a, b *cksv1beta1.KubeAPIAccess) bool {
 		slices.Equal(sorted(a.GetPublic().GetDenyCidrs()), sorted(b.GetPublic().GetDenyCidrs()))
 }
 
-func requireKubeAPIAccess(t *testing.T, want, got *cksv1beta1.KubeAPIAccess) {
-	t.Helper()
-	if want == nil {
-		require.Nil(t, got)
-		return
-	}
-	require.NotNil(t, got, "present configuration must be sent")
-	require.Equal(t, want.Public == nil, got.Public == nil, "public presence changed: want %v, got %v", want, got)
-	require.ElementsMatch(t, want.GetPublic().GetAllowCidrs(), got.GetPublic().GetAllowCidrs())
-	require.ElementsMatch(t, want.GetPublic().GetDenyCidrs(), got.GetPublic().GetDenyCidrs())
-}
-
 // requireAccessWrite asserts a full-parent replacement: one parent mask and the desired body.
 func requireAccessWrite(t *testing.T, update *cksv1beta1.UpdateClusterRequest, want *cksv1beta1.KubeAPIAccess) {
 	t.Helper()
 	require.Equal(t, []string{"kube_api_access"}, update.UpdateMask.Paths)
 	require.Empty(t, update.Version)
 	require.Nil(t, update.Network)
-	requireKubeAPIAccess(t, want, update.KubeApiAccess)
+	cks.RequireKubeAPIAccessProto(t, want, update.KubeApiAccess)
 }
 
 func kubeAPIClusterConfig(access, version, extra string) string {
@@ -420,15 +403,15 @@ func TestKubeAPIAccessTerraformLifecycle(t *testing.T) {
 		{hcl: ""},
 		{hcl: "{}", want: accessDisabled()},
 		{hcl: "{ public = null }", want: accessDisabled()},
-		{hcl: "{ public = {} }", want: accessPublic(nil, nil)},
-		{hcl: fmt.Sprintf("{ public = { allow_cidrs = %s } }", cidrList(allow)), want: accessPublic(allow, nil)},
-		{hcl: fmt.Sprintf("{ public = { deny_cidrs = %s } }", cidrList(deny[:1])), want: accessPublic(nil, deny[:1])},
-		{hcl: fmt.Sprintf("{ public = { allow_cidrs = %s, deny_cidrs = %s } }", cidrList(allow), cidrList(deny)), want: accessPublic(allow, deny)},
-		{hcl: fmt.Sprintf("{ public = { allow_cidrs = [], deny_cidrs = %s } }", cidrList(deny)), want: accessPublic(nil, deny)},
-		{hcl: fmt.Sprintf("{ public = { allow_cidrs = %s, deny_cidrs = [] } }", cidrList(allow)), want: accessPublic(allow, nil)},
-		{hcl: "{ public = { allow_cidrs = [], deny_cidrs = [] } }", want: accessPublic(nil, nil)},
+		{hcl: "{ public = {} }", want: cks.KubeAPIAccessProto(nil, nil)},
+		{hcl: fmt.Sprintf("{ public = { allow_cidrs = %s } }", cidrList(allow)), want: cks.KubeAPIAccessProto(allow, nil)},
+		{hcl: fmt.Sprintf("{ public = { deny_cidrs = %s } }", cidrList(deny[:1])), want: cks.KubeAPIAccessProto(nil, deny[:1])},
+		{hcl: fmt.Sprintf("{ public = { allow_cidrs = %s, deny_cidrs = %s } }", cidrList(allow), cidrList(deny)), want: cks.KubeAPIAccessProto(allow, deny)},
+		{hcl: fmt.Sprintf("{ public = { allow_cidrs = [], deny_cidrs = %s } }", cidrList(deny)), want: cks.KubeAPIAccessProto(nil, deny)},
+		{hcl: fmt.Sprintf("{ public = { allow_cidrs = %s, deny_cidrs = [] } }", cidrList(allow)), want: cks.KubeAPIAccessProto(allow, nil)},
+		{hcl: "{ public = { allow_cidrs = [], deny_cidrs = [] } }", want: cks.KubeAPIAccessProto(nil, nil)},
 		{hcl: "{}", want: accessDisabled()},
-		{hcl: fmt.Sprintf("{ public = { allow_cidrs = %s, deny_cidrs = %s } }", cidrList(allow), cidrList(deny)), want: accessPublic(allow, deny)},
+		{hcl: fmt.Sprintf("{ public = { allow_cidrs = %s, deny_cidrs = %s } }", cidrList(allow), cidrList(deny)), want: cks.KubeAPIAccessProto(allow, deny)},
 		{hcl: ""},
 	}
 	var steps []tfresource.TestStep
@@ -445,7 +428,7 @@ func TestKubeAPIAccessTerraformLifecycle(t *testing.T) {
 	service.mu.Lock()
 	defer service.mu.Unlock()
 	require.Len(t, service.creates, 1)
-	requireKubeAPIAccess(t, nil, service.creates[0].KubeApiAccess)
+	cks.RequireKubeAPIAccessProto(t, nil, service.creates[0].KubeApiAccess)
 	var want []*cksv1beta1.KubeAPIAccess
 	for i := 1; i < len(stages); i++ {
 		if !accessEqual(stages[i-1].want, stages[i].want) {
@@ -467,20 +450,20 @@ func TestKubeAPIAccessTerraformCreatePresence(t *testing.T) {
 	}{
 		{name: "empty outer", hcl: "{}", equivalents: []string{"{ public = null }"}, want: accessDisabled()},
 		{
-			name: "empty public", hcl: "{ public = {} }", want: accessPublic(nil, nil),
+			name: "empty public", hcl: "{ public = {} }", want: cks.KubeAPIAccessProto(nil, nil),
 			equivalents: []string{"{ public = { allow_cidrs = null } }", "{ public = { deny_cidrs = null } }", "{ public = { allow_cidrs = [], deny_cidrs = [] } }"},
 		},
 		{
-			name: "allow only", hcl: `{ public = { allow_cidrs = ["203.0.113.0/24"] } }`, want: accessPublic([]string{"203.0.113.0/24"}, nil),
+			name: "allow only", hcl: `{ public = { allow_cidrs = ["203.0.113.0/24"] } }`, want: cks.KubeAPIAccessProto([]string{"203.0.113.0/24"}, nil),
 			equivalents: []string{`{ public = { allow_cidrs = ["203.0.113.0/24"], deny_cidrs = [] } }`},
 		},
 		{
-			name: "deny only", hcl: `{ public = { deny_cidrs = ["192.0.2.0/24"] } }`, want: accessPublic(nil, []string{"192.0.2.0/24"}),
+			name: "deny only", hcl: `{ public = { deny_cidrs = ["192.0.2.0/24"] } }`, want: cks.KubeAPIAccessProto(nil, []string{"192.0.2.0/24"}),
 			equivalents: []string{`{ public = { allow_cidrs = null, deny_cidrs = ["192.0.2.0/24"] } }`},
 		},
 		{
 			name: "combined", hcl: `{ public = { allow_cidrs = ["203.0.113.0/24", "2001:db8::/32"], deny_cidrs = ["203.0.113.10/32"] } }`,
-			want: accessPublic([]string{"203.0.113.0/24", "2001:db8::/32"}, []string{"203.0.113.10/32"}),
+			want: cks.KubeAPIAccessProto([]string{"203.0.113.0/24", "2001:db8::/32"}, []string{"203.0.113.10/32"}),
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -494,7 +477,7 @@ func TestKubeAPIAccessTerraformCreatePresence(t *testing.T) {
 			service.mu.Lock()
 			defer service.mu.Unlock()
 			require.Len(t, service.creates, 1)
-			requireKubeAPIAccess(t, tc.want, service.creates[0].KubeApiAccess)
+			cks.RequireKubeAPIAccessProto(t, tc.want, service.creates[0].KubeApiAccess)
 			require.Zero(t, service.updateCalls)
 		})
 	}
@@ -503,12 +486,12 @@ func TestKubeAPIAccessTerraformCreatePresence(t *testing.T) {
 func TestKubeAPIAccessTerraformDrift(t *testing.T) {
 	service := startKubeAPIAccessServer(t)
 	config := kubeAPIClusterConfig(kubeAPIPolicy, "v1.33", "")
-	want := accessPublic([]string{"203.0.113.0/24"}, nil)
+	want := cks.KubeAPIAccessProto([]string{"203.0.113.0/24"}, nil)
 	var steps []tfresource.TestStep
 	steps = append(steps, tfresource.TestStep{Config: config})
 	for _, drift := range []*cksv1beta1.KubeAPIAccess{
-		accessPublic([]string{"192.0.2.0/24"}, nil),
-		accessPublic([]string{"203.0.113.0/24"}, []string{"203.0.113.10/32"}),
+		cks.KubeAPIAccessProto([]string{"192.0.2.0/24"}, nil),
+		cks.KubeAPIAccessProto([]string{"203.0.113.0/24"}, []string{"203.0.113.10/32"}),
 		accessDisabled(),
 		nil,
 	} {
@@ -539,7 +522,7 @@ func TestKubeAPIAccessTerraformDrift(t *testing.T) {
 func TestKubeAPIAccessTerraformUnrelatedUpdatesOmitAccess(t *testing.T) {
 	service := startKubeAPIAccessServer(t)
 	policy := `{ public = { allow_cidrs = ["203.0.113.0/24", "2001:db8::/32"], deny_cidrs = ["203.0.113.10/32", "2001:db8::10/128"] } }`
-	want := accessPublic([]string{"203.0.113.0/24", "2001:db8::/32"}, []string{"203.0.113.10/32", "2001:db8::10/128"})
+	want := cks.KubeAPIAccessProto([]string{"203.0.113.0/24", "2001:db8::/32"}, []string{"203.0.113.10/32", "2001:db8::10/128"})
 	legacy := strings.Replace(kubeAPIClusterConfig(policy, "v1.34", `audit_policy = "dGVzdA=="`), "public = false", "public = true", 1)
 	runKubeAPIAccessTest(t, service,
 		tfresource.TestStep{Config: kubeAPIClusterConfig(policy, "v1.33", ""), ConfigStateChecks: accessStateChecks(want, nil)},
@@ -552,7 +535,7 @@ func TestKubeAPIAccessTerraformUnrelatedUpdatesOmitAccess(t *testing.T) {
 	service.mu.Lock()
 	defer service.mu.Unlock()
 	require.Len(t, service.creates, 1)
-	requireKubeAPIAccess(t, want, service.creates[0].KubeApiAccess)
+	cks.RequireKubeAPIAccessProto(t, want, service.creates[0].KubeApiAccess)
 	require.Equal(t, 3, service.updateCalls)
 	for i, path := range []string{"version", "audit_policy", "public"} {
 		require.Equal(t, []string{path}, service.updates[i].UpdateMask.Paths)
@@ -589,7 +572,7 @@ func TestKubeAPIAccessTerraformReplacementAllowsVersionAndAccessChange(t *testin
 		kubeAPIClusterConfig(`{ public = { deny_cidrs = ["192.0.2.0/24"] } }`, "v1.34", ""),
 		`name = "kube-api-access-test"`, `name = "replacement-cluster"`, 1,
 	)
-	want := accessPublic(nil, []string{"192.0.2.0/24"})
+	want := cks.KubeAPIAccessProto(nil, []string{"192.0.2.0/24"})
 	runKubeAPIAccessTest(t, service,
 		tfresource.TestStep{Config: kubeAPIClusterConfig(kubeAPIPolicy, "v1.33", "")},
 		tfresource.TestStep{
@@ -606,7 +589,7 @@ func TestKubeAPIAccessTerraformReplacementAllowsVersionAndAccessChange(t *testin
 	require.Len(t, service.creates, 2)
 	require.Zero(t, service.updateCalls)
 	require.Equal(t, "v1.34", service.creates[1].Version)
-	requireKubeAPIAccess(t, want, service.creates[1].KubeApiAccess)
+	cks.RequireKubeAPIAccessProto(t, want, service.creates[1].KubeApiAccess)
 }
 
 // TestKubeAPIAccessTerraformCIDRLimits proves maximum-size sets round-trip through Terraform and the request.
@@ -617,10 +600,10 @@ func TestKubeAPIAccessTerraformCIDRLimits(t *testing.T) {
 	allow, deny := fixture[:1024], fixture[1:]
 	full := kubeAPIClusterConfig(fmt.Sprintf("{ public = { allow_cidrs = %s, deny_cidrs = %s } }", cidrList(allow), cidrList(deny)), "v1.33", "")
 	// The framework's post-apply refresh plan proves reversed API order does not drift.
-	runKubeAPIAccessTest(t, service, tfresource.TestStep{Config: full, ConfigStateChecks: accessStateChecks(accessPublic(allow, deny), nil)})
+	runKubeAPIAccessTest(t, service, tfresource.TestStep{Config: full, ConfigStateChecks: accessStateChecks(cks.KubeAPIAccessProto(allow, deny), nil)})
 	service.mu.Lock()
 	defer service.mu.Unlock()
-	requireKubeAPIAccess(t, accessPublic(allow, deny), service.creates[0].KubeApiAccess)
+	cks.RequireKubeAPIAccessProto(t, cks.KubeAPIAccessProto(allow, deny), service.creates[0].KubeApiAccess)
 	require.Zero(t, service.updateCalls)
 }
 
@@ -632,16 +615,16 @@ func TestKubeAPIAccessTerraformAcceptsValidCIDRForms(t *testing.T) {
 	}{
 		{
 			hcl:  `{ public = { allow_cidrs = ["0.0.0.0/0", "::/0"], deny_cidrs = ["0.0.0.0/0", "::/0"] } }`,
-			want: accessPublic([]string{"0.0.0.0/0", "::/0"}, []string{"0.0.0.0/0", "::/0"}),
+			want: cks.KubeAPIAccessProto([]string{"0.0.0.0/0", "::/0"}, []string{"0.0.0.0/0", "::/0"}),
 		},
 		{
 			hcl:  `{ public = { allow_cidrs = ["203.0.113.0/24", "203.0.113.0/24"], deny_cidrs = ["203.0.113.128/25"] } }`,
-			want: accessPublic([]string{"203.0.113.0/24"}, []string{"203.0.113.128/25"}),
+			want: cks.KubeAPIAccessProto([]string{"203.0.113.0/24"}, []string{"203.0.113.128/25"}),
 		},
-		{hcl: `{ public = { allow_cidrs = ["2001:0DB8::/32"] } }`, want: accessPublic([]string{"2001:0DB8::/32"}, nil)},
+		{hcl: `{ public = { allow_cidrs = ["2001:0DB8::/32"] } }`, want: cks.KubeAPIAccessProto([]string{"2001:0DB8::/32"}, nil)},
 		{
 			hcl:  `{ public = { allow_cidrs = ["203.0.113.10/32", "2001:db8::10/128"], deny_cidrs = ["::ffff:203.0.113.0/120"] } }`,
-			want: accessPublic([]string{"203.0.113.10/32", "2001:db8::10/128"}, []string{"::ffff:203.0.113.0/120"}),
+			want: cks.KubeAPIAccessProto([]string{"203.0.113.10/32", "2001:db8::10/128"}, []string{"::ffff:203.0.113.0/120"}),
 		},
 	}
 	var steps []tfresource.TestStep
@@ -655,7 +638,7 @@ func TestKubeAPIAccessTerraformAcceptsValidCIDRForms(t *testing.T) {
 	runKubeAPIAccessTest(t, service, steps...)
 	service.mu.Lock()
 	defer service.mu.Unlock()
-	requireKubeAPIAccess(t, stages[0].want, service.creates[0].KubeApiAccess)
+	cks.RequireKubeAPIAccessProto(t, stages[0].want, service.creates[0].KubeApiAccess)
 	require.Len(t, service.updates, len(stages)-1)
 	for i, update := range service.updates {
 		// Valid spellings are sent verbatim; the provider must not canonicalize or mask them.
@@ -689,13 +672,13 @@ func TestKubeAPIAccessTerraformCIDRValidation(t *testing.T) {
 func TestKubeAPIAccessTerraformUnknownConfiguration(t *testing.T) {
 	t.Run("resolves valid", func(t *testing.T) {
 		service := startKubeAPIAccessServer(t)
-		want := accessPublic([]string{"203.0.113.0/24"}, []string{"203.0.113.10/32"})
+		want := cks.KubeAPIAccessProto([]string{"203.0.113.0/24"}, []string{"203.0.113.10/32"})
 		config := kubeAPIUnknownConfig("terraform_data.value.output", `{ public = { allow_cidrs = ["203.0.113.0/24"], deny_cidrs = ["203.0.113.10/32"] } }`)
 		runKubeAPIAccessTest(t, service, tfresource.TestStep{Config: config, ConfigStateChecks: accessStateChecks(want, nil)})
 		service.mu.Lock()
 		defer service.mu.Unlock()
 		require.Len(t, service.creates, 1)
-		requireKubeAPIAccess(t, want, service.creates[0].KubeApiAccess)
+		cks.RequireKubeAPIAccessProto(t, want, service.creates[0].KubeApiAccess)
 		require.Zero(t, service.updateCalls)
 	})
 
@@ -732,7 +715,7 @@ func TestKubeAPIAccessTerraformFeatureGate(t *testing.T) {
 	t.Run("update", func(t *testing.T) {
 		service := startKubeAPIAccessServer(t)
 		policy := kubeAPIClusterConfig(kubeAPIPolicy, "v1.33", "")
-		want := accessPublic([]string{"203.0.113.0/24"}, nil)
+		want := cks.KubeAPIAccessProto([]string{"203.0.113.0/24"}, nil)
 		var steps []tfresource.TestStep
 		steps = append(steps, tfresource.TestStep{Config: policy, ConfigStateChecks: accessStateChecks(want, nil)})
 		for i, rejected := range []string{kubeAPIOtherPolicy, `{ public = { deny_cidrs = ["203.0.113.10/32"] } }`, "{}", ""} {
@@ -750,7 +733,7 @@ func TestKubeAPIAccessTerraformFeatureGate(t *testing.T) {
 			tfresource.TestStep{Config: kubeAPIClusterConfig(kubeAPIPolicy, "v1.34", `audit_policy = "dGVzdA=="`), ConfigStateChecks: accessStateChecks(want, nil)},
 			tfresource.TestStep{
 				Config: kubeAPIClusterConfig(kubeAPIOtherPolicy, "v1.34", `audit_policy = "dGVzdA=="`), PreConfig: service.setGateDisabled(false),
-				ConfigStateChecks: accessStateChecks(accessPublic([]string{"192.0.2.0/24"}, nil), nil),
+				ConfigStateChecks: accessStateChecks(cks.KubeAPIAccessProto([]string{"192.0.2.0/24"}, nil), nil),
 			},
 		)
 		runKubeAPIAccessTest(t, service, steps...)
@@ -762,7 +745,7 @@ func TestKubeAPIAccessTerraformFeatureGate(t *testing.T) {
 		require.Nil(t, service.updates[0].KubeApiAccess)
 		require.Equal(t, []string{"audit_policy"}, service.updates[1].UpdateMask.Paths)
 		require.Nil(t, service.updates[1].KubeApiAccess)
-		requireAccessWrite(t, service.updates[2], accessPublic([]string{"192.0.2.0/24"}, nil))
+		requireAccessWrite(t, service.updates[2], cks.KubeAPIAccessProto([]string{"192.0.2.0/24"}, nil))
 	})
 
 	t.Run("set from null", func(t *testing.T) {
@@ -805,12 +788,12 @@ func TestKubeAPIAccessTerraformServerValidationError(t *testing.T) {
 			s.accessError = nil
 		})},
 	)
-	require.True(t, accessEqual(accessPublic([]string{"203.0.113.0/24"}, nil), stored), "rejected writes must not change the API: %v", stored)
+	require.True(t, accessEqual(cks.KubeAPIAccessProto([]string{"203.0.113.0/24"}, nil), stored), "rejected writes must not change the API: %v", stored)
 }
 
 func TestKubeAPIAccessTerraformObservations(t *testing.T) {
 	service := startKubeAPIAccessServer(t)
-	enabled := accessPublic(nil, nil)
+	enabled := cks.KubeAPIAccessProto(nil, nil)
 	config := kubeAPIClusterConfig("{ public = {} }", "v1.33", "")
 	disabled := kubeAPIClusterConfig("{}", "v1.33", "")
 	pending := observed(nil, cksv1beta1.PublicKubeAPIAccessStatus_STATUS_PENDING, nil)
@@ -824,12 +807,12 @@ func TestKubeAPIAccessTerraformObservations(t *testing.T) {
 		{CaData: testCAPEMA},
 		observed(nil, cksv1beta1.PublicKubeAPIAccessStatus_STATUS_PENDING, testCAPEMA),
 		observed(nil, cksv1beta1.PublicKubeAPIAccessStatus_STATUS_UNSPECIFIED, testCAPEMA),
-		observed(proto.String(kubeAPIEndpoint), cksv1beta1.PublicKubeAPIAccessStatus_STATUS_PENDING, testCAPEMA),
-		observed(proto.String(kubeAPIEndpoint), cksv1beta1.PublicKubeAPIAccessStatus_STATUS_ACCEPTED, testCAPEMA),
-		observed(proto.String(kubeAPIEndpoint), cksv1beta1.PublicKubeAPIAccessStatus_STATUS_REJECTED, testCAPEMA),
-		observed(proto.String(kubeAPIEndpoint), cksv1beta1.PublicKubeAPIAccessStatus_STATUS_ERROR, testCAPEMA),
-		observed(proto.String(kubeAPIEndpoint), cksv1beta1.PublicKubeAPIAccessStatus_STATUS_UNKNOWN, testCAPEMA),
-		observed(proto.String(kubeAPIEndpoint), cksv1beta1.PublicKubeAPIAccessStatus_STATUS_UNSPECIFIED, testCAPEMA),
+		observed(proto.String(cks.KubeAPIAccessEndpoint), cksv1beta1.PublicKubeAPIAccessStatus_STATUS_PENDING, testCAPEMA),
+		observed(proto.String(cks.KubeAPIAccessEndpoint), cksv1beta1.PublicKubeAPIAccessStatus_STATUS_ACCEPTED, testCAPEMA),
+		observed(proto.String(cks.KubeAPIAccessEndpoint), cksv1beta1.PublicKubeAPIAccessStatus_STATUS_REJECTED, testCAPEMA),
+		observed(proto.String(cks.KubeAPIAccessEndpoint), cksv1beta1.PublicKubeAPIAccessStatus_STATUS_ERROR, testCAPEMA),
+		observed(proto.String(cks.KubeAPIAccessEndpoint), cksv1beta1.PublicKubeAPIAccessStatus_STATUS_UNKNOWN, testCAPEMA),
+		observed(proto.String(cks.KubeAPIAccessEndpoint), cksv1beta1.PublicKubeAPIAccessStatus_STATUS_UNSPECIFIED, testCAPEMA),
 		observed(proto.String(kubeAPIOtherEndpoint), cksv1beta1.PublicKubeAPIAccessStatus_STATUS_ACCEPTED, testCAPEMA),
 		// CA rotation replaces the bundle.
 		observed(proto.String(kubeAPIOtherEndpoint), cksv1beta1.PublicKubeAPIAccessStatus_STATUS_ACCEPTED, testCAPEMB),
@@ -860,13 +843,13 @@ func TestKubeAPIAccessTerraformObservations(t *testing.T) {
 
 func TestKubeAPIAccessTerraformObservationsChangeDuringUpdate(t *testing.T) {
 	service := startKubeAPIAccessServer(t)
-	before := observed(proto.String(kubeAPIEndpoint), cksv1beta1.PublicKubeAPIAccessStatus_STATUS_ACCEPTED, testCAPEMA)
+	before := observed(proto.String(cks.KubeAPIAccessEndpoint), cksv1beta1.PublicKubeAPIAccessStatus_STATUS_ACCEPTED, testCAPEMA)
 	after := observed(proto.String(kubeAPIOtherEndpoint), cksv1beta1.PublicKubeAPIAccessStatus_STATUS_PENDING, testCAPEMB)
-	want := accessPublic([]string{"192.0.2.0/24"}, nil)
+	want := cks.KubeAPIAccessProto([]string{"192.0.2.0/24"}, nil)
 	runKubeAPIAccessTest(t, service,
 		tfresource.TestStep{
 			Config: kubeAPIClusterConfig(kubeAPIPolicy, "v1.33", ""), PreConfig: service.with(func(s *kubeAPIAccessServer) { s.statusOnWrite = before }),
-			ConfigStateChecks: accessStateChecks(accessPublic([]string{"203.0.113.0/24"}, nil), before),
+			ConfigStateChecks: accessStateChecks(cks.KubeAPIAccessProto([]string{"203.0.113.0/24"}, nil), before),
 		},
 		tfresource.TestStep{
 			Config:    kubeAPIClusterConfig(kubeAPIOtherPolicy, "v1.33", ""),
@@ -890,8 +873,8 @@ func TestKubeAPIAccessTerraformObservationsChangeDuringUpdate(t *testing.T) {
 
 func TestKubeAPIAccessTerraformLegacyPublicIndependence(t *testing.T) {
 	service := startKubeAPIAccessServer(t)
-	policy := accessPublic([]string{"203.0.113.0/24"}, nil)
-	status := observed(proto.String(kubeAPIEndpoint), cksv1beta1.PublicKubeAPIAccessStatus_STATUS_ACCEPTED, testCAPEMA)
+	policy := cks.KubeAPIAccessProto([]string{"203.0.113.0/24"}, nil)
+	status := observed(proto.String(cks.KubeAPIAccessEndpoint), cksv1beta1.PublicKubeAPIAccessStatus_STATUS_ACCEPTED, testCAPEMA)
 	service.setStatus(status)()
 	var steps []tfresource.TestStep
 	for _, tc := range []struct {

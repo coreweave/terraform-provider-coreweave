@@ -19,9 +19,6 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-// KubeAPIAccessCIDRFixture is exported for the protocol tests in package cks_test.
-var KubeAPIAccessCIDRFixture = kubeAPIAccessCIDRFixture
-
 // kubeAPIAccessCIDRFixture returns count distinct, canonical network prefixes.
 // It alternates IPv4 /24 and IPv6 /48 networks so both families appear at every size.
 func kubeAPIAccessCIDRFixture(count int) []string {
@@ -38,9 +35,9 @@ func kubeAPIAccessCIDRFixture(count int) []string {
 }
 
 const (
-	testCAPEM = "-----BEGIN CERTIFICATE-----\nMIIBszCCAVmgAwIBAgIUQ0FfRklSU1Q=\n-----END CERTIFICATE-----\n" +
-		"-----BEGIN CERTIFICATE-----\nMIIBszCCAVmgAwIBAgIUQ0FfU0VDT05E\n-----END CERTIFICATE-----\n"
-	testEndpoint = "https://kube-api.example.test:6443"
+	testCACertPEM = "-----BEGIN CERTIFICATE-----\nMIIBszCCAVmgAwIBAgIUQ0FfRklSU1Q=\n-----END CERTIFICATE-----\n"
+	testCAPEM     = testCACertPEM + "-----BEGIN CERTIFICATE-----\nMIIBszCCAVmgAwIBAgIUQ0FfU0VDT05E\n-----END CERTIFICATE-----\n"
+	testEndpoint  = "https://kube-api.example.test:6443"
 )
 
 func TestKubeAPIAccessCIDRFixture(t *testing.T) {

@@ -328,8 +328,9 @@ func createClusterTestStep(ctx context.Context, t *testing.T, config testStepCon
 			statechecks = append(statechecks, statecheck.ExpectKnownValue(config.Resources.FullResourceName, tfjsonpath.New("tailscale"), knownvalue.Null()))
 		}
 
-		// kube_api_access and kube_api_access_status
-		statechecks = append(statechecks, kubeAPIAccessModelStateChecks(t, config.Resources.FullResourceName, config.cluster.KubeAPIAccess)...)
+		// kube_api_access
+		// kube_api_access_status is not checked: it is observed asynchronously and may be absent after apply.
+		statechecks = append(statechecks, statecheck.ExpectKnownValue(config.Resources.FullResourceName, tfjsonpath.New("kube_api_access"), accessKnownValue(cks.KubeAPIAccessToProto(config.cluster.KubeAPIAccess))))
 	}
 
 	step := resource.TestStep{
@@ -352,41 +353,6 @@ func createClusterTestStep(ctx context.Context, t *testing.T, config testStepCon
 	}
 
 	return step
-}
-
-// kubeAPIAccessModelStateChecks expects configured access exactly.
-// kube_api_access_status is not checked: it is observed asynchronously and may be absent after apply.
-func kubeAPIAccessModelStateChecks(t *testing.T, address string, access types.Object) []statecheck.StateCheck {
-	t.Helper()
-	return []statecheck.StateCheck{
-		statecheck.ExpectKnownValue(address, tfjsonpath.New("kube_api_access"), kubeAPIAccessModelKnownValue(t, access)),
-	}
-}
-
-// kubeAPIAccessModelKnownValue expects configured access as stored in state.
-// Omitted CIDR sets inside a present public object are stored as empty sets.
-func kubeAPIAccessModelKnownValue(t *testing.T, access types.Object) knownvalue.Check {
-	t.Helper()
-	if access.IsNull() || access.IsUnknown() {
-		return knownvalue.Null()
-	}
-	public, ok := access.Attributes()["public"].(types.Object)
-	if !ok || public.IsNull() || public.IsUnknown() {
-		return knownvalue.ObjectExact(map[string]knownvalue.Check{"public": knownvalue.Null()})
-	}
-
-	checks := map[string]knownvalue.Check{}
-	for _, name := range []string{"allow_cidrs", "deny_cidrs"} {
-		var cidrs []string
-		if set, ok := public.Attributes()[name].(types.Set); ok && !set.IsNull() && !set.IsUnknown() {
-			if diag := set.ElementsAs(t.Context(), &cidrs, false); diag.HasError() {
-				t.Fatalf("failed to read kube_api_access.public.%s: %v", name, diag.Errors())
-			}
-		}
-		checks[name] = cidrSetKnownValue(cidrs)
-	}
-
-	return knownvalue.ObjectExact(map[string]knownvalue.Check{"public": knownvalue.ObjectExact(checks)})
 }
 
 func TestClusterResource(t *testing.T) {
@@ -828,31 +794,6 @@ func TestClusterResource_Tailscale(t *testing.T) {
 	})
 }
 
-var (
-	kubeAPICIDRSetType     = types.SetType{ElemType: types.StringType}
-	kubeAPIPublicAttrTypes = map[string]attr.Type{"allow_cidrs": kubeAPICIDRSetType, "deny_cidrs": kubeAPICIDRSetType}
-	kubeAPIAccessAttrTypes = map[string]attr.Type{"public": types.ObjectType{AttrTypes: kubeAPIPublicAttrTypes}}
-)
-
-func kubeAPICIDRs(values ...string) types.Set {
-	elements := make([]attr.Value, len(values))
-	for i, v := range values {
-		elements[i] = types.StringValue(v)
-	}
-	return types.SetValueMust(types.StringType, elements)
-}
-
-func kubeAPIAccessObject(public attr.Value) types.Object {
-	return types.ObjectValueMust(kubeAPIAccessAttrTypes, map[string]attr.Value{"public": public})
-}
-
-func kubeAPIPublicAccess(allow, deny types.Set) types.Object {
-	return kubeAPIAccessObject(types.ObjectValueMust(kubeAPIPublicAttrTypes, map[string]attr.Value{
-		"allow_cidrs": allow,
-		"deny_cidrs":  deny,
-	}))
-}
-
 func TestClusterResource_KubeAPIAccess(t *testing.T) {
 	config := generateResourceNames(t, "cks-api-access")
 	zone := testutil.AcceptanceTestZone
@@ -869,7 +810,7 @@ func TestClusterResource_KubeAPIAccess(t *testing.T) {
 		PodCidrName:         types.StringValue("pod-cidr"),
 		ServiceCidrName:     types.StringValue("service-cidr"),
 		InternalLBCidrNames: types.ListValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr")}),
-		KubeAPIAccess:       types.ObjectNull(kubeAPIAccessAttrTypes),
+		KubeAPIAccess:       types.ObjectNull(cks.KubeAPIAccessAttrTypes),
 	}
 
 	withAccess := func(access types.Object) cks.ClusterResourceModel {
@@ -877,13 +818,13 @@ func TestClusterResource_KubeAPIAccess(t *testing.T) {
 			c.KubeAPIAccess = access
 		})
 	}
-	allow := kubeAPICIDRs("203.0.113.0/24", "2001:db8::/32")
+	allow := cks.KubeAPIAccessCIDRSet("203.0.113.0/24", "2001:db8::/32")
 	nullCIDRs := types.SetNull(types.StringType)
 
-	publicOnly := withAccess(kubeAPIPublicAccess(nullCIDRs, nullCIDRs))
-	allowOnly := withAccess(kubeAPIPublicAccess(allow, nullCIDRs))
-	allowAndDeny := withAccess(kubeAPIPublicAccess(allow, kubeAPICIDRs("203.0.113.128/25")))
-	emptyCIDRs := withAccess(kubeAPIPublicAccess(kubeAPICIDRs(), kubeAPICIDRs()))
+	publicOnly := withAccess(cks.KubeAPIAccessObject(cks.KubeAPIPublicAccessObject(nullCIDRs, nullCIDRs)))
+	allowOnly := withAccess(cks.KubeAPIAccessObject(cks.KubeAPIPublicAccessObject(allow, nullCIDRs)))
+	allowAndDeny := withAccess(cks.KubeAPIAccessObject(cks.KubeAPIPublicAccessObject(allow, cks.KubeAPIAccessCIDRSet("203.0.113.128/25"))))
+	emptyCIDRs := withAccess(cks.KubeAPIAccessObject(cks.KubeAPIPublicAccessObject(cks.KubeAPIAccessCIDRSet(), cks.KubeAPIAccessCIDRSet())))
 
 	expectAction := func(action plancheck.ResourceActionType) resource.ConfigPlanChecks {
 		return resource.ConfigPlanChecks{
@@ -1519,33 +1460,24 @@ func TestMustRenderClusterResourceKubeAPIAccess(t *testing.T) {
 		want   string
 	}{
 		"null is omitted": {
-			access: types.ObjectNull(kubeAPIAccessAttrTypes),
+			access: types.ObjectNull(cks.KubeAPIAccessAttrTypes),
 			want:   "",
 		},
 		"empty object is preserved": {
-			access: kubeAPIAccessObject(types.ObjectNull(kubeAPIPublicAttrTypes)),
+			access: cks.KubeAPIAccessObject(types.ObjectNull(cks.PublicKubeAPIAccessAttrTypes)),
 			want:   "  kube_api_access        = {}\n",
 		},
 		"empty public is preserved": {
-			access: kubeAPIAccessObject(types.ObjectValueMust(kubeAPIPublicAttrTypes, map[string]attr.Value{
-				"allow_cidrs": types.SetNull(types.StringType),
-				"deny_cidrs":  types.SetNull(types.StringType),
-			})),
-			want: "  kube_api_access = {\n    public = {}\n  }\n",
+			access: cks.KubeAPIAccessObject(cks.KubeAPIPublicAccessObject(types.SetNull(types.StringType), types.SetNull(types.StringType))),
+			want:   "  kube_api_access = {\n    public = {}\n  }\n",
 		},
 		"allow and deny": {
-			access: kubeAPIAccessObject(types.ObjectValueMust(kubeAPIPublicAttrTypes, map[string]attr.Value{
-				"allow_cidrs": kubeAPICIDRs("203.0.113.0/24", "2001:db8::/32"),
-				"deny_cidrs":  kubeAPICIDRs("203.0.113.128/25"),
-			})),
-			want: "  kube_api_access = {\n    public = {\n      allow_cidrs = [\"2001:db8::/32\", \"203.0.113.0/24\"]\n      deny_cidrs  = [\"203.0.113.128/25\"]\n    }\n  }\n",
+			access: cks.KubeAPIAccessObject(cks.KubeAPIPublicAccessObject(cks.KubeAPIAccessCIDRSet("203.0.113.0/24", "2001:db8::/32"), cks.KubeAPIAccessCIDRSet("203.0.113.128/25"))),
+			want:   "  kube_api_access = {\n    public = {\n      allow_cidrs = [\"2001:db8::/32\", \"203.0.113.0/24\"]\n      deny_cidrs  = [\"203.0.113.128/25\"]\n    }\n  }\n",
 		},
 		"empty sets are preserved": {
-			access: kubeAPIAccessObject(types.ObjectValueMust(kubeAPIPublicAttrTypes, map[string]attr.Value{
-				"allow_cidrs": kubeAPICIDRs(),
-				"deny_cidrs":  kubeAPICIDRs(),
-			})),
-			want: "  kube_api_access = {\n    public = {\n      allow_cidrs = []\n      deny_cidrs  = []\n    }\n  }\n",
+			access: cks.KubeAPIAccessObject(cks.KubeAPIPublicAccessObject(cks.KubeAPIAccessCIDRSet(), cks.KubeAPIAccessCIDRSet())),
+			want:   "  kube_api_access = {\n    public = {\n      allow_cidrs = []\n      deny_cidrs  = []\n    }\n  }\n",
 		},
 	}
 
