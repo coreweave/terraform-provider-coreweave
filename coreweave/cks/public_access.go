@@ -45,18 +45,26 @@ func kubeAPIAccessToProto(value types.Object) *cksv1beta1.KubeAPIAccess {
 	}
 
 	access := &cksv1beta1.KubeAPIAccess{}
-	public, ok := value.Attributes()["public"].(types.Object)
-	if !ok || public.IsNull() || public.IsUnknown() {
+	attrs, ok := knownPublicAttributes(value)
+	if !ok {
 		return access
 	}
 
-	attrs := public.Attributes()
 	access.Public = &cksv1beta1.PublicKubeAPIAccess{
 		AllowCidrs: cidrSetToProto(attrs["allow_cidrs"]),
 		DenyCidrs:  cidrSetToProto(attrs["deny_cidrs"]),
 	}
 
 	return access
+}
+
+func knownPublicAttributes(access types.Object) (map[string]attr.Value, bool) {
+	public, ok := access.Attributes()["public"].(types.Object)
+	if !ok || public.IsNull() || public.IsUnknown() {
+		return nil, false
+	}
+
+	return public.Attributes(), true
 }
 
 func cidrSetToProto(value attr.Value) []string {
@@ -145,13 +153,12 @@ func validateKubeAPIAccess(value types.Object, attributePath path.Path) diag.Dia
 		return diagnostics
 	}
 
-	public, ok := value.Attributes()["public"].(types.Object)
-	if !ok || public.IsNull() || public.IsUnknown() {
+	attrs, ok := knownPublicAttributes(value)
+	if !ok {
 		return diagnostics
 	}
 
 	publicPath := attributePath.AtName("public")
-	attrs := public.Attributes()
 	for _, name := range []string{"allow_cidrs", "deny_cidrs"} {
 		set, ok := attrs[name].(types.Set)
 		if !ok {

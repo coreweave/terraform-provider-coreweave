@@ -1475,6 +1475,10 @@ func TestMustRenderClusterResourceKubeAPIAccess(t *testing.T) {
 			access: cks.KubeAPIAccessObject(cks.KubeAPIPublicAccessObject(cks.KubeAPIAccessCIDRSet("203.0.113.0/24", "2001:db8::/32"), cks.KubeAPIAccessCIDRSet("203.0.113.128/25"))),
 			want:   "  kube_api_access = {\n    public = {\n      allow_cidrs = [\"2001:db8::/32\", \"203.0.113.0/24\"]\n      deny_cidrs  = [\"203.0.113.128/25\"]\n    }\n  }\n",
 		},
+		"null set is omitted beside a present set": {
+			access: cks.KubeAPIAccessObject(cks.KubeAPIPublicAccessObject(cks.KubeAPIAccessCIDRSet("203.0.113.0/24"), types.SetNull(types.StringType))),
+			want:   "  kube_api_access = {\n    public = {\n      allow_cidrs = [\"203.0.113.0/24\"]\n    }\n  }\n",
+		},
 		"empty sets are preserved": {
 			access: cks.KubeAPIAccessObject(cks.KubeAPIPublicAccessObject(cks.KubeAPIAccessCIDRSet(), cks.KubeAPIAccessCIDRSet())),
 			want:   "  kube_api_access = {\n    public = {\n      allow_cidrs = []\n      deny_cidrs  = []\n    }\n  }\n",

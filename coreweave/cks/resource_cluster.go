@@ -1501,32 +1501,35 @@ func kubeAPIAccessCtyValue(access types.Object) (cty.Value, bool) {
 		return cty.NilVal, false
 	}
 
-	public, ok := access.Attributes()["public"].(types.Object)
-	if !ok || public.IsNull() || public.IsUnknown() {
+	attrs, ok := knownPublicAttributes(access)
+	if !ok {
 		return cty.EmptyObjectVal, true
 	}
 
 	publicAttrs := map[string]cty.Value{}
-	for name, value := range public.Attributes() {
+	for name, value := range attrs {
 		set, ok := value.(types.Set)
 		if !ok || set.IsNull() || set.IsUnknown() {
 			continue
 		}
-		elements := set.Elements()
-		cidrs := make([]cty.Value, 0, len(elements))
-		for _, element := range elements {
-			if cidr, ok := element.(types.String); ok && !cidr.IsNull() && !cidr.IsUnknown() {
-				cidrs = append(cidrs, cty.StringVal(cidr.ValueString()))
-			}
-		}
-		if len(cidrs) == 0 {
-			publicAttrs[name] = cty.SetValEmpty(cty.String)
-		} else {
-			publicAttrs[name] = cty.SetVal(cidrs)
-		}
+		publicAttrs[name] = cidrSetCtyValue(cidrSetToProto(set))
 	}
 
 	return cty.ObjectVal(map[string]cty.Value{"public": cty.ObjectVal(publicAttrs)}), true
+}
+
+// cidrSetCtyValue exists because cty.SetVal panics on an empty slice.
+func cidrSetCtyValue(cidrs []string) cty.Value {
+	if len(cidrs) == 0 {
+		return cty.SetValEmpty(cty.String)
+	}
+
+	values := make([]cty.Value, len(cidrs))
+	for i, cidr := range cidrs {
+		values[i] = cty.StringVal(cidr)
+	}
+
+	return cty.SetVal(values)
 }
 
 func setOIDCAttrIfPresent(ctx context.Context, b *hclwrite.Body, oidc *OidcResourceModel) {
