@@ -1,52 +1,99 @@
-# Terraform Provider release workflow.
 name: Release
 
-# Builds and publishes a GitHub release for a given git tag using GoReleaser.
-# Called automatically by release-please after merging a release PR, or
-# triggered manually via workflow_dispatch to re-run or recover a release.
 on:
-  workflow_call:
-    inputs:
-      git-tag:
-        required: true
-        type: string
+  pull_request_target:
+    types: [closed]
+    branches: [main]
   workflow_dispatch:
     inputs:
-      git-tag:
-        description: 'Git tag to release (e.g. v0.5.1)'
+      release-pr:
+        description: 'Merged release PR number to retry after successful acceptance'
         required: true
         type: string
 
-# Releases need permissions to read and write the repository contents.
-# GitHub considers creating releases and uploading assets as writing contents.
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  goreleaser:
+  validation:
+    if: >-
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'pull_request_target' && github.event.pull_request.merged &&
+       github.event.pull_request.head.ref == 'release-please--branches--main' &&
+       github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      pull-requests: read
+      actions: read
+    outputs:
+      commit: ${{ steps.verify.outputs.commit }}
+    steps:
+      # The gate runs from the trusted base, before any candidate code or signing secrets.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Verify release candidate
+        id: verify
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number || inputs.release-pr }}
+        run: bash .github/release/verify.sh
+
+  goreleaser:
+    concurrency:
+      group: provider-release
+      queue: max
+      cancel-in-progress: false
+    needs: validation
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-          ref: ${{ inputs.git-tag }}
+          ref: ${{ needs.validation.outputs.commit }}
+      - name: Prepare release tag and notes
+        id: prepare
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_COMMIT: ${{ needs.validation.outputs.commit }}
+        run: bash .github/release/prepare.sh
       - uses: ./.github/actions/setup
+        if: steps.prepare.outputs.published != 'true'
       - name: Import GPG key
+        if: steps.prepare.outputs.published != 'true'
         uses: crazy-max/ghaction-import-gpg@2dc316deee8e90f13e1a351ab510b4d5bc0c82cd # v7.0.0
         id: import_gpg
         with:
           gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY }}
           passphrase: ${{ secrets.PASSPHRASE }}
-      - name: Extract release notes
-        run: |
-          VERSION="${{ inputs.git-tag }}"
-          VERSION="${VERSION#v}"
-          awk -v ver="$VERSION" '/^## \[/ { if (found) exit; if (index($0, "[" ver) > 0) found=1 } found' CHANGELOG.md > /tmp/release-notes.md
       - name: Run GoReleaser
+        if: steps.prepare.outputs.published != 'true'
         uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
         with:
-          args: release --clean --release-notes /tmp/release-notes.md
+          args: release --clean --release-notes ${{ runner.temp }}/release-notes.md
         env:
-          # GitHub sets the GITHUB_TOKEN secret automatically.
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
           GPG_FINGERPRINT: ${{ steps.import_gpg.outputs.fingerprint }}
+      - name: Publish completed release
+        if: steps.prepare.outputs.published != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.prepare.outputs.tag }}
+        run: gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --draft=false
+      - name: Mark release PR as tagged
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number || inputs.release-pr }}
+        run: |
+          gh pr edit "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --remove-label 'autorelease: pending' --add-label 'autorelease: tagged'
+      - name: Refresh release PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run release-please.yaml --repo "$GITHUB_REPOSITORY" --ref main

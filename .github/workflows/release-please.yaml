@@ -1,39 +1,30 @@
 name: Release Please
 
-# 1. Run release-please on every push to main
-# 2. When release-please creates a release, trigger the release job to publish via GoReleaser
 on:
   push:
-    branches:
-      - main
-  workflow_dispatch:  # Allow manual triggering
+    branches: [main]
+  workflow_dispatch:
 
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
+
+concurrency:
+  group: release-please
+  cancel-in-progress: false
 
 jobs:
   release-please:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
     steps:
       - name: Run Release Please
         uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
-        id: release
         with:
-          # DO NOT set `release-type` here.
-          # Setting `release-type` here causes release-please to drop our settings.
+          # Workflow-created PRs require approval directly in the PR merge box.
+          token: ${{ github.token }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
-    outputs:
-      releases: ${{ toJson(steps.release.outputs) }}
-      paths_released: ${{ steps.release.outputs.paths_released }}
-
-  release:
-    needs: release-please
-    if: ${{ contains(needs.release-please.outputs.paths_released, '.') }}
-    permissions:
-      contents: write
-    secrets: inherit
-    uses: ./.github/workflows/release.yml
-    with:
-      git-tag: ${{ fromJson(needs.release-please.outputs.releases).tag_name }}
+          skip-github-release: true

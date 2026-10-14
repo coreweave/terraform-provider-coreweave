@@ -12,7 +12,7 @@ test('the workflow title command accepts conventional titles and rejects invalid
     return;
   }
   const workflow = readFileSync(new URL('../workflows/test.yml', import.meta.url), 'utf8');
-  const block = workflow.split('\n  pr-title-format:\n')[1]?.split('\n  detect-changes:\n')[0];
+  const block = workflow.split('\n  pr-title-format:\n')[1]?.split(/^  (?=[a-z][a-z-]*:\n)/m)[0];
   assert.ok(block);
   const source = block.split('        run: |\n')[1];
   assert.ok(source);
