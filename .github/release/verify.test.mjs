@@ -102,8 +102,7 @@ test('automatic and manual publication share the gate before candidate code and 
   assert.match(workflow, /ref: \$\{\{ needs\.validation\.outputs\.commit \}\}/);
   const writer = readFileSync(new URL('../workflows/release-please.yaml', import.meta.url), 'utf8');
   assert.match(writer, /skip-github-release: true/);
-  assert.match(writer, /permission-workflows: write/);
-  assert.match(writer, /token: \$\{\{ steps\.app-token\.outputs\.token \}\}/);
+  assert.match(writer, /token: \$\{\{ github\.token \}\}/);
   assert.doesNotMatch(writer, /uses: \.\/\.github\/workflows\/release\.yml/);
 });
 
