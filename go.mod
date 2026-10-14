@@ -18,7 +18,7 @@ require (
 	buf.build/gen/go/coreweave/workload-federation/connectrpc/go/v2 v2.0.0-20261013191007-c36df30df3ed.1
 	buf.build/gen/go/coreweave/workload-federation/protocolbuffers/go v1.36.12-20261013191007-c36df30df3ed.2
 	buf.build/go/protovalidate v1.4.0
-	cloud.google.com/go/longrunning v0.9.0
+	cloud.google.com/go/longrunning v1.3.0
 	connectrpc.com/connect/v2 v2.0.0
 	github.com/aws/aws-sdk-go-v2 v1.47.1
 	github.com/aws/aws-sdk-go-v2/credentials v1.20.7
@@ -91,7 +91,6 @@ require (
 	github.com/vmihailenco/msgpack v4.0.4+incompatible // indirect
 	github.com/vmihailenco/msgpack/v5 v5.4.1 // indirect
 	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
-	go.opentelemetry.io/otel/sdk/metric v1.40.0 // indirect
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
 	golang.org/x/crypto v0.55.0 // indirect
 	golang.org/x/exp v0.0.0-20260820142414-ca536658362e // indirect
@@ -103,5 +102,5 @@ require (
 	golang.org/x/tools v0.49.0 // indirect
 	google.golang.org/appengine v1.6.8 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260819154853-08b0e4226688 // indirect
-	google.golang.org/grpc v1.79.3 // indirect
+	google.golang.org/grpc v1.83.2 // indirect
 )
