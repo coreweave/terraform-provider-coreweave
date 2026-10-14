@@ -292,7 +292,7 @@ func (r *InferenceDeploymentResource) Schema(_ context.Context, _ resource.Schem
 			},
 			"status": schema.StringAttribute{
 				Computed:            true,
-				MarkdownDescription: "The current status of the deployment. See the [Inference API overview](https://docs.coreweave.com/products/inference/reference/api-overview) for status values. Create — and updates that disable the deployment — return once resources are applied rather than once serving, so the status may not be ready immediately; a serving update instead blocks until the rollout reaches STATUS_READY. Poll the API for live readiness.",
+				MarkdownDescription: "The current status of the deployment. See the [Inference API overview](https://docs.coreweave.com/products/inference/reference/api-overview) for status values. Creation and updates that disable the deployment return once resources are applied rather than once the deployment is serving, so the status may not be ready immediately. An update to a serving deployment instead blocks until the rollout reaches STATUS_READY. Poll the API for live readiness.",
 				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
 			"created_at": schema.StringAttribute{

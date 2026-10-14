@@ -54,7 +54,7 @@ output "secret_key" {
 
 ### Optional
 
-- `attributes` (Map of String) Creation attributes, at most 15 entries. Keys must be lowercase DNS labels of 1–63 characters and must not start with cw-, role, or groups. Values must be Kubernetes label values of at most 63 characters (empty allowed). Changes replace the key. Omitted values are adopted during import.
+- `attributes` (Map of String) Creation attributes, at most 15 entries. Keys must be lowercase DNS labels of 1-63 characters and must not start with cw-, role, or groups. Values must be Kubernetes label values of at most 63 characters (empty allowed). Changes replace the key. Omitted values are adopted during import.
 - `duration_seconds` (Number) Required for creation; integer from 0 to 4294967295. Zero means permanent. Omit only when retaining an imported key whose original duration is unavailable. Changing this value replaces the key.
 
 ### Read-Only
