@@ -877,6 +877,8 @@ func TestClusterResource_KubeAPIAccess(t *testing.T) {
 			ResourceName:      config.FullResourceName,
 			ImportState:       true,
 			ImportStateVerify: true,
+			// kube_api_access_status is observed asynchronously and can advance between the prior step and the import.
+			ImportStateVerifyIgnore: []string{"kube_api_access_status"},
 		},
 		// Step 6: clear allow and deny cidrs
 		createClusterTestStep(ctx, t, testStepConfig{
