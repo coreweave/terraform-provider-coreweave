@@ -19,12 +19,12 @@ const (
 		"which supports CoreWeave-managed authentication. This setting is independent of `kube_api_access`."
 
 	kubeAPIAccessDescription = "Access configuration for the cluster's Kubernetes API server, independent of `public`. " +
-		"**This feature requires contacting CoreWeave support to enable it for your organization before setting this attribute.** " +
+		"Before you set this attribute, contact CoreWeave support to enable this feature for your organization. " +
 		"When this attribute is omitted, the next apply clears any access configured outside Terraform. " +
 		"Changes, including clears, cannot be applied in the same update as a Kubernetes version change."
 
-	publicKubeAPIAccessDescription = "Direct public access to the Kubernetes API server. A present `public` object, including `{}`, enables access; " +
-		"omitting it or setting it to `null` disables access. CoreWeave-managed authentication is not currently supported on this endpoint; " +
+	publicKubeAPIAccessDescription = "Direct public access to the Kubernetes API server. A present `public` object, including `{}`, enables access. " +
+		"Omitting it or setting it to `null` disables access. CoreWeave-managed authentication isn't currently supported on this endpoint. " +
 		"Kubernetes authentication and authorization still apply."
 
 	kubeAPIAccessStatusDescription = "Observed state of Kubernetes API access, known after apply and updated on refresh. " +
@@ -32,27 +32,27 @@ const (
 		"They are unknown during any in-place update plan, so providers configured from them receive unknown values during that plan."
 
 	dataSourceKubeAPIAccessDescription = "Access configuration for the cluster's Kubernetes API server, independent of `public`. " +
-		"**This feature requires contacting CoreWeave support to enable it for your organization.** " +
-		"Null when no access configuration is set."
+		"Contact CoreWeave support to enable this feature for your organization. " +
+		"`null` when no access configuration is set."
 
-	dataSourcePublicKubeAPIAccessDescription = "Direct public access configuration. Present when direct public access is enabled; null when it is disabled."
+	dataSourcePublicKubeAPIAccessDescription = "Direct public access configuration. Present when direct public access is enabled. `null` when it is disabled."
 
 	dataSourceKubeAPIAccessStatusDescription = "Observed state of Kubernetes API access. Values may lag a recent configuration change until the API observes it."
 
-	publicKubeAPIAccessStatusDescription = "Observed state of direct public access. Null when the API reports no public access status."
+	publicKubeAPIAccessStatusDescription = "Observed state of direct public access. `null` when the API reports no public access status."
 
 	kubeAPIAccessEndpointDescription = "The HTTPS URL of the public Kubernetes API endpoint, suitable for a kubeconfig `server`. " +
-		"Null until the endpoint is available."
+		"`null` until the endpoint is available."
 
 	kubeAPIAccessCADataDescription = "The base64-encoded PEM CA bundle for the Kubernetes API server. " +
-		"Use `base64decode` to obtain the PEM text. Null until the API reports a CA."
+		"Use `base64decode()` to obtain the PEM text. `null` until the API reports a CA."
 )
 
 var (
-	cidrFormatDescription = fmt.Sprintf("At most %d entries; each must be an IPv4 or IPv6 network address with no host bits set, such as `203.0.113.0/24`.",
+	cidrFormatDescription = fmt.Sprintf("At most %d entries. Each must be an IPv4 or IPv6 network address with no host bits set, such as `203.0.113.0/24`.",
 		maxKubeAPIAccessCIDRs)
 
-	allowCIDRsSemantics = "Empty allows all sources, subject to `deny_cidrs`. A non-empty set denies every other source, " +
+	allowCIDRsSemantics = "An empty set allows all sources, subject to `deny_cidrs`. A non-empty set denies every other source, " +
 		"so `0.0.0.0/0` alone allows only IPv4 sources and `::/0` alone allows only IPv6 sources."
 
 	allowCIDRsDescription = "Source network prefixes allowed to reach the endpoint. " + allowCIDRsSemantics + " " + cidrFormatDescription
@@ -63,7 +63,7 @@ var (
 
 	dataSourceDenyCIDRsDescription = "Source network prefixes denied access to the endpoint. Entries take precedence over `allow_cidrs`."
 
-	kubeAPIAccessStatusValueDescription = fmt.Sprintf("Acceptance of the endpoint's route and access policy. One of: %s. "+
+	kubeAPIAccessStatusValueDescription = fmt.Sprintf("Acceptance of the endpoint's route and access policy. The value is one of the following: %s. "+
 		"`STATUS_ACCEPTED` does not confirm that the endpoint is reachable or that CIDR rules are enforced.",
 		coreweave.EnumMarkdownValues(cksv1beta1.PublicKubeAPIAccessStatus_Status_name, false))
 )
@@ -165,8 +165,8 @@ func (kubeAPIAccessValidator) Description(context.Context) string {
 	return fmt.Sprintf("allow_cidrs and deny_cidrs each contain at most %d IPv4 or IPv6 network prefixes with no host bits set.", maxKubeAPIAccessCIDRs)
 }
 
-func (v kubeAPIAccessValidator) MarkdownDescription(ctx context.Context) string {
-	return v.Description(ctx)
+func (kubeAPIAccessValidator) MarkdownDescription(context.Context) string {
+	return fmt.Sprintf("`allow_cidrs` and `deny_cidrs` each contain at most %d IPv4 or IPv6 network prefixes with no host bits set.", maxKubeAPIAccessCIDRs)
 }
 
 func (kubeAPIAccessValidator) ValidateObject(_ context.Context, req validator.ObjectRequest, resp *validator.ObjectResponse) {

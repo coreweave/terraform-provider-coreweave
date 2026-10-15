@@ -115,7 +115,7 @@ The prefixes must exist in the cluster's VPC. This field is append-only.
 - `authn_webhook` (Attributes) Authentication webhook configuration for the cluster. (see [below for nested schema](#nestedatt--authn_webhook))
 - `authz_webhook` (Attributes) Authorization webhook configuration for the cluster. (see [below for nested schema](#nestedatt--authz_webhook))
 - `internal_lb_cidr_names_v6` (List of String) IPv6 Internal Load Balancer CIDR names. If any IPv6 field is set, then ALL IPv6 fields must be set.
-- `kube_api_access` (Attributes) Access configuration for the cluster's Kubernetes API server, independent of `public`. **This feature requires contacting CoreWeave support to enable it for your organization before setting this attribute.** When this attribute is omitted, the next apply clears any access configured outside Terraform. Changes, including clears, cannot be applied in the same update as a Kubernetes version change. (see [below for nested schema](#nestedatt--kube_api_access))
+- `kube_api_access` (Attributes) Access configuration for the cluster's Kubernetes API server, independent of `public`. Before you set this attribute, contact CoreWeave support to enable this feature for your organization. When this attribute is omitted, the next apply clears any access configured outside Terraform. Changes, including clears, cannot be applied in the same update as a Kubernetes version change. (see [below for nested schema](#nestedatt--kube_api_access))
 - `kubelet` (String) Selective overrides applied to every cluster Node's kubelet configuration, as a JSON object (e.g. `jsonencode({ maxPods = 256 })`). A Node reboot is required for changes to take effect, and unknown options are stored but ignored by CKS. See the [Kubernetes kubelet configuration reference](https://kubernetes.io/docs/tasks/administer-cluster/kubelet-config-file/) for supported options.
 - `node_port_range` (Attributes) Kubernetes Service NodePort range. NodePort range can be expanded in existing clusters but not shrunk. Updating the NodePort range to a smaller range will require a replacement of the cluster. (see [below for nested schema](#nestedatt--node_port_range))
 - `oidc` (Attributes) OpenID Connect (OIDC) configuration for authentication to the api-server. (see [below for nested schema](#nestedatt--oidc))
@@ -162,15 +162,15 @@ Optional:
 
 Optional:
 
-- `public` (Attributes) Direct public access to the Kubernetes API server. A present `public` object, including `{}`, enables access; omitting it or setting it to `null` disables access. CoreWeave-managed authentication is not currently supported on this endpoint; Kubernetes authentication and authorization still apply. (see [below for nested schema](#nestedatt--kube_api_access--public))
+- `public` (Attributes) Direct public access to the Kubernetes API server. A present `public` object, including `{}`, enables access. Omitting it or setting it to `null` disables access. CoreWeave-managed authentication isn't currently supported on this endpoint. Kubernetes authentication and authorization still apply. (see [below for nested schema](#nestedatt--kube_api_access--public))
 
 <a id="nestedatt--kube_api_access--public"></a>
 ### Nested Schema for `kube_api_access.public`
 
 Optional:
 
-- `allow_cidrs` (Set of String) Source network prefixes allowed to reach the endpoint. Empty allows all sources, subject to `deny_cidrs`. A non-empty set denies every other source, so `0.0.0.0/0` alone allows only IPv4 sources and `::/0` alone allows only IPv6 sources. At most 1024 entries; each must be an IPv4 or IPv6 network address with no host bits set, such as `203.0.113.0/24`.
-- `deny_cidrs` (Set of String) Source network prefixes denied access to the endpoint. Entries take precedence over `allow_cidrs`. At most 1024 entries; each must be an IPv4 or IPv6 network address with no host bits set, such as `203.0.113.0/24`.
+- `allow_cidrs` (Set of String) Source network prefixes allowed to reach the endpoint. An empty set allows all sources, subject to `deny_cidrs`. A non-empty set denies every other source, so `0.0.0.0/0` alone allows only IPv4 sources and `::/0` alone allows only IPv6 sources. At most 1024 entries. Each must be an IPv4 or IPv6 network address with no host bits set, such as `203.0.113.0/24`.
+- `deny_cidrs` (Set of String) Source network prefixes denied access to the endpoint. Entries take precedence over `allow_cidrs`. At most 1024 entries. Each must be an IPv4 or IPv6 network address with no host bits set, such as `203.0.113.0/24`.
 
 
 
@@ -216,16 +216,16 @@ Required:
 
 Read-Only:
 
-- `ca_data` (String) The base64-encoded PEM CA bundle for the Kubernetes API server. Use `base64decode` to obtain the PEM text. Null until the API reports a CA.
-- `public` (Attributes) Observed state of direct public access. Null when the API reports no public access status. (see [below for nested schema](#nestedatt--kube_api_access_status--public))
+- `ca_data` (String) The base64-encoded PEM CA bundle for the Kubernetes API server. Use `base64decode()` to obtain the PEM text. `null` until the API reports a CA.
+- `public` (Attributes) Observed state of direct public access. `null` when the API reports no public access status. (see [below for nested schema](#nestedatt--kube_api_access_status--public))
 
 <a id="nestedatt--kube_api_access_status--public"></a>
 ### Nested Schema for `kube_api_access_status.public`
 
 Read-Only:
 
-- `endpoint` (String) The HTTPS URL of the public Kubernetes API endpoint, suitable for a kubeconfig `server`. Null until the endpoint is available.
-- `status` (String) Acceptance of the endpoint's route and access policy. One of: `STATUS_UNSPECIFIED`, `STATUS_UNKNOWN`, `STATUS_PENDING`, `STATUS_ACCEPTED`, `STATUS_REJECTED`, `STATUS_ERROR`. `STATUS_ACCEPTED` does not confirm that the endpoint is reachable or that CIDR rules are enforced.
+- `endpoint` (String) The HTTPS URL of the public Kubernetes API endpoint, suitable for a kubeconfig `server`. `null` until the endpoint is available.
+- `status` (String) Acceptance of the endpoint's route and access policy. The value is one of the following: `STATUS_UNSPECIFIED`, `STATUS_UNKNOWN`, `STATUS_PENDING`, `STATUS_ACCEPTED`, `STATUS_REJECTED`, `STATUS_ERROR`. `STATUS_ACCEPTED` does not confirm that the endpoint is reachable or that CIDR rules are enforced.
 
 ## Import
 

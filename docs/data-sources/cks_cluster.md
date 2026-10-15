@@ -47,7 +47,7 @@ output "kube_api_ca_pem" {
 - `authz_webhook` (Attributes) The authorization webhook configuration of the cluster. (see [below for nested schema](#nestedatt--authz_webhook))
 - `internal_lb_cidr_names` (List of String) The internal load balancer CIDR names of the cluster.
 - `internal_lb_cidr_names_v6` (List of String) The IPv6 internal load balancer CIDR names of the cluster.
-- `kube_api_access` (Attributes) Access configuration for the cluster's Kubernetes API server, independent of `public`. **This feature requires contacting CoreWeave support to enable it for your organization.** Null when no access configuration is set. (see [below for nested schema](#nestedatt--kube_api_access))
+- `kube_api_access` (Attributes) Access configuration for the cluster's Kubernetes API server, independent of `public`. Contact CoreWeave support to enable this feature for your organization. `null` when no access configuration is set. (see [below for nested schema](#nestedatt--kube_api_access))
 - `kube_api_access_status` (Attributes) Observed state of Kubernetes API access. Values may lag a recent configuration change until the API observes it. (see [below for nested schema](#nestedatt--kube_api_access_status))
 - `kubelet` (String) Selective overrides applied to every cluster Node's kubelet configuration, as a JSON object.
 - `name` (String) The name of the cluster.
@@ -89,14 +89,14 @@ Read-Only:
 
 Read-Only:
 
-- `public` (Attributes) Direct public access configuration. Present when direct public access is enabled; null when it is disabled. (see [below for nested schema](#nestedatt--kube_api_access--public))
+- `public` (Attributes) Direct public access configuration. Present when direct public access is enabled. `null` when it is disabled. (see [below for nested schema](#nestedatt--kube_api_access--public))
 
 <a id="nestedatt--kube_api_access--public"></a>
 ### Nested Schema for `kube_api_access.public`
 
 Read-Only:
 
-- `allow_cidrs` (Set of String) Source network prefixes allowed to reach the endpoint. Empty allows all sources, subject to `deny_cidrs`. A non-empty set denies every other source, so `0.0.0.0/0` alone allows only IPv4 sources and `::/0` alone allows only IPv6 sources.
+- `allow_cidrs` (Set of String) Source network prefixes allowed to reach the endpoint. An empty set allows all sources, subject to `deny_cidrs`. A non-empty set denies every other source, so `0.0.0.0/0` alone allows only IPv4 sources and `::/0` alone allows only IPv6 sources.
 - `deny_cidrs` (Set of String) Source network prefixes denied access to the endpoint. Entries take precedence over `allow_cidrs`.
 
 
@@ -106,16 +106,16 @@ Read-Only:
 
 Read-Only:
 
-- `ca_data` (String) The base64-encoded PEM CA bundle for the Kubernetes API server. Use `base64decode` to obtain the PEM text. Null until the API reports a CA.
-- `public` (Attributes) Observed state of direct public access. Null when the API reports no public access status. (see [below for nested schema](#nestedatt--kube_api_access_status--public))
+- `ca_data` (String) The base64-encoded PEM CA bundle for the Kubernetes API server. Use `base64decode()` to obtain the PEM text. `null` until the API reports a CA.
+- `public` (Attributes) Observed state of direct public access. `null` when the API reports no public access status. (see [below for nested schema](#nestedatt--kube_api_access_status--public))
 
 <a id="nestedatt--kube_api_access_status--public"></a>
 ### Nested Schema for `kube_api_access_status.public`
 
 Read-Only:
 
-- `endpoint` (String) The HTTPS URL of the public Kubernetes API endpoint, suitable for a kubeconfig `server`. Null until the endpoint is available.
-- `status` (String) Acceptance of the endpoint's route and access policy. One of: `STATUS_UNSPECIFIED`, `STATUS_UNKNOWN`, `STATUS_PENDING`, `STATUS_ACCEPTED`, `STATUS_REJECTED`, `STATUS_ERROR`. `STATUS_ACCEPTED` does not confirm that the endpoint is reachable or that CIDR rules are enforced.
+- `endpoint` (String) The HTTPS URL of the public Kubernetes API endpoint, suitable for a kubeconfig `server`. `null` until the endpoint is available.
+- `status` (String) Acceptance of the endpoint's route and access policy. The value is one of the following: `STATUS_UNSPECIFIED`, `STATUS_UNKNOWN`, `STATUS_PENDING`, `STATUS_ACCEPTED`, `STATUS_REJECTED`, `STATUS_ERROR`. `STATUS_ACCEPTED` does not confirm that the endpoint is reachable or that CIDR rules are enforced.
 
 
 
