@@ -86,7 +86,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ steps.prepare.outputs.tag }}
-        run: gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --draft=false
+        run: bash .github/release/publish.sh
       - name: Mark release PR as tagged
         env:
           GH_TOKEN: ${{ github.token }}
