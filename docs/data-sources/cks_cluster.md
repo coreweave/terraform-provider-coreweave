@@ -3,12 +3,12 @@
 page_title: "coreweave_cks_cluster Data Source - coreweave"
 subcategory: ""
 description: |-
-  Query information about an existing CoreWeave Kubernetes Service (CKS) cluster by ID. See the CKS API reference https://docs.coreweave.com/docs/products/cks/reference/cks-api.
+  Query information about an existing CoreWeave Kubernetes Service (CKS) cluster by ID. See the CKS API reference https://docs.coreweave.com/products/cks/reference/cks-api.
 ---
 
 # coreweave_cks_cluster (Data Source)
 
-Query information about an existing CoreWeave Kubernetes Service (CKS) cluster by ID. See the [CKS API reference](https://docs.coreweave.com/docs/products/cks/reference/cks-api).
+Query information about an existing CoreWeave Kubernetes Service (CKS) cluster by ID. See the [CKS API reference](https://docs.coreweave.com/products/cks/reference/cks-api).
 
 ## Example Usage
 
@@ -27,20 +27,26 @@ data "coreweave_cks_cluster" "default" {
 
 ### Read-Only
 
+- `additional_server_sans` (Set of String) Additional Subject Alternative Names (SANs) included in the Kubernetes API server TLS certificate.
 - `api_server_endpoint` (String) The API server endpoint of the cluster.
 - `audit_policy` (String) The audit policy of the cluster.
 - `authn_webhook` (Attributes) The authentication webhook configuration of the cluster. (see [below for nested schema](#nestedatt--authn_webhook))
 - `authz_webhook` (Attributes) The authorization webhook configuration of the cluster. (see [below for nested schema](#nestedatt--authz_webhook))
-- `internal_lb_cidr_names` (Set of String) The internal load balancer CIDR names of the cluster.
+- `internal_lb_cidr_names` (List of String) The internal load balancer CIDR names of the cluster.
+- `internal_lb_cidr_names_v6` (List of String) The IPv6 internal load balancer CIDR names of the cluster.
+- `kubelet` (String) Selective overrides applied to every cluster Node's kubelet configuration, as a JSON object.
 - `name` (String) The name of the cluster.
 - `node_port_range` (Attributes) The Kubernetes Service NodePort range. (see [below for nested schema](#nestedatt--node_port_range))
 - `oidc` (Attributes) The OIDC configuration of the cluster. (see [below for nested schema](#nestedatt--oidc))
 - `pod_cidr_name` (String) The pod CIDR name of the cluster.
+- `pod_cidr_name_v6` (String) The IPv6 pod CIDR name of the cluster.
 - `public` (Boolean) Whether the cluster is public.
 - `service_account_oidc_issuer_url` (String) The URL of the OIDC issuer for the cluster's service account tokens. This value corresponds to the `--service-account-issuer` flag on the kube-apiserver.
 - `service_cidr_name` (String) The service CIDR name of the cluster.
-- `shared_storage_cluster_id` (String) The `cluster_id` of the cluster to share storage with. Must be enabled by CoreWeave suppport. Contact CoreWeave support if you are interested in this feature.
+- `service_cidr_name_v6` (String) The IPv6 service CIDR name of the cluster.
+- `shared_storage_cluster_id` (String) The `cluster_id` of the cluster to share storage with. Must be enabled by CoreWeave support. Contact CoreWeave support if you are interested in this feature.
 - `status` (String) The status of the cluster.
+- `tailscale` (Attributes) Tailscale configuration for the cluster. Enables cluster access over a Tailscale VPN. (see [below for nested schema](#nestedatt--tailscale))
 - `version` (String) The version of the cluster.
 - `vpc_id` (String) The VPC ID of the cluster.
 - `zone` (String) The zone of the cluster.
@@ -79,3 +85,11 @@ Read-Only:
 
 - `client_id` (String) The client ID of the OIDC configuration.
 - `issuer_url` (String) The issuer URL of the OIDC configuration.
+
+
+<a id="nestedatt--tailscale"></a>
+### Nested Schema for `tailscale`
+
+Read-Only:
+
+- `client_id` (String) The Tailscale Client ID for the federated identity.

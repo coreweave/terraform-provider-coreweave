@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net/url"
-	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
@@ -16,12 +15,12 @@ type durationValidator struct{}
 
 // Description is a short summary for “terraform plan/tfdocs” output.
 func (v durationValidator) Description(ctx context.Context) string {
-	return "Must be a valid Go duration (e.g. \"100ms\", \"5s\", \"1h30m\"). If an integer is passed, assumed as seconds (e.g. \"100\" -> \"100s\")"
+	return "Must be a positive Go duration (e.g. \"100ms\", \"5s\", \"1h30m\"). If an integer is passed, assumed as seconds (e.g. \"100\" -> \"100s\")"
 }
 
 // MarkdownDescription is the same, but rendered in Markdown in docs.
 func (v durationValidator) MarkdownDescription(ctx context.Context) string {
-	return "Must be a valid Go duration (e.g. \"100ms\", \"5s\", \"1h30m\"). If an integer is passed, assumed as seconds (e.g. \"100\" -> \"100s\")"
+	return "Must be a positive Go duration (e.g. \"100ms\", \"5s\", \"1h30m\"). If an integer is passed, assumed as seconds (e.g. \"100\" -> \"100s\")"
 }
 
 // ValidateString is called during plan/apply. If the value is known & non-null,
@@ -38,18 +37,13 @@ func (v durationValidator) ValidateString(
 	}
 
 	raw := req.ConfigValue.ValueString()
-	if _, err := time.ParseDuration(raw); err != nil {
-		// Try appending “s” to treat it as seconds
-		if _, err2 := time.ParseDuration(raw + "s"); err2 == nil {
-			return
-		}
-
+	if _, err := parseDuration(raw); err != nil {
 		// AddAttributeError takes: (path, summary, detail)
 		resp.Diagnostics.AddAttributeError(
 			path.Root(req.Path.String()),
-			"Invalid duration format",
+			"Invalid HTTP timeout",
 			// The user saw e.g. "5xs" or "abc"; show what they passed and a hint.
-			`Expected a valid Go duration (for example: "5s", "250ms", or "1h"), but got: "`+raw+`".`,
+			`Expected a positive Go duration (for example: "5s", "250ms", or "1h"), but got: "`+raw+`".`,
 		)
 	}
 }

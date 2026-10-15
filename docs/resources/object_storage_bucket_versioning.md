@@ -3,12 +3,12 @@
 page_title: "coreweave_object_storage_bucket_versioning Resource - coreweave"
 subcategory: ""
 description: |-
-  Versioning protects your data by preserving all versions of objects and preventing permanent deletion. When objects are deleted, they are "soft deleted" with delete markers, allowing you to restore previous versions and recover data. After creating a versioned bucket with Terraform, use rclone to manage versioned objects and delete markers https://docs.coreweave.com/docs/products/storage/object-storage/buckets/rclone-versioned-buckets.
+  Versioning protects your data by preserving all versions of objects and preventing permanent deletion. When objects are deleted, they are "soft deleted" with delete markers, allowing you to restore previous versions and recover data. After creating a versioned bucket with Terraform, use rclone to manage versioned objects and delete markers https://docs.coreweave.com/products/storage/object-storage/buckets/rclone-versioned-buckets.
 ---
 
 # coreweave_object_storage_bucket_versioning (Resource)
 
-Versioning protects your data by preserving all versions of objects and preventing permanent deletion. When objects are deleted, they are "soft deleted" with delete markers, allowing you to restore previous versions and recover data. After creating a versioned bucket with Terraform, [use `rclone` to manage versioned objects and delete markers](https://docs.coreweave.com/docs/products/storage/object-storage/buckets/rclone-versioned-buckets).
+Versioning protects your data by preserving all versions of objects and preventing permanent deletion. When objects are deleted, they are "soft deleted" with delete markers, allowing you to restore previous versions and recover data. After creating a versioned bucket with Terraform, [use `rclone` to manage versioned objects and delete markers](https://docs.coreweave.com/products/storage/object-storage/buckets/rclone-versioned-buckets).
 
 ## Example Usage
 
@@ -48,6 +48,17 @@ Required:
 ## Import
 
 Import is supported using the following syntax:
+
+In Terraform v1.5.0 and later, the [`import` block](https://developer.hashicorp.com/terraform/language/import) can be used with the `id` attribute, for example:
+
+```terraform
+import {
+  to = coreweave_object_storage_bucket_versioning.default
+  id = "{{bucket_name}}"
+}
+```
+
+The [`terraform import` command](https://developer.hashicorp.com/terraform/cli/commands/import) can be used, for example:
 
 ```shell
 terraform import coreweave_object_storage_bucket_versioning.default {{bucket_name}}

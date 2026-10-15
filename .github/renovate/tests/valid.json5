@@ -1,0 +1,15 @@
+{
+  extends: ['config:recommended'],
+  minimumReleaseAge: '7 days',
+  packageRules: [
+    {
+      matchPackageNames: ['github.com/aws/smithy-go'],
+      groupName: 'aws-sdk-go-v2-monorepo',
+    },
+  ],
+  // The validator may inspect artifact commands, but must never execute them.
+  postUpgradeTasks: {
+    commands: ['touch artifact-command-ran'],
+    fileFilters: ['artifact-command-ran'],
+  },
+}

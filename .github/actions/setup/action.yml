@@ -1,5 +1,6 @@
 ---
 name: Common Setup Steps
+description: Install repository-pinned development tools with Mise
 
 inputs: {}
 
@@ -7,6 +8,6 @@ runs:
   using: composite
   steps:
   - name: Setup mise
-    uses: jdx/mise-action@6d1e696aa24c1aa1bcc1adea0212707c71ab78a8 # v3.6.1
+    uses: jdx/mise-action@2d8d4cafcbd33be2ea37d2b6f5ad595363d1f1ca # v5.1.1
     with:
-      version: v2026.1.7
+      version: v2026.10.4

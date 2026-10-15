@@ -1,7 +1,15 @@
 resource "coreweave_networking_vpc" "default" {
-  name        = "default"
-  zone        = "US-EAST-04A"
-  host_prefix = "10.16.192.0/18"
+  name = "default"
+  zone = "US-EAST-04A"
+
+  host_prefixes = [
+    {
+      name     = "primary"
+      type     = "PRIMARY"
+      prefixes = ["10.16.192.0/18"]
+    },
+  ]
+
   vpc_prefixes = [
     {
       name  = "pod cidr"
@@ -28,6 +36,7 @@ resource "coreweave_cks_cluster" "default" {
   service_cidr_name      = "service cidr"
   internal_lb_cidr_names = ["internal lb cidr"]
   audit_policy           = filebase64("${path.module}/audit-policy.yaml")
+  kubelet                = jsonencode({ maxPods = 256 })
   oidc = {
     ca              = filebase64("${path.module}/example-ca.crt")
     client_id       = "kbyuFDidLLm280LIwVFiazOqjO3ty8KH"

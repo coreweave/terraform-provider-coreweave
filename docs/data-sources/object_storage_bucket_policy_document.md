@@ -3,12 +3,12 @@
 page_title: "coreweave_object_storage_bucket_policy_document Data Source - coreweave"
 subcategory: ""
 description: |-
-  Bucket access policies https://docs.coreweave.com/docs/products/storage/object-storage/auth-access/bucket-access/bucket-policies allow you to define precise, S3-compatible access control for one bucket. They are evaluated after organization access policies. See Manage Bucket Policies https://docs.coreweave.com/docs/products/storage/object-storage/auth-access/bucket-access/manage-bucket-policies#example-policies for examples and further information. This data source provides a type-safe data structure for creating an S3-compatible JSON bucket policy.
+  Bucket access policies https://docs.coreweave.com/products/storage/object-storage/auth-access/bucket-access/bucket-policies allow you to define precise, S3-compatible access control for one bucket. They are evaluated after organization access policies. See Manage Bucket Policies https://docs.coreweave.com/products/storage/object-storage/auth-access/bucket-access/manage-bucket-policies#example-policies for examples and further information. This data source provides a type-safe data structure for creating an S3-compatible JSON bucket policy.
 ---
 
 # coreweave_object_storage_bucket_policy_document (Data Source)
 
-[Bucket access policies](https://docs.coreweave.com/docs/products/storage/object-storage/auth-access/bucket-access/bucket-policies) allow you to define precise, S3-compatible access control for one bucket. They are evaluated after organization access policies. See [Manage Bucket Policies](https://docs.coreweave.com/docs/products/storage/object-storage/auth-access/bucket-access/manage-bucket-policies#example-policies) for examples and further information. This data source provides a type-safe data structure for creating an S3-compatible JSON bucket policy.
+[Bucket access policies](https://docs.coreweave.com/products/storage/object-storage/auth-access/bucket-access/bucket-policies) allow you to define precise, S3-compatible access control for one bucket. They are evaluated after organization access policies. See [Manage Bucket Policies](https://docs.coreweave.com/products/storage/object-storage/auth-access/bucket-access/manage-bucket-policies#example-policies) for examples and further information. This data source provides a type-safe data structure for creating an S3-compatible JSON bucket policy.
 
 ## Example Usage
 
@@ -48,6 +48,6 @@ Optional:
 - `action` (List of String) List of action strings, e.g. `["s3:PutObject"]`
 - `condition` (Map of Map of String) Map of condition operators to JSON expressions
 - `effect` (String) `Allow` or `Deny`
-- `principal` (Map of List of String) Map of principal types to ARNs
+- `principal` (Map of List of String) Map of principal types to identifiers. For CoreWeave principals, format each identifier as described in [bucket policies](https://docs.coreweave.com/products/storage/object-storage/auth-access/bucket-access/bucket-policies).
 - `resource` (List of String) List of resource ARNs, e.g. `["arn:aws:s3:::bucket/*"]`
 - `sid` (String) An optional statement identifier

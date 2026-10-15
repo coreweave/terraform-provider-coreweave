@@ -3,16 +3,20 @@ package coreweave_test
 import (
 	"bytes"
 	"context"
-	"errors"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 
-	"buf.build/gen/go/coreweave/cks/connectrpc/go/coreweave/cks/v1beta1/cksv1beta1connect"
+	"buf.build/gen/go/coreweave/cks/connectrpc/go/v2/coreweave/cks/v1beta1/cksv1beta1connect"
 	cksv1beta1 "buf.build/gen/go/coreweave/cks/protocolbuffers/go/coreweave/cks/v1beta1"
-	"connectrpc.com/connect"
+	"connectrpc.com/connect/v2"
+	"connectrpc.com/connect/v2/connecthttp"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
 	"github.com/hashicorp/terraform-plugin-log/tflogtest"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
 )
 
 const (
@@ -46,18 +50,16 @@ func TestTFLogInterceptor(t *testing.T) {
 
 	tests := []struct {
 		name       string
-		endpoint   string
-		req        *connect.Request[cksv1beta1.CreateClusterRequest]
-		returnResp *connect.Response[cksv1beta1.CreateClusterResponse]
+		req        *cksv1beta1.CreateClusterRequest
+		returnResp *cksv1beta1.CreateClusterResponse
 		returnErr  error
-		assertion  func(t *testing.T, logEntries []map[string]any)
+		assertion  func(t *testing.T, logEntries []map[string]any, peer string)
 	}{
 		{
 			name:       "Basic successful response",
-			endpoint:   "https://api.coreweave.com",
-			req:        connect.NewRequest(exampleClusterRequest()),
-			returnResp: connect.NewResponse(exampleClusterResponse()),
-			assertion: func(t *testing.T, logEntries []map[string]any) {
+			req:        exampleClusterRequest(),
+			returnResp: exampleClusterResponse(),
+			assertion: func(t *testing.T, logEntries []map[string]any, peer string) {
 				t.Helper()
 				assert.Len(t, logEntries, 2)
 				respEntry := logEntries[1]
@@ -65,7 +67,7 @@ func TestTFLogInterceptor(t *testing.T) {
 					t.Parallel()
 					reqEntry := logEntries[0]
 					assert.Contains(t, reqEntry["@message"], "sending API request")
-					assert.Equal(t, "connect://api.coreweave.com", reqEntry["peer"])
+					assert.Equal(t, peer, reqEntry["peer"])
 					assert.Equal(t, "unary", reqEntry["streamType"])
 					assert.Equal(t, "/coreweave.cks.v1beta1.ClusterService/CreateCluster", reqEntry["procedure"])
 					assert.NotEmpty(t, reqEntry[logMessageKey])
@@ -80,7 +82,7 @@ func TestTFLogInterceptor(t *testing.T) {
 				t.Run("response matches", func(t *testing.T) {
 					t.Parallel()
 					assert.Contains(t, respEntry["@message"], "received API response")
-					assert.Equal(t, "connect://api.coreweave.com", respEntry["peer"])
+					assert.Equal(t, peer, respEntry["peer"])
 					assert.Equal(t, "unary", respEntry["streamType"])
 					assert.Equal(t, "/coreweave.cks.v1beta1.ClusterService/CreateCluster", respEntry["procedure"])
 					assert.NotEmpty(t, respEntry[logMessageKey])
@@ -96,17 +98,16 @@ func TestTFLogInterceptor(t *testing.T) {
 		},
 		{
 			name:       "Basic error response",
-			endpoint:   "https://api.coreweave.com",
-			req:        connect.NewRequest(exampleClusterRequest()),
+			req:        exampleClusterRequest(),
 			returnResp: nil,
-			returnErr:  connect.NewError(connect.CodeInternal, errors.New("Internal server error")),
-			assertion: func(t *testing.T, logEntries []map[string]any) {
+			returnErr:  connect.NewError(connect.CodeInternal, "Internal server error"),
+			assertion: func(t *testing.T, logEntries []map[string]any, peer string) {
 				t.Helper()
 				t.Run("request matches", func(t *testing.T) {
 					t.Parallel()
 					reqEntry := logEntries[0]
 					assert.Contains(t, reqEntry["@message"], "sending API request")
-					assert.Equal(t, "connect://api.coreweave.com", reqEntry["peer"])
+					assert.Equal(t, peer, reqEntry["peer"])
 					assert.Equal(t, "unary", reqEntry["streamType"])
 					assert.Equal(t, "/coreweave.cks.v1beta1.ClusterService/CreateCluster", reqEntry["procedure"])
 					assert.NotEmpty(t, reqEntry[logMessageKey])
@@ -116,7 +117,7 @@ func TestTFLogInterceptor(t *testing.T) {
 					t.Parallel()
 					respEntry := logEntries[1]
 					assert.Contains(t, respEntry["@message"], "got nil or invalid API response")
-					assert.Equal(t, "connect://api.coreweave.com", respEntry["peer"])
+					assert.Equal(t, peer, respEntry["peer"])
 					assert.Equal(t, "unary", respEntry["streamType"])
 					assert.Equal(t, "/coreweave.cks.v1beta1.ClusterService/CreateCluster", respEntry["procedure"])
 					assert.NotContains(t, respEntry, logMessageKey)
@@ -133,21 +134,32 @@ func TestTFLogInterceptor(t *testing.T) {
 			var logbuf bytes.Buffer
 			ctx := tflogtest.RootLogger(t.Context(), &logbuf)
 
-			interceptor := coreweave.TFLogInterceptor()
-			c := cksv1beta1connect.NewClusterServiceClient(nil, tt.endpoint, connect.WithInterceptors(interceptor, connect.UnaryInterceptorFunc(func(next connect.UnaryFunc) connect.UnaryFunc {
-				return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
-					// This short-circuits the client to return the desired response and error for testing without calling the next func.
-					return tt.returnResp, tt.returnErr
-				}
-			})))
+			rpcServer := connect.NewServer()
+			cksv1beta1connect.RegisterClusterServiceHandler(rpcServer, &logTestClusterServer{response: tt.returnResp, err: tt.returnErr})
+			mux := http.NewServeMux()
+			connecthttp.Mount(mux, rpcServer)
+			server := httptest.NewServer(mux)
+			t.Cleanup(server.Close)
+			c := cksv1beta1connect.NewClusterServiceClient(connect.NewClient(connecthttp.NewTransport(server.Client(), server.URL), coreweave.TFLogInterceptor()))
 			resp, err := c.CreateCluster(ctx, tt.req)
 			logBytes := logbuf.Bytes() // Capture the log bytes so we can copy them as necessary.
 
-			assert.Equal(t, tt.returnErr, err)
-			assert.Equal(t, tt.returnResp, resp)
+			if tt.returnErr != nil {
+				require.Error(t, err)
+				assert.Equal(t, connect.CodeOf(tt.returnErr), connect.CodeOf(err))
+				assert.Contains(t, err.Error(), tt.returnErr.Error())
+			} else {
+				require.NoError(t, err)
+			}
+			if tt.returnResp != nil {
+				assert.True(t, proto.Equal(tt.returnResp, resp))
+			} else {
+				assert.Nil(t, resp)
+			}
 
 			logEntries, err := tflogtest.MultilineJSONDecode(bytes.NewBuffer(logBytes))
 			require.NoError(t, err)
+			require.Len(t, logEntries, 2)
 
 			for i, entry := range logEntries {
 				if msg, ok := entry[logMessageKey]; ok {
@@ -156,8 +168,18 @@ func TestTFLogInterceptor(t *testing.T) {
 			}
 
 			if tt.assertion != nil {
-				tt.assertion(t, logEntries)
+				tt.assertion(t, logEntries, "connect://"+strings.TrimPrefix(server.URL, "http://"))
 			}
 		})
 	}
+}
+
+type logTestClusterServer struct {
+	cksv1beta1connect.UnimplementedClusterServiceHandler
+	response *cksv1beta1.CreateClusterResponse
+	err      error
+}
+
+func (s *logTestClusterServer) CreateCluster(context.Context, *cksv1beta1.CreateClusterRequest) (*cksv1beta1.CreateClusterResponse, error) {
+	return s.response, s.err
 }

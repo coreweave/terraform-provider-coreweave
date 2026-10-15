@@ -1,9 +1,267 @@
 {
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
-    "github>coreweave/renovate-config"
+    "config:recommended",
+    ":semanticCommits",
+    "helpers:pinGitHubActionDigests",
+    "helpers:pinGitHubActionDigestsToSemver"
   ],
-  "postUpgradeTasks": {
-    "commands": ["go mod tidy"],
-    "executionMode": "update"
+  "semanticCommitType": "deps",
+  "commitMessageTopic": "{{depName}}",
+  "commitMessageExtra": "( {{currentVersion}} → {{newVersion}} )",
+  "commitMessageSuffix": "",
+  "postUpdateOptions": ["gomodTidy"],
+  "rebaseWhen": "conflicted",
+  "commitBodyTable": true,
+  "minimumReleaseAge": "7 days",
+  "internalChecksFilter": "strict",
+  "customManagers": [
+    {
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/^\\.github/actions/setup/action\\.yml$/"
+      ],
+      "matchStrings": [
+        "uses: jdx/mise-action@[^\\n]+\\n\\s+with:\\n\\s+version: (?<currentValue>v[0-9]+\\.[0-9]+\\.[0-9]+)"
+      ],
+      "datasourceTemplate": "github-releases",
+      "packageNameTemplate": "jdx/mise",
+      "versioningTemplate": "semver-coerced"
+    }
+  ],
+  "packageRules": [
+    { "matchUpdateTypes": ["major"], "labels": ["type/major"] },
+    { "matchUpdateTypes": ["minor"], "labels": ["type/minor"] },
+    { "matchUpdateTypes": ["patch"], "labels": ["type/patch"] },
+    { "matchUpdateTypes": ["digest"], "labels": ["type/digest"] },
+    {
+      "matchUpdateTypes": ["digest"],
+      "commitMessageExtra": "( {{currentDigestShort}} → {{newDigestShort}} )"
+    },
+    {
+      // Default gomod commit metadata precedes the specific compatibility rules.
+      // Later matching package rules take precedence.
+      "matchManagers": ["gomod"],
+      "semanticCommitType": "deps",
+      "semanticCommitScope": null
+    },
+    {
+      "matchManagers": ["github-actions"],
+      "semanticCommitType": "ci",
+      "semanticCommitScope": "github-action",
+      "addLabels": ["renovate/github-action"]
+    },
+    {
+      "matchManagers": ["mise"],
+      "semanticCommitType": "ci",
+      "semanticCommitScope": "mise"
+    },
+    {
+      "matchPackageNames": ["jdx/mise"],
+      "commitMessagePrefix": "ci(mise):",
+      "commitMessageAction": "update",
+      "commitMessageTopic": "mise"
+    },
+    {
+      // Go directives are minimum requirements and should be bumped rather than pinned.
+      "matchDatasources": ["golang-version"],
+      "rangeStrategy": "bump"
+    },
+    {
+      // Use the same datasource and package identity for Go across managers.
+      "matchDatasources": ["github-tags"],
+      "matchPackageNames": ["golang/go"],
+      "overrideDatasource": "golang-version",
+      "overridePackageName": "go",
+      "extractVersion": "^(?<version>\\S+)$"
+    },
+    {
+      "matchPackageNames": ["go"],
+      "matchDatasources": ["golang-version"],
+      "semanticCommitType": "deps",
+      "semanticCommitScope": null,
+      "sourceUrl": "https://github.com/golang/go",
+      "changelogUrl": "https://go.dev/doc/devel/release#go{{newMajor}}.{{newMinor}}.0"
+    },
+    {
+      "matchManagers": ["gomod"],
+      "matchPackageNames": ["google.golang.org/genproto/googleapis/**"],
+      "enabled": true
+    },
+    {
+      "matchManagers": ["gomod"],
+      "matchUpdateTypes": ["minor", "patch", "digest", "pin"],
+      "groupName": "Go dependencies",
+      "groupSlug": "go-dependencies"
+    },
+    {
+      "matchManagers": ["github-actions"],
+      "matchUpdateTypes": ["minor", "patch", "digest", "pin"],
+      "groupName": "GitHub Actions",
+      "groupSlug": "github-actions"
+    },
+    {
+      "matchManagers": ["mise", "custom.regex"],
+      "matchUpdateTypes": ["minor", "patch", "digest", "pin"],
+      "groupName": "Development tools",
+      "groupSlug": "development-tools"
+    },
+    {
+      "matchDatasources": ["docker"],
+      "matchUpdateTypes": ["minor", "patch", "digest", "pin"],
+      "groupName": "CI containers",
+      "groupSlug": "ci-containers"
+    },
+    {
+      "matchPackageNames": ["jdx/mise", "jdx/mise-action"],
+      "matchUpdateTypes": ["minor", "patch", "digest", "pin"],
+      "groupName": "Mise runtime and action",
+      "groupSlug": "mise-runtime"
+    },
+    {
+      "matchManagers": ["gomod"],
+      "matchPackageNames": ["github.com/hashicorp/terraform-plugin-framework", "github.com/hashicorp/terraform-plugin-framework-*", "github.com/hashicorp/terraform-plugin-go", "github.com/hashicorp/terraform-plugin-testing", "github.com/hashicorp/terraform-plugin-log", "github.com/hashicorp/terraform-plugin-sdk/v2", "github.com/zclconf/go-cty"],
+      "matchUpdateTypes": ["minor", "patch", "digest", "pin"],
+      "groupName": "Terraform plugin libraries",
+      "groupSlug": "terraform-plugin-libraries"
+    },
+    {
+      "matchManagers": ["gomod"],
+      "matchPackageNames": ["buf.build/gen/go/coreweave/cks/**"],
+      "matchUpdateTypes": ["minor", "patch", "digest", "pin"],
+      "groupName": "cks generated clients",
+      "groupSlug": "coreweave-cks-clients",
+      "semanticCommitScope": "cks"
+    },
+    {
+      "matchManagers": ["gomod"],
+      "matchPackageNames": ["buf.build/gen/go/coreweave/networking/**"],
+      "matchUpdateTypes": ["minor", "patch", "digest", "pin"],
+      "groupName": "networking generated clients",
+      "groupSlug": "coreweave-networking-clients",
+      "semanticCommitScope": "networking"
+    },
+    {
+      "matchManagers": ["gomod"],
+      "matchPackageNames": ["buf.build/gen/go/coreweave/cwobject/**"],
+      "matchUpdateTypes": ["minor", "patch", "digest", "pin"],
+      "groupName": "cwobject generated clients",
+      "groupSlug": "coreweave-cwobject-clients",
+      "semanticCommitScope": "object_storage"
+    },
+    {
+      "matchManagers": ["gomod"],
+      "matchPackageNames": ["buf.build/gen/go/coreweave/inference/**"],
+      "matchUpdateTypes": ["minor", "patch", "digest", "pin"],
+      "groupName": "inference generated clients",
+      "groupSlug": "coreweave-inference-clients",
+      "semanticCommitScope": "inference"
+    },
+    {
+      "matchManagers": ["gomod"],
+      "matchPackageNames": ["buf.build/gen/go/coreweave/container-registry-api/**"],
+      "matchUpdateTypes": ["minor", "patch", "digest", "pin"],
+      "groupName": "container-registry-api generated clients",
+      "groupSlug": "coreweave-container-registry-api-clients",
+      "semanticCommitScope": "container_registry"
+    },
+    {
+      "matchManagers": ["gomod"],
+      "matchPackageNames": ["buf.build/gen/go/coreweave/sandbox/**"],
+      "matchUpdateTypes": ["minor", "patch", "digest", "pin"],
+      "groupName": "sandbox generated clients",
+      "groupSlug": "coreweave-sandbox-clients",
+      "semanticCommitScope": "sandbox"
+    },
+    {
+      "matchManagers": ["gomod"],
+      "matchPackageNames": ["buf.build/gen/go/coreweave/workload-federation/**"],
+      "matchUpdateTypes": ["minor", "patch", "digest", "pin"],
+      "groupName": "workload-federation generated clients",
+      "groupSlug": "coreweave-workload-federation-clients",
+      "semanticCommitScope": "workload_federation"
+    },
+    {
+      "matchManagers": ["gomod"],
+      "matchPackageNames": ["github.com/aws/aws-sdk-go-v2", "github.com/aws/aws-sdk-go-v2/**", "github.com/aws/smithy-go"],
+      "matchUpdateTypes": ["minor", "patch", "digest", "pin"],
+      "groupName": "AWS SDK",
+      "groupSlug": "aws-sdk"
+    },
+    {
+      "matchManagers": ["gomod"],
+      "matchPackageNames": ["github.com/hashicorp/terraform-plugin-docs", "github.com/hashicorp/copywrite"],
+      "matchUpdateTypes": ["minor", "patch", "digest", "pin"],
+      "groupName": "Documentation tools",
+      "groupSlug": "documentation-tools",
+      "semanticCommitType": "ci",
+      "semanticCommitScope": "tools"
+    },
+    {
+      // Major Go updates require this opt-in before Renovate will run tidy.
+      // The v0-to-v1 transition keeps the existing import path.
+      "matchManagers": ["gomod"],
+      "matchPackageNames": ["cloud.google.com/go/longrunning"],
+      "matchUpdateTypes": ["major"],
+      "postUpdateOptions": ["gomodTidy", "gomodUpdateImportPaths"]
+    },
+    {
+      "matchManagers": ["gomod"],
+      "matchPackageNames": ["github.com/hashicorp/terraform-plugin-testing", "github.com/stretchr/testify"],
+      "semanticCommitType": "test",
+      "semanticCommitScope": null
+    },
+    {
+      // AWS SDK changelogs can dominate run time and hit GitHub GraphQL timeouts.
+      "matchSourceUrls": ["https://github.com/aws/aws-sdk-go-v2"],
+      "fetchChangeLogs": "off"
+    },
+    {
+      "matchPackageNames": [
+        "ghcr.io/coreweave/**",
+        "buf.build/gen/go/coreweave/**"
+      ],
+      "minimumReleaseAge": "0 days"
+    },
+    {
+      "matchPackageNames": ["go", "golang/go"],
+      // Raise the minor cap only with a reviewed Go/linter pair that passes lint.
+      "allowedVersions": "<1.28.0",
+      "minimumReleaseAge": "7 days"
+    },
+    {
+      "matchPackageNames": ["go", "golang/go"],
+      "matchUpdateTypes": ["patch"],
+      "groupName": "Go patches",
+      "groupSlug": "go-patches",
+      "semanticCommitType": "deps",
+      "semanticCommitScope": null
+    },
+    {
+      "matchPackageNames": ["golangci-lint", "golangci/golangci-lint"],
+      "matchUpdateTypes": ["minor", "patch", "digest", "pin"],
+      "groupName": "golangci-lint",
+      "groupSlug": "golangci-lint-maintenance"
+    },
+    {
+      "matchUpdateTypes": ["major"],
+      "groupName": null,
+      "groupSlug": null
+    },
+    {
+      "matchJsonata": ["isVulnerabilityAlert = true"],
+      "groupName": null,
+      "groupSlug": null,
+      "minimumReleaseAge": "0 days"
+    }
+  ],
+  "prConcurrentLimit": 3,
+  "prHourlyLimit": 2,
+  // TODO: Restore stale-branch pruning after replacements merge and cleanup is approved.
+  "pruneStaleBranches": false,
+  "vulnerabilityAlerts": {
+    "groupName": null,
+    "groupSlug": null,
+    "minimumReleaseAge": "0 days"
   }
 }

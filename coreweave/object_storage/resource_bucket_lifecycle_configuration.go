@@ -41,6 +41,11 @@ const (
 	ErrNoSuchLifecycleConfiguration string = "NoSuchLifecycleConfiguration"
 )
 
+type bucketLifecycleConfigurationAPI interface {
+	PutBucketLifecycleConfiguration(context.Context, *s3.PutBucketLifecycleConfigurationInput, ...func(*s3.Options)) (*s3.PutBucketLifecycleConfigurationOutput, error)
+	GetBucketLifecycleConfiguration(context.Context, *s3.GetBucketLifecycleConfigurationInput, ...func(*s3.Options)) (*s3.GetBucketLifecycleConfigurationOutput, error)
+}
+
 // NewBucketLifecycleResource returns a new resource instance.
 func NewBucketLifecycleResource() resource.Resource {
 	return &BucketLifecycleResource{}
@@ -48,7 +53,9 @@ func NewBucketLifecycleResource() resource.Resource {
 
 // BucketLifecycleResource is the resource implementation.
 type BucketLifecycleResource struct {
-	client *coreweave.Client
+	client                   *coreweave.Client
+	s3ClientForConvergence   func(context.Context) (bucketLifecycleConfigurationAPI, error)
+	bucketPropagationOptions s3PhaseOptions
 }
 
 // BucketLifecycleResourceModel maps resource schema data.
@@ -131,7 +138,7 @@ func (r *BucketLifecycleResource) Metadata(ctx context.Context, req resource.Met
 
 func (r *BucketLifecycleResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		MarkdownDescription: "Lifecycle configurations automate object management by defining actions applied to objects over time, such as expiring objects after a specified period or transitioning them to different storage tiers. This helps optimize storage costs and maintain data hygiene. Lifecycle configurations automate object management by defining actions applied to objects over time, such as expiring objects after a specified period or transitioning them to different storage tiers. This helps optimize storage costs and maintain data hygiene. [Learn more about S3-compatible lifecycle bucket configurations](https://docs.coreweave.com/docs/products/storage/object-storage/reference/object-storage-s3#bucket-lifecycles).",
+		MarkdownDescription: "Lifecycle configurations automate object management by defining actions applied to objects over time, such as expiring objects after a specified period or transitioning them to different storage tiers. This helps optimize storage costs and maintain data hygiene. [Learn more about S3-compatible lifecycle bucket configurations](https://docs.coreweave.com/products/storage/object-storage/reference/object-storage-s3#bucket-lifecycles).",
 		Attributes: map[string]schema.Attribute{
 			"bucket": schema.StringAttribute{
 				Required:            true,
@@ -155,7 +162,8 @@ func (r *BucketLifecycleResource) Schema(ctx context.Context, req resource.Schem
 						},
 						"prefix": schema.StringAttribute{
 							Optional:            true,
-							MarkdownDescription: "Object key prefix to which the rule applies",
+							MarkdownDescription: "Deprecated. Object key prefix to which the rule applies. CoreWeave AI Object Storage rejects requests that set this field; use `filter.prefix` instead.",
+							DeprecationMessage:  "Use filter.prefix instead. CoreWeave AI Object Storage now rejects PutBucketLifecycleConfiguration requests that include this deprecated S3 field, so the provider no longer sends it on the wire. Any value set here is retained in state for backwards compatibility (the rule's id is used to match a rule to its preserved value across refreshes; rules without an id rely on positional alignment) but is otherwise ignored.",
 						},
 						"status": schema.StringAttribute{
 							Required:            true,
@@ -324,16 +332,18 @@ func parseISO8601(s string) time.Time {
 	return t
 }
 
-func expandRules(ctx context.Context, in []LifecycleRuleModel) []s3types.LifecycleRule { //nolint:gocyclo
+func expandRules(ctx context.Context, in []LifecycleRuleModel) []s3types.LifecycleRule {
 	out := make([]s3types.LifecycleRule, 0, len(in))
 	for _, r := range in {
 		rule := s3types.LifecycleRule{
 			ID:     aws.String(r.ID.ValueString()),
 			Status: s3types.ExpirationStatus(r.Status.ValueString()),
 		}
-		if !r.Prefix.IsNull() {
-			rule.Prefix = aws.String(r.Prefix.ValueString()) //nolint:staticcheck
-		}
+		// The deprecated top-level Prefix field is intentionally not propagated
+		// to the API: CoreWeave AI Object Storage rejects requests that set it
+		// (it was a silent no-op before, now it's an explicit error). Users
+		// should use filter.prefix instead. We retain the value in state via
+		// flattenLifecycleRules so existing configs don't churn at plan time.
 		if r.Expiration != nil {
 			exp := s3types.LifecycleExpiration{}
 			if !r.Expiration.Date.IsNull() {
@@ -462,13 +472,12 @@ func hasNilPointer[T any](pointers ...*T) bool {
 	return false
 }
 
-// eqLifecycleRule compares two LifecycleRule objects for exact equality.
+// eqLifecycleRule compares two LifecycleRule objects for exact equality. The
+// deprecated top-level Prefix field is intentionally not compared — the
+// provider never sets it on the wire, so both sides are always empty.
 func eqLifecycleRule(a, b s3types.LifecycleRule) bool { //nolint:gocyclo
 	// Compare simple scalar fields via aws.ToString / string conversion
 	if aws.ToString(a.ID) != aws.ToString(b.ID) {
-		return false
-	}
-	if aws.ToString(a.Prefix) != aws.ToString(b.Prefix) { //nolint:staticcheck
 		return false
 	}
 	if string(a.Status) != string(b.Status) {
@@ -569,27 +578,64 @@ func eqLifecycleRule(a, b s3types.LifecycleRule) bool { //nolint:gocyclo
 	return true
 }
 
-func waitForLifecycleConfig(parentCtx context.Context, client *s3.Client, bucket string, expected s3types.BucketLifecycleConfiguration) (*s3.GetBucketLifecycleConfigurationOutput, error) {
+func putBucketLifecycleConfig(
+	ctx context.Context,
+	client bucketLifecycleConfigurationAPI,
+	bucket string,
+	input *s3.PutBucketLifecycleConfigurationInput,
+	options s3PhaseOptions,
+) error {
+	return runBucketMutationPhase(
+		ctx,
+		s3PhaseMetadata{phase: "bucket lifecycle configuration application", bucket: bucket},
+		options,
+		func(ctx context.Context) error {
+			_, err := client.PutBucketLifecycleConfiguration(ctx, input)
+			return err
+		},
+	)
+}
+
+func waitForLifecycleConfig(
+	ctx context.Context,
+	client bucketLifecycleConfigurationAPI,
+	bucket string,
+	expected s3types.BucketLifecycleConfiguration,
+	options s3PhaseOptions,
+) (*s3.GetBucketLifecycleConfigurationOutput, error) {
 	// make a sorted copy of expected rules
 	exp := slices.SortedFunc(slices.Values(expected.Rules), cmpLifecycleRule)
+	input := &s3.GetBucketLifecycleConfigurationInput{Bucket: aws.String(bucket)}
 
 	var out *s3.GetBucketLifecycleConfigurationOutput
-	err := coreweave.PollUntil("bucket lifecycle configuration", parentCtx, 5*time.Second, 5*time.Minute, func(ctx context.Context) (bool, error) {
-		result, err := client.GetBucketLifecycleConfiguration(ctx, &s3.GetBucketLifecycleConfigurationInput{Bucket: aws.String(bucket)})
-		if err != nil {
-			out = nil
-			if isTransientS3Error(err) {
+	err := runBucketReadbackPhase(
+		ctx,
+		s3PhaseMetadata{phase: "bucket lifecycle configuration readback", bucket: bucket},
+		options,
+		func(ctx context.Context) (bool, error) {
+			result, err := client.GetBucketLifecycleConfiguration(ctx, input)
+			if err != nil {
+				out = nil
+				return false, err
+			}
+			out = result
+			if result == nil {
 				return false, nil
 			}
-			return false, err
-		}
-		out = result
 
-		// Make sorted a copy of the slice to sort for comparison, to avoid mutating the returned slice by reference.
-		rules := slices.SortedFunc(slices.Values(result.Rules), cmpLifecycleRule)
-		return slices.EqualFunc(exp, rules, eqLifecycleRule), nil
-	})
+			// Make sorted a copy of the slice to sort for comparison, to avoid mutating the returned slice by reference.
+			rules := slices.SortedFunc(slices.Values(result.Rules), cmpLifecycleRule)
+			return slices.EqualFunc(exp, rules, eqLifecycleRule), nil
+		},
+	)
 	return out, err
+}
+
+func (r *BucketLifecycleResource) convergenceClient(ctx context.Context) (bucketLifecycleConfigurationAPI, error) {
+	if r.s3ClientForConvergence != nil {
+		return r.s3ClientForConvergence(ctx)
+	}
+	return r.client.S3Client(ctx, "")
 }
 
 func (r *BucketLifecycleResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
@@ -599,7 +645,7 @@ func (r *BucketLifecycleResource) Create(ctx context.Context, req resource.Creat
 		return
 	}
 
-	s3c, err := r.client.S3Client(ctx, "")
+	s3c, err := r.convergenceClient(ctx)
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to create S3 client", err.Error())
 		return
@@ -615,11 +661,13 @@ func (r *BucketLifecycleResource) Create(ctx context.Context, req resource.Creat
 	lifecycleConfig := &s3types.BucketLifecycleConfiguration{
 		Rules: rules,
 	}
-	_, err = s3c.PutBucketLifecycleConfiguration(ctx, &s3.PutBucketLifecycleConfigurationInput{
+	putInput := &s3.PutBucketLifecycleConfigurationInput{
 		Bucket:                 aws.String(data.Bucket.ValueString()),
 		LifecycleConfiguration: lifecycleConfig,
-	})
-	if err != nil {
+	}
+	propagationCtx, cancel := bucketPropagationContext(ctx)
+	defer cancel()
+	if err := putBucketLifecycleConfig(propagationCtx, s3c, data.Bucket.ValueString(), putInput, r.bucketPropagationOptions); err != nil {
 		handleS3Error(err, &resp.Diagnostics, data.Bucket.ValueString())
 		return
 	}
@@ -631,24 +679,52 @@ func (r *BucketLifecycleResource) Create(ctx context.Context, req resource.Creat
 	}
 
 	// wait for lifecycle config  to be read back from s3 API since it is not guaranteed to propagate immediately
-	if result, err := waitForLifecycleConfig(ctx, s3c, data.Bucket.ValueString(), *lifecycleConfig); err != nil {
+	if result, err := waitForLifecycleConfig(propagationCtx, s3c, data.Bucket.ValueString(), *lifecycleConfig, r.bucketPropagationOptions); err != nil {
 		handleS3Error(err, &resp.Diagnostics, data.Bucket.ValueString())
 		return
 	} else {
-		data.Rule = flattenLifecycleRules(result.Rules)
+		data.Rule = flattenLifecycleRules(result.Rules, data.Rule)
 	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-// flattenLifecycleRules turns AWS SDK LifecycleRule objects into our Terraform model.
-func flattenLifecycleRules(in []s3types.LifecycleRule) []LifecycleRuleModel {
+// flattenLifecycleRules turns AWS SDK LifecycleRule objects into our Terraform
+// model. The preserve argument is the prior model (plan or state) before the
+// API round-trip; it carries client-side-only fields that the API does not
+// echo back — currently just the deprecated rule.prefix.
+//
+// Matching is by rule ID first; for rules without an ID, we fall back to
+// positional alignment when the result and preserve lists have the same
+// length. The positional fallback only triggers when both sides are null at
+// position i (i.e. neither the prior model nor the API response identifies
+// the rule by ID), so it cannot accidentally cross-pollinate values between
+// distinguishable rules.
+func flattenLifecycleRules(in []s3types.LifecycleRule, preserve []LifecycleRuleModel) []LifecycleRuleModel {
+	preservedPrefix := make(map[string]types.String, len(preserve))
+	for _, p := range preserve {
+		if !isMissingRuleID(p.ID) {
+			preservedPrefix[p.ID.ValueString()] = p.Prefix
+		}
+	}
+	sameLength := len(in) == len(preserve)
+
 	out := make([]LifecycleRuleModel, 0, len(in))
-	for _, r := range in {
+	for i, r := range in {
 		mdl := LifecycleRuleModel{
 			ID:     types.StringPointerValue(r.ID),
-			Prefix: types.StringPointerValue(r.Prefix), //nolint:staticcheck
+			Prefix: types.StringNull(),
 			Status: types.StringValue(string(r.Status)),
+		}
+		if r.ID != nil && *r.ID != "" {
+			if pref, ok := preservedPrefix[*r.ID]; ok {
+				mdl.Prefix = pref
+			}
+		} else if sameLength && isMissingRuleID(preserve[i].ID) {
+			// Both sides have no ID at this position — positional alignment is
+			// the only signal we have, and it's safe because there's no other
+			// rule the preserved value could refer to.
+			mdl.Prefix = preserve[i].Prefix
 		}
 
 		if r.Expiration != nil {
@@ -714,7 +790,7 @@ func flattenLifecycleRules(in []s3types.LifecycleRule) []LifecycleRuleModel {
 			f.ObjectSizeLessThan = types.Int64PointerValue(r.Filter.ObjectSizeLessThan)
 			if r.Filter.And != nil {
 				and := AndFilterModel{
-					Prefix:                types.StringValue(aws.ToString(r.Filter.And.Prefix)),
+					Prefix:                types.StringPointerValue(r.Filter.And.Prefix),
 					ObjectSizeGreaterThan: types.Int64PointerValue(r.Filter.And.ObjectSizeGreaterThan),
 					ObjectSizeLessThan:    types.Int64PointerValue(r.Filter.And.ObjectSizeLessThan),
 				}
@@ -736,6 +812,10 @@ func flattenLifecycleRules(in []s3types.LifecycleRule) []LifecycleRuleModel {
 		out = append(out, mdl)
 	}
 	return out
+}
+
+func isMissingRuleID(id types.String) bool {
+	return id.IsNull() || id.IsUnknown() || id.ValueString() == ""
 }
 
 func (r *BucketLifecycleResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
@@ -765,7 +845,7 @@ func (r *BucketLifecycleResource) Read(ctx context.Context, req resource.ReadReq
 	}
 
 	// use our helper to flatten
-	data.Rule = flattenLifecycleRules(out.Rules)
+	data.Rule = flattenLifecycleRules(out.Rules, data.Rule)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -776,7 +856,7 @@ func (r *BucketLifecycleResource) Update(ctx context.Context, req resource.Updat
 		return
 	}
 
-	s3c, err := r.client.S3Client(ctx, "")
+	s3c, err := r.convergenceClient(ctx)
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to create S3 client", err.Error())
 		return
@@ -786,11 +866,13 @@ func (r *BucketLifecycleResource) Update(ctx context.Context, req resource.Updat
 	lifecycleConfig := &s3types.BucketLifecycleConfiguration{
 		Rules: rules,
 	}
-	_, err = s3c.PutBucketLifecycleConfiguration(ctx, &s3.PutBucketLifecycleConfigurationInput{
+	putInput := &s3.PutBucketLifecycleConfigurationInput{
 		Bucket:                 aws.String(data.Bucket.ValueString()),
 		LifecycleConfiguration: lifecycleConfig,
-	})
-	if err != nil {
+	}
+	propagationCtx, cancel := bucketPropagationContext(ctx)
+	defer cancel()
+	if err := putBucketLifecycleConfig(propagationCtx, s3c, data.Bucket.ValueString(), putInput, r.bucketPropagationOptions); err != nil {
 		handleS3Error(err, &resp.Diagnostics, data.Bucket.ValueString())
 		return
 	}
@@ -802,12 +884,12 @@ func (r *BucketLifecycleResource) Update(ctx context.Context, req resource.Updat
 	}
 
 	// wait for lifecycle config  to be read back from s3 API since it is not guaranteed to propagate immediately
-	if result, err := waitForLifecycleConfig(ctx, s3c, data.Bucket.ValueString(), *lifecycleConfig); err != nil {
+	if result, err := waitForLifecycleConfig(propagationCtx, s3c, data.Bucket.ValueString(), *lifecycleConfig, r.bucketPropagationOptions); err != nil {
 		handleS3Error(err, &resp.Diagnostics, data.Bucket.ValueString())
 		return
 	} else {
 		// Read the result back into state. Terraform will detect and fail if the state does not match the plan.
-		data.Rule = flattenLifecycleRules(result.Rules)
+		data.Rule = flattenLifecycleRules(result.Rules, data.Rule)
 	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
@@ -859,7 +941,7 @@ func (r *BucketLifecycleResource) ImportState(ctx context.Context, req resource.
 	}
 
 	// use our helper to flatten
-	data.Rule = flattenLifecycleRules(out.Rules)
+	data.Rule = flattenLifecycleRules(out.Rules, data.Rule)
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }

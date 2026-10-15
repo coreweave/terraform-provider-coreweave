@@ -3,12 +3,12 @@
 page_title: "coreweave_object_storage_organization_access_policy Resource - coreweave"
 subcategory: ""
 description: |-
-  Organization access policies https://docs.coreweave.com/docs/products/storage/object-storage/auth-access/organization-policies/about enforce permissions for AI Object Storage across your entire CoreWeave organization, automatically covering every resource, bucket, and user in your account. At least one organization access policy must be in place before you can create a bucket.
+  Organization access policies https://docs.coreweave.com/products/storage/object-storage/auth-access/organization-policies/about enforce permissions for AI Object Storage across your entire CoreWeave organization, automatically covering every resource, bucket, and user in your account. At least one organization access policy must be in place before you can create a bucket.
 ---
 
 # coreweave_object_storage_organization_access_policy (Resource)
 
-[Organization access policies](https://docs.coreweave.com/docs/products/storage/object-storage/auth-access/organization-policies/about) enforce permissions for AI Object Storage across your entire CoreWeave organization, automatically covering every resource, bucket, and user in your account. At least one organization access policy must be in place before you can create a bucket.
+[Organization access policies](https://docs.coreweave.com/products/storage/object-storage/auth-access/organization-policies/about) enforce permissions for AI Object Storage across your entire CoreWeave organization, automatically covering every resource, bucket, and user in your account. At least one organization access policy must be in place before you can create a bucket.
 
 ## Example Usage
 
@@ -46,12 +46,23 @@ Required:
 - `actions` (Set of String) Defines which operations the policy allows or denies. Organization access policies can include actions from two APIs - S3 (s3:*) and AI Object Storage API (cwobject:*). You can use wildcards (like s3:* or cwobject:*) to cover multiple actions at once.
 - `effect` (String) Must be either Allow or Deny (case-sensitive). Determines whether the statement grants or denies the specified actions on the listed resources for the designated principals. By default, all access is denied.
 - `name` (String) A short, human-readable identifier for this specific policy statement, similar to Sid in bucket access policies.
-- `principals` (Set of String) Defines which users, roles, or groups the policy applies to. Only short-form identifiers are supported. If you use a full ARN, the policy will fail with an error. See the [AI Object Storage documentation](https://docs.coreweave.com/docs/products/storage/object-storage/concepts/policies/organization-policies#resources) for guidelines on defining principals.
-- `resources` (Set of String) Defines which resources the policy applies to. See the [AI Object Storage documentation](https://docs.coreweave.com/docs/products/storage/object-storage/concepts/policies/organization-policies#resources) for guidelines on defining resources.
+- `principals` (Set of String) Defines which users, roles, or groups the policy applies to. Only short-form identifiers are supported. If you use a full ARN, the policy will fail with an error. See the [AI Object Storage documentation](https://docs.coreweave.com/products/storage/object-storage/auth-access/organization-policies/about) for guidelines on defining principals.
+- `resources` (Set of String) Defines which resources the policy applies to. See the [AI Object Storage documentation](https://docs.coreweave.com/products/storage/object-storage/auth-access/organization-policies/about) for guidelines on defining resources.
 
 ## Import
 
 Import is supported using the following syntax:
+
+In Terraform v1.5.0 and later, the [`import` block](https://developer.hashicorp.com/terraform/language/import) can be used with the `id` attribute, for example:
+
+```terraform
+import {
+  to = coreweave_object_storage_organization_access_policy.default
+  id = "{{name}}"
+}
+```
+
+The [`terraform import` command](https://developer.hashicorp.com/terraform/cli/commands/import) can be used, for example:
 
 ```shell
 terraform import coreweave_object_storage_organization_access_policy.default {{name}}

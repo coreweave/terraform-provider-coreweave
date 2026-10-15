@@ -1,0 +1,974 @@
+package inference
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"time"
+
+	inferencev1 "buf.build/gen/go/coreweave/inference/protocolbuffers/go/coreweave/inference/v1alpha1"
+	"github.com/coreweave/terraform-provider-coreweave/coreweave"
+	"github.com/hashicorp/terraform-plugin-framework-nettypes/cidrtypes"
+	"github.com/hashicorp/terraform-plugin-framework-validators/resourcevalidator"
+	"github.com/hashicorp/terraform-plugin-framework-validators/setvalidator"
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/path"
+	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
+	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-log/tflog"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/retry"
+)
+
+var (
+	_ resource.Resource                     = &InferenceGatewayResource{}
+	_ resource.ResourceWithImportState      = &InferenceGatewayResource{}
+	_ resource.ResourceWithConfigValidators = &InferenceGatewayResource{}
+
+	errGatewayFailed = errors.New("inference gateway entered a failed state")
+)
+
+func NewInferenceGatewayResource() resource.Resource {
+	return &InferenceGatewayResource{}
+}
+
+type InferenceGatewayResource struct {
+	client *coreweave.InferenceClient
+}
+
+// Nested model types.
+
+type CoreWeaveAuthModel struct{}
+
+type WeightsAndBiasesAuthModel struct {
+	APIKey             types.String `tfsdk:"api_key"`
+	ServerURL          types.String `tfsdk:"server_url"`
+	EnableUsageReports types.Bool   `tfsdk:"enable_usage_reports"`
+	EnableRateLimiting types.Bool   `tfsdk:"enable_rate_limiting"`
+}
+
+type GatewayAuthModel struct {
+	CoreWeave        *CoreWeaveAuthModel        `tfsdk:"coreweave"`
+	WeightsAndBiases *WeightsAndBiasesAuthModel `tfsdk:"weights_and_biases"`
+}
+
+type BodyBasedRoutingModel struct {
+	APIType types.String `tfsdk:"api_type"`
+}
+
+type HeaderBasedRoutingModel struct {
+	HeaderName types.String `tfsdk:"header_name"`
+}
+
+type PathBasedRoutingModel struct{}
+
+type GatewayRoutingModel struct {
+	BodyBased   *BodyBasedRoutingModel   `tfsdk:"body_based"`
+	HeaderBased *HeaderBasedRoutingModel `tfsdk:"header_based"`
+	PathBased   *PathBasedRoutingModel   `tfsdk:"path_based"`
+}
+
+type EndpointConfigurationModel struct {
+	AdditionalDNS         types.Set    `tfsdk:"additional_dns"`
+	EdgeProxyMode         types.String `tfsdk:"edge_proxy_mode"`
+	AllowedSourceIPRanges types.Set    `tfsdk:"allowed_source_ip_ranges"`
+}
+
+// InferenceGatewayResourceModel is the top-level Terraform state model.
+type InferenceGatewayResourceModel struct {
+	// Computed
+	ID             types.String `tfsdk:"id"`
+	OrganizationID types.String `tfsdk:"organization_id"`
+	Status         types.String `tfsdk:"status"`
+	CreatedAt      types.String `tfsdk:"created_at"`
+	UpdatedAt      types.String `tfsdk:"updated_at"`
+	Conditions     types.List   `tfsdk:"conditions"`
+	Endpoints      types.Set    `tfsdk:"endpoints"`
+	// Required / Optional
+	Name                  types.String                `tfsdk:"name"`
+	Zones                 types.Set                   `tfsdk:"zones"`
+	Auth                  *GatewayAuthModel           `tfsdk:"auth"`
+	Routing               *GatewayRoutingModel        `tfsdk:"routing"`
+	EndpointConfiguration *EndpointConfigurationModel `tfsdk:"endpoint_configuration"`
+}
+
+func (r *InferenceGatewayResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
+	resp.TypeName = req.ProviderTypeName + "_inference_gateway"
+}
+
+func (r *InferenceGatewayResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
+	resp.Schema = schema.Schema{
+		MarkdownDescription: "Create and manage [CoreWeave Managed Inference](https://docs.coreweave.com/products/inference) gateways. See [gateways](https://docs.coreweave.com/products/inference/gateways) for authentication and routing details.",
+		Attributes: map[string]schema.Attribute{
+			"id": schema.StringAttribute{
+				Computed:            true,
+				MarkdownDescription: "The unique identifier of the gateway.",
+				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"organization_id": schema.StringAttribute{
+				Computed:            true,
+				MarkdownDescription: "The organization ID that owns the gateway.",
+				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"status": schema.StringAttribute{
+				Computed:            true,
+				MarkdownDescription: "The current status of the gateway. See the [Inference API overview](https://docs.coreweave.com/products/inference/reference/api-overview) for status values.",
+				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"created_at": schema.StringAttribute{
+				Computed:            true,
+				MarkdownDescription: "RFC3339 timestamp of when the gateway was created.",
+				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"updated_at": schema.StringAttribute{
+				Computed:            true,
+				MarkdownDescription: "RFC3339 timestamp of when the gateway was last updated.",
+				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
+			},
+			"conditions": schema.ListNestedAttribute{
+				Computed:            true,
+				MarkdownDescription: "Detailed status conditions for the gateway.",
+				PlanModifiers:       []planmodifier.List{listplanmodifier.UseStateForUnknown()},
+				NestedObject: schema.NestedAttributeObject{
+					Attributes: map[string]schema.Attribute{
+						"type": schema.StringAttribute{
+							Computed:            true,
+							MarkdownDescription: "The condition type (e.g. `Ready`, `Progressing`).",
+						},
+						"status": schema.StringAttribute{
+							Computed:            true,
+							MarkdownDescription: "The condition status (`True`, `False`, or `Unknown`).",
+						},
+						"last_update_time": schema.StringAttribute{
+							Computed:            true,
+							MarkdownDescription: "RFC3339 timestamp of the last condition transition.",
+						},
+						"reason": schema.StringAttribute{
+							Computed:            true,
+							MarkdownDescription: "A short, machine-readable reason for the condition's last transition.",
+						},
+						"message": schema.StringAttribute{
+							Computed:            true,
+							MarkdownDescription: "A human-readable message about the condition's last transition.",
+						},
+					},
+				},
+			},
+			"endpoints": schema.SetAttribute{
+				Computed:            true,
+				ElementType:         types.StringType,
+				MarkdownDescription: "The endpoint URIs for the gateway.",
+			},
+			"name": schema.StringAttribute{
+				Required:            true,
+				MarkdownDescription: "The human-readable name of the gateway. Capped at 38 characters so the derived public FQDN fits within the 64-character X.509 Common Name limit.",
+				PlanModifiers:       []planmodifier.String{stringplanmodifier.RequiresReplace()},
+				Validators: []validator.String{
+					stringvalidator.LengthAtMost(38),
+				},
+			},
+			"zones": schema.SetAttribute{
+				ElementType:         types.StringType,
+				Required:            true,
+				MarkdownDescription: "The zones to make the gateway available in. Limits where deployments associated with the gateway may exist.",
+				Validators: []validator.Set{
+					setvalidator.SizeAtLeast(1),
+				},
+			},
+			"auth": schema.SingleNestedAttribute{
+				Required:            true,
+				MarkdownDescription: "The [authentication configuration](https://docs.coreweave.com/products/inference/gateways) for the gateway. Exactly one of `coreweave` or `weights_and_biases` must be specified.",
+				Attributes: map[string]schema.Attribute{
+					"coreweave": schema.SingleNestedAttribute{
+						Optional:            true,
+						MarkdownDescription: "Use CoreWeave IAM authentication.",
+						Attributes:          map[string]schema.Attribute{},
+					},
+					"weights_and_biases": schema.SingleNestedAttribute{
+						Optional:            true,
+						MarkdownDescription: "Use [Weights & Biases authentication](https://docs.coreweave.com/products/inference/gateways#w&b-authentication).",
+						Attributes: map[string]schema.Attribute{
+							"api_key": schema.StringAttribute{
+								Optional:            true,
+								Sensitive:           true,
+								MarkdownDescription: "The organization API key for Weights & Biases. Requires `server_url` to also be set.",
+								Validators: []validator.String{
+									stringvalidator.AlsoRequires(path.MatchRelative().AtParent().AtName("server_url")),
+								},
+							},
+							"server_url": schema.StringAttribute{
+								Optional:            true,
+								MarkdownDescription: "The Weights & Biases server URL. Defaults to the shared SaaS instance if not set.",
+							},
+							"enable_usage_reports": schema.BoolAttribute{
+								Optional:            true,
+								MarkdownDescription: "Whether to send usage data to Weights & Biases.",
+							},
+							"enable_rate_limiting": schema.BoolAttribute{
+								Optional:            true,
+								MarkdownDescription: "Whether to enable Weights & Biases controlled rate limiting.",
+							},
+						},
+					},
+				},
+			},
+			"routing": schema.SingleNestedAttribute{
+				Required:            true,
+				MarkdownDescription: "The [routing configuration](https://docs.coreweave.com/products/inference/gateways) for the gateway. Exactly one of `body_based`, `header_based`, or `path_based` must be specified.",
+				Attributes: map[string]schema.Attribute{
+					"body_based": schema.SingleNestedAttribute{
+						Optional:            true,
+						MarkdownDescription: "Body-based routing configuration. Routes requests based on the request body content.",
+						Attributes: map[string]schema.Attribute{
+							"api_type": schema.StringAttribute{
+								Required:            true,
+								MarkdownDescription: fmt.Sprintf("The well-known API type for routing. Must be one of: %s.", coreweave.EnumMarkdownValues(inferencev1.BodyBasedRouting_APIType_name, true)),
+								Validators: []validator.String{
+									stringvalidator.OneOf(coreweave.EnumValues(inferencev1.BodyBasedRouting_APIType_name, true)...),
+								},
+							},
+						},
+					},
+					"header_based": schema.SingleNestedAttribute{
+						Optional:            true,
+						MarkdownDescription: "Header-based routing configuration. Routes requests using a header value to match the model by name.",
+						Attributes: map[string]schema.Attribute{
+							"header_name": schema.StringAttribute{
+								Required:            true,
+								MarkdownDescription: "The name of the header to use for routing.",
+								Validators: []validator.String{
+									stringvalidator.LengthBetween(1, 100),
+								},
+							},
+						},
+					},
+					"path_based": schema.SingleNestedAttribute{
+						Optional:            true,
+						MarkdownDescription: "Path-based routing configuration. Routes requests based on the URL path.",
+						Attributes:          map[string]schema.Attribute{},
+					},
+				},
+			},
+			"endpoint_configuration": schema.SingleNestedAttribute{
+				Optional:            true,
+				MarkdownDescription: "Additional endpoint configuration options.",
+				Attributes: map[string]schema.Attribute{
+					"additional_dns": schema.SetAttribute{
+						ElementType:         types.StringType,
+						Optional:            true,
+						MarkdownDescription: "Additional DNS names for the gateway endpoint. These DNS names must be manually configured to point to the gateway endpoint.",
+					},
+					"edge_proxy_mode": schema.StringAttribute{
+						Optional:            true,
+						MarkdownDescription: "How client traffic reaches the gateway. Must be one of: `EDGE_PROXY_MODE_MANAGED` (traffic is proxied through CoreWeave's managed edge network: DDoS mitigation and WAF, with TLS terminated at the edge and the origin address kept out of public DNS) or `EDGE_PROXY_MODE_DIRECT` (clients connect straight to the gateway's load balancer, with no edge filtering and the load balancer address published in DNS). When unset, the platform default (currently `EDGE_PROXY_MODE_MANAGED`) applies.",
+						Validators: []validator.String{
+							stringvalidator.OneOf(coreweave.EnumValues(inferencev1.EdgeProxyMode_name, true)...),
+						},
+					},
+					"allowed_source_ip_ranges": schema.SetAttribute{
+						ElementType:         cidrtypes.IPPrefixType{},
+						Optional:            true,
+						MarkdownDescription: "Client source IP ranges permitted to reach the gateway, in CIDR notation (IPv4 or IPv6). Up to 50 entries; an empty list applies no source restriction. Use a full-length prefix for a single address (e.g. `203.0.113.5/32`).",
+						Validators: []validator.Set{
+							setvalidator.SizeAtMost(50),
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+func (r *InferenceGatewayResource) ConfigValidators(_ context.Context) []resource.ConfigValidator {
+	return []resource.ConfigValidator{
+		resourcevalidator.ExactlyOneOf(
+			path.MatchRoot("auth").AtName("coreweave"),
+			path.MatchRoot("auth").AtName("weights_and_biases"),
+		),
+		resourcevalidator.ExactlyOneOf(
+			path.MatchRoot("routing").AtName("body_based"),
+			path.MatchRoot("routing").AtName("header_based"),
+			path.MatchRoot("routing").AtName("path_based"),
+		),
+	}
+}
+
+func (r *InferenceGatewayResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+	if req.ProviderData == nil {
+		return
+	}
+
+	client, ok := req.ProviderData.(*coreweave.Client)
+	if !ok {
+		resp.Diagnostics.AddError(
+			"Unexpected Resource Configure Type",
+			fmt.Sprintf("Expected *coreweave.Client, got: %T. Please report this issue to the provider developers.", req.ProviderData),
+		)
+		return
+	}
+
+	r.client = client.Inference
+}
+
+func (r *InferenceGatewayResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
+	var data InferenceGatewayResourceModel
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	createReq, diags := toCreateGatewayRequest(ctx, &data)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	createResp, err := r.client.CreateGateway(ctx, createReq)
+	if err != nil {
+		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
+		return
+	}
+
+	// Save initial state before polling so the resource is tracked even if polling fails.
+	resp.Diagnostics.Append(setFromGateway(&data, createResp.Gateway, false)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	gatewayID := createResp.Gateway.GetSpec().GetId()
+
+	conf := retry.StateChangeConf{
+		Pending: []string{
+			inferencev1.Status_STATUS_CREATING.String(),
+			inferencev1.Status_STATUS_UNSPECIFIED.String(),
+		},
+		Target: []string{inferencev1.Status_STATUS_READY.String()},
+		Refresh: func() (interface{}, string, error) {
+			getResp, err := r.client.GetGateway(ctx, &inferencev1.GetGatewayRequest{
+				Id: gatewayID,
+			})
+			if err != nil {
+				tflog.Error(ctx, "failed to poll gateway", map[string]interface{}{"error": err.Error()})
+				return nil, inferencev1.Status_STATUS_UNSPECIFIED.String(), err
+			}
+			gw := getResp.Gateway
+			status := gw.GetStatus().GetStatus()
+			if status == inferencev1.Status_STATUS_ERROR || status == inferencev1.Status_STATUS_FAILED {
+				return gw, status.String(), errGatewayFailed
+			}
+			return gw, status.String(), nil
+		},
+		Timeout:    45 * time.Minute,
+		MinTimeout: 5 * time.Second,
+	}
+
+	raw, err := conf.WaitForStateContext(ctx)
+	if err != nil && !errors.Is(err, errGatewayFailed) {
+		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
+		return
+	}
+
+	gw, ok := raw.(*inferencev1.Gateway)
+	if !ok {
+		resp.Diagnostics.AddError("Unexpected polling result type", "Expected *inferencev1.Gateway. Please report this issue to the provider developers.")
+		return
+	}
+
+	if gw.GetStatus().GetStatus() == inferencev1.Status_STATUS_ERROR ||
+		gw.GetStatus().GetStatus() == inferencev1.Status_STATUS_FAILED {
+		resp.Diagnostics.AddError("Gateway creation failed",
+			fmt.Sprintf("Gateway entered status %s. You must destroy and recreate this resource.", gw.GetStatus().GetStatus().String()))
+		return
+	}
+
+	resp.Diagnostics.Append(setFromGateway(&data, gw, false)...)
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+}
+
+func (r *InferenceGatewayResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
+	var data InferenceGatewayResourceModel
+	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	getResp, err := r.client.GetGateway(ctx, &inferencev1.GetGatewayRequest{
+		Id: data.ID.ValueString(),
+	})
+	if err != nil {
+		if coreweave.IsNotFoundError(err) {
+			resp.State.RemoveResource(ctx)
+			return
+		}
+		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
+		return
+	}
+
+	resp.Diagnostics.Append(setFromGateway(&data, getResp.Gateway, false)...)
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+}
+
+func (r *InferenceGatewayResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
+	var data InferenceGatewayResourceModel
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	updateReq, diags := toUpdateGatewayRequest(ctx, &data)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	updateResp, err := r.client.UpdateGateway(ctx, updateReq)
+	if err != nil {
+		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
+		return
+	}
+
+	// Save intermediate state before polling so an in-flight update is not lost
+	// if polling fails or times out.
+	resp.Diagnostics.Append(setFromGateway(&data, updateResp.Gateway, true)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	gatewayID := updateResp.Gateway.GetSpec().GetId()
+
+	conf := retry.StateChangeConf{
+		Pending: []string{
+			inferencev1.Status_STATUS_UPDATING.String(),
+			inferencev1.Status_STATUS_CREATING.String(),
+			inferencev1.Status_STATUS_UNSPECIFIED.String(),
+		},
+		Target: []string{inferencev1.Status_STATUS_READY.String()},
+		Refresh: func() (interface{}, string, error) {
+			getResp, err := r.client.GetGateway(ctx, &inferencev1.GetGatewayRequest{
+				Id: gatewayID,
+			})
+			if err != nil {
+				tflog.Error(ctx, "failed to poll gateway", map[string]interface{}{"error": err.Error()})
+				return nil, inferencev1.Status_STATUS_UNSPECIFIED.String(), err
+			}
+			gw := getResp.Gateway
+			status := gw.GetStatus().GetStatus()
+			if status == inferencev1.Status_STATUS_ERROR || status == inferencev1.Status_STATUS_FAILED {
+				return gw, status.String(), errGatewayFailed
+			}
+			return gw, status.String(), nil
+		},
+		Timeout:    20 * time.Minute,
+		MinTimeout: 5 * time.Second,
+	}
+
+	raw, err := conf.WaitForStateContext(ctx)
+	if err != nil && !errors.Is(err, errGatewayFailed) {
+		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
+		return
+	}
+
+	gw, ok := raw.(*inferencev1.Gateway)
+	if !ok {
+		resp.Diagnostics.AddError("Unexpected polling result type", "Expected *inferencev1.Gateway. Please report this issue to the provider developers.")
+		return
+	}
+
+	if gw.GetStatus().GetStatus() == inferencev1.Status_STATUS_ERROR ||
+		gw.GetStatus().GetStatus() == inferencev1.Status_STATUS_FAILED {
+		resp.Diagnostics.AddError("Gateway update failed",
+			fmt.Sprintf("Gateway entered status %s. Check the `conditions` attribute for details.", gw.GetStatus().GetStatus().String()))
+		return
+	}
+
+	resp.Diagnostics.Append(setFromGateway(&data, gw, true)...)
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+}
+
+func (r *InferenceGatewayResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+	var data InferenceGatewayResourceModel
+	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	gatewayID := data.ID.ValueString()
+
+	_, err := r.client.DeleteGateway(ctx, &inferencev1.DeleteGatewayRequest{
+		Id: gatewayID,
+	})
+	if err != nil {
+		if coreweave.IsNotFoundError(err) {
+			return
+		}
+		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
+		return
+	}
+
+	// deletedState is a synthetic target state returned when CodeNotFound is received,
+	// since the inference proto has no STATUS_DELETED enum value.
+	// TODO: follow up with the managed inference team to add STATUS_DELETED to the proto
+	// so deletion can be polled deterministically via status rather than CodeNotFound.
+	const deletedState = "NOT_FOUND"
+
+	conf := retry.StateChangeConf{
+		Pending: []string{
+			inferencev1.Status_STATUS_DELETING.String(),
+			inferencev1.Status_STATUS_UNSPECIFIED.String(),
+		},
+		Target: []string{deletedState},
+		Refresh: func() (interface{}, string, error) {
+			getResp, err := r.client.GetGateway(ctx, &inferencev1.GetGatewayRequest{
+				Id: gatewayID,
+			})
+			if err != nil {
+				if coreweave.IsNotFoundError(err) {
+					return struct{}{}, deletedState, nil
+				}
+				tflog.Error(ctx, "failed to poll gateway deletion", map[string]interface{}{"error": err.Error()})
+				return nil, inferencev1.Status_STATUS_UNSPECIFIED.String(), err
+			}
+			gw := getResp.Gateway
+			return gw, gw.GetStatus().GetStatus().String(), nil
+		},
+		Timeout:    20 * time.Minute,
+		MinTimeout: 5 * time.Second,
+	}
+
+	_, err = conf.WaitForStateContext(ctx)
+	if err != nil {
+		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
+		return
+	}
+}
+
+func (r *InferenceGatewayResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
+}
+
+// --- Helpers ---
+
+// gatewayFields holds the fields shared between CreateGatewayRequest and UpdateGatewayRequest.
+type gatewayFields struct {
+	Name                  string
+	Zones                 []string
+	EndpointConfiguration *inferencev1.EndpointConfiguration
+}
+
+// buildGatewayFields extracts the common fields from the Terraform resource model.
+func buildGatewayFields(ctx context.Context, m *InferenceGatewayResourceModel) (gatewayFields, diag.Diagnostics) {
+	var diagnostics diag.Diagnostics
+
+	zones := []string{}
+	diagnostics.Append(m.Zones.ElementsAs(ctx, &zones, false)...)
+	if diagnostics.HasError() {
+		return gatewayFields{}, diagnostics
+	}
+
+	f := gatewayFields{
+		Name:  m.Name.ValueString(),
+		Zones: zones,
+	}
+
+	// Only attach an EndpointConfiguration when at least one of its fields is
+	// explicitly configured. Sending an empty EndpointConfiguration is
+	// non-destructive (the API merges DNS records rather than replacing them),
+	// but it muddies the wire payload for `endpoint_configuration {}` configs
+	// that set no fields.
+	if m.EndpointConfiguration != nil {
+		ec := &inferencev1.EndpointConfiguration{}
+		var populated bool
+
+		if s := m.EndpointConfiguration.AdditionalDNS; !s.IsNull() && !s.IsUnknown() {
+			dns := []string{}
+			diagnostics.Append(s.ElementsAs(ctx, &dns, false)...)
+			if diagnostics.HasError() {
+				return gatewayFields{}, diagnostics
+			}
+			ec.AdditionalDns = dns
+			populated = true
+		}
+
+		if mode := m.EndpointConfiguration.EdgeProxyMode; !mode.IsNull() && !mode.IsUnknown() {
+			val, ok := inferencev1.EdgeProxyMode_value[mode.ValueString()]
+			if !ok {
+				diagnostics.AddError("Invalid edge_proxy_mode", fmt.Sprintf("Invalid edge_proxy_mode: %s. Must be one of: %s.", mode.ValueString(), coreweave.EnumMarkdownValues(inferencev1.EdgeProxyMode_name, true)))
+				return gatewayFields{}, diagnostics
+			}
+			ec.EdgeProxyMode = inferencev1.EdgeProxyMode(val)
+			populated = true
+		}
+
+		if s := m.EndpointConfiguration.AllowedSourceIPRanges; !s.IsNull() && !s.IsUnknown() {
+			ranges := []cidrtypes.IPPrefix{}
+			diagnostics.Append(s.ElementsAs(ctx, &ranges, false)...)
+			if diagnostics.HasError() {
+				return gatewayFields{}, diagnostics
+			}
+			ec.AllowedSourceIpRanges = make([]string, len(ranges))
+			for i, r := range ranges {
+				ec.AllowedSourceIpRanges[i] = r.ValueString()
+			}
+			populated = true
+		}
+
+		if populated {
+			f.EndpointConfiguration = ec
+		}
+	}
+
+	return f, diagnostics
+}
+
+func toCreateGatewayRequest(ctx context.Context, m *InferenceGatewayResourceModel) (*inferencev1.CreateGatewayRequest, diag.Diagnostics) {
+	f, diags := buildGatewayFields(ctx, m)
+	if diags.HasError() {
+		return nil, diags
+	}
+
+	req := &inferencev1.CreateGatewayRequest{
+		Name:                  f.Name,
+		Zones:                 f.Zones,
+		EndpointConfiguration: f.EndpointConfiguration,
+	}
+
+	// Auth oneof
+	if m.Auth.CoreWeave != nil {
+		req.Auth = &inferencev1.CreateGatewayRequest_CoreWeaveAuth{
+			CoreWeaveAuth: &inferencev1.CoreWeaveAuth{},
+		}
+	} else if m.Auth.WeightsAndBiases != nil {
+		wb := &inferencev1.WeightsAndBiasesAuth{}
+		if !m.Auth.WeightsAndBiases.APIKey.IsNull() && !m.Auth.WeightsAndBiases.APIKey.IsUnknown() {
+			wb.ApiKey = m.Auth.WeightsAndBiases.APIKey.ValueString()
+		}
+		if !m.Auth.WeightsAndBiases.ServerURL.IsNull() && !m.Auth.WeightsAndBiases.ServerURL.IsUnknown() {
+			wb.ServerUrl = m.Auth.WeightsAndBiases.ServerURL.ValueString()
+		}
+		if !m.Auth.WeightsAndBiases.EnableUsageReports.IsNull() && !m.Auth.WeightsAndBiases.EnableUsageReports.IsUnknown() {
+			wb.EnableUsageReports = m.Auth.WeightsAndBiases.EnableUsageReports.ValueBool()
+		}
+		if !m.Auth.WeightsAndBiases.EnableRateLimiting.IsNull() && !m.Auth.WeightsAndBiases.EnableRateLimiting.IsUnknown() {
+			wb.EnableRateLimiting = m.Auth.WeightsAndBiases.EnableRateLimiting.ValueBool()
+		}
+		req.Auth = &inferencev1.CreateGatewayRequest_WeightsAndBiasesAuth{
+			WeightsAndBiasesAuth: wb,
+		}
+	}
+
+	// Routing oneof
+	switch {
+	case m.Routing.BodyBased != nil:
+		apiType, apiDiags := apiTypeFromModel(m.Routing.BodyBased)
+		diags.Append(apiDiags...)
+		req.Routing = &inferencev1.CreateGatewayRequest_BodyBasedRouting{
+			BodyBasedRouting: &inferencev1.BodyBasedRouting{
+				ApiType: apiType,
+			},
+		}
+	case m.Routing.HeaderBased != nil:
+		req.Routing = &inferencev1.CreateGatewayRequest_HeaderBasedRouting{
+			HeaderBasedRouting: &inferencev1.HeaderBasedRouting{
+				HeaderName: m.Routing.HeaderBased.HeaderName.ValueString(),
+			},
+		}
+	case m.Routing.PathBased != nil:
+		req.Routing = &inferencev1.CreateGatewayRequest_PathBasedRouting{
+			PathBasedRouting: &inferencev1.PathBasedRouting{},
+		}
+	}
+
+	return req, diags
+}
+
+func toUpdateGatewayRequest(ctx context.Context, m *InferenceGatewayResourceModel) (*inferencev1.UpdateGatewayRequest, diag.Diagnostics) {
+	f, diags := buildGatewayFields(ctx, m)
+	if diags.HasError() {
+		return nil, diags
+	}
+
+	req := &inferencev1.UpdateGatewayRequest{
+		Id:                    m.ID.ValueString(),
+		Name:                  f.Name,
+		Zones:                 f.Zones,
+		EndpointConfiguration: f.EndpointConfiguration,
+	}
+
+	// Auth oneof
+	if m.Auth.CoreWeave != nil {
+		req.Auth = &inferencev1.UpdateGatewayRequest_CoreWeaveAuth{
+			CoreWeaveAuth: &inferencev1.CoreWeaveAuth{},
+		}
+	} else if m.Auth.WeightsAndBiases != nil {
+		wb := &inferencev1.WeightsAndBiasesAuth{}
+		if !m.Auth.WeightsAndBiases.APIKey.IsNull() && !m.Auth.WeightsAndBiases.APIKey.IsUnknown() {
+			wb.ApiKey = m.Auth.WeightsAndBiases.APIKey.ValueString()
+		}
+		if !m.Auth.WeightsAndBiases.ServerURL.IsNull() && !m.Auth.WeightsAndBiases.ServerURL.IsUnknown() {
+			wb.ServerUrl = m.Auth.WeightsAndBiases.ServerURL.ValueString()
+		}
+		if !m.Auth.WeightsAndBiases.EnableUsageReports.IsNull() && !m.Auth.WeightsAndBiases.EnableUsageReports.IsUnknown() {
+			wb.EnableUsageReports = m.Auth.WeightsAndBiases.EnableUsageReports.ValueBool()
+		}
+		if !m.Auth.WeightsAndBiases.EnableRateLimiting.IsNull() && !m.Auth.WeightsAndBiases.EnableRateLimiting.IsUnknown() {
+			wb.EnableRateLimiting = m.Auth.WeightsAndBiases.EnableRateLimiting.ValueBool()
+		}
+		req.Auth = &inferencev1.UpdateGatewayRequest_WeightsAndBiasesAuth{
+			WeightsAndBiasesAuth: wb,
+		}
+	}
+
+	// Routing oneof
+	switch {
+	case m.Routing.BodyBased != nil:
+		apiType, apiDiags := apiTypeFromModel(m.Routing.BodyBased)
+		diags.Append(apiDiags...)
+		req.Routing = &inferencev1.UpdateGatewayRequest_BodyBasedRouting{
+			BodyBasedRouting: &inferencev1.BodyBasedRouting{
+				ApiType: apiType,
+			},
+		}
+	case m.Routing.HeaderBased != nil:
+		req.Routing = &inferencev1.UpdateGatewayRequest_HeaderBasedRouting{
+			HeaderBasedRouting: &inferencev1.HeaderBasedRouting{
+				HeaderName: m.Routing.HeaderBased.HeaderName.ValueString(),
+			},
+		}
+	case m.Routing.PathBased != nil:
+		req.Routing = &inferencev1.UpdateGatewayRequest_PathBasedRouting{
+			PathBasedRouting: &inferencev1.PathBasedRouting{},
+		}
+	}
+
+	return req, diags
+}
+
+// emptyOrNullSet returns the value to store for an optional set attribute when the API returned
+// no elements: an empty set if the prior config/state held one (an explicit `[]`), otherwise
+// null. Preserving this distinction keeps the applied state consistent with the plan for both
+// `= []` and unset configs, avoiding Terraform's "inconsistent result after apply" error.
+func emptyOrNullSet(elemType attr.Type, prior types.Set) types.Set {
+	if !prior.IsNull() && !prior.IsUnknown() {
+		return types.SetValueMust(elemType, []attr.Value{})
+	}
+	return types.SetNull(elemType)
+}
+
+// setFromGateway populates all fields on the model from a proto Gateway response.
+// For Optional (non-Computed) fields, null is preserved when the plan/state was null and the
+// API returns the default (zero/empty) value.
+//
+// When preserveStatusFields is true, the observed status fields (status, updated_at,
+// conditions) are left untouched on the model. These fields carry UseStateForUnknown plan
+// modifiers, so during Update the plan holds their prior-state values; overwriting them with
+// the fresh API response would violate Terraform's plan/apply consistency check. Read always
+// refreshes them (preserveStatusFields=false).
+//
+//nolint:gocyclo
+func setFromGateway(m *InferenceGatewayResourceModel, gw *inferencev1.Gateway, preserveStatusFields bool) (diagnostics diag.Diagnostics) {
+	spec := gw.GetSpec()
+	status := gw.GetStatus()
+
+	m.ID = types.StringValue(spec.GetId())
+	m.OrganizationID = types.StringValue(spec.GetOrganizationId())
+	m.Name = types.StringValue(spec.GetName())
+
+	if !preserveStatusFields {
+		m.Status = types.StringValue(status.GetStatus().String())
+	}
+
+	if status.GetCreatedAt() != nil {
+		m.CreatedAt = types.StringValue(status.GetCreatedAt().AsTime().Format(time.RFC3339))
+	}
+	if !preserveStatusFields && status.GetUpdatedAt() != nil {
+		m.UpdatedAt = types.StringValue(status.GetUpdatedAt().AsTime().Format(time.RFC3339))
+	}
+
+	// zones
+	zoneVals := make([]attr.Value, len(spec.GetZones()))
+	for i, z := range spec.GetZones() {
+		zoneVals[i] = types.StringValue(z)
+	}
+	zoneSet, diags := types.SetValue(types.StringType, zoneVals)
+	diagnostics.Append(diags...)
+	m.Zones = zoneSet
+
+	// auth — type switch on oneof
+	switch spec.GetAuth().(type) {
+	case *inferencev1.GatewaySpec_CoreWeaveAuth:
+		m.Auth = &GatewayAuthModel{
+			CoreWeave:        &CoreWeaveAuthModel{},
+			WeightsAndBiases: nil,
+		}
+	case *inferencev1.GatewaySpec_WeightsAndBiasesAuth:
+		wb := spec.GetWeightsAndBiasesAuth()
+		wbModel := &WeightsAndBiasesAuthModel{}
+
+		// Null preservation: if state was null and API returns zero/empty, keep null.
+		priorWB := (*WeightsAndBiasesAuthModel)(nil)
+		if m.Auth != nil {
+			priorWB = m.Auth.WeightsAndBiases
+		}
+
+		if priorWB != nil && priorWB.APIKey.IsNull() && wb.GetApiKey() == "" {
+			wbModel.APIKey = types.StringNull()
+		} else {
+			wbModel.APIKey = types.StringValue(wb.GetApiKey())
+		}
+
+		if priorWB != nil && priorWB.ServerURL.IsNull() && wb.GetServerUrl() == "" {
+			wbModel.ServerURL = types.StringNull()
+		} else {
+			wbModel.ServerURL = types.StringValue(wb.GetServerUrl())
+		}
+
+		if priorWB != nil && priorWB.EnableUsageReports.IsNull() && !wb.GetEnableUsageReports() {
+			wbModel.EnableUsageReports = types.BoolNull()
+		} else {
+			wbModel.EnableUsageReports = types.BoolValue(wb.GetEnableUsageReports())
+		}
+
+		if priorWB != nil && priorWB.EnableRateLimiting.IsNull() && !wb.GetEnableRateLimiting() {
+			wbModel.EnableRateLimiting = types.BoolNull()
+		} else {
+			wbModel.EnableRateLimiting = types.BoolValue(wb.GetEnableRateLimiting())
+		}
+
+		m.Auth = &GatewayAuthModel{
+			CoreWeave:        nil,
+			WeightsAndBiases: wbModel,
+		}
+	default:
+		// If the API returns an unrecognized auth variant, clear auth.
+		m.Auth = nil
+	}
+
+	// routing — type switch on oneof
+	switch spec.GetRouting().(type) {
+	case *inferencev1.GatewaySpec_BodyBasedRouting:
+		bbr := spec.GetBodyBasedRouting()
+		m.Routing = &GatewayRoutingModel{
+			BodyBased: &BodyBasedRoutingModel{
+				APIType: types.StringValue(bbr.GetApiType().String()),
+			},
+			HeaderBased: nil,
+			PathBased:   nil,
+		}
+	case *inferencev1.GatewaySpec_HeaderBasedRouting:
+		hbr := spec.GetHeaderBasedRouting()
+		m.Routing = &GatewayRoutingModel{
+			BodyBased: nil,
+			HeaderBased: &HeaderBasedRoutingModel{
+				HeaderName: types.StringValue(hbr.GetHeaderName()),
+			},
+			PathBased: nil,
+		}
+	case *inferencev1.GatewaySpec_PathBasedRouting:
+		m.Routing = &GatewayRoutingModel{
+			BodyBased:   nil,
+			HeaderBased: nil,
+			PathBased:   &PathBasedRoutingModel{},
+		}
+	default:
+		m.Routing = nil
+	}
+
+	// endpoint_configuration — null preservation
+	ec := spec.GetEndpointConfiguration()
+	hasDNS := ec != nil && len(ec.GetAdditionalDns()) > 0
+	hasRanges := ec != nil && len(ec.GetAllowedSourceIpRanges()) > 0
+	hasMode := ec != nil && ec.GetEdgeProxyMode() != inferencev1.EdgeProxyMode_EDGE_PROXY_MODE_UNSPECIFIED
+	if m.EndpointConfiguration == nil && !hasDNS && !hasRanges && !hasMode {
+		m.EndpointConfiguration = nil
+	} else {
+		// Capture the prior null/empty state of the optional set attributes: the
+		// API returns an empty list for both an unset (null) config and an
+		// explicit empty set, so we mirror what the config/state held to avoid
+		// drift between plan and applied state.
+		var priorDNS, priorRanges types.Set
+		if m.EndpointConfiguration != nil {
+			priorDNS = m.EndpointConfiguration.AdditionalDNS
+			priorRanges = m.EndpointConfiguration.AllowedSourceIPRanges
+		}
+
+		ecModel := &EndpointConfigurationModel{}
+
+		if hasDNS {
+			dnsVals := make([]attr.Value, len(ec.GetAdditionalDns()))
+			for i, d := range ec.GetAdditionalDns() {
+				dnsVals[i] = types.StringValue(d)
+			}
+			dnsSet, diags := types.SetValue(types.StringType, dnsVals)
+			diagnostics.Append(diags...)
+			ecModel.AdditionalDNS = dnsSet
+		} else {
+			ecModel.AdditionalDNS = emptyOrNullSet(types.StringType, priorDNS)
+		}
+
+		if hasMode {
+			ecModel.EdgeProxyMode = types.StringValue(ec.GetEdgeProxyMode().String())
+		} else {
+			ecModel.EdgeProxyMode = types.StringNull()
+		}
+
+		if hasRanges {
+			rangeVals := make([]attr.Value, len(ec.GetAllowedSourceIpRanges()))
+			for i, r := range ec.GetAllowedSourceIpRanges() {
+				rangeVals[i] = cidrtypes.NewIPPrefixValue(r)
+			}
+			rangeSet, diags := types.SetValue(cidrtypes.IPPrefixType{}, rangeVals)
+			diagnostics.Append(diags...)
+			ecModel.AllowedSourceIPRanges = rangeSet
+		} else {
+			ecModel.AllowedSourceIPRanges = emptyOrNullSet(cidrtypes.IPPrefixType{}, priorRanges)
+		}
+
+		m.EndpointConfiguration = ecModel
+	}
+
+	// endpoints
+	epVals := make([]attr.Value, len(status.GetEndpoints()))
+	for i, ep := range status.GetEndpoints() {
+		epVals[i] = types.StringValue(ep)
+	}
+	epSet, diags := types.SetValue(types.StringType, epVals)
+	diagnostics.Append(diags...)
+	m.Endpoints = epSet
+
+	// conditions
+	if !preserveStatusFields {
+		condList, diags := conditionsListFromStatus(status.GetConditions())
+		diagnostics.Append(diags...)
+		m.Conditions = condList
+	}
+
+	return diagnostics
+}
+
+// apiTypeFromModel resolves the configured api_type string against the proto
+// enum value map, returning a diagnostic when the user configured a value that
+// does not correspond to a known enum entry.
+func apiTypeFromModel(m *BodyBasedRoutingModel) (inferencev1.BodyBasedRouting_APIType, diag.Diagnostics) {
+	var diagnostics diag.Diagnostics
+	s := m.APIType.ValueString()
+	val, ok := inferencev1.BodyBasedRouting_APIType_value[s]
+	if !ok {
+		diagnostics.AddError("Invalid api_type", fmt.Sprintf("Invalid api_type: %s. Must be one of: %s.", s, coreweave.EnumMarkdownValues(inferencev1.BodyBasedRouting_APIType_name, true)))
+		return inferencev1.BodyBasedRouting_API_TYPE_UNSPECIFIED, diagnostics
+	}
+	return inferencev1.BodyBasedRouting_APIType(val), diagnostics
+}

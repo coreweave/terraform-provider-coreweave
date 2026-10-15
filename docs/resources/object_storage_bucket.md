@@ -3,12 +3,12 @@
 page_title: "coreweave_object_storage_bucket Resource - coreweave"
 subcategory: ""
 description: |-
-  Buckets are the primary organizational containers for your data in CoreWeave AI Object Storage. Bucket names must be globally-unique and not begin with cw- or vip-, which are reserved for internal use. Learn more about creating buckets https://docs.coreweave.com/docs/products/storage/object-storage/buckets/create-bucket.
+  Buckets are the primary organizational containers for your data in CoreWeave AI Object Storage. Bucket names must be globally-unique and not begin with cw- or vip-, which are reserved for internal use. Before creation, the provider verifies the complete list of buckets owned by the organization and fails without sending a create request if that inventory cannot be completed; an existing bucket with the requested name must be imported. Learn more about creating buckets https://docs.coreweave.com/products/storage/object-storage/buckets/create-bucket.
 ---
 
 # coreweave_object_storage_bucket (Resource)
 
-Buckets are the primary organizational containers for your data in CoreWeave AI Object Storage. Bucket names must be globally-unique and not begin with `cw-` or `vip-`, which are reserved for internal use. Learn more about [creating buckets](https://docs.coreweave.com/docs/products/storage/object-storage/buckets/create-bucket).
+Buckets are the primary organizational containers for your data in CoreWeave AI Object Storage. Bucket names must be globally-unique and not begin with `cw-` or `vip-`, which are reserved for internal use. Before creation, the provider verifies the complete list of buckets owned by the organization and fails without sending a create request if that inventory cannot be completed; an existing bucket with the requested name must be imported. Learn more about [creating buckets](https://docs.coreweave.com/products/storage/object-storage/buckets/create-bucket).
 
 ## Example Usage
 
@@ -27,7 +27,7 @@ resource "coreweave_object_storage_bucket" "default" {
 
 ### Required
 
-- `name` (String) The name of the bucket, must be unique
+- `name` (String) The bucket name. Must be globally unique and must not begin with `cw-` or `vip-`.
 - `zone` (String) The Availability Zone in which the bucket is located.
 
 ### Optional
@@ -37,6 +37,17 @@ resource "coreweave_object_storage_bucket" "default" {
 ## Import
 
 Import is supported using the following syntax:
+
+In Terraform v1.5.0 and later, the [`import` block](https://developer.hashicorp.com/terraform/language/import) can be used with the `id` attribute, for example:
+
+```terraform
+import {
+  to = coreweave_object_storage_bucket.default
+  id = "{{name}}"
+}
+```
+
+The [`terraform import` command](https://developer.hashicorp.com/terraform/cli/commands/import) can be used, for example:
 
 ```shell
 terraform import coreweave_object_storage_bucket.default {{name}}

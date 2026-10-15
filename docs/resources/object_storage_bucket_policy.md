@@ -3,12 +3,12 @@
 page_title: "coreweave_object_storage_bucket_policy Resource - coreweave"
 subcategory: ""
 description: |-
-  Bucket access policies https://docs.coreweave.com/docs/products/storage/object-storage/auth-access/bucket-access/bucket-policies allow you to define precise, S3-compatible access control for one bucket. These are optional, and are evaluated after organization access policies. See Manage Bucket Policies https://docs.coreweave.com/docs/products/storage/object-storage/auth-access/bucket-access/manage-bucket-policies#example-policies for examples and further information.
+  Bucket access policies https://docs.coreweave.com/products/storage/object-storage/auth-access/bucket-access/bucket-policies allow you to define precise, S3-compatible access control for one bucket. These are optional, and are evaluated after organization access policies. See Manage Bucket Policies https://docs.coreweave.com/products/storage/object-storage/auth-access/bucket-access/manage-bucket-policies#example-policies for examples and further information.
 ---
 
 # coreweave_object_storage_bucket_policy (Resource)
 
-[Bucket access policies](https://docs.coreweave.com/docs/products/storage/object-storage/auth-access/bucket-access/bucket-policies) allow you to define precise, S3-compatible access control for one bucket. These are optional, and are evaluated after organization access policies. See [Manage Bucket Policies](https://docs.coreweave.com/docs/products/storage/object-storage/auth-access/bucket-access/manage-bucket-policies#example-policies) for examples and further information.
+[Bucket access policies](https://docs.coreweave.com/products/storage/object-storage/auth-access/bucket-access/bucket-policies) allow you to define precise, S3-compatible access control for one bucket. These are optional, and are evaluated after organization access policies. See [Manage Bucket Policies](https://docs.coreweave.com/products/storage/object-storage/auth-access/bucket-access/manage-bucket-policies#example-policies) for examples and further information.
 
 ## Example Usage
 
@@ -26,7 +26,7 @@ locals {
           "CW" : "*"
         }
         Action   = ["s3:*"]
-        resource = ["arn:aws:s3:::${coreweave_object_storage_bucket.raw.name}"]
+        Resource = ["arn:aws:s3:::${coreweave_object_storage_bucket.raw.name}"]
       },
     ]
   }
@@ -94,6 +94,17 @@ resource "coreweave_object_storage_bucket_policy" "doc" {
 ## Import
 
 Import is supported using the following syntax:
+
+In Terraform v1.5.0 and later, the [`import` block](https://developer.hashicorp.com/terraform/language/import) can be used with the `id` attribute, for example:
+
+```terraform
+import {
+  to = coreweave_object_storage_bucket_policy.default
+  id = "{{bucket_name}}"
+}
+```
+
+The [`terraform import` command](https://developer.hashicorp.com/terraform/cli/commands/import) can be used, for example:
 
 ```shell
 terraform import coreweave_object_storage_bucket_policy.default {{bucket_name}}

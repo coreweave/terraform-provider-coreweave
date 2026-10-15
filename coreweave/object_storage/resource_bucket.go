@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	awsretry "github.com/aws/aws-sdk-go-v2/aws/retry"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/smithy-go"
 	"github.com/aws/smithy-go/transport/http"
@@ -34,7 +35,12 @@ var (
 )
 
 const (
-	ErrNoSuchBucket string = "NoSuchBucket"
+	errInvalidRegion = "InvalidRegion"
+
+	ErrNoSuchBucket       string = "NoSuchBucket"
+	errNotFound           string = "NotFound"
+	errNoSuchTagSet       string = "NoSuchTagSet"
+	bucketReadMaxAttempts        = 8
 )
 
 func NewBucketResource() resource.Resource {
@@ -43,7 +49,9 @@ func NewBucketResource() resource.Resource {
 
 // BucketResource defines the resource implementation.
 type BucketResource struct {
-	client *coreweave.Client
+	client            *coreweave.Client
+	s3ClientForZone   func(context.Context, string) (*s3.Client, error)
+	postCreateOptions s3PhaseOptions
 }
 
 type BucketResourceModel struct {
@@ -58,11 +66,11 @@ func (b *BucketResource) Metadata(ctx context.Context, req resource.MetadataRequ
 
 func (b *BucketResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		MarkdownDescription: "Buckets are the primary organizational containers for your data in CoreWeave AI Object Storage. Bucket names must be globally-unique and not begin with `cw-` or `vip-`, which are reserved for internal use. Learn more about [creating buckets](https://docs.coreweave.com/docs/products/storage/object-storage/buckets/create-bucket).",
+		MarkdownDescription: "Buckets are the primary organizational containers for your data in CoreWeave AI Object Storage. Bucket names must be globally-unique and not begin with `cw-` or `vip-`, which are reserved for internal use. Before creation, the provider verifies the complete list of buckets owned by the organization and fails without sending a create request if that inventory cannot be completed; an existing bucket with the requested name must be imported. Learn more about [creating buckets](https://docs.coreweave.com/products/storage/object-storage/buckets/create-bucket).",
 		Attributes: map[string]schema.Attribute{
 			"name": schema.StringAttribute{
 				Required:            true,
-				MarkdownDescription: "The name of the bucket, must be unique",
+				MarkdownDescription: "The bucket name. Must be globally unique and must not begin with `cw-` or `vip-`.",
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
 				},
@@ -102,11 +110,29 @@ func (b *BucketResource) Configure(_ context.Context, req resource.ConfigureRequ
 	b.client = client
 }
 
+func (b *BucketResource) getS3Client(ctx context.Context, zone string) (*s3.Client, error) {
+	if b.s3ClientForZone != nil {
+		return b.s3ClientForZone(ctx, zone)
+	}
+	return b.client.S3Client(ctx, zone)
+}
+
 func handleS3Error(
 	err error,
 	diags *diag.Diagnostics,
 	bucketName string,
 ) {
+	// Convergence phases wrap SDK errors with retry metadata. Report that
+	// context before inspecting nested Smithy errors so it is not discarded.
+	var phaseErr *s3PhaseError
+	if errors.As(err, &phaseErr) {
+		diags.AddError(
+			fmt.Sprintf("S3 %s failed on bucket %q", phaseErr.phase, bucketName),
+			phaseErr.Error(),
+		)
+		return
+	}
+
 	// 1) OperationError ⇒ report service, operation, inner error
 	var opErr *smithy.OperationError
 	if errors.As(err, &opErr) {
@@ -147,6 +173,78 @@ func handleS3Error(
 	diags.AddError(
 		fmt.Sprintf("Unexpected error with bucket %q", bucketName),
 		err.Error(),
+	)
+}
+
+func isMissingBucketTagSetError(err error) bool {
+	var apiErr smithy.APIError
+	return errors.As(err, &apiErr) && apiErr.ErrorCode() == errNoSuchTagSet
+}
+
+func bucketTagsForState(previous types.Map, remote []s3types.Tag) (types.Map, diag.Diagnostics) {
+	if len(remote) == 0 {
+		if previous.IsNull() {
+			return types.MapNull(types.StringType), nil
+		}
+		return types.MapValue(types.StringType, map[string]attr.Value{})
+	}
+
+	tagMap := make(map[string]attr.Value, len(remote))
+	for _, tag := range remote {
+		tagMap[*tag.Key] = types.StringValue(*tag.Value)
+	}
+	return types.MapValue(types.StringType, tagMap)
+}
+
+func isHTTPNotFoundError(err error) bool {
+	var httpErr *http.ResponseError
+	return errors.As(err, &httpErr) &&
+		httpErr.Response != nil &&
+		httpErr.Response.StatusCode == 404
+}
+
+func bucketExists(ctx context.Context, client s3.HeadBucketAPIClient, bucket string) (bool, error) {
+	_, err := client.HeadBucket(ctx, &s3.HeadBucketInput{Bucket: aws.String(bucket)}, withBucketReadRetry)
+	if err == nil {
+		return true, nil
+	}
+
+	if isBucketNotFoundError(err) {
+		return false, nil
+	}
+
+	return false, err
+}
+
+func isBucketNotFoundError(err error) bool {
+	var apiErr smithy.APIError
+	if errors.As(err, &apiErr) {
+		return apiErr.ErrorCode() == ErrNoSuchBucket || apiErr.ErrorCode() == errNotFound
+	}
+
+	return isHTTPNotFoundError(err)
+}
+
+type bucketReadRetryer struct {
+	aws.Retryer
+}
+
+func (r bucketReadRetryer) IsErrorRetryable(err error) bool {
+	return isBucketNotFoundError(err) || r.Retryer.IsErrorRetryable(err)
+}
+
+func (r bucketReadRetryer) GetAttemptToken(ctx context.Context) (func(error) error, error) {
+	if retryer, ok := r.Retryer.(aws.RetryerV2); ok {
+		return retryer.GetAttemptToken(ctx)
+	}
+
+	return r.GetInitialToken(), nil
+}
+
+func withBucketReadRetry(options *s3.Options) {
+	options.Retryer = awsretry.AddWithMaxAttempts(
+		bucketReadRetryer{Retryer: options.Retryer},
+		bucketReadMaxAttempts,
 	)
 }
 
@@ -263,21 +361,19 @@ func (b *BucketResource) Create(ctx context.Context, req resource.CreateRequest,
 		return
 	}
 
-	s3Client, err := b.client.S3Client(ctx, data.Zone.ValueString())
+	s3Client, err := b.getS3Client(ctx, data.Zone.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to create S3 client", err.Error())
 		return
 	}
 
-	// check if bucket already exists - we need to HeadBucket here because the cwobject API only errors
-	// if you try to create a bucket with the same name in a different zone.
-	// If a CreateBucket request is sent for a name/zone combo that already exists, it will succeed.
-	// So we HeadBucket here and check if the request succeeds; if it does, error and tell the user the bucket already exists
-	// so they can import the existing state
-	_, err = s3Client.HeadBucket(ctx, &s3.HeadBucketInput{
-		Bucket: aws.String(data.Name.ValueString()),
-	})
-	if err == nil {
+	err = createBucketSafely(ctx, s3Client, data.Name.ValueString(), data.Zone.ValueString())
+	if err != nil {
+		var alreadyExistsErr *bucketAlreadyExistsError
+		if !errors.As(err, &alreadyExistsErr) {
+			resp.Diagnostics.AddError("Bucket creation failed", err.Error())
+			return
+		}
 		resp.Diagnostics.AddError(
 			"Already Exists",
 			fmt.Sprintf("Bucket '%s' already exists, specify a different name and try again, or import the bucket using `terraform import`.", data.Name.ValueString()),
@@ -285,53 +381,16 @@ func (b *BucketResource) Create(ctx context.Context, req resource.CreateRequest,
 		return
 	}
 
-	createReq := &s3.CreateBucketInput{
-		Bucket: aws.String(data.Name.ValueString()),
-		CreateBucketConfiguration: &s3types.CreateBucketConfiguration{
-			LocationConstraint: s3types.BucketLocationConstraint(data.Zone.ValueString()),
-		},
-	}
-
-	_, err = s3Client.CreateBucket(ctx, createReq)
-	if err != nil {
-		// These two error types are only returned in a situation where a user
-		// tries to create a bucket with the same name but a different zone.
-		// The HeadBucket call before CreateBucket should ensure that Terraform will error on
-		// a bucket that already exists in the same zone
-		var bucketExistsErr *s3types.BucketAlreadyExists
-		var bucketOwnedByYouErr *s3types.BucketAlreadyOwnedByYou
-		if errors.As(err, &bucketExistsErr) || errors.As(err, &bucketOwnedByYouErr) {
-			// Bucket was already created in a previous attempt, return an error
-			message := bucketExistsErr.Message
-			if message == nil {
-				message = bucketOwnedByYouErr.Message
-			}
-
-			resp.Diagnostics.AddError(
-				"Already Exists",
-				fmt.Sprintf("Bucket '%s' already exists, specify a different name and try again, or import the bucket using `terraform import`: %s", data.Name.ValueString(), *message),
-			)
-			return
-		}
-
-		handleS3Error(err, &resp.Diagnostics, data.Name.ValueString())
-		return
-	}
-
-	// set state while we wait for the bucket to finish
+	// Persist recoverable identity before readiness and tag propagation. If the
+	// shared post-create deadline expires, refresh/import/destroy can still find
+	// the accepted bucket rather than orphaning it.
 	if diag := resp.State.Set(ctx, &data); diag.HasError() {
-		// if we fail to set state, return early as the resource will be orphaned
 		resp.Diagnostics.Append(diag...)
 		return
 	}
 
-	if err := waitForBucket(ctx, s3Client, data.Name.ValueString(), true); err != nil {
-		handleS3Error(err, &resp.Diagnostics, data.Name.ValueString())
-		return
-	}
-
+	tags := []s3types.Tag(nil)
 	if !data.Tags.IsNull() {
-		tags := []s3types.Tag{}
 		tagMap := map[string]string{}
 
 		if diag := data.Tags.ElementsAs(ctx, &tagMap, false); diag.HasError() {
@@ -346,29 +405,20 @@ func (b *BucketResource) Create(ctx context.Context, req resource.CreateRequest,
 				Value: aws.String(value),
 			})
 		}
+	}
+	applyTags := len(tags) > 0
 
-		_, err = s3Client.PutBucketTagging(ctx, &s3.PutBucketTaggingInput{
-			Bucket: data.Name.ValueStringPointer(),
-			Tagging: &s3types.Tagging{
-				TagSet: tags,
-			},
-		})
-		if err != nil {
-			handleS3Error(err, &resp.Diagnostics, data.Name.ValueString())
-			return
-		}
-
-		// set state while we wait for the tags to propagate
-		if diag := resp.State.Set(ctx, &data); diag.HasError() {
-			// if we fail to set state, return early as the resource will be orphaned
-			resp.Diagnostics.Append(diag...)
-			return
-		}
-
-		if err := waitForBucketTags(ctx, s3Client, data.Name.ValueString(), tags); err != nil {
-			handleS3Error(err, &resp.Diagnostics, data.Name.ValueString())
-			return
-		}
+	if err := reconcileBucketAfterCreate(
+		ctx,
+		s3Client,
+		data.Name.ValueString(),
+		data.Zone.ValueString(),
+		tags,
+		applyTags,
+		b.postCreateOptions,
+	); err != nil {
+		resp.Diagnostics.AddError("Bucket post-create reconciliation failed", err.Error())
+		return
 	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
@@ -382,62 +432,63 @@ func (b *BucketResource) Read(ctx context.Context, req resource.ReadRequest, res
 		return
 	}
 
-	s3Client, err := b.client.S3Client(ctx, data.Zone.ValueString())
+	s3Client, err := b.getS3Client(ctx, data.Zone.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to create S3 client", err.Error())
 		return
 	}
 
-	tagSet, err := s3Client.GetBucketTagging(ctx, &s3.GetBucketTaggingInput{
-		Bucket: aws.String(data.Name.ValueString()),
-	})
-	if err != nil {
-		var httpErr *http.ResponseError
-		if errors.As(err, &httpErr) && httpErr.Response != nil {
-			// if we get a 404 back from the client, the bucket does not exist & can be removed from state
-			if httpErr.Response.StatusCode == 404 {
-				resp.State.RemoveResource(ctx)
-				return
-			}
-		}
-
-		handleS3Error(err, &resp.Diagnostics, data.Name.ValueString())
-		return
-	}
-
 	location, err := s3Client.GetBucketLocation(ctx, &s3.GetBucketLocationInput{
 		Bucket: aws.String(data.Name.ValueString()),
-	})
+	}, withBucketReadRetry)
 	if err != nil {
-		var httpErr *http.ResponseError
-		if errors.As(err, &httpErr) && httpErr.Response != nil {
-			// if we get a 404 back from the client, the bucket does not exist & can be removed from state
-			if httpErr.Response.StatusCode == 404 {
-				resp.State.RemoveResource(ctx)
-				return
-			}
-		}
-
-		handleS3Error(err, &resp.Diagnostics, data.Name.ValueString())
-		return
-	}
-
-	tags := types.MapNull(types.StringType)
-	if len(tagSet.TagSet) > 0 {
-		tagMap := map[string]attr.Value{}
-		for _, t := range tagSet.TagSet {
-			tagMap[*t.Key] = types.StringValue(*t.Value)
-		}
-		tagMapValue, diag := types.MapValue(types.StringType, tagMap)
-		resp.Diagnostics.Append(diag...)
-		if resp.Diagnostics.HasError() {
+		if !isBucketNotFoundError(err) {
+			handleS3Error(err, &resp.Diagnostics, data.Name.ValueString())
 			return
 		}
 
-		tags = tagMapValue
+		exists, err := bucketExists(ctx, s3Client, data.Name.ValueString())
+		if err != nil {
+			handleS3Error(err, &resp.Diagnostics, data.Name.ValueString())
+			return
+		}
+		if !exists {
+			resp.State.RemoveResource(ctx)
+			return
+		}
+	} else {
+		data.Zone = types.StringValue(string(location.LocationConstraint))
 	}
 
-	data.Zone = types.StringValue(string(location.LocationConstraint))
+	tagSet, err := s3Client.GetBucketTagging(ctx, &s3.GetBucketTaggingInput{
+		Bucket: aws.String(data.Name.ValueString()),
+	}, withBucketReadRetry)
+	if err != nil {
+		if isMissingBucketTagSetError(err) {
+			tagSet = &s3.GetBucketTaggingOutput{}
+		} else {
+			if isBucketNotFoundError(err) {
+				exists, existsErr := bucketExists(ctx, s3Client, data.Name.ValueString())
+				if existsErr != nil {
+					handleS3Error(existsErr, &resp.Diagnostics, data.Name.ValueString())
+					return
+				}
+				if !exists {
+					resp.State.RemoveResource(ctx)
+					return
+				}
+			}
+
+			handleS3Error(err, &resp.Diagnostics, data.Name.ValueString())
+			return
+		}
+	}
+
+	tags, diagnostics := bucketTagsForState(data.Tags, tagSet.TagSet)
+	resp.Diagnostics.Append(diagnostics...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 	data.Tags = tags
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
@@ -450,14 +501,14 @@ func (b *BucketResource) Update(ctx context.Context, req resource.UpdateRequest,
 		return
 	}
 
-	s3Client, err := b.client.S3Client(ctx, data.Zone.ValueString())
+	s3Client, err := b.getS3Client(ctx, data.Zone.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to create S3 client", err.Error())
 		return
 	}
 
+	tags := []s3types.Tag(nil)
 	if !data.Tags.IsNull() {
-		tags := []s3types.Tag{}
 		tagMap := map[string]string{}
 
 		if diag := data.Tags.ElementsAs(ctx, &tagMap, false); diag.HasError() {
@@ -471,6 +522,9 @@ func (b *BucketResource) Update(ctx context.Context, req resource.UpdateRequest,
 				Value: aws.String(value),
 			})
 		}
+	}
+
+	if len(tags) > 0 {
 		_, err = s3Client.PutBucketTagging(ctx, &s3.PutBucketTaggingInput{
 			Bucket: aws.String(data.Name.ValueString()),
 			Tagging: &s3types.Tagging{
@@ -500,7 +554,9 @@ func (b *BucketResource) Update(ctx context.Context, req resource.UpdateRequest,
 			return
 		}
 
-		data.Tags = types.MapNull(types.StringType)
+		if data.Tags.IsNull() {
+			data.Tags = types.MapNull(types.StringType)
+		}
 	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
@@ -514,23 +570,14 @@ func (b *BucketResource) Delete(ctx context.Context, req resource.DeleteRequest,
 		return
 	}
 
-	s3Client, err := b.client.S3Client(ctx, data.Zone.ValueString())
+	s3Client, err := b.getS3Client(ctx, data.Zone.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to create S3 client", err.Error())
 		return
 	}
 
-	_, err = s3Client.DeleteBucket(ctx, &s3.DeleteBucketInput{
-		Bucket: aws.String(data.Name.ValueString()),
-	})
-	if err != nil {
-		var apiErr smithy.APIError
-		if errors.As(err, &apiErr) && apiErr.ErrorCode() == ErrNoSuchBucket {
-			// bucket doesn’t exist, return as it will be removed from state
-			return
-		}
-
-		handleS3Error(err, &resp.Diagnostics, data.Name.ValueString())
+	if err := deleteBucketWithRetry(ctx, s3Client, data.Name.ValueString(), data.Zone.ValueString(), s3PhaseOptions{}); err != nil {
+		resp.Diagnostics.AddError("Bucket deletion failed", err.Error())
 		return
 	}
 
@@ -542,7 +589,7 @@ func (b *BucketResource) Delete(ctx context.Context, req resource.DeleteRequest,
 }
 
 func (b *BucketResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	s3Client, err := b.client.S3Client(ctx, "")
+	s3Client, err := b.getS3Client(ctx, "")
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to create S3 client", err.Error())
 		return
@@ -564,19 +611,10 @@ func (b *BucketResource) ImportState(ctx context.Context, req resource.ImportSta
 		return
 	}
 
-	tags := types.MapNull(types.StringType)
-	if len(bucketTagging.TagSet) > 0 {
-		tagMap := map[string]attr.Value{}
-		for _, t := range bucketTagging.TagSet {
-			tagMap[*t.Key] = types.StringValue(*t.Value)
-		}
-		tagMapValue, diag := types.MapValue(types.StringType, tagMap)
-		resp.Diagnostics.Append(diag...)
-		if resp.Diagnostics.HasError() {
-			return
-		}
-
-		tags = tagMapValue
+	tags, diagnostics := bucketTagsForState(types.MapNull(types.StringType), bucketTagging.TagSet)
+	resp.Diagnostics.Append(diagnostics...)
+	if resp.Diagnostics.HasError() {
+		return
 	}
 
 	data := BucketResourceModel{
@@ -607,7 +645,11 @@ func MustRenderBucketResource(ctx context.Context, resourceName string, bucket *
 		for key, value := range tagMap {
 			tags[key] = cty.StringVal(value)
 		}
-		resourceBody.SetAttributeValue("tags", cty.MapVal(tags))
+		if len(tags) == 0 {
+			resourceBody.SetAttributeValue("tags", cty.MapValEmpty(cty.String))
+		} else {
+			resourceBody.SetAttributeValue("tags", cty.MapVal(tags))
+		}
 	}
 
 	var buf bytes.Buffer

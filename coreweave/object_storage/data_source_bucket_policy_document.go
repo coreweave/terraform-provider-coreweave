@@ -9,6 +9,7 @@ import (
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/zclconf/go-cty/cty"
 )
@@ -123,6 +124,8 @@ func (sl StringList) MarshalJSON() ([]byte, error) {
 // Single‐string values get normalized into a slice of length 1.
 type Condition map[string]map[string][]string
 
+type scalarCondition map[string]map[string]string
+
 func (c *Condition) UnmarshalJSON(b []byte) error {
 	// First unmarshal into a generic map[string]json.RawMessage
 	var rawOps map[string]json.RawMessage
@@ -207,7 +210,7 @@ func (d *BucketPolicyDocumentDataSource) Metadata(ctx context.Context, req datas
 
 func (d *BucketPolicyDocumentDataSource) Schema(ctx context.Context, req datasource.SchemaRequest, resp *datasource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		MarkdownDescription: "[Bucket access policies](https://docs.coreweave.com/docs/products/storage/object-storage/auth-access/bucket-access/bucket-policies) allow you to define precise, S3-compatible access control for one bucket. They are evaluated after organization access policies. See [Manage Bucket Policies](https://docs.coreweave.com/docs/products/storage/object-storage/auth-access/bucket-access/manage-bucket-policies#example-policies) for examples and further information. This data source provides a type-safe data structure for creating an S3-compatible JSON bucket policy.",
+		MarkdownDescription: "[Bucket access policies](https://docs.coreweave.com/products/storage/object-storage/auth-access/bucket-access/bucket-policies) allow you to define precise, S3-compatible access control for one bucket. They are evaluated after organization access policies. See [Manage Bucket Policies](https://docs.coreweave.com/products/storage/object-storage/auth-access/bucket-access/manage-bucket-policies#example-policies) for examples and further information. This data source provides a type-safe data structure for creating an S3-compatible JSON bucket policy.",
 		Attributes: map[string]schema.Attribute{
 			"version": schema.StringAttribute{
 				Optional:            true,
@@ -250,7 +253,7 @@ func (d *BucketPolicyDocumentDataSource) Schema(ctx context.Context, req datasou
 								ElemType: types.StringType,
 							},
 							Optional:            true,
-							MarkdownDescription: "Map of principal types to ARNs",
+							MarkdownDescription: "Map of principal types to identifiers. For CoreWeave principals, format each identifier as described in [bucket policies](https://docs.coreweave.com/products/storage/object-storage/auth-access/bucket-access/bucket-policies).",
 						},
 						"condition": schema.MapAttribute{
 							ElementType: types.MapType{
@@ -266,7 +269,9 @@ func (d *BucketPolicyDocumentDataSource) Schema(ctx context.Context, req datasou
 	}
 }
 
-func BuildPolicyDocument(ctx context.Context, bm BucketPolicyDocumentModel) PolicyDocument {
+func BuildPolicyDocument(ctx context.Context, bm BucketPolicyDocumentModel) (PolicyDocument, diag.Diagnostics) {
+	var diagnostics diag.Diagnostics
+
 	// Build the reusable PolicyDocument
 	pd := PolicyDocument{
 		Version: bm.Version.ValueString(),
@@ -279,30 +284,45 @@ func BuildPolicyDocument(ctx context.Context, bm BucketPolicyDocumentModel) Poli
 		pr := map[string][]string{}
 		if !sm.Principal.IsNull() {
 			var tmp map[string][]string
-			sm.Principal.ElementsAs(ctx, &tmp, false)
+			diagnostics.Append(sm.Principal.ElementsAs(ctx, &tmp, false)...)
+			if diagnostics.HasError() {
+				return PolicyDocument{}, diagnostics
+			}
 			pr = tmp
 		}
 		// condition
 		cond := Condition{}
 		if !sm.Condition.IsNull() {
-			var tmp Condition
-			sm.Condition.ElementsAs(ctx, &tmp, false)
-			for op, raw := range tmp {
-				cond[op] = raw
+			var tmp scalarCondition
+			diagnostics.Append(sm.Condition.ElementsAs(ctx, &tmp, false)...)
+			if diagnostics.HasError() {
+				return PolicyDocument{}, diagnostics
+			}
+			for op, values := range tmp {
+				cond[op] = make(map[string][]string, len(values))
+				for key, value := range values {
+					cond[op][key] = []string{value}
+				}
 			}
 		}
 		// actions
 		acts := make([]string, 0)
 		if !sm.Action.IsNull() {
 			var tmp []string
-			sm.Action.ElementsAs(ctx, &tmp, false)
+			diagnostics.Append(sm.Action.ElementsAs(ctx, &tmp, false)...)
+			if diagnostics.HasError() {
+				return PolicyDocument{}, diagnostics
+			}
 			acts = tmp
 		}
 		// resources
 		res := make([]string, 0)
 		if !sm.Resource.IsNull() {
 			var tmp []string
-			sm.Resource.ElementsAs(ctx, &tmp, false)
+			diagnostics.Append(sm.Resource.ElementsAs(ctx, &tmp, false)...)
+			if diagnostics.HasError() {
+				return PolicyDocument{}, diagnostics
+			}
 			res = tmp
 		}
 
@@ -318,7 +338,7 @@ func BuildPolicyDocument(ctx context.Context, bm BucketPolicyDocumentModel) Poli
 		})
 	}
 
-	return pd
+	return pd, diagnostics
 }
 
 func (d *BucketPolicyDocumentDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
@@ -329,7 +349,11 @@ func (d *BucketPolicyDocumentDataSource) Read(ctx context.Context, req datasourc
 	}
 
 	// Translate the Terraform data model to the JSON schema represented by PolicyDocument
-	pd := BuildPolicyDocument(ctx, bm)
+	pd, diags := BuildPolicyDocument(ctx, bm)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 	// Marshal the document
 	bytes, err := json.Marshal(pd)
 	if err != nil {
@@ -375,8 +399,9 @@ func MustRenderBucketPolicyDocument(_ context.Context, name string, cfg *BucketP
 
 		// action list
 		if !s.Action.IsNull() {
-			var vals []cty.Value
-			for _, v := range s.Action.Elements() {
+			elements := s.Action.Elements()
+			vals := make([]cty.Value, 0, len(elements))
+			for _, v := range elements {
 				str := v.(types.String).ValueString()
 				vals = append(vals, cty.StringVal(str))
 			}
@@ -385,8 +410,9 @@ func MustRenderBucketPolicyDocument(_ context.Context, name string, cfg *BucketP
 
 		// resource list
 		if !s.Resource.IsNull() {
-			var vals []cty.Value
-			for _, v := range s.Resource.Elements() {
+			elements := s.Resource.Elements()
+			vals := make([]cty.Value, 0, len(elements))
+			for _, v := range elements {
 				str := v.(types.String).ValueString()
 				vals = append(vals, cty.StringVal(str))
 			}
@@ -399,8 +425,9 @@ func MustRenderBucketPolicyDocument(_ context.Context, name string, cfg *BucketP
 			for key, val := range s.Principal.Elements() {
 				// val is types.List
 				list := val.(types.List)
-				var elems []cty.Value
-				for _, ev := range list.Elements() {
+				elements := list.Elements()
+				elems := make([]cty.Value, 0, len(elements))
+				for _, ev := range elements {
 					elems = append(elems, cty.StringVal(ev.(types.String).ValueString()))
 				}
 				m[key] = cty.ListVal(elems)

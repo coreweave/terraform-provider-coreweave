@@ -3,25 +3,24 @@ package cks_test
 import (
 	"context"
 	"fmt"
-	"log"
 	"math/rand/v2"
 	"regexp"
 	"strings"
 	"testing"
-	"time"
 
-	cksv1beta1 "buf.build/gen/go/coreweave/cks/protocolbuffers/go/coreweave/cks/v1beta1"
-
-	"connectrpc.com/connect"
-	"github.com/coreweave/terraform-provider-coreweave/coreweave"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave/cks"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave/networking"
 	"github.com/coreweave/terraform-provider-coreweave/internal/provider"
 	"github.com/coreweave/terraform-provider-coreweave/internal/testutil"
 	"github.com/hashicorp/go-uuid"
+	"github.com/hashicorp/terraform-plugin-framework-jsontypes/jsontypes"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	fwresource "github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-go/tftypes"
 	"github.com/hashicorp/terraform-plugin-testing/compare"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/knownvalue"
@@ -31,110 +30,12 @@ import (
 )
 
 const (
-	AuditPolicyB64       = "ewogICJhcGlWZXJzaW9uIjogImF1ZGl0Lms4cy5pby92MSIsCiAgImtpbmQiOiAiUG9saWN5IiwKICAib21pdFN0YWdlcyI6IFsKICAgICJSZXF1ZXN0UmVjZWl2ZWQiCiAgXSwKICAicnVsZXMiOiBbCiAgICB7CiAgICAgICJsZXZlbCI6ICJSZXF1ZXN0UmVzcG9uc2UiLAogICAgICAicmVzb3VyY2VzIjogWwogICAgICAgIHsKICAgICAgICAgICJncm91cCI6ICIiLAogICAgICAgICAgInJlc291cmNlcyI6IFsKICAgICAgICAgICAgInBvZHMiCiAgICAgICAgICBdCiAgICAgICAgfQogICAgICBdCiAgICB9LAogICAgewogICAgICAibGV2ZWwiOiAiTWV0YWRhdGEiLAogICAgICAicmVzb3VyY2VzIjogWwogICAgICAgIHsKICAgICAgICAgICJncm91cCI6ICIiLAogICAgICAgICAgInJlc291cmNlcyI6IFsKICAgICAgICAgICAgInBvZHMvbG9nIiwKICAgICAgICAgICAgInBvZHMvc3RhdHVzIgogICAgICAgICAgXQogICAgICAgIH0KICAgICAgXQogICAgfSwKICAgIHsKICAgICAgImxldmVsIjogIk5vbmUiLAogICAgICAicmVzb3VyY2VzIjogWwogICAgICAgIHsKICAgICAgICAgICJncm91cCI6ICIiLAogICAgICAgICAgInJlc291cmNlcyI6IFsKICAgICAgICAgICAgImNvbmZpZ21hcHMiCiAgICAgICAgICBdLAogICAgICAgICAgInJlc291cmNlTmFtZXMiOiBbCiAgICAgICAgICAgICJjb250cm9sbGVyLWxlYWRlciIKICAgICAgICAgIF0KICAgICAgICB9CiAgICAgIF0KICAgIH0sCiAgICB7CiAgICAgICJsZXZlbCI6ICJOb25lIiwKICAgICAgInVzZXJzIjogWwogICAgICAgICJzeXN0ZW06a3ViZS1wcm94eSIKICAgICAgXSwKICAgICAgInZlcmJzIjogWwogICAgICAgICJ3YXRjaCIKICAgICAgXSwKICAgICAgInJlc291cmNlcyI6IFsKICAgICAgICB7CiAgICAgICAgICAiZ3JvdXAiOiAiIiwKICAgICAgICAgICJyZXNvdXJjZXMiOiBbCiAgICAgICAgICAgICJlbmRwb2ludHMiLAogICAgICAgICAgICAic2VydmljZXMiCiAgICAgICAgICBdCiAgICAgICAgfQogICAgICBdCiAgICB9LAogICAgewogICAgICAibGV2ZWwiOiAiTm9uZSIsCiAgICAgICJ1c2VyR3JvdXBzIjogWwogICAgICAgICJzeXN0ZW06YXV0aGVudGljYXRlZCIKICAgICAgXSwKICAgICAgIm5vblJlc291cmNlVVJMcyI6IFsKICAgICAgICAiL2FwaSoiLAogICAgICAgICIvdmVyc2lvbiIKICAgICAgXQogICAgfSwKICAgIHsKICAgICAgImxldmVsIjogIlJlcXVlc3QiLAogICAgICAicmVzb3VyY2VzIjogWwogICAgICAgIHsKICAgICAgICAgICJncm91cCI6ICIiLAogICAgICAgICAgInJlc291cmNlcyI6IFsKICAgICAgICAgICAgImNvbmZpZ21hcHMiCiAgICAgICAgICBdCiAgICAgICAgfQogICAgICBdLAogICAgICAibmFtZXNwYWNlcyI6IFsKICAgICAgICAia3ViZS1zeXN0ZW0iCiAgICAgIF0KICAgIH0sCiAgICB7CiAgICAgICJsZXZlbCI6ICJNZXRhZGF0YSIsCiAgICAgICJyZXNvdXJjZXMiOiBbCiAgICAgICAgewogICAgICAgICAgImdyb3VwIjogIiIsCiAgICAgICAgICAicmVzb3VyY2VzIjogWwogICAgICAgICAgICAic2VjcmV0cyIsCiAgICAgICAgICAgICJjb25maWdtYXBzIgogICAgICAgICAgXQogICAgICAgIH0KICAgICAgXQogICAgfSwKICAgIHsKICAgICAgImxldmVsIjogIlJlcXVlc3QiLAogICAgICAicmVzb3VyY2VzIjogWwogICAgICAgIHsKICAgICAgICAgICJncm91cCI6ICIiCiAgICAgICAgfSwKICAgICAgICB7CiAgICAgICAgICAiZ3JvdXAiOiAiZXh0ZW5zaW9ucyIKICAgICAgICB9CiAgICAgIF0KICAgIH0sCiAgICB7CiAgICAgICJsZXZlbCI6ICJNZXRhZGF0YSIsCiAgICAgICJvbWl0U3RhZ2VzIjogWwogICAgICAgICJSZXF1ZXN0UmVjZWl2ZWQiCiAgICAgIF0KICAgIH0KICBdCn0K"
-	ExampleCAB64         = "LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSURnekNDQW11Z0F3SUJBZ0lRVGhhQitUNmdtdVVYN3dXZi9XUitmekFOQmdrcWhraUc5dzBCQVFzRkFEQUEKTUI0WERUSTBNRFl5TlRJeE1UY3pNVm9YRFRJME1Ea3lNekl4TVRjek1Wb3dBRENDQVNJd0RRWUpLb1pJaHZjTgpBUUVCQlFBRGdnRVBBRENDQVFvQ2dnRUJBT240VkVpRWJoL29GRkoxcG1QZXZxb1pBbWtVUjRqeWd5Y0MvRFhCCmVEWjYxd1NzV1FPU21peFg1bDZDd1FXNzdkV3NRVGhsU0RqN003RytxYjZCWHBSUWcrMndJOFVsVHp6Y0NpM0UKN1pib2M2LzI1YXd3NVpLOW1GVWVGWlBWemI4ZHNuVUFkbmFNa2V2ckFGQXNoL0NmSEh0cThzSUZnOVF2SWJnUApNRFJJcnZnSmlGY1NLS1E5clgxOWkzcFY3ZE9UaGxaYW11UWRGUjhGSVgyQ3BVQithajdSWkdMTFFra3AzMzhUCjFTRk5hK3V1THk3Mlh6MldIdEdqOTE5OFVENFFTRzByd2JUYXEvQVdxNjcvblhRS2FOQ2xHYzlGajNRSjU2NEUKK3cvWXBvK1krc053OXY0M1NVSVdyQXRMNGRicHNadlBEK0FKS1RDRXArUExZWlVDQXdFQUFhT0IrRENCOVRBTwpCZ05WSFE4QkFmOEVCQU1DQmFBd0RBWURWUjBUQVFIL0JBSXdBRENCMUFZRFZSMFJBUUgvQklISk1JSEdnaVJsCmVHVmpkWFJ2Y2kxcllYUmhiRzluTFdWNFpXTjFkRzl5TFhKbFkyOXVZMmxzWlhLQ0xHVjRaV04xZEc5eUxXdGgKZEdGc2IyY3RaWGhsWTNWMGIzSXRjbVZqYjI1amFXeGxjaTVyWVhSaGJHOW5nakJsZUdWamRYUnZjaTFyWVhSaApiRzluTFdWNFpXTjFkRzl5TFhKbFkyOXVZMmxzWlhJdWEyRjBZV3h2Wnk1emRtT0NQbVY0WldOMWRHOXlMV3RoCmRHRnNiMmN0WlhobFkzVjBiM0l0Y21WamIyNWphV3hsY2k1cllYUmhiRzluTG5OMll5NWpiSFZ6ZEdWeUxteHYKWTJGc01BMEdDU3FHU0liM0RRRUJDd1VBQTRJQkFRQlEvQ2JBdEFCQkZORUE5d1hYaE9vYUNrRFY1dTc3VFlzMQpFV2FJcFJFNjV5QmVtTDc2eXpYeEtoc2RmR3RJSmJ0THBWS1lUYlpBVTQrem9IS1NVTWs4REY4bXN0dGhOMWQ5CnR6a1d4ZXZ3UGViL2NtMVZVWlBzWkxvNnFRblJRUFJCUXc0dFpWdkhTWmtsSjBVb2lvVk5zOWJJY3ZQZ2Z4UW0KNkhDU3NEWU9sWnlPRHlrY045U21nbFZtVWFNeVkxMGcrL3BWRzg4WkRyLy9zdUI1ZERPaktUcDNGbjRPSGR0VwpnRmpuY3RVOEV4Zk5YNTR1Yndja2ZTMGdiOXRtejcyaHN3OU5KaTV2QXlMS2ZIcmxNNTJTeWhwUVZKbkpPYzF6ClhqQVlLTHE1M1E1TGt3RXBZMXpkL21XdVhkRWswWldZcHlXemk3WWN4UXQreUJkWVNJQzEKLS0tLS1FTkQgQ0VSVElGSUNBVEUtLS0tLQo="
-	AcceptanceTestPrefix = "test-acc-"
+	AuditPolicyB64                  = "ewogICJhcGlWZXJzaW9uIjogImF1ZGl0Lms4cy5pby92MSIsCiAgImtpbmQiOiAiUG9saWN5IiwKICAib21pdFN0YWdlcyI6IFsKICAgICJSZXF1ZXN0UmVjZWl2ZWQiCiAgXSwKICAicnVsZXMiOiBbCiAgICB7CiAgICAgICJsZXZlbCI6ICJSZXF1ZXN0UmVzcG9uc2UiLAogICAgICAicmVzb3VyY2VzIjogWwogICAgICAgIHsKICAgICAgICAgICJncm91cCI6ICIiLAogICAgICAgICAgInJlc291cmNlcyI6IFsKICAgICAgICAgICAgInBvZHMiCiAgICAgICAgICBdCiAgICAgICAgfQogICAgICBdCiAgICB9LAogICAgewogICAgICAibGV2ZWwiOiAiTWV0YWRhdGEiLAogICAgICAicmVzb3VyY2VzIjogWwogICAgICAgIHsKICAgICAgICAgICJncm91cCI6ICIiLAogICAgICAgICAgInJlc291cmNlcyI6IFsKICAgICAgICAgICAgInBvZHMvbG9nIiwKICAgICAgICAgICAgInBvZHMvc3RhdHVzIgogICAgICAgICAgXQogICAgICAgIH0KICAgICAgXQogICAgfSwKICAgIHsKICAgICAgImxldmVsIjogIk5vbmUiLAogICAgICAicmVzb3VyY2VzIjogWwogICAgICAgIHsKICAgICAgICAgICJncm91cCI6ICIiLAogICAgICAgICAgInJlc291cmNlcyI6IFsKICAgICAgICAgICAgImNvbmZpZ21hcHMiCiAgICAgICAgICBdLAogICAgICAgICAgInJlc291cmNlTmFtZXMiOiBbCiAgICAgICAgICAgICJjb250cm9sbGVyLWxlYWRlciIKICAgICAgICAgIF0KICAgICAgICB9CiAgICAgIF0KICAgIH0sCiAgICB7CiAgICAgICJsZXZlbCI6ICJOb25lIiwKICAgICAgInVzZXJzIjogWwogICAgICAgICJzeXN0ZW06a3ViZS1wcm94eSIKICAgICAgXSwKICAgICAgInZlcmJzIjogWwogICAgICAgICJ3YXRjaCIKICAgICAgXSwKICAgICAgInJlc291cmNlcyI6IFsKICAgICAgICB7CiAgICAgICAgICAiZ3JvdXAiOiAiIiwKICAgICAgICAgICJyZXNvdXJjZXMiOiBbCiAgICAgICAgICAgICJlbmRwb2ludHMiLAogICAgICAgICAgICAic2VydmljZXMiCiAgICAgICAgICBdCiAgICAgICAgfQogICAgICBdCiAgICB9LAogICAgewogICAgICAibGV2ZWwiOiAiTm9uZSIsCiAgICAgICJ1c2VyR3JvdXBzIjogWwogICAgICAgICJzeXN0ZW06YXV0aGVudGljYXRlZCIKICAgICAgXSwKICAgICAgIm5vblJlc291cmNlVVJMcyI6IFsKICAgICAgICAiL2FwaSoiLAogICAgICAgICIvdmVyc2lvbiIKICAgICAgXQogICAgfSwKICAgIHsKICAgICAgImxldmVsIjogIlJlcXVlc3QiLAogICAgICAicmVzb3VyY2VzIjogWwogICAgICAgIHsKICAgICAgICAgICJncm91cCI6ICIiLAogICAgICAgICAgInJlc291cmNlcyI6IFsKICAgICAgICAgICAgImNvbmZpZ21hcHMiCiAgICAgICAgICBdCiAgICAgICAgfQogICAgICBdLAogICAgICAibmFtZXNwYWNlcyI6IFsKICAgICAgICAia3ViZS1zeXN0ZW0iCiAgICAgIF0KICAgIH0sCiAgICB7CiAgICAgICJsZXZlbCI6ICJNZXRhZGF0YSIsCiAgICAgICJyZXNvdXJjZXMiOiBbCiAgICAgICAgewogICAgICAgICAgImdyb3VwIjogIiIsCiAgICAgICAgICAicmVzb3VyY2VzIjogWwogICAgICAgICAgICAic2VjcmV0cyIsCiAgICAgICAgICAgICJjb25maWdtYXBzIgogICAgICAgICAgXQogICAgICAgIH0KICAgICAgXQogICAgfSwKICAgIHsKICAgICAgImxldmVsIjogIlJlcXVlc3QiLAogICAgICAicmVzb3VyY2VzIjogWwogICAgICAgIHsKICAgICAgICAgICJncm91cCI6ICIiCiAgICAgICAgfSwKICAgICAgICB7CiAgICAgICAgICAiZ3JvdXAiOiAiZXh0ZW5zaW9ucyIKICAgICAgICB9CiAgICAgIF0KICAgIH0sCiAgICB7CiAgICAgICJsZXZlbCI6ICJNZXRhZGF0YSIsCiAgICAgICJvbWl0U3RhZ2VzIjogWwogICAgICAgICJSZXF1ZXN0UmVjZWl2ZWQiCiAgICAgIF0KICAgIH0KICBdCn0K"
+	ExampleCAB64                    = "LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSURnekNDQW11Z0F3SUJBZ0lRVGhhQitUNmdtdVVYN3dXZi9XUitmekFOQmdrcWhraUc5dzBCQVFzRkFEQUEKTUI0WERUSTBNRFl5TlRJeE1UY3pNVm9YRFRJME1Ea3lNekl4TVRjek1Wb3dBRENDQVNJd0RRWUpLb1pJaHZjTgpBUUVCQlFBRGdnRVBBRENDQVFvQ2dnRUJBT240VkVpRWJoL29GRkoxcG1QZXZxb1pBbWtVUjRqeWd5Y0MvRFhCCmVEWjYxd1NzV1FPU21peFg1bDZDd1FXNzdkV3NRVGhsU0RqN003RytxYjZCWHBSUWcrMndJOFVsVHp6Y0NpM0UKN1pib2M2LzI1YXd3NVpLOW1GVWVGWlBWemI4ZHNuVUFkbmFNa2V2ckFGQXNoL0NmSEh0cThzSUZnOVF2SWJnUApNRFJJcnZnSmlGY1NLS1E5clgxOWkzcFY3ZE9UaGxaYW11UWRGUjhGSVgyQ3BVQithajdSWkdMTFFra3AzMzhUCjFTRk5hK3V1THk3Mlh6MldIdEdqOTE5OFVENFFTRzByd2JUYXEvQVdxNjcvblhRS2FOQ2xHYzlGajNRSjU2NEUKK3cvWXBvK1krc053OXY0M1NVSVdyQXRMNGRicHNadlBEK0FKS1RDRXArUExZWlVDQXdFQUFhT0IrRENCOVRBTwpCZ05WSFE4QkFmOEVCQU1DQmFBd0RBWURWUjBUQVFIL0JBSXdBRENCMUFZRFZSMFJBUUgvQklISk1JSEdnaVJsCmVHVmpkWFJ2Y2kxcllYUmhiRzluTFdWNFpXTjFkRzl5TFhKbFkyOXVZMmxzWlhLQ0xHVjRaV04xZEc5eUxXdGgKZEdGc2IyY3RaWGhsWTNWMGIzSXRjbVZqYjI1amFXeGxjaTVyWVhSaGJHOW5nakJsZUdWamRYUnZjaTFyWVhSaApiRzluTFdWNFpXTjFkRzl5TFhKbFkyOXVZMmxzWlhJdWEyRjBZV3h2Wnk1emRtT0NQbVY0WldOMWRHOXlMV3RoCmRHRnNiMmN0WlhobFkzVjBiM0l0Y21WamIyNWphV3hsY2k1cllYUmhiRzluTG5OMll5NWpiSFZ6ZEdWeUxteHYKWTJGc01BMEdDU3FHU0liM0RRRUJDd1VBQTRJQkFRQlEvQ2JBdEFCQkZORUE5d1hYaE9vYUNrRFY1dTc3VFlzMQpFV2FJcFJFNjV5QmVtTDc2eXpYeEtoc2RmR3RJSmJ0THBWS1lUYlpBVTQrem9IS1NVTWs4REY4bXN0dGhOMWQ5CnR6a1d4ZXZ3UGViL2NtMVZVWlBzWkxvNnFRblJRUFJCUXc0dFpWdkhTWmtsSjBVb2lvVk5zOWJJY3ZQZ2Z4UW0KNkhDU3NEWU9sWnlPRHlrY045U21nbFZtVWFNeVkxMGcrL3BWRzg4WkRyLy9zdUI1ZERPaktUcDNGbjRPSGR0VwpnRmpuY3RVOEV4Zk5YNTR1Yndja2ZTMGdiOXRtejcyaHN3OU5KaTV2QXlMS2ZIcmxNNTJTeWhwUVZKbkpPYzF6ClhqQVlLTHE1M1E1TGt3RXBZMXpkL21XdVhkRWswWldZcHlXemk3WWN4UXQreUJkWVNJQzEKLS0tLS1FTkQgQ0VSVElGSUNBVEUtLS0tLQo="
+	AcceptanceTestPrefix            = "test-acc-"
+	cksVPCNamePrefix                = "test-acc-cks-vpc-"
+	maxAcceptanceResourceNameLength = 30
 )
-
-func deleteCluster(ctx context.Context, client *coreweave.Client, cluster *cksv1beta1.Cluster) error {
-	retryDelay := 30 * time.Second
-	for {
-		if cluster.Status == cksv1beta1.Cluster_STATUS_CREATING || cluster.Status == cksv1beta1.Cluster_STATUS_UPDATING || cluster.Status == cksv1beta1.Cluster_STATUS_DELETING {
-			log.Printf("cluster %s is in creating or updating state, waiting before deletion", cluster.Name)
-			select {
-			case <-ctx.Done():
-				return fmt.Errorf("timed out waiting for cluster %s to reach stable state: %w", cluster.Name, ctx.Err())
-			case <-time.After(retryDelay):
-			}
-			clusterResp, err := client.GetCluster(ctx, connect.NewRequest(&cksv1beta1.GetClusterRequest{
-				Id: cluster.Id,
-			}))
-			if connect.CodeOf(err) == connect.CodeNotFound {
-				log.Printf("cluster %s has already been deleted", cluster.Name)
-				return nil
-			} else if err != nil {
-				return fmt.Errorf("failed to get cluster %s: %w", cluster.Name, err)
-			}
-
-			cluster = clusterResp.Msg.Cluster
-		} else {
-			_, err := client.DeleteCluster(ctx, connect.NewRequest(&cksv1beta1.DeleteClusterRequest{
-				Id: cluster.Id,
-			}))
-			if err == nil {
-				return nil
-			} else if connect.CodeOf(err) == connect.CodeNotFound {
-				log.Printf("cluster %s has already been deleted", cluster.Name)
-				return nil
-			} else {
-				return fmt.Errorf("failed to delete cluster %s: %w", cluster.Name, err)
-			}
-		}
-
-		select {
-		case <-ctx.Done():
-			return fmt.Errorf("timed out waiting to delete cluster %s: %w", cluster.Name, ctx.Err())
-		case <-time.After(retryDelay):
-			continue
-		}
-	}
-}
-
-func init() {
-	resource.AddTestSweepers("coreweave_cks_cluster", &resource.Sweeper{
-		Name:         "coreweave_cks_cluster",
-		Dependencies: []string{}, // left as a placeholder; more types are likely to be added that would need to be torn down first.
-		F: func(r string) error {
-			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
-			defer cancel()
-
-			testutil.SetEnvDefaults()
-			client, err := provider.BuildClient(ctx, provider.CoreweaveProviderModel{}, "", "")
-			if err != nil {
-				return fmt.Errorf("failed to build client: %w", err)
-			}
-
-			listResp, err := client.ListClusters(ctx, &connect.Request[cksv1beta1.ListClustersRequest]{})
-			if err != nil {
-				return fmt.Errorf("failed to list clusters: %w", err)
-			}
-			for _, cluster := range listResp.Msg.Items {
-				if !strings.HasPrefix(cluster.Name, AcceptanceTestPrefix) {
-					log.Printf("skipping cluster %s because it does not have prefix %s", cluster.Name, AcceptanceTestPrefix)
-					continue
-				}
-
-				if cluster.GetZone() != r {
-					log.Printf("skipping cluster %s in zone %s because it does not match sweep zone %s", cluster.Name, cluster.Zone, r)
-					continue
-				}
-
-				log.Printf("sweeping cluster %s", cluster.Name)
-				if testutil.SweepDryRun() {
-					log.Printf("skipping Cluster %s because of dry-run mode", cluster.Name)
-					continue
-				}
-
-				deleteCtx, deleteCancel := context.WithTimeout(ctx, 30*time.Minute)
-				defer deleteCancel()
-
-				if err := deleteCluster(deleteCtx, client, cluster); err != nil {
-					return fmt.Errorf("failed to delete cluster %s: %w", cluster.Name, err)
-				}
-
-				waitCtx, waitCancel := context.WithTimeout(ctx, 10*time.Minute)
-				defer waitCancel()
-				if err := testutil.WaitForDelete(waitCtx, 5*time.Minute, 15*time.Second, client.GetCluster, &cksv1beta1.GetClusterRequest{
-					Id: cluster.Id,
-				}); err != nil {
-					return fmt.Errorf("failed to wait for cluster %s to be deleted: %w", cluster.Name, err)
-				}
-			}
-
-			return nil
-		},
-	})
-}
 
 func TestClusterSchema(t *testing.T) {
 	ctx := context.Background()
@@ -155,8 +56,43 @@ func TestClusterSchema(t *testing.T) {
 	}
 }
 
+func TestClusterServiceAccountOIDCIssuerURLPlan(t *testing.T) {
+	ctx := context.Background()
+	schemaResponse := &fwresource.SchemaResponse{}
+	cks.NewClusterResource().Schema(ctx, fwresource.SchemaRequest{}, schemaResponse)
+	if schemaResponse.Diagnostics.HasError() {
+		t.Fatalf("Schema method diagnostics: %+v", schemaResponse.Diagnostics)
+	}
+
+	attribute, ok := schemaResponse.Schema.Attributes["service_account_oidc_issuer_url"].(schema.StringAttribute)
+	if !ok {
+		t.Fatal("service_account_oidc_issuer_url is not a string attribute")
+	}
+
+	issuerURL := "https://oidc.cks.coreweave.com/id/12345678-1234-1234-1234-123456789abc"
+	state := tfsdk.State{Raw: tftypes.NewValue(
+		tftypes.Object{AttributeTypes: map[string]tftypes.Type{"service_account_oidc_issuer_url": tftypes.String}},
+		map[string]tftypes.Value{"service_account_oidc_issuer_url": tftypes.NewValue(tftypes.String, issuerURL)},
+	)}
+	request := planmodifier.StringRequest{
+		State:       state,
+		StateValue:  types.StringValue(issuerURL),
+		PlanValue:   types.StringUnknown(),
+		ConfigValue: types.StringNull(),
+	}
+	response := &planmodifier.StringResponse{PlanValue: request.PlanValue}
+	for _, modifier := range attribute.PlanModifiers {
+		modifier.PlanModifyString(ctx, request, response)
+		request.PlanValue = response.PlanValue
+	}
+
+	if !response.PlanValue.Equal(types.StringValue(issuerURL)) {
+		t.Fatalf("planned issuer URL = %s, want %s", response.PlanValue, issuerURL)
+	}
+}
+
 func defaultVpc(name, zone string) *networking.VpcResourceModel { //nolint:unparam
-	if len(name) > 30 {
+	if len(name) > maxAcceptanceResourceNameLength {
 		// Bail on the tests as early as possible; this is a test definition failure.
 		panic("Vpc name must be 30 characters or less")
 	}
@@ -182,27 +118,44 @@ func defaultVpc(name, zone string) *networking.VpcResourceModel { //nolint:unpar
 				Name:  types.StringValue("internal-lb-cidr-2"),
 				Value: types.StringValue("10.45.4.0/22"),
 			},
+			{
+				Name:  types.StringValue("internal-lb-cidr-0"),
+				Value: types.StringValue("10.46.4.0/22"),
+			},
 		},
 	}
 }
 
 type resourceNames struct {
 	ClusterName        string
+	VPCName            string
 	ResourceName       string
 	FullResourceName   string
 	FullDataSourceName string
 }
 
-func generateResourceNames(clusterNamePrefix string) resourceNames {
-	randomInt := rand.IntN(100)
+func with[T any](obj T, fn func(*T)) T {
+	fn(&obj)
+	return obj
+}
 
-	clusterName := fmt.Sprintf("%s%s-%x", AcceptanceTestPrefix, clusterNamePrefix, randomInt)
-	resourceName := fmt.Sprintf("test_acc_cks_cluster_%s_%x", clusterNamePrefix, randomInt)
+func generateResourceNames(t *testing.T, clusterNamePrefix string) resourceNames {
+	t.Helper()
+
+	suffix := fmt.Sprintf("%05x", rand.IntN(1<<20))
+
+	clusterName := fmt.Sprintf("%s%s-%s", AcceptanceTestPrefix, clusterNamePrefix, suffix)
+	vpcName := cksVPCNamePrefix + suffix
+	if len(clusterName) > maxAcceptanceResourceNameLength || len(vpcName) > maxAcceptanceResourceNameLength {
+		panic("acceptance-test cluster and VPC names must be 30 characters or less")
+	}
+	resourceName := fmt.Sprintf("test_acc_cks_cluster_%s_%s", clusterNamePrefix, suffix)
 	fullResourceName := fmt.Sprintf("coreweave_cks_cluster.%s", resourceName)
 	fullDataSourceName := fmt.Sprintf("data.coreweave_cks_cluster.%s", resourceName)
 
 	return resourceNames{
 		ClusterName:        clusterName,
+		VPCName:            vpcName,
 		ResourceName:       resourceName,
 		FullResourceName:   fullResourceName,
 		FullDataSourceName: fullDataSourceName,
@@ -293,7 +246,7 @@ func createClusterTestStep(ctx context.Context, t *testing.T, config testStepCon
 		for _, c := range config.cluster.InternalLbCidrNames(ctx) {
 			internalLbCidrs = append(internalLbCidrs, knownvalue.StringExact(c))
 		}
-		statechecks = append(statechecks, statecheck.ExpectKnownValue(config.Resources.FullResourceName, tfjsonpath.New("internal_lb_cidr_names"), knownvalue.SetExact(internalLbCidrs)))
+		statechecks = append(statechecks, statecheck.ExpectKnownValue(config.Resources.FullResourceName, tfjsonpath.New("internal_lb_cidr_names"), knownvalue.ListExact(internalLbCidrs)))
 
 		// oidc
 		if config.cluster.Oidc != nil {
@@ -353,6 +306,27 @@ func createClusterTestStep(ctx context.Context, t *testing.T, config testStepCon
 				statechecks = append(statechecks, statecheck.ExpectKnownValue(config.Resources.FullResourceName, tfjsonpath.New("node_port_range").AtMapKey("end"), knownvalue.Int64Exact(int64(e.ValueInt32()))))
 			}
 		}
+
+		// additional_server_sans
+		if !config.cluster.AdditionalServerSans.IsNull() && !config.cluster.AdditionalServerSans.IsUnknown() {
+			sans := []types.String{}
+			if diag := config.cluster.AdditionalServerSans.ElementsAs(ctx, &sans, false); diag.HasError() {
+				t.Logf("failed to cast additional_server_sans to string slice: %v", diag.Errors())
+				t.FailNow()
+			}
+			checks := make([]knownvalue.Check, len(sans))
+			for i, s := range sans {
+				checks[i] = knownvalue.StringExact(s.ValueString())
+			}
+			statechecks = append(statechecks, statecheck.ExpectKnownValue(config.Resources.FullResourceName, tfjsonpath.New("additional_server_sans"), knownvalue.SetExact(checks)))
+		}
+
+		// tailscale
+		if config.cluster.Tailscale != nil {
+			statechecks = append(statechecks, statecheck.ExpectKnownValue(config.Resources.FullResourceName, tfjsonpath.New("tailscale").AtMapKey("client_id"), knownvalue.StringExact(config.cluster.Tailscale.ClientID.ValueString())))
+		} else {
+			statechecks = append(statechecks, statecheck.ExpectKnownValue(config.Resources.FullResourceName, tfjsonpath.New("tailscale"), knownvalue.Null()))
+		}
 	}
 
 	step := resource.TestStep{
@@ -378,11 +352,11 @@ func createClusterTestStep(ctx context.Context, t *testing.T, config testStepCon
 }
 
 func TestClusterResource(t *testing.T) {
-	config := generateResourceNames("cks-cluster")
+	config := generateResourceNames(t, "cks-cluster")
 	zone := testutil.AcceptanceTestZone
 	kubeVersion := testutil.AcceptanceTestKubeVersion
 
-	vpc := defaultVpc(config.ClusterName, zone)
+	vpc := defaultVpc(config.VPCName, zone)
 	npTypes := map[string]attr.Type{
 		"start": types.Int32Type,
 		"end":   types.Int32Type,
@@ -402,6 +376,16 @@ func TestClusterResource(t *testing.T) {
 		"end":   types.Int32Value(34534),
 	}
 	npSmall, _ := types.ObjectValue(npTypes, npSmallVals)
+	// Non-lexicographic order (lex would be: internal-lb-cidr, internal-lb-cidr-0, internal-lb-cidr-2)
+	// to verify the backend preserves insertion order rather than sorting.
+	lbCidrOrder := []string{"internal-lb-cidr-2", "internal-lb-cidr-0", "internal-lb-cidr"}
+	lbCidrAttrValues := make([]attr.Value, len(lbCidrOrder))
+	lbCidrChecks := make([]knownvalue.Check, len(lbCidrOrder))
+	for i, name := range lbCidrOrder {
+		lbCidrAttrValues[i] = types.StringValue(name)
+		lbCidrChecks[i] = knownvalue.StringExact(name)
+	}
+
 	initial := &cks.ClusterResourceModel{
 		VpcId:               types.StringValue(fmt.Sprintf("coreweave_networking_vpc.%s.id", config.ResourceName)),
 		Name:                types.StringValue(config.ClusterName),
@@ -410,7 +394,7 @@ func TestClusterResource(t *testing.T) {
 		Public:              types.BoolValue(false),
 		PodCidrName:         types.StringValue("pod-cidr"),
 		ServiceCidrName:     types.StringValue("service-cidr"),
-		InternalLBCidrNames: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr")}),
+		InternalLBCidrNames: types.ListValueMust(types.StringType, lbCidrAttrValues),
 		NodePortRange:       np,
 	}
 
@@ -426,7 +410,7 @@ func TestClusterResource(t *testing.T) {
 		Public:              types.BoolValue(true),
 		PodCidrName:         types.StringValue("pod-cidr"),
 		ServiceCidrName:     types.StringValue("service-cidr"),
-		InternalLBCidrNames: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr"), types.StringValue("internal-lb-cidr-2")}),
+		InternalLBCidrNames: types.ListValueMust(types.StringType, lbCidrAttrValues),
 		AuditPolicy:         types.StringValue(AuditPolicyB64),
 		NodePortRange:       npLarge,
 		Oidc: &cks.OidcResourceModel{
@@ -459,7 +443,7 @@ func TestClusterResource(t *testing.T) {
 		Public:              types.BoolValue(true),
 		PodCidrName:         types.StringValue("pod-cidr"),
 		ServiceCidrName:     types.StringValue("service-cidr"),
-		InternalLBCidrNames: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr")}),
+		InternalLBCidrNames: types.ListValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr")}),
 		NodePortRange:       np,
 	}
 
@@ -471,7 +455,7 @@ func TestClusterResource(t *testing.T) {
 		Public:              types.BoolValue(true),
 		PodCidrName:         types.StringValue("pod-cidr"),
 		ServiceCidrName:     types.StringValue("service-cidr"),
-		InternalLBCidrNames: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr"), types.StringValue("internal-lb-cidr-2")}),
+		InternalLBCidrNames: types.ListValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr"), types.StringValue("internal-lb-cidr-2")}),
 		AuditPolicy:         types.StringValue(AuditPolicyB64),
 		NodePortRange:       npSmall,
 	}
@@ -486,19 +470,27 @@ func TestClusterResource(t *testing.T) {
 			Config: strings.Join([]string{
 				fmt.Sprintf(`data "%s" "%s" { id = "%s" }`, "coreweave_cks_cluster", config.ResourceName, "1b5274f2-8012-4b68-9010-cc4c51613302"),
 			}, "\n"),
-			ExpectError: regexp.MustCompile(`(?i)cluster .*not found`),
+			ExpectError: regexp.MustCompile(`(?i)cluster .*(not found|does not exist)`),
 		},
-		createClusterTestStep(ctx, t, testStepConfig{
-			TestName: "create",
-			ConfigPlanChecks: resource.ConfigPlanChecks{
-				PreApply: []plancheck.PlanCheck{
-					plancheck.ExpectResourceAction(config.FullResourceName, plancheck.ResourceActionCreate),
+		func() resource.TestStep {
+			step := createClusterTestStep(ctx, t, testStepConfig{
+				TestName: "create",
+				ConfigPlanChecks: resource.ConfigPlanChecks{
+					PreApply: []plancheck.PlanCheck{
+						plancheck.ExpectResourceAction(config.FullResourceName, plancheck.ResourceActionCreate),
+					},
 				},
-			},
-			Resources: config,
-			cluster:   *initial,
-			vpc:       *vpc,
-		}),
+				Resources: config,
+				cluster:   *initial,
+				vpc:       *vpc,
+			})
+			step.ConfigStateChecks = append(step.ConfigStateChecks,
+				statecheck.ExpectKnownValue(config.FullResourceName,
+					tfjsonpath.New("internal_lb_cidr_names"),
+					knownvalue.ListExact(lbCidrChecks)),
+			)
+			return step
+		}(),
 		{
 			PreConfig: func() {
 				t.Log("Beginning coreweave_cks_cluster data source test")
@@ -535,6 +527,7 @@ func TestClusterResource(t *testing.T) {
 			ConfigPlanChecks: resource.ConfigPlanChecks{
 				PreApply: []plancheck.PlanCheck{
 					plancheck.ExpectResourceAction(config.FullResourceName, plancheck.ResourceActionUpdate),
+					plancheck.ExpectKnownValue(config.FullResourceName, tfjsonpath.New("service_account_oidc_issuer_url"), knownvalue.NotNull()),
 				},
 			},
 			Resources: config,
@@ -584,12 +577,35 @@ func TestClusterResource(t *testing.T) {
 	})
 }
 
-func TestPartialOidcConfig(t *testing.T) {
-	config := generateResourceNames("partial-oidc")
+func TestClusterResource_V6FieldsCreateOnly(t *testing.T) {
+	config := generateResourceNames(t, "cks-cluster-v6")
 	zone := testutil.AcceptanceTestZone
 	kubeVersion := testutil.AcceptanceTestKubeVersion
 
-	vpc := defaultVpc(config.ClusterName, zone)
+	vpc := defaultVpc(config.VPCName, zone)
+	vpc.VpcPrefixes = append(vpc.VpcPrefixes,
+		networking.VpcPrefixResourceModel{
+			Name:  types.StringValue("pod-cidr-v6"),
+			Value: types.StringValue("fd00:10::/48"),
+		},
+		networking.VpcPrefixResourceModel{
+			Name:  types.StringValue("service-cidr-v6"),
+			Value: types.StringValue("fd00:11::/108"),
+		},
+		networking.VpcPrefixResourceModel{
+			Name:  types.StringValue("internal-lb-cidr-v6"),
+			Value: types.StringValue("fd00:12::/108"),
+		},
+	)
+	npTypes := map[string]attr.Type{
+		"start": types.Int32Type,
+		"end":   types.Int32Type,
+	}
+	npVals := map[string]attr.Value{
+		"start": types.Int32Value(30000),
+		"end":   types.Int32Value(39534),
+	}
+	np, _ := types.ObjectValue(npTypes, npVals)
 
 	initial := &cks.ClusterResourceModel{
 		VpcId:               types.StringValue(fmt.Sprintf("coreweave_networking_vpc.%s.id", config.ResourceName)),
@@ -599,7 +615,290 @@ func TestPartialOidcConfig(t *testing.T) {
 		Public:              types.BoolValue(false),
 		PodCidrName:         types.StringValue("pod-cidr"),
 		ServiceCidrName:     types.StringValue("service-cidr"),
-		InternalLBCidrNames: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr")}),
+		InternalLBCidrNames: types.ListValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr")}),
+		NodePortRange:       np,
+
+		// v6 prefix fields (all 3 required together)
+		PodCidrNameV6:         types.StringValue("pod-cidr-v6"),
+		ServiceCidrNameV6:     types.StringValue("service-cidr-v6"),
+		InternalLBCidrNamesV6: types.ListValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr-v6")}),
+	}
+
+	ctx := context.Background()
+
+	// Step 1: create with v6 fields set
+	createStep := createClusterTestStep(ctx, t, testStepConfig{
+		TestName: "create v6 fields",
+		ConfigPlanChecks: resource.ConfigPlanChecks{
+			PreApply: []plancheck.PlanCheck{
+				plancheck.ExpectResourceAction(config.FullResourceName, plancheck.ResourceActionCreate),
+			},
+		},
+		Resources: config,
+		cluster:   *initial,
+		vpc:       *vpc,
+	})
+
+	// Step 2: reapply same config, expect noop (verifies read/roundtrip)
+	reapplyStep := resource.TestStep{
+		PreConfig: func() {
+			t.Log("Reapplying same configuration to verify Noop (v6 fields roundtrip)")
+		},
+		Config: networking.MustRenderVpcResource(ctx, config.ResourceName, vpc) + "\n" + cks.MustRenderClusterResource(ctx, config.ResourceName, initial),
+		ConfigPlanChecks: resource.ConfigPlanChecks{
+			PreApply: []plancheck.PlanCheck{
+				plancheck.ExpectResourceAction(config.FullResourceName, plancheck.ResourceActionNoop),
+			},
+		},
+	}
+
+	// Import verify step
+	importStep := resource.TestStep{
+		PreConfig: func() {
+			t.Log("Beginning coreweave_cks_cluster import test (v6)")
+		},
+		ResourceName:      config.FullResourceName,
+		ImportState:       true,
+		ImportStateVerify: true,
+	}
+
+	statechecks := []statecheck.StateCheck{
+		// v6 field roundtrip assertions
+		statecheck.ExpectKnownValue(config.FullResourceName, tfjsonpath.New("pod_cidr_name_v6"), knownvalue.StringExact("pod-cidr-v6")),
+		statecheck.ExpectKnownValue(config.FullResourceName, tfjsonpath.New("service_cidr_name_v6"), knownvalue.StringExact("service-cidr-v6")),
+		statecheck.ExpectKnownValue(
+			config.FullResourceName,
+			tfjsonpath.New("internal_lb_cidr_names_v6"),
+			knownvalue.ListExact([]knownvalue.Check{knownvalue.StringExact("internal-lb-cidr-v6")}),
+		),
+	}
+
+	// attach state checks to the create step
+	if createStep.ConfigStateChecks == nil {
+		createStep.ConfigStateChecks = statechecks
+	} else {
+		createStep.ConfigStateChecks = append(createStep.ConfigStateChecks, statechecks...)
+	}
+
+	steps := []resource.TestStep{
+		createStep,
+		reapplyStep,
+		importStep,
+	}
+
+	resource.ParallelTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+		PreCheck: func() {
+			testutil.SetEnvDefaults()
+		},
+		Steps: steps,
+	})
+}
+
+func TestClusterResource_Tailscale(t *testing.T) {
+	config := generateResourceNames(t, "cks-tailscale")
+	zone := testutil.AcceptanceTestZone
+	kubeVersion := testutil.AcceptanceTestKubeVersion
+
+	vpc := defaultVpc(config.VPCName, zone)
+
+	base := &cks.ClusterResourceModel{
+		VpcId:               types.StringValue(fmt.Sprintf("coreweave_networking_vpc.%s.id", config.ResourceName)),
+		Name:                types.StringValue(config.ClusterName),
+		Zone:                types.StringValue(zone),
+		Version:             types.StringValue(kubeVersion),
+		Public:              types.BoolValue(false),
+		PodCidrName:         types.StringValue("pod-cidr"),
+		ServiceCidrName:     types.StringValue("service-cidr"),
+		InternalLBCidrNames: types.ListValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr")}),
+	}
+
+	withTailscale := with(*base, func(c *cks.ClusterResourceModel) {
+		c.Tailscale = &cks.TailscaleResourceModel{
+			ClientID: types.StringValue("test-tailscale-client-id"),
+		}
+	})
+
+	ctx := t.Context()
+
+	steps := []resource.TestStep{
+		// Step 1: create without tailscale
+		createClusterTestStep(ctx, t, testStepConfig{
+			TestName: "create without tailscale",
+			ConfigPlanChecks: resource.ConfigPlanChecks{
+				PreApply: []plancheck.PlanCheck{
+					plancheck.ExpectResourceAction(config.FullResourceName, plancheck.ResourceActionCreate),
+				},
+			},
+			Resources: config,
+			cluster:   *base,
+			vpc:       *vpc,
+		}),
+		// Step 2: add tailscale
+		createClusterTestStep(ctx, t, testStepConfig{
+			TestName: "add tailscale client_id",
+			ConfigPlanChecks: resource.ConfigPlanChecks{
+				PreApply: []plancheck.PlanCheck{
+					plancheck.ExpectResourceAction(config.FullResourceName, plancheck.ResourceActionUpdate),
+				},
+			},
+			Resources: config,
+			cluster:   withTailscale,
+			vpc:       *vpc,
+		}),
+		// Step 3: reapply same config — expect noop
+		{
+			PreConfig: func() {
+				t.Log("Reapplying tailscale config to verify noop (roundtrip)")
+			},
+			Config: networking.MustRenderVpcResource(ctx, config.ResourceName, vpc) + "\n" + cks.MustRenderClusterResource(ctx, config.ResourceName, &withTailscale),
+			ConfigPlanChecks: resource.ConfigPlanChecks{
+				PreApply: []plancheck.PlanCheck{
+					plancheck.ExpectResourceAction(config.FullResourceName, plancheck.ResourceActionNoop),
+				},
+			},
+		},
+		// Step 4: remove tailscale block
+		createClusterTestStep(ctx, t, testStepConfig{
+			TestName: "remove tailscale block",
+			ConfigPlanChecks: resource.ConfigPlanChecks{
+				PreApply: []plancheck.PlanCheck{
+					plancheck.ExpectResourceAction(config.FullResourceName, plancheck.ResourceActionUpdate),
+				},
+			},
+			Resources: config,
+			cluster:   *base,
+			vpc:       *vpc,
+		}),
+		// Step 5: import verify
+		{
+			PreConfig: func() {
+				t.Log("Beginning coreweave_cks_cluster import test (tailscale)")
+			},
+			ResourceName:      config.FullResourceName,
+			ImportState:       true,
+			ImportStateVerify: true,
+		},
+	}
+
+	resource.ParallelTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+		PreCheck: func() {
+			testutil.SetEnvDefaults()
+		},
+		Steps: steps,
+	})
+}
+
+func TestClusterResource_Kubelet(t *testing.T) {
+	config := generateResourceNames(t, "cks-kubelet")
+	zone := testutil.AcceptanceTestZone
+	kubeVersion := testutil.AcceptanceTestKubeVersion
+
+	vpc := defaultVpc(config.VPCName, zone)
+
+	base := &cks.ClusterResourceModel{
+		VpcId:               types.StringValue(fmt.Sprintf("coreweave_networking_vpc.%s.id", config.ResourceName)),
+		Name:                types.StringValue(config.ClusterName),
+		Zone:                types.StringValue(zone),
+		Version:             types.StringValue(kubeVersion),
+		Public:              types.BoolValue(false),
+		PodCidrName:         types.StringValue("pod-cidr"),
+		ServiceCidrName:     types.StringValue("service-cidr"),
+		InternalLBCidrNames: types.ListValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr")}),
+	}
+
+	withKubelet := with(*base, func(c *cks.ClusterResourceModel) {
+		c.Kubelet = jsontypes.NewNormalizedValue(`{"maxPods":256}`)
+	})
+
+	ctx := t.Context()
+
+	steps := []resource.TestStep{
+		// Step 1: create without kubelet overrides
+		createClusterTestStep(ctx, t, testStepConfig{
+			TestName: "create without kubelet",
+			ConfigPlanChecks: resource.ConfigPlanChecks{
+				PreApply: []plancheck.PlanCheck{
+					plancheck.ExpectResourceAction(config.FullResourceName, plancheck.ResourceActionCreate),
+				},
+			},
+			Resources: config,
+			cluster:   *base,
+			vpc:       *vpc,
+		}),
+		// Step 2: add kubelet overrides
+		createClusterTestStep(ctx, t, testStepConfig{
+			TestName: "add kubelet maxPods",
+			ConfigPlanChecks: resource.ConfigPlanChecks{
+				PreApply: []plancheck.PlanCheck{
+					plancheck.ExpectResourceAction(config.FullResourceName, plancheck.ResourceActionUpdate),
+				},
+			},
+			Resources: config,
+			cluster:   withKubelet,
+			vpc:       *vpc,
+		}),
+		// Step 3: reapply same config — expect noop (semantic JSON roundtrip)
+		{
+			PreConfig: func() {
+				t.Log("Reapplying kubelet config to verify noop (roundtrip)")
+			},
+			Config: networking.MustRenderVpcResource(ctx, config.ResourceName, vpc) + "\n" + cks.MustRenderClusterResource(ctx, config.ResourceName, &withKubelet),
+			ConfigPlanChecks: resource.ConfigPlanChecks{
+				PreApply: []plancheck.PlanCheck{
+					plancheck.ExpectResourceAction(config.FullResourceName, plancheck.ResourceActionNoop),
+				},
+			},
+		},
+		// Step 4: remove kubelet block
+		createClusterTestStep(ctx, t, testStepConfig{
+			TestName: "remove kubelet block",
+			ConfigPlanChecks: resource.ConfigPlanChecks{
+				PreApply: []plancheck.PlanCheck{
+					plancheck.ExpectResourceAction(config.FullResourceName, plancheck.ResourceActionUpdate),
+				},
+			},
+			Resources: config,
+			cluster:   *base,
+			vpc:       *vpc,
+		}),
+		// Step 5: import verify
+		{
+			PreConfig: func() {
+				t.Log("Beginning coreweave_cks_cluster import test (kubelet)")
+			},
+			ResourceName:      config.FullResourceName,
+			ImportState:       true,
+			ImportStateVerify: true,
+		},
+	}
+
+	resource.ParallelTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+		PreCheck: func() {
+			testutil.SetEnvDefaults()
+		},
+		Steps: steps,
+	})
+}
+
+func TestPartialOidcConfig(t *testing.T) {
+	config := generateResourceNames(t, "partial-oidc")
+	zone := testutil.AcceptanceTestZone
+	kubeVersion := testutil.AcceptanceTestKubeVersion
+
+	vpc := defaultVpc(config.VPCName, zone)
+
+	initial := &cks.ClusterResourceModel{
+		VpcId:               types.StringValue(fmt.Sprintf("coreweave_networking_vpc.%s.id", config.ResourceName)),
+		Name:                types.StringValue(config.ClusterName),
+		Zone:                types.StringValue(zone),
+		Version:             types.StringValue(kubeVersion),
+		Public:              types.BoolValue(false),
+		PodCidrName:         types.StringValue("pod-cidr"),
+		ServiceCidrName:     types.StringValue("service-cidr"),
+		InternalLBCidrNames: types.ListValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr")}),
 		Oidc: &cks.OidcResourceModel{
 			CA:          types.StringNull(),
 			IssuerURL:   types.StringValue("https://samples.auth0.com/"),
@@ -616,7 +915,7 @@ func TestPartialOidcConfig(t *testing.T) {
 		Public:              types.BoolValue(true),
 		PodCidrName:         types.StringValue("pod-cidr"),
 		ServiceCidrName:     types.StringValue("service-cidr"),
-		InternalLBCidrNames: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr"), types.StringValue("internal-lb-cidr-2")}),
+		InternalLBCidrNames: types.ListValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr"), types.StringValue("internal-lb-cidr-2")}),
 		AuditPolicy:         types.StringValue(AuditPolicyB64),
 		Oidc: &cks.OidcResourceModel{
 			IssuerURL:      types.StringValue("https://samples.auth0.com/"),
@@ -639,7 +938,7 @@ func TestPartialOidcConfig(t *testing.T) {
 		Public:              types.BoolValue(true),
 		PodCidrName:         types.StringValue("pod-cidr"),
 		ServiceCidrName:     types.StringValue("service-cidr"),
-		InternalLBCidrNames: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr"), types.StringValue("internal-lb-cidr-2")}),
+		InternalLBCidrNames: types.ListValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr"), types.StringValue("internal-lb-cidr-2")}),
 		AuditPolicy:         types.StringValue(AuditPolicyB64),
 	}
 
@@ -651,7 +950,7 @@ func TestPartialOidcConfig(t *testing.T) {
 		Public:              types.BoolValue(true),
 		PodCidrName:         types.StringValue("pod-cidr"),
 		ServiceCidrName:     types.StringValue("service-cidr"),
-		InternalLBCidrNames: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr"), types.StringValue("internal-lb-cidr-2")}),
+		InternalLBCidrNames: types.ListValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr"), types.StringValue("internal-lb-cidr-2")}),
 		AuditPolicy:         types.StringValue(AuditPolicyB64),
 		Oidc: &cks.OidcResourceModel{
 			IssuerURL:      types.StringValue("https://samples.auth0.com/"),
@@ -720,11 +1019,11 @@ func TestPartialOidcConfig(t *testing.T) {
 }
 
 func TestPartialWebhookConfig(t *testing.T) {
-	config := generateResourceNames("partial-webhook")
+	config := generateResourceNames(t, "partial-webhook")
 	zone := testutil.AcceptanceTestZone
 	kubeVersion := testutil.AcceptanceTestKubeVersion
 
-	vpc := defaultVpc(config.ClusterName, zone)
+	vpc := defaultVpc(config.VPCName, zone)
 
 	initial := &cks.ClusterResourceModel{
 		VpcId:               types.StringValue(fmt.Sprintf("coreweave_networking_vpc.%s.id", config.ResourceName)),
@@ -734,44 +1033,38 @@ func TestPartialWebhookConfig(t *testing.T) {
 		Public:              types.BoolValue(false),
 		PodCidrName:         types.StringValue("pod-cidr"),
 		ServiceCidrName:     types.StringValue("service-cidr"),
-		InternalLBCidrNames: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr")}),
+		InternalLBCidrNames: types.ListValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr")}),
 		AuthNWebhook: &cks.AuthWebhookResourceModel{
 			Server: types.StringValue("https://samples.auth0.com/"),
 			CA:     types.StringValue(ExampleCAB64),
 		},
 	}
 
-	updateToFull := &cks.ClusterResourceModel{
-		VpcId:               types.StringValue(fmt.Sprintf("coreweave_networking_vpc.%s.id", config.ResourceName)),
-		Name:                types.StringValue(config.ClusterName),
-		Zone:                types.StringValue(zone),
-		Version:             types.StringValue(kubeVersion),
-		Public:              types.BoolValue(true),
-		PodCidrName:         types.StringValue("pod-cidr"),
-		ServiceCidrName:     types.StringValue("service-cidr"),
-		InternalLBCidrNames: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr"), types.StringValue("internal-lb-cidr-2")}),
-		AuditPolicy:         types.StringValue(AuditPolicyB64),
-		AuthNWebhook: &cks.AuthWebhookResourceModel{
+	updateToFull := with(*initial, func(obj *cks.ClusterResourceModel) {
+		obj.Public = types.BoolValue(true)
+		obj.InternalLBCidrNames = types.ListValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr"), types.StringValue("internal-lb-cidr-2")})
+		obj.AuditPolicy = types.StringValue(AuditPolicyB64)
+		obj.AuthZWebhook = &cks.AuthWebhookResourceModel{
 			Server: types.StringValue("https://samples.auth0.com/"),
 			CA:     types.StringValue(ExampleCAB64),
-		},
-		AuthZWebhook: &cks.AuthWebhookResourceModel{
-			Server: types.StringValue("https://samples.auth0.com/"),
-			CA:     types.StringValue(ExampleCAB64),
-		},
-	}
+		}
+	})
 
-	updateToEmpty := &cks.ClusterResourceModel{
-		VpcId:               types.StringValue(fmt.Sprintf("coreweave_networking_vpc.%s.id", config.ResourceName)),
-		Name:                types.StringValue(config.ClusterName),
-		Zone:                types.StringValue(zone),
-		Version:             types.StringValue(kubeVersion),
-		Public:              types.BoolValue(true),
-		PodCidrName:         types.StringValue("pod-cidr"),
-		ServiceCidrName:     types.StringValue("service-cidr"),
-		InternalLBCidrNames: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr"), types.StringValue("internal-lb-cidr-2")}),
-		AuditPolicy:         types.StringValue(AuditPolicyB64),
-	}
+	updateToNullCA := with(updateToFull, func(obj *cks.ClusterResourceModel) {
+		obj.AuthNWebhook = &cks.AuthWebhookResourceModel{
+			Server: types.StringValue("https://samples.auth0.com/"),
+			CA:     types.StringNull(),
+		}
+		obj.AuthZWebhook = &cks.AuthWebhookResourceModel{
+			Server: types.StringValue("https://samples.auth0.com/"),
+			CA:     types.StringNull(),
+		}
+	})
+
+	updateToEmpty := with(updateToNullCA, func(obj *cks.ClusterResourceModel) {
+		obj.AuthNWebhook = nil
+		obj.AuthZWebhook = nil
+	})
 
 	ctx := context.Background()
 
@@ -796,7 +1089,18 @@ func TestPartialWebhookConfig(t *testing.T) {
 			},
 			Resources: config,
 			vpc:       *vpc,
-			cluster:   *updateToFull,
+			cluster:   updateToFull,
+		}),
+		createClusterTestStep(ctx, t, testStepConfig{
+			TestName: "partial webhook update null ca",
+			ConfigPlanChecks: resource.ConfigPlanChecks{
+				PreApply: []plancheck.PlanCheck{
+					plancheck.ExpectResourceAction(config.FullResourceName, plancheck.ResourceActionUpdate),
+				},
+			},
+			Resources: config,
+			vpc:       *vpc,
+			cluster:   updateToNullCA,
 		}),
 		createClusterTestStep(ctx, t, testStepConfig{
 			TestName: "partial webook update to empty",
@@ -807,7 +1111,7 @@ func TestPartialWebhookConfig(t *testing.T) {
 			},
 			Resources: config,
 			vpc:       *vpc,
-			cluster:   *updateToEmpty,
+			cluster:   updateToEmpty,
 		}),
 	}
 
@@ -821,11 +1125,11 @@ func TestPartialWebhookConfig(t *testing.T) {
 }
 
 func TestEmptyAuditPolicy(t *testing.T) {
-	config := generateResourceNames("audit-policy")
+	config := generateResourceNames(t, "audit-policy")
 	zone := testutil.AcceptanceTestZone
 	kubeVersion := testutil.AcceptanceTestKubeVersion
 
-	vpc := defaultVpc(config.ClusterName, zone)
+	vpc := defaultVpc(config.VPCName, zone)
 	cluster := &cks.ClusterResourceModel{
 		VpcId:               types.StringValue(fmt.Sprintf("coreweave_networking_vpc.%s.id", config.ResourceName)),
 		Name:                types.StringValue(config.ClusterName),
@@ -834,7 +1138,7 @@ func TestEmptyAuditPolicy(t *testing.T) {
 		Public:              types.BoolValue(false),
 		PodCidrName:         types.StringValue("pod-cidr"),
 		ServiceCidrName:     types.StringValue("service-cidr"),
-		InternalLBCidrNames: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr")}),
+		InternalLBCidrNames: types.ListValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr")}),
 		AuditPolicy:         types.StringValue(""),
 	}
 
@@ -860,8 +1164,8 @@ func TestSharedStorage(t *testing.T) {
 	kubeVersion := testutil.AcceptanceTestKubeVersion
 	ctx := t.Context()
 	// Create base (original/source) cluster that is sharing it's storage
-	baseConfig1 := generateResourceNames("shared")
-	baseVpc1 := defaultVpc(baseConfig1.ClusterName, zone)
+	baseConfig1 := generateResourceNames(t, "shared")
+	baseVpc1 := defaultVpc(baseConfig1.VPCName, zone)
 	baseCluster1 := &cks.ClusterResourceModel{
 		VpcId:               types.StringValue(fmt.Sprintf("coreweave_networking_vpc.%s.id", baseConfig1.ResourceName)),
 		Name:                types.StringValue(baseConfig1.ClusterName),
@@ -870,12 +1174,12 @@ func TestSharedStorage(t *testing.T) {
 		Public:              types.BoolValue(false),
 		PodCidrName:         types.StringValue("pod-cidr"),
 		ServiceCidrName:     types.StringValue("service-cidr"),
-		InternalLBCidrNames: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr")}),
+		InternalLBCidrNames: types.ListValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr")}),
 	}
 
 	// Create migrated cluster which is taking over it's storage
-	dependentConfig := generateResourceNames("migrated")
-	dependentVpc := defaultVpc(dependentConfig.ClusterName, zone)
+	dependentConfig := generateResourceNames(t, "migrated")
+	dependentVpc := defaultVpc(dependentConfig.VPCName, zone)
 
 	dependentClusterInitial := &cks.ClusterResourceModel{
 		VpcId:                  types.StringValue(fmt.Sprintf("coreweave_networking_vpc.%s.id", dependentConfig.ResourceName)),
@@ -885,7 +1189,7 @@ func TestSharedStorage(t *testing.T) {
 		Public:                 types.BoolValue(false),
 		PodCidrName:            types.StringValue("pod-cidr"),
 		ServiceCidrName:        types.StringValue("service-cidr"),
-		InternalLBCidrNames:    types.SetValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr")}),
+		InternalLBCidrNames:    types.ListValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr")}),
 		SharedStorageClusterId: types.StringValue(fmt.Sprintf("coreweave_cks_cluster.%s.id", baseConfig1.ResourceName)),
 	}
 
@@ -931,5 +1235,93 @@ func TestSharedStorage(t *testing.T) {
 				),
 			},
 		},
+	})
+}
+
+func TestClusterResource_AdditionalServerSANs(t *testing.T) {
+	config := generateResourceNames(t, "cks-sans")
+	zone := testutil.AcceptanceTestZone
+	kubeVersion := testutil.AcceptanceTestKubeVersion
+
+	vpc := defaultVpc(config.VPCName, zone)
+	ctx := t.Context()
+
+	base := cks.ClusterResourceModel{
+		VpcId:               types.StringValue(fmt.Sprintf("coreweave_networking_vpc.%s.id", config.ResourceName)),
+		Name:                types.StringValue(config.ClusterName),
+		Zone:                types.StringValue(zone),
+		Version:             types.StringValue(kubeVersion),
+		Public:              types.BoolValue(false),
+		PodCidrName:         types.StringValue("pod-cidr"),
+		ServiceCidrName:     types.StringValue("service-cidr"),
+		InternalLBCidrNames: types.ListValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr")}),
+	}
+
+	withOneSAN := base
+	withOneSAN.AdditionalServerSans = types.SetValueMust(types.StringType, []attr.Value{
+		types.StringValue("custom-san.example.com"),
+	})
+
+	withMultipleSANs := base
+	withMultipleSANs.AdditionalServerSans = types.SetValueMust(types.StringType, []attr.Value{
+		types.StringValue("san1.example.com"),
+		types.StringValue("san2.example.com"),
+	})
+
+	steps := []resource.TestStep{
+		createClusterTestStep(ctx, t, testStepConfig{
+			TestName: "create with additional_server_sans",
+			ConfigPlanChecks: resource.ConfigPlanChecks{
+				PreApply: []plancheck.PlanCheck{
+					plancheck.ExpectResourceAction(config.FullResourceName, plancheck.ResourceActionCreate),
+				},
+			},
+			Resources: config,
+			vpc:       *vpc,
+			cluster:   withOneSAN,
+		}),
+		{
+			PreConfig: func() { t.Log("Reapplying same config to verify noop roundtrip") },
+			Config:    networking.MustRenderVpcResource(ctx, config.ResourceName, vpc) + "\n" + cks.MustRenderClusterResource(ctx, config.ResourceName, &withOneSAN),
+			ConfigPlanChecks: resource.ConfigPlanChecks{
+				PreApply: []plancheck.PlanCheck{
+					plancheck.ExpectResourceAction(config.FullResourceName, plancheck.ResourceActionNoop),
+				},
+			},
+		},
+		createClusterTestStep(ctx, t, testStepConfig{
+			TestName: "update additional_server_sans in-place",
+			ConfigPlanChecks: resource.ConfigPlanChecks{
+				PreApply: []plancheck.PlanCheck{
+					plancheck.ExpectResourceAction(config.FullResourceName, plancheck.ResourceActionUpdate),
+				},
+			},
+			Resources: config,
+			vpc:       *vpc,
+			cluster:   withMultipleSANs,
+		}),
+		createClusterTestStep(ctx, t, testStepConfig{
+			TestName: "clear additional_server_sans",
+			ConfigPlanChecks: resource.ConfigPlanChecks{
+				PreApply: []plancheck.PlanCheck{
+					plancheck.ExpectResourceAction(config.FullResourceName, plancheck.ResourceActionUpdate),
+				},
+			},
+			Resources: config,
+			vpc:       *vpc,
+			cluster:   base,
+		}),
+		{
+			PreConfig:         func() { t.Log("Importing cluster with no additional_server_sans") },
+			ResourceName:      config.FullResourceName,
+			ImportState:       true,
+			ImportStateVerify: true,
+		},
+	}
+
+	resource.ParallelTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+		PreCheck:                 func() { testutil.SetEnvDefaults() },
+		Steps:                    steps,
 	})
 }

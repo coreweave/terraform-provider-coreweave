@@ -6,10 +6,10 @@ import (
 	"fmt"
 
 	cksv1beta1 "buf.build/gen/go/coreweave/cks/protocolbuffers/go/coreweave/cks/v1beta1"
-	"connectrpc.com/connect"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/hashicorp/hcl/v2/hclwrite"
+	"github.com/hashicorp/terraform-plugin-framework-jsontypes/jsontypes"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -36,7 +36,7 @@ func (d *ClusterDataSource) Metadata(ctx context.Context, req datasource.Metadat
 
 func (d *ClusterDataSource) Schema(ctx context.Context, req datasource.SchemaRequest, resp *datasource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		MarkdownDescription: "Query information about an existing CoreWeave Kubernetes Service (CKS) cluster by ID. See the [CKS API reference](https://docs.coreweave.com/docs/products/cks/reference/cks-api).",
+		MarkdownDescription: "Query information about an existing CoreWeave Kubernetes Service (CKS) cluster by ID. See the [CKS API reference](https://docs.coreweave.com/products/cks/reference/cks-api).",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				MarkdownDescription: "The ID of the cluster.",
@@ -70,8 +70,22 @@ func (d *ClusterDataSource) Schema(ctx context.Context, req datasource.SchemaReq
 				MarkdownDescription: "The service CIDR name of the cluster.",
 				Computed:            true,
 			},
-			"internal_lb_cidr_names": schema.SetAttribute{
+			"internal_lb_cidr_names": schema.ListAttribute{
 				MarkdownDescription: "The internal load balancer CIDR names of the cluster.",
+				Computed:            true,
+				ElementType:         types.StringType,
+			},
+			// v6 fields
+			"pod_cidr_name_v6": schema.StringAttribute{
+				MarkdownDescription: "The IPv6 pod CIDR name of the cluster.",
+				Computed:            true,
+			},
+			"service_cidr_name_v6": schema.StringAttribute{
+				MarkdownDescription: "The IPv6 service CIDR name of the cluster.",
+				Computed:            true,
+			},
+			"internal_lb_cidr_names_v6": schema.ListAttribute{
+				MarkdownDescription: "The IPv6 internal load balancer CIDR names of the cluster.",
 				Computed:            true,
 				ElementType:         types.StringType,
 			},
@@ -148,7 +162,27 @@ func (d *ClusterDataSource) Schema(ctx context.Context, req datasource.SchemaReq
 				Computed:            true,
 			},
 			"shared_storage_cluster_id": schema.StringAttribute{
-				MarkdownDescription: "The `cluster_id` of the cluster to share storage with. Must be enabled by CoreWeave suppport. Contact CoreWeave support if you are interested in this feature.",
+				MarkdownDescription: "The `cluster_id` of the cluster to share storage with. Must be enabled by CoreWeave support. Contact CoreWeave support if you are interested in this feature.",
+				Computed:            true,
+			},
+			"additional_server_sans": schema.SetAttribute{
+				MarkdownDescription: "Additional Subject Alternative Names (SANs) included in the Kubernetes API server TLS certificate.",
+				Computed:            true,
+				ElementType:         types.StringType,
+			},
+			"tailscale": schema.SingleNestedAttribute{
+				MarkdownDescription: "Tailscale configuration for the cluster. Enables cluster access over a Tailscale VPN.",
+				Computed:            true,
+				Attributes: map[string]schema.Attribute{
+					"client_id": schema.StringAttribute{
+						MarkdownDescription: "The Tailscale Client ID for the federated identity.",
+						Computed:            true,
+					},
+				},
+			},
+			"kubelet": schema.StringAttribute{
+				CustomType:          jsontypes.NormalizedType{},
+				MarkdownDescription: "Selective overrides applied to every cluster Node's kubelet configuration, as a JSON object.",
 				Computed:            true,
 			},
 		},
@@ -181,14 +215,14 @@ func (d *ClusterDataSource) Read(ctx context.Context, req datasource.ReadRequest
 		return
 	}
 
-	cluster, err := d.client.GetCluster(ctx, connect.NewRequest(&cksv1beta1.GetClusterRequest{
+	cluster, err := d.client.GetCluster(ctx, &cksv1beta1.GetClusterRequest{
 		Id: data.Id.ValueString(),
-	}))
+	})
 	if err != nil {
 		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
 		return
 	}
-	data.Set(cluster.Msg.Cluster)
+	data.Set(cluster.Cluster)
 	resp.Diagnostics.Append(resp.State.Set(ctx, data)...)
 }
 

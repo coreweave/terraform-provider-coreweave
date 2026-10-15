@@ -6,7 +6,6 @@ import (
 	"fmt"
 
 	networkingv1beta1 "buf.build/gen/go/coreweave/networking/protocolbuffers/go/coreweave/networking/v1beta1"
-	"connectrpc.com/connect"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/hashicorp/hcl/v2/hclwrite"
@@ -36,7 +35,7 @@ func (d *VpcDataSource) Metadata(ctx context.Context, req datasource.MetadataReq
 
 func (d *VpcDataSource) Schema(ctx context.Context, req datasource.SchemaRequest, resp *datasource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		MarkdownDescription: "Query information about an existing VPC by ID. See the [CoreWeave VPC API reference](https://docs.coreweave.com/docs/products/networking/vpc/vpc-api).",
+		MarkdownDescription: "Query information about an existing VPC by ID. See the [CoreWeave VPC API reference](https://docs.coreweave.com/products/networking/vpc/vpc-api).",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				MarkdownDescription: "The ID of the VPC.",
@@ -171,15 +170,15 @@ func (d *VpcDataSource) Read(ctx context.Context, req datasource.ReadRequest, re
 		return
 	}
 
-	cluster, err := d.client.GetVPC(ctx, connect.NewRequest(&networkingv1beta1.GetVPCRequest{
+	cluster, err := d.client.GetVPC(ctx, &networkingv1beta1.GetVPCRequest{
 		Id: data.Id.ValueString(),
-	}))
+	})
 	if err != nil {
 		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
 		return
 	}
 
-	data.Set(cluster.Msg.Vpc)
+	data.Set(cluster.Vpc)
 	resp.Diagnostics.Append(resp.State.Set(ctx, data)...)
 }
 

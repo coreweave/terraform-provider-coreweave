@@ -6,12 +6,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"slices"
-	"strings"
 	"time"
 
 	networkingv1beta1 "buf.build/gen/go/coreweave/networking/protocolbuffers/go/coreweave/networking/v1beta1"
-	"connectrpc.com/connect"
+	"connectrpc.com/connect/v2"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/hashicorp/terraform-plugin-framework-nettypes/cidrtypes"
@@ -350,24 +348,6 @@ func (v *VpcResourceModel) GetDhcp(ctx context.Context) (*networkingv1beta1.DHCP
 	return dhcp, diagnostics
 }
 
-func enumMarkdownValues(m map[int32]string, dropZero bool) string {
-	// the values should be sorted by their enum value, not the string value.
-	keys := make([]int32, 0, len(m))
-	for k := range m {
-		if dropZero && k == 0 {
-			continue
-		}
-		keys = append(keys, k)
-	}
-	slices.Sort(keys)
-
-	values := make([]string, len(keys))
-	for i, k := range keys {
-		values[i] = fmt.Sprintf("`%s`", m[k])
-	}
-	return strings.Join(values, ", ")
-}
-
 func (v *VpcResourceModel) hostPrefixes(ctx context.Context) ([]*networkingv1beta1.HostPrefix, diag.Diagnostics) {
 	if v.HostPrefixes.IsNull() || v.HostPrefixes.IsUnknown() {
 		return nil, nil
@@ -458,7 +438,7 @@ func (r *VpcResource) Metadata(ctx context.Context, req resource.MetadataRequest
 
 func (r *VpcResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		MarkdownDescription: "Create and manage VPCs. Learn more about [CoreWeave VPCs](https://docs.coreweave.com/docs/products/networking/vpc/about-vpcs).",
+		MarkdownDescription: "Create and manage VPCs. Learn more about [CoreWeave VPCs](https://docs.coreweave.com/products/networking/vpc/about-vpcs).",
 
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
@@ -499,7 +479,7 @@ func (r *VpcResource) Schema(ctx context.Context, req resource.SchemaRequest, re
 			"host_prefix": schema.StringAttribute{
 				Optional:            true,
 				Computed:            true,
-				MarkdownDescription: "An IPv4 CIDR range used to allocate host addresses when booting compute into a VPC.\nThis CIDR must be have a mask size of /18. If left unspecified, a Zone-specific default value will be applied by the server.\nThis field is immutable once set.",
+				MarkdownDescription: "An IPv4 CIDR range used to allocate host addresses when booting compute into a VPC. For SUNK clusters, use a prefix no smaller than your Zone's default host prefix (a mask no longer than the default) so that host addresses reflect each node's physical location. SUNK uses this location information to place network-adjacent nodes together, which improves distributed-training performance. A prefix smaller than the Zone default (a longer mask) doesn't carry this location information, so it produces less optimal placement. If you need a different size, CoreWeave can approve one for your account on request. For non-SUNK VPCs, any prefix size is accepted. However, NVL72 rack-level instances require a host prefix no smaller than the Zone's default host prefix. A smaller prefix forces dynamic address allocation, which breaks standard IMEX address mapping across the cluster. IMEX with Dynamic Resource Allocation (DRA) doesn't have this limitation. If left unspecified, a Zone-specific default value will be applied by the server. See [Host prefixes](https://docs.coreweave.com/products/networking/vpc/create-manage-vpcs#host-prefixes) for details. This field is immutable once set.",
 				DeprecationMessage:  "`host_prefix` is deprecated. Use `host_prefixes` instead. The field will be removed in a future version. The equivalent expression for a given resource may be found by refreshing state and running `terraform state show coreweave_networking_vpc.example`.",
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplaceIfConfigured(),
@@ -507,9 +487,8 @@ func (r *VpcResource) Schema(ctx context.Context, req resource.SchemaRequest, re
 				},
 			},
 			"host_prefixes": schema.SetNestedAttribute{
-				MarkdownDescription: "The IPv4 or IPv6 CIDR ranges used to allocate host addresses when booting compute into a VPC. " +
-					"New named host prefixes can be added in place. Existing elements cannot be removed or changed; " +
-					"unsupported changes produce an error rather than replacing the VPC.",
+				MarkdownDescription: "The IPv4 or IPv6 CIDR ranges used to allocate host addresses when booting compute into a VPC. For SUNK clusters, use an IPv4 prefix no smaller than your Zone's default host prefix (a mask no longer than the default) so that host addresses reflect each node's physical location. SUNK uses this location information to place network-adjacent nodes together, which improves distributed-training performance. A prefix smaller than the Zone default (a longer mask) doesn't carry this location information, so it produces less optimal placement. If you need a different size, CoreWeave can approve one for your account on request. For non-SUNK VPCs, any prefix size is accepted. However, NVL72 rack-level instances require a primary host prefix (`type = PRIMARY`) no smaller than the Zone's default host prefix. A smaller prefix forces dynamic address allocation, which breaks standard IMEX address mapping across the cluster. IMEX with Dynamic Resource Allocation (DRA) doesn't have this limitation. See [Host prefixes](https://docs.coreweave.com/products/networking/vpc/create-manage-vpcs#host-prefixes) for details. " +
+					"New named host prefixes can be added in place. Existing elements cannot be removed or changed; unsupported changes produce an error rather than replacing the VPC.",
 				Optional: true,
 				Computed: true,
 				Validators: []validator.Set{
@@ -527,7 +506,7 @@ func (r *VpcResource) Schema(ctx context.Context, req resource.SchemaRequest, re
 						},
 						"type": schema.StringAttribute{
 							Required:            true,
-							MarkdownDescription: fmt.Sprintf("Controls network connectivity from the prefix to the host. Must be one of: %s.", enumMarkdownValues(networkingv1beta1.HostPrefix_Type_name, true)),
+							MarkdownDescription: fmt.Sprintf("Controls network connectivity from the prefix to the host. Must be one of: %s.", coreweave.EnumMarkdownValues(networkingv1beta1.HostPrefix_Type_name, true)),
 						},
 						"prefixes": schema.ListAttribute{
 							Required:            true,
@@ -546,7 +525,7 @@ func (r *VpcResource) Schema(ctx context.Context, req resource.SchemaRequest, re
 									Optional:            true,
 									Computed:            true,
 									Default:             stringdefault.StaticString(networkingv1beta1.IPAddressManagementPolicy_UNSPECIFIED.String()),
-									MarkdownDescription: fmt.Sprintf("Describes which IP address from the prefix is allocated to the network gateway. Must be one of: %s.", enumMarkdownValues(networkingv1beta1.IPAddressManagementPolicy_GatewayAddressPolicy_name, false)),
+									MarkdownDescription: fmt.Sprintf("Describes which IP address from the prefix is allocated to the network gateway. Must be one of: %s.", coreweave.EnumMarkdownValues(networkingv1beta1.IPAddressManagementPolicy_GatewayAddressPolicy_name, false)),
 								},
 							},
 						},
@@ -639,14 +618,14 @@ func (r *VpcResource) Create(ctx context.Context, req resource.CreateRequest, re
 		return
 	}
 
-	createResp, err := r.client.CreateVPC(ctx, connect.NewRequest(createReq))
+	createResp, err := r.client.CreateVPC(ctx, createReq)
 	if err != nil {
 		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
 		return
 	}
 
 	// set state once vpc is created
-	data.Set(createResp.Msg.Vpc)
+	data.Set(createResp.Vpc)
 	// if we fail to set state, return early as the resource will be orphaned
 	if diag := resp.State.Set(ctx, &data); diag.HasError() {
 		resp.Diagnostics.Append(diag...)
@@ -661,9 +640,9 @@ func (r *VpcResource) Create(ctx context.Context, req resource.CreateRequest, re
 		},
 		Target: []string{networkingv1beta1.VPC_STATUS_READY.String()},
 		Refresh: func() (result interface{}, state string, err error) {
-			resp, err := r.client.GetVPC(ctx, connect.NewRequest(&networkingv1beta1.GetVPCRequest{
-				Id: createResp.Msg.Vpc.Id,
-			}))
+			resp, err := r.client.GetVPC(ctx, &networkingv1beta1.GetVPCRequest{
+				Id: createResp.Vpc.Id,
+			})
 			if err != nil {
 				tflog.Error(ctx, "failed to fetch vpc resource", map[string]interface{}{
 					"error": err,
@@ -671,7 +650,7 @@ func (r *VpcResource) Create(ctx context.Context, req resource.CreateRequest, re
 				return nil, networkingv1beta1.VPC_STATUS_UNSPECIFIED.String(), err
 			}
 
-			return resp.Msg.Vpc, resp.Msg.Vpc.Status.String(), nil
+			return resp.Vpc, resp.Vpc.Status.String(), nil
 		},
 		Timeout: 20 * time.Minute,
 	}
@@ -706,9 +685,9 @@ func (r *VpcResource) Read(ctx context.Context, req resource.ReadRequest, resp *
 		return
 	}
 
-	vpc, err := r.client.GetVPC(ctx, connect.NewRequest(&networkingv1beta1.GetVPCRequest{
+	vpc, err := r.client.GetVPC(ctx, &networkingv1beta1.GetVPCRequest{
 		Id: data.Id.ValueString(),
-	}))
+	})
 	if err != nil {
 		if coreweave.IsNotFoundError(err) {
 			resp.State.RemoveResource(ctx)
@@ -719,7 +698,7 @@ func (r *VpcResource) Read(ctx context.Context, req resource.ReadRequest, resp *
 		return
 	}
 
-	data.Set(vpc.Msg.Vpc)
+	data.Set(vpc.Vpc)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -746,7 +725,7 @@ func (r *VpcResource) Update(ctx context.Context, req resource.UpdateRequest, re
 		updateReq.HostPrefixes = nil
 	}
 
-	updateResp, err := r.client.UpdateVPC(ctx, connect.NewRequest(updateReq))
+	updateResp, err := r.client.UpdateVPC(ctx, updateReq)
 	if err != nil {
 		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
 		return
@@ -760,9 +739,9 @@ func (r *VpcResource) Update(ctx context.Context, req resource.UpdateRequest, re
 		},
 		Target: []string{networkingv1beta1.VPC_STATUS_READY.String()},
 		Refresh: func() (result interface{}, state string, err error) {
-			resp, err := r.client.GetVPC(ctx, connect.NewRequest(&networkingv1beta1.GetVPCRequest{
-				Id: updateResp.Msg.Vpc.Id,
-			}))
+			resp, err := r.client.GetVPC(ctx, &networkingv1beta1.GetVPCRequest{
+				Id: updateResp.Vpc.Id,
+			})
 			if err != nil {
 				tflog.Error(ctx, "failed to fetch vpc resource", map[string]interface{}{
 					"error": err.Error(),
@@ -771,10 +750,10 @@ func (r *VpcResource) Update(ctx context.Context, req resource.UpdateRequest, re
 			}
 
 			tflog.Info(ctx, "fetching vpc", map[string]interface{}{
-				"vpc": resp.Msg.Vpc.String(),
+				"vpc": resp.Vpc.String(),
 			})
 
-			return resp.Msg.Vpc, resp.Msg.Vpc.Status.String(), nil
+			return resp.Vpc, resp.Vpc.Status.String(), nil
 		},
 		Timeout: 20 * time.Minute,
 	}
@@ -806,9 +785,9 @@ func (r *VpcResource) Delete(ctx context.Context, req resource.DeleteRequest, re
 		return
 	}
 
-	deleteResp, err := r.client.DeleteVPC(ctx, connect.NewRequest(&networkingv1beta1.DeleteVPCRequest{
+	deleteResp, err := r.client.DeleteVPC(ctx, &networkingv1beta1.DeleteVPCRequest{
 		Id: data.Id.ValueString(),
-	}))
+	})
 	if err != nil {
 		if coreweave.IsNotFoundError(err) {
 			return
@@ -824,9 +803,9 @@ func (r *VpcResource) Delete(ctx context.Context, req resource.DeleteRequest, re
 		},
 		Target: []string{""},
 		Refresh: func() (result interface{}, state string, err error) {
-			resp, err := r.client.GetVPC(ctx, connect.NewRequest(&networkingv1beta1.GetVPCRequest{
-				Id: deleteResp.Msg.Vpc.Id,
-			}))
+			resp, err := r.client.GetVPC(ctx, &networkingv1beta1.GetVPCRequest{
+				Id: deleteResp.Vpc.Id,
+			})
 			if err != nil {
 				var connectErr *connect.Error
 				if errors.As(err, &connectErr) && connectErr.Code() == connect.CodeNotFound {
@@ -839,7 +818,7 @@ func (r *VpcResource) Delete(ctx context.Context, req resource.DeleteRequest, re
 				return nil, networkingv1beta1.VPC_STATUS_UNSPECIFIED.String(), err
 			}
 
-			return resp.Msg.Vpc, resp.Msg.Vpc.Status.String(), nil
+			return resp.Vpc, resp.Vpc.Status.String(), nil
 		},
 		Timeout: 20 * time.Minute,
 	}

@@ -1,0 +1,801 @@
+package inference_test
+
+import (
+	"fmt"
+	"math/rand/v2"
+	"testing"
+	"time"
+
+	inferencev1 "buf.build/gen/go/coreweave/inference/protocolbuffers/go/coreweave/inference/v1alpha1"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
+	fwresource "github.com/hashicorp/terraform-plugin-framework/resource"
+	fwschema "github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/knownvalue"
+	"github.com/hashicorp/terraform-plugin-testing/plancheck"
+	"github.com/hashicorp/terraform-plugin-testing/statecheck"
+	"github.com/hashicorp/terraform-plugin-testing/tfjsonpath"
+	"google.golang.org/protobuf/types/known/timestamppb"
+
+	"github.com/coreweave/terraform-provider-coreweave/coreweave/inference"
+	"github.com/coreweave/terraform-provider-coreweave/internal/provider"
+	"github.com/coreweave/terraform-provider-coreweave/internal/testutil"
+)
+
+const (
+	acceptanceEngineEnvName  = "VLLM_USE_FLASHINFER_MOE_FP4"
+	acceptanceEngineEnvValue = "0"
+)
+
+// --- Unit tests for pure helper functions ---
+
+func TestInferenceDeployment_Schema(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	schemaReq := fwresource.SchemaRequest{}
+	schemaResp := &fwresource.SchemaResponse{}
+
+	inference.NewInferenceDeploymentResource().Schema(ctx, schemaReq, schemaResp)
+
+	if schemaResp.Diagnostics.HasError() {
+		t.Fatalf("schema returned errors: %v", schemaResp.Diagnostics)
+	}
+
+	trafficAttr, ok := schemaResp.Schema.Attributes["traffic"].(fwschema.SingleNestedAttribute)
+	if !ok {
+		t.Fatalf("traffic: expected SingleNestedAttribute, got %T", schemaResp.Schema.Attributes["traffic"])
+	}
+	if !trafficAttr.Optional {
+		t.Error("traffic: expected optional")
+	}
+	if !trafficAttr.Computed {
+		t.Error("traffic: expected computed")
+	}
+	if trafficAttr.Default == nil {
+		t.Error("traffic: expected default")
+	}
+
+	weightAttr, ok := trafficAttr.Attributes["weight"].(fwschema.Int64Attribute)
+	if !ok {
+		t.Fatalf("traffic.weight: expected Int64Attribute, got %T", trafficAttr.Attributes["weight"])
+	}
+	if !weightAttr.Optional {
+		t.Error("traffic.weight: expected optional")
+	}
+	if !weightAttr.Computed {
+		t.Error("traffic.weight: expected computed")
+	}
+}
+
+func TestInferenceDeployment_SemverPattern(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		version string
+		want    bool
+	}{
+		// Plain core versions.
+		{"1.2.3", true},
+		{"0.0.0", true},
+		{"10.20.30", true},
+		// Pre-release identifiers.
+		{"1.0.0-rc.1", true},
+		{"1.0.0-alpha", true},
+		{"1.0.0-0.3.7", true},
+		// Build metadata, including CoreWeave-flavored builds.
+		{"0.22.0+crwv.2", true},
+		{"1.2.3+build.123", true},
+		{"1.0.0-rc.1+crwv.2", true},
+		// Invalid: missing components, leading zeroes, empty identifiers.
+		{"", false},
+		{"1.2", false},
+		{"1", false},
+		{"v1.2.3", false},
+		{"01.2.3", false},
+		{"1.2.3-", false},
+		{"1.2.3+", false},
+		{"1.2.3 ", false},
+	}
+
+	for _, tc := range tests {
+		t.Run(fmt.Sprintf("%q", tc.version), func(t *testing.T) {
+			t.Parallel()
+			if got := inference.SemverMatches(tc.version); got != tc.want {
+				t.Errorf("SemverMatches(%q) = %v, want %v", tc.version, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestInferenceDeployment_SetFromDeployment_NullPreservation(t *testing.T) {
+	t.Parallel()
+
+	// Build a minimal proto deployment with no optional fields set.
+	d := &inferencev1.Deployment{
+		Spec: &inferencev1.DeploymentSpec{
+			Id:   "test-id",
+			Name: "my-llm",
+			Runtime: &inferencev1.DeploymentRuntime{
+				Engine:  "vllm",
+				Version: "",
+			},
+			Resources: &inferencev1.DeploymentResources{
+				InstanceType: "H100_80GB_SXM5",
+				GpuCount:     1,
+			},
+			Model: &inferencev1.DeploymentModel{
+				Name:   "meta-llama/Llama-3.1-8B",
+				Bucket: "my-bucket",
+				Path:   "models/llama",
+			},
+			Autoscaling: &inferencev1.DeploymentAutoscaling{
+				Min: 1,
+				Max: 4,
+			},
+			Traffic: &inferencev1.DeploymentTraffic{},
+		},
+		Status: &inferencev1.DeploymentStatus{
+			Status: inferencev1.Status_STATUS_READY,
+		},
+	}
+
+	// Model starts with all optional fields null (simulating plan where user didn't configure them).
+	m := &inference.InferenceDeploymentResourceModel{
+		Runtime: &inference.RuntimeModel{
+			Version:      types.StringNull(),
+			EngineConfig: types.MapNull(types.StringType),
+			EngineEnv:    types.MapNull(types.StringType),
+		},
+		Autoscaling: &inference.AutoscalingModel{
+			Priority:        types.Int64Null(),
+			CapacityClasses: types.ListNull(types.StringType),
+			Concurrency:     types.Int64Null(),
+		},
+		Traffic: &inference.TrafficModel{
+			Weight: types.Int64Null(),
+		},
+	}
+
+	inference.SetFromDeployment(m, d, false)
+
+	// Optional fields with default values should remain null.
+	if !m.Runtime.Version.IsNull() {
+		t.Errorf("Runtime.Version: expected null when API returns empty, got %v", m.Runtime.Version)
+	}
+	if !m.Runtime.EngineConfig.IsNull() {
+		t.Errorf("Runtime.EngineConfig: expected null when API returns empty map, got %v", m.Runtime.EngineConfig)
+	}
+	if !m.Runtime.EngineEnv.IsNull() {
+		t.Errorf("Runtime.EngineEnv: expected null when API returns empty map, got %v", m.Runtime.EngineEnv)
+	}
+	if !m.Autoscaling.Priority.IsNull() {
+		t.Errorf("Autoscaling.Priority: expected null when API returns 0, got %v", m.Autoscaling.Priority)
+	}
+	if !m.Autoscaling.Concurrency.IsNull() {
+		t.Errorf("Autoscaling.Concurrency: expected null when API returns 0, got %v", m.Autoscaling.Concurrency)
+	}
+	if !m.Autoscaling.CapacityClasses.IsNull() {
+		t.Errorf("Autoscaling.CapacityClasses: expected null when API returns empty, got %v", m.Autoscaling.CapacityClasses)
+	}
+	m.Runtime.Version = types.StringUnknown()
+	inference.SetFromDeployment(m, d, false)
+	if !m.Runtime.Version.IsNull() {
+		t.Errorf("Runtime.Version: expected null when plan is unknown and API returns empty, got %v", m.Runtime.Version)
+	}
+
+	// traffic weight is computed: the API value is always populated into state.
+	if m.Traffic.Weight.ValueInt64() != 0 {
+		t.Errorf("Traffic.Weight: expected 0 from API response, got %v", m.Traffic.Weight)
+	}
+
+	// Required fields should always be populated.
+	if m.ID.ValueString() != "test-id" {
+		t.Errorf("ID: expected 'test-id', got %q", m.ID.ValueString())
+	}
+	if m.Resources.GpuCount.ValueInt64() != 1 {
+		t.Errorf("GpuCount: expected 1, got %d", m.Resources.GpuCount.ValueInt64())
+	}
+	if m.Autoscaling.Min.ValueInt64() != 1 {
+		t.Errorf("Autoscaling.Min: expected 1, got %d", m.Autoscaling.Min.ValueInt64())
+	}
+}
+
+// TestSetFromDeployment_PreserveStatusFields verifies that during Update
+// (preserveStatusFields=true) the observed status fields — status, updated_at,
+// conditions — retain their prior-state values (as carried by the plan via
+// UseStateForUnknown) rather than being overwritten by the fresh API response,
+// while spec fields are still refreshed. Read/Create (preserveStatusFields=false)
+// refresh all fields.
+func TestSetFromDeployment_PreserveStatusFields(t *testing.T) {
+	t.Parallel()
+
+	base := func(status inferencev1.Status, name, condReason string, updatedAt *timestamppb.Timestamp) *inferencev1.Deployment {
+		return &inferencev1.Deployment{
+			Spec: &inferencev1.DeploymentSpec{
+				Id:        "test-id",
+				Name:      name,
+				Runtime:   &inferencev1.DeploymentRuntime{Engine: "vllm"},
+				Resources: &inferencev1.DeploymentResources{InstanceType: "H100_80GB_SXM5", GpuCount: 1},
+				Model:     &inferencev1.DeploymentModel{Name: "meta-llama/Llama-3.1-8B"},
+				Autoscaling: &inferencev1.DeploymentAutoscaling{
+					Min: 1,
+					Max: 4,
+				},
+				Traffic: &inferencev1.DeploymentTraffic{},
+			},
+			Status: &inferencev1.DeploymentStatus{
+				Status:    status,
+				UpdatedAt: updatedAt,
+				Conditions: []*inferencev1.Condition{
+					{Type: "Ready", Status: inferencev1.Condition_STATUS_TRUE, Reason: condReason},
+				},
+			},
+		}
+	}
+
+	prior := base(inferencev1.Status_STATUS_READY, "my-llm", "AsExpected", timestamppb.New(time.Unix(1000, 0).UTC()))
+	fresh := base(inferencev1.Status_STATUS_UPDATING, "my-llm-renamed", "Reconciling", timestamppb.New(time.Unix(2000, 0).UTC()))
+
+	// Seed the model with prior-state values (what the plan holds on Update).
+	m := &inference.InferenceDeploymentResourceModel{}
+	if diags := inference.SetFromDeployment(m, prior, false); diags.HasError() {
+		t.Fatalf("seed SetFromDeployment returned errors: %v", diags)
+	}
+	priorStatus := m.Status
+	priorUpdatedAt := m.UpdatedAt
+	priorConditions := m.Conditions
+
+	// Update path: status fields must be preserved, spec fields refreshed.
+	if diags := inference.SetFromDeployment(m, fresh, true); diags.HasError() {
+		t.Fatalf("preserve SetFromDeployment returned errors: %v", diags)
+	}
+	if !m.Status.Equal(priorStatus) {
+		t.Errorf("Status: expected preserved %v, got %v", priorStatus, m.Status)
+	}
+	if !m.UpdatedAt.Equal(priorUpdatedAt) {
+		t.Errorf("UpdatedAt: expected preserved %v, got %v", priorUpdatedAt, m.UpdatedAt)
+	}
+	if !m.Conditions.Equal(priorConditions) {
+		t.Errorf("Conditions: expected preserved %v, got %v", priorConditions, m.Conditions)
+	}
+	if m.Name.ValueString() != "my-llm-renamed" {
+		t.Errorf("Name: expected spec to refresh to 'my-llm-renamed', got %q", m.Name.ValueString())
+	}
+
+	// Read path: status fields must refresh from the API response.
+	if diags := inference.SetFromDeployment(m, fresh, false); diags.HasError() {
+		t.Fatalf("refresh SetFromDeployment returned errors: %v", diags)
+	}
+	if m.Status.ValueString() != inferencev1.Status_STATUS_UPDATING.String() {
+		t.Errorf("Status: expected refreshed %q, got %q", inferencev1.Status_STATUS_UPDATING.String(), m.Status.ValueString())
+	}
+	if m.UpdatedAt.Equal(priorUpdatedAt) {
+		t.Errorf("UpdatedAt: expected refresh to differ from prior %v, got %v", priorUpdatedAt, m.UpdatedAt)
+	}
+	if m.Conditions.Equal(priorConditions) {
+		t.Errorf("Conditions: expected refresh to differ from prior, got %v", m.Conditions)
+	}
+}
+
+func TestInferenceDeployment_SetFromDeployment_RuntimeMaps(t *testing.T) {
+	t.Parallel()
+
+	d := &inferencev1.Deployment{
+		Spec: &inferencev1.DeploymentSpec{
+			Id:   "test-id",
+			Name: "my-llm",
+			Runtime: &inferencev1.DeploymentRuntime{
+				Engine: "vllm",
+				EngineEnv: map[string]string{
+					"VLLM_LOGGING_LEVEL": "INFO",
+				},
+			},
+			Resources: &inferencev1.DeploymentResources{
+				InstanceType: "H100_80GB_SXM5",
+				GpuCount:     1,
+			},
+			Model: &inferencev1.DeploymentModel{
+				Name:   "meta-llama/Llama-3.1-8B",
+				Bucket: "my-bucket",
+				Path:   "models/llama",
+			},
+			Autoscaling: &inferencev1.DeploymentAutoscaling{
+				Min: 1,
+				Max: 4,
+			},
+		},
+		Status: &inferencev1.DeploymentStatus{
+			Status: inferencev1.Status_STATUS_READY,
+		},
+	}
+
+	m := &inference.InferenceDeploymentResourceModel{
+		Runtime: &inference.RuntimeModel{
+			Version:      types.StringNull(),
+			EngineConfig: types.MapNull(types.StringType),
+			EngineEnv:    types.MapNull(types.StringType),
+		},
+		Autoscaling: &inference.AutoscalingModel{
+			Priority:        types.Int64Null(),
+			CapacityClasses: types.ListNull(types.StringType),
+			Concurrency:     types.Int64Null(),
+		},
+	}
+
+	inference.SetFromDeployment(m, d, false)
+
+	var engineEnv map[string]string
+	diags := m.Runtime.EngineEnv.ElementsAs(t.Context(), &engineEnv, false)
+	if diags.HasError() {
+		t.Fatalf("EngineEnv ElementsAs returned errors: %v", diags)
+	}
+	if got := engineEnv["VLLM_LOGGING_LEVEL"]; got != "INFO" {
+		t.Errorf("Runtime.EngineEnv[\"VLLM_LOGGING_LEVEL\"]: got %q, want 'INFO'", got)
+	}
+}
+
+func TestInferenceDeployment_ToCreateRequest_OptionalFields(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	gwIds := types.SetValueMust(types.StringType, []attr.Value{types.StringValue("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")})
+
+	m := &inference.InferenceDeploymentResourceModel{
+		Name:       types.StringValue("my-llm"),
+		GatewayIds: gwIds,
+		Disabled:   types.BoolValue(false),
+		Runtime: &inference.RuntimeModel{
+			Engine:       types.StringValue("vllm"),
+			Version:      types.StringNull(),
+			EngineConfig: types.MapNull(types.StringType),
+			EngineEnv:    types.MapNull(types.StringType),
+		},
+		Resources: &inference.ResourcesModel{
+			InstanceType: types.StringValue("H100_80GB_SXM5"),
+			GpuCount:     types.Int64Value(1),
+		},
+		Model: &inference.DeploymentModelConfig{
+			Name:   types.StringValue("meta-llama/Llama-3.1-8B"),
+			Bucket: types.StringValue("my-bucket"),
+			Path:   types.StringValue("models/llama"),
+		},
+		Autoscaling: &inference.AutoscalingModel{
+			Min:             types.Int64Value(1),
+			Max:             types.Int64Value(4),
+			Priority:        types.Int64Null(),
+			CapacityClasses: types.ListNull(types.StringType),
+			Concurrency:     types.Int64Null(),
+		},
+		Traffic: &inference.TrafficModel{
+			Weight: types.Int64Null(),
+		},
+	}
+
+	req, diags := inference.ToCreateRequest(ctx, m)
+	if diags.HasError() {
+		t.Fatalf("ToCreateRequest returned errors: %v", diags)
+	}
+
+	if req.Name != "my-llm" {
+		t.Errorf("Name: got %q, want 'my-llm'", req.Name)
+	}
+	if req.Runtime.Version != "" {
+		t.Errorf("Runtime.Version: expected empty when null, got %q", req.Runtime.Version)
+	}
+	if len(req.Runtime.EngineConfig) != 0 {
+		t.Errorf("Runtime.EngineConfig: expected empty map, got %v", req.Runtime.EngineConfig)
+	}
+	if len(req.Runtime.EngineEnv) != 0 {
+		t.Errorf("Runtime.EngineEnv: expected empty map, got %v", req.Runtime.EngineEnv)
+	}
+	if req.Autoscaling.Priority != 0 {
+		t.Errorf("Autoscaling.Priority: expected 0 when null, got %d", req.Autoscaling.Priority)
+	}
+	if req.Traffic.Weight != 0 {
+		t.Errorf("Traffic.Weight: expected 0 when null, got %d", req.Traffic.Weight)
+	}
+	if req.Resources.GpuCount != 1 {
+		t.Errorf("GpuCount: expected 1, got %d", req.Resources.GpuCount)
+	}
+}
+
+func TestInferenceDeployment_ToUpdateRequest_Fields(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	gwIds := types.SetValueMust(types.StringType, []attr.Value{types.StringValue("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")})
+	ccList, _ := types.ListValueFrom(ctx, types.StringType, []string{"CAPACITY_CLASS_RESERVED"})
+	engineEnv := types.MapValueMust(types.StringType, map[string]attr.Value{
+		"VLLM_LOGGING_LEVEL": types.StringValue("INFO"),
+	})
+
+	m := &inference.InferenceDeploymentResourceModel{
+		ID:         types.StringValue("deploy-123"),
+		Name:       types.StringValue("my-llm"),
+		GatewayIds: gwIds,
+		Disabled:   types.BoolValue(true),
+		Runtime: &inference.RuntimeModel{
+			Engine:       types.StringValue("vllm"),
+			Version:      types.StringValue("1.0.0"),
+			EngineConfig: types.MapNull(types.StringType),
+			EngineEnv:    engineEnv,
+		},
+		Resources: &inference.ResourcesModel{
+			InstanceType: types.StringValue("H100_80GB_SXM5"),
+			GpuCount:     types.Int64Value(2),
+		},
+		Model: &inference.DeploymentModelConfig{
+			Name:   types.StringValue("meta-llama/Llama-3.1-8B"),
+			Bucket: types.StringValue("my-bucket"),
+			Path:   types.StringValue("models/llama"),
+		},
+		Autoscaling: &inference.AutoscalingModel{
+			Min:             types.Int64Value(2),
+			Max:             types.Int64Value(8),
+			Priority:        types.Int64Value(100),
+			CapacityClasses: ccList,
+			Concurrency:     types.Int64Value(4),
+		},
+		Traffic: &inference.TrafficModel{
+			Weight: types.Int64Value(50),
+		},
+	}
+
+	req, diags := inference.ToUpdateRequest(ctx, m)
+	if diags.HasError() {
+		t.Fatalf("ToUpdateRequest returned errors: %v", diags)
+	}
+
+	if req.Id != "deploy-123" {
+		t.Errorf("Id: got %q, want 'deploy-123'", req.Id)
+	}
+	if req.Name != "my-llm" {
+		t.Errorf("Name: got %q, want 'my-llm'", req.Name)
+	}
+	if !req.Disabled {
+		t.Error("Disabled: expected true")
+	}
+	if req.Runtime.Version != "1.0.0" {
+		t.Errorf("Runtime.Version: got %q, want '1.0.0'", req.Runtime.Version)
+	}
+	if got := req.Runtime.EngineEnv["VLLM_LOGGING_LEVEL"]; got != "INFO" {
+		t.Errorf("Runtime.EngineEnv[\"VLLM_LOGGING_LEVEL\"]: got %q, want 'INFO'", got)
+	}
+	if req.Resources.GpuCount != 2 {
+		t.Errorf("GpuCount: expected 2, got %d", req.Resources.GpuCount)
+	}
+	if req.Autoscaling.Min != 2 {
+		t.Errorf("Autoscaling.Min: expected 2, got %d", req.Autoscaling.Min)
+	}
+	if req.Autoscaling.Max != 8 {
+		t.Errorf("Autoscaling.Max: expected 8, got %d", req.Autoscaling.Max)
+	}
+	if req.Autoscaling.Priority != 100 {
+		t.Errorf("Autoscaling.Priority: expected 100, got %d", req.Autoscaling.Priority)
+	}
+	if req.Autoscaling.Concurrency != 4 {
+		t.Errorf("Autoscaling.Concurrency: expected 4, got %d", req.Autoscaling.Concurrency)
+	}
+	if len(req.Autoscaling.CapacityClasses) != 1 {
+		t.Fatalf("Autoscaling.CapacityClasses: expected 1 element, got %d", len(req.Autoscaling.CapacityClasses))
+	}
+	if req.Traffic.Weight != 50 {
+		t.Errorf("Traffic.Weight: expected 50, got %d", req.Traffic.Weight)
+	}
+}
+
+// --- Acceptance tests ---
+
+func inferenceDeploymentConfig(name, preferredZone, preferredInstance string) string {
+	modelName := inferenceModelName()
+	modelBucket := inferenceModelBucket()
+	modelPath := inferenceModelPath()
+
+	return fmt.Sprintf(`
+data "coreweave_inference_gateway_parameters" "gw_params" {}
+
+# Read deployment parameters AFTER the gateway is created. The
+# GetDeploymentParameters response is scoped by the org's existing gateways and
+# returns an empty instance_types list when no gateway exists yet, which would
+# fail the precondition below at plan time. depends_on defers the read until
+# after the gateway resource exists, and Terraform re-evaluates the precondition
+# at apply time once available_instances is known.
+data "coreweave_inference_deployment_parameters" "deploy_params" {
+  depends_on = [coreweave_inference_gateway.test]
+}
+
+locals {
+  preferred_zone      = %q
+  available_zones     = data.coreweave_inference_gateway_parameters.gw_params.zones
+  zone                = local.preferred_zone != "" ? local.preferred_zone : sort(tolist(local.available_zones))[0]
+  preferred_instance  = %q
+  available_instances = data.coreweave_inference_deployment_parameters.deploy_params.instance_types
+  instance            = local.preferred_instance != "" ? local.preferred_instance : sort(tolist(local.available_instances))[0]
+
+  # Runtime version is required on create; source it from deployment parameters.
+  # Restrict to plain MAJOR.MINOR.PATCH for now — pre-release/build-metadata
+  # versions are excluded pending #319. Revert this commit once #319 lands.
+  available_runtime_versions = try(data.coreweave_inference_deployment_parameters.deploy_params.runtime_versions["vllm"].versions, [])
+  runtime_version            = try([for v in local.available_runtime_versions : v if can(regex("^[0-9]+[.][0-9]+[.][0-9]+$", v))][0], "")
+  available_engine_env_names = try(data.coreweave_inference_deployment_parameters.deploy_params.engine_env_options["vllm"].allowed_names, [])
+  engine_env_name            = %q
+  engine_env_value           = %q
+}
+
+resource "coreweave_inference_gateway" "test" {
+  name  = "%s-gw"
+  zones = [local.zone]
+
+  auth = {
+    coreweave = {}
+  }
+
+  routing = {
+    body_based = {
+      api_type = "API_TYPE_OPENAI"
+    }
+  }
+
+  lifecycle {
+    precondition {
+      condition     = local.preferred_zone == "" || contains(local.available_zones, local.preferred_zone)
+      error_message = "TEST_ACC_INFERENCE_ZONE=\"${local.preferred_zone}\" is not present in gateway parameters; available: ${jsonencode(local.available_zones)}"
+    }
+  }
+}
+
+resource "coreweave_inference_deployment" "test" {
+  name        = %q
+  gateway_ids = [coreweave_inference_gateway.test.id]
+
+  runtime = {
+    engine  = "vllm"
+    version = local.runtime_version
+    engine_env = {
+      (local.engine_env_name) = local.engine_env_value
+    }
+  }
+
+  resources = {
+    instance_type = local.instance
+    gpu_count     = 1
+  }
+
+  model = {
+    name   = %q
+    bucket = %q
+    path   = %q
+  }
+
+  autoscaling = {
+    min = 1
+    max = 2
+  }
+
+  traffic = {}
+
+  lifecycle {
+    precondition {
+      condition     = local.preferred_instance == "" || contains(local.available_instances, local.preferred_instance)
+      error_message = "INFR_INSTANCE_ID=\"${local.preferred_instance}\" is not present in inference parameters; available: ${jsonencode(local.available_instances)}"
+    }
+    precondition {
+      condition     = local.runtime_version != ""
+      error_message = "No x.y.z vllm runtime version available (pre-release/build-metadata excluded pending #319); available: ${jsonencode(local.available_runtime_versions)}"
+    }
+    precondition {
+      condition     = contains(local.available_engine_env_names, local.engine_env_name)
+      error_message = "${local.engine_env_name} is not present in vllm engine env options; available: ${jsonencode(local.available_engine_env_names)}"
+    }
+  }
+}
+`, preferredZone, preferredInstance, acceptanceEngineEnvName, acceptanceEngineEnvValue, name, name, modelName, modelBucket, modelPath)
+}
+
+func inferenceDeploymentUpdatedConfig(name, preferredZone, preferredInstance string) string {
+	modelName := inferenceModelName()
+	modelBucket := inferenceModelBucket()
+	modelPath := inferenceModelPath()
+
+	return fmt.Sprintf(`
+data "coreweave_inference_gateway_parameters" "gw_params" {}
+
+# Read deployment parameters AFTER the gateway is created. The
+# GetDeploymentParameters response is scoped by the org's existing gateways and
+# returns an empty instance_types list when no gateway exists yet, which would
+# fail the precondition below at plan time. depends_on defers the read until
+# after the gateway resource exists, and Terraform re-evaluates the precondition
+# at apply time once available_instances is known.
+data "coreweave_inference_deployment_parameters" "deploy_params" {
+  depends_on = [coreweave_inference_gateway.test]
+}
+
+locals {
+  preferred_zone      = %q
+  available_zones     = data.coreweave_inference_gateway_parameters.gw_params.zones
+  zone                = local.preferred_zone != "" ? local.preferred_zone : sort(tolist(local.available_zones))[0]
+  preferred_instance  = %q
+  available_instances = data.coreweave_inference_deployment_parameters.deploy_params.instance_types
+  instance            = local.preferred_instance != "" ? local.preferred_instance : sort(tolist(local.available_instances))[0]
+
+  # Runtime version is required on create; source it from deployment parameters.
+  # Restrict to plain MAJOR.MINOR.PATCH for now — pre-release/build-metadata
+  # versions are excluded pending #319. Revert this commit once #319 lands.
+  available_runtime_versions = try(data.coreweave_inference_deployment_parameters.deploy_params.runtime_versions["vllm"].versions, [])
+  runtime_version            = try([for v in local.available_runtime_versions : v if can(regex("^[0-9]+[.][0-9]+[.][0-9]+$", v))][0], "")
+  available_engine_env_names = try(data.coreweave_inference_deployment_parameters.deploy_params.engine_env_options["vllm"].allowed_names, [])
+  engine_env_name            = %q
+  engine_env_value           = %q
+}
+
+resource "coreweave_inference_gateway" "test" {
+  name  = "%s-gw"
+  zones = [local.zone]
+
+  auth = {
+    coreweave = {}
+  }
+
+  routing = {
+    body_based = {
+      api_type = "API_TYPE_OPENAI"
+    }
+  }
+
+  lifecycle {
+    precondition {
+      condition     = local.preferred_zone == "" || contains(local.available_zones, local.preferred_zone)
+      error_message = "TEST_ACC_INFERENCE_ZONE=\"${local.preferred_zone}\" is not present in gateway parameters; available: ${jsonencode(local.available_zones)}"
+    }
+  }
+}
+
+resource "coreweave_inference_deployment" "test" {
+  name        = %q
+  gateway_ids = [coreweave_inference_gateway.test.id]
+  disabled    = true
+
+  runtime = {
+    engine  = "vllm"
+    version = local.runtime_version
+    engine_env = {
+      (local.engine_env_name) = local.engine_env_value
+    }
+  }
+
+  resources = {
+    instance_type = local.instance
+    gpu_count     = 1
+  }
+
+  model = {
+    name   = %q
+    bucket = %q
+    path   = %q
+  }
+
+  autoscaling = {
+    min = 2
+    max = 4
+  }
+
+  traffic = {
+    weight = 50
+  }
+
+  lifecycle {
+    precondition {
+      condition     = local.preferred_instance == "" || contains(local.available_instances, local.preferred_instance)
+      error_message = "INFR_INSTANCE_ID=\"${local.preferred_instance}\" is not present in inference parameters; available: ${jsonencode(local.available_instances)}"
+    }
+    precondition {
+      condition     = local.runtime_version != ""
+      error_message = "No x.y.z vllm runtime version available (pre-release/build-metadata excluded pending #319); available: ${jsonencode(local.available_runtime_versions)}"
+    }
+    precondition {
+      condition     = contains(local.available_engine_env_names, local.engine_env_name)
+      error_message = "${local.engine_env_name} is not present in vllm engine env options; available: ${jsonencode(local.available_engine_env_names)}"
+    }
+  }
+}
+`, preferredZone, preferredInstance, acceptanceEngineEnvName, acceptanceEngineEnvValue, name, name, modelName, modelBucket, modelPath)
+}
+
+func TestInferenceDeployment(t *testing.T) {
+	t.Run("lifecycle", func(t *testing.T) {
+		name := fmt.Sprintf("%sdeploy-%x", AcceptanceTestPrefix, rand.IntN(100000))
+		fullResourceName := "coreweave_inference_deployment.test"
+		preferredZone := preferredInferenceZone()
+		preferredInstance := preferredInferenceInstanceType()
+
+		// Inference acceptance tests run sequentially via resource.Test (not
+		// resource.ParallelTest) because the staging environment has limited
+		// per-zone capacity and parallel runs cause allocation failures.
+		//nolint:forbidigo // sequential per-zone capacity constraint, see comment above
+		resource.Test(t, resource.TestCase{
+			PreCheck:                 func() { testutil.SetEnvDefaults() },
+			ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+			Steps: []resource.TestStep{
+				{
+					Config: inferenceDeploymentConfig(name, preferredZone, preferredInstance),
+					ConfigStateChecks: []statecheck.StateCheck{
+						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("name"), knownvalue.StringExact(name)),
+						// Apply waits for resources applied, not serving, so status
+						// need not be STATUS_READY yet.
+						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("status"), knownvalue.NotNull()),
+						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("disabled"), knownvalue.Bool(false)),
+						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("id"), knownvalue.NotNull()),
+						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("organization_id"), knownvalue.NotNull()),
+						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("created_at"), knownvalue.NotNull()),
+						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("runtime").AtMapKey("engine_env").AtMapKey(acceptanceEngineEnvName), knownvalue.StringExact(acceptanceEngineEnvValue)),
+						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("autoscaling").AtMapKey("min"), knownvalue.Int64Exact(1)),
+						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("autoscaling").AtMapKey("max"), knownvalue.Int64Exact(2)),
+					},
+				},
+				{
+					Config: inferenceDeploymentUpdatedConfig(name, preferredZone, preferredInstance),
+					ConfigStateChecks: []statecheck.StateCheck{
+						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("autoscaling").AtMapKey("min"), knownvalue.Int64Exact(2)),
+						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("autoscaling").AtMapKey("max"), knownvalue.Int64Exact(4)),
+						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("disabled"), knownvalue.Bool(true)),
+						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("runtime").AtMapKey("engine_env").AtMapKey(acceptanceEngineEnvName), knownvalue.StringExact(acceptanceEngineEnvValue)),
+						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("traffic").AtMapKey("weight"), knownvalue.Int64Exact(50)),
+					},
+				},
+				{
+					// Re-applying the identical config after Update must be a no-op:
+					// the preserved server-observed fields (status, updated_at,
+					// conditions) must not produce perpetual plan churn.
+					Config: inferenceDeploymentUpdatedConfig(name, preferredZone, preferredInstance),
+					ConfigPlanChecks: resource.ConfigPlanChecks{
+						PreApply: []plancheck.PlanCheck{
+							plancheck.ExpectResourceAction(fullResourceName, plancheck.ResourceActionNoop),
+						},
+					},
+				},
+				{
+					ResourceName:      fullResourceName,
+					ImportState:       true,
+					ImportStateVerify: true,
+					// Server-observed fields are intentionally not refreshed into state on
+					// Update (see setFromDeployment preserveStatusFields); a fresh import Read
+					// legitimately observes newer values, so they can't be verified here.
+					ImportStateVerifyIgnore: []string{"status", "updated_at", "conditions"},
+				},
+			},
+		})
+	})
+}
+
+func TestInferenceDeploymentParameters(t *testing.T) {
+	t.Run("read", func(t *testing.T) {
+		resource.ParallelTest(t, resource.TestCase{
+			PreCheck:                 func() { testutil.SetEnvDefaults() },
+			ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+			Steps: []resource.TestStep{
+				{
+					Config: `data "coreweave_inference_deployment_parameters" "test" {}`,
+					ConfigStateChecks: []statecheck.StateCheck{
+						statecheck.ExpectKnownValue(
+							"data.coreweave_inference_deployment_parameters.test",
+							tfjsonpath.New("gateway_ids"),
+							knownvalue.NotNull(),
+						),
+						statecheck.ExpectKnownValue(
+							"data.coreweave_inference_deployment_parameters.test",
+							tfjsonpath.New("instance_types"),
+							knownvalue.NotNull(),
+						),
+						statecheck.ExpectKnownValue(
+							"data.coreweave_inference_deployment_parameters.test",
+							tfjsonpath.New("engine_env_options"),
+							knownvalue.NotNull(),
+						),
+					},
+				},
+			},
+		})
+	})
+}

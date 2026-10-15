@@ -4,20 +4,62 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
+	"strings"
+	"sync/atomic"
 	"time"
 
-	"buf.build/gen/go/coreweave/cks/connectrpc/go/coreweave/cks/v1beta1/cksv1beta1connect"
-	"buf.build/gen/go/coreweave/cwobject/connectrpc/go/cwobject/v1/cwobjectv1connect"
-	"buf.build/gen/go/coreweave/networking/connectrpc/go/coreweave/networking/v1beta1/networkingv1beta1connect"
-	"connectrpc.com/connect"
-
+	"buf.build/gen/go/coreweave/cks/connectrpc/go/v2/coreweave/cks/v1beta1/cksv1beta1connect"
+	registryconnect "buf.build/gen/go/coreweave/container-registry-api/connectrpc/go/v2/coreweave/registry/v1alpha1/registryv1alpha1connect"
+	"buf.build/gen/go/coreweave/cwobject/connectrpc/go/v2/cwobject/v1/cwobjectv1connect"
+	"buf.build/gen/go/coreweave/inference/connectrpc/go/v2/coreweave/inference/v1alpha1/inferencev1alpha1connect"
+	"buf.build/gen/go/coreweave/networking/connectrpc/go/v2/coreweave/networking/v1beta1/networkingv1beta1connect"
+	"buf.build/gen/go/coreweave/sandbox/connectrpc/go/v2/coreweave/sandbox/v1/sandboxv1connect"
+	"buf.build/gen/go/coreweave/workload-federation/connectrpc/go/v2/coreweave/workload_federation/control_plane/v1beta1/control_planev1beta1connect"
+	"connectrpc.com/connect/v2"
+	"connectrpc.com/connect/v2/connecthttp"
+	"connectrpc.com/connect/v2/connectproto"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/coreweave/terraform-provider-coreweave/internal/auth"
 	retryablehttp "github.com/hashicorp/go-retryablehttp"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
 )
 
-func NewClient(endpoint string, s3Endpoint string, timeout time.Duration, interceptors ...connect.Interceptor) *Client {
+type ClientOptions struct {
+	S3AttemptTimeout time.Duration
+}
+
+var nextClientIdentity atomic.Uint64
+
+type cacheIdentityTokenSource interface {
+	CacheIdentity() string
+}
+
+func tokenSourceCacheIdentity(source AccessTokenSource) string {
+	if identified, ok := source.(cacheIdentityTokenSource); ok {
+		if identity := identified.CacheIdentity(); identity != "" {
+			return identity
+		}
+	}
+	return fmt.Sprintf("%T:%d", source, nextClientIdentity.Add(1))
+}
+
+// NewClient constructs a client that resolves a token for each HTTP attempt.
+func NewClient(endpoint string, s3Endpoint string, timeout time.Duration, tokenSource AccessTokenSource, userAgent string, interceptors ...connect.ClientInterceptor) (*Client, error) {
+	return NewClientWithOptions(endpoint, s3Endpoint, timeout, tokenSource, userAgent, ClientOptions{}, interceptors...)
+}
+
+func NewClientWithOptions(
+	endpoint string,
+	s3Endpoint string,
+	timeout time.Duration,
+	tokenSource AccessTokenSource,
+	userAgent string,
+	options ClientOptions,
+	interceptors ...connect.ClientInterceptor,
+) (*Client, error) {
 	rc := retryablehttp.NewClient()
 	rc.HTTPClient.Timeout = timeout
 	rc.RetryMax = 10
@@ -25,26 +67,68 @@ func NewClient(endpoint string, s3Endpoint string, timeout time.Duration, interc
 	rc.RetryWaitMax = 5 * time.Second
 	// Jittered exponential back-off (min*2^n) with capping.
 	rc.Backoff = retryablehttp.DefaultBackoff
-	// Treat only idempotent verbs + 502/503/504 + transport errors as retryable.
+	// Retry transient transport failures, 429 responses, and server errors other
+	// than 501 while rejecting permanent request and certificate failures.
 	rc.CheckRetry = RetryPolicy
 
+	authenticatedTransport, err := auth.NewTransport(rc.HTTPClient.Transport, tokenSource, endpoint)
+	if err != nil {
+		return nil, err
+	}
+	rc.HTTPClient.Transport = authenticatedTransport
+
 	c := rc.StandardClient()
+	authenticatedInterceptors := append([]connect.ClientInterceptor{auth.NewConnectErrorInterceptor()}, interceptors...)
+	// List operations and large API objects can exceed the transport's default read limit.
+	rpcClient := connect.NewClient(connecthttp.NewTransport(c, endpoint, connecthttp.WithReadMaxBytes(0)), authenticatedInterceptors...)
 
 	return &Client{
-		ClusterServiceClient: cksv1beta1connect.NewClusterServiceClient(c, endpoint, connect.WithInterceptors(interceptors...)),
-		VPCServiceClient:     networkingv1beta1connect.NewVPCServiceClient(c, endpoint, connect.WithInterceptors(interceptors...)),
-		CWObjectClient:       cwobjectv1connect.NewCWObjectClient(c, endpoint, connect.WithInterceptors(interceptors...)),
+		ContainerRegistry:           registryconnect.NewRegistryServiceClient(rpcClient),
+		ClusterServiceClient:        cksv1beta1connect.NewClusterServiceClient(rpcClient),
+		VPCServiceClient:            networkingv1beta1connect.NewVPCServiceClient(rpcClient),
+		SandboxRunnerManagement:     sandboxv1connect.NewRunnerManagementServiceClient(rpcClient),
+		WFControlPlaneServiceClient: control_planev1beta1connect.NewWFControlPlaneServiceClient(rpcClient),
+		CWObjectClient:              cwobjectv1connect.NewCWObjectClient(rpcClient),
+		Inference: &InferenceClient{
+			DeploymentServiceClient:    inferencev1alpha1connect.NewDeploymentServiceClient(rpcClient),
+			CapacityClaimServiceClient: inferencev1alpha1connect.NewCapacityClaimServiceClient(rpcClient),
+			GatewayServiceClient:       inferencev1alpha1connect.NewGatewayServiceClient(rpcClient),
+		},
+		apiEndpoint:      endpoint,
+		httpClient:       c,
+		s3Endpoint:       s3Endpoint,
+		s3AttemptTimeout: options.S3AttemptTimeout,
+		s3CacheIdentity:  tokenSourceCacheIdentity(tokenSource),
+		userAgent:        userAgent,
+	}, nil
+}
 
-		s3Endpoint: s3Endpoint,
-	}
+// InferenceClient groups all inference service clients.
+type InferenceClient struct {
+	inferencev1alpha1connect.DeploymentServiceClient
+	inferencev1alpha1connect.CapacityClaimServiceClient
+	inferencev1alpha1connect.GatewayServiceClient
 }
 
 type Client struct {
+	ContainerRegistry registryconnect.RegistryServiceClient
 	cksv1beta1connect.ClusterServiceClient
 	networkingv1beta1connect.VPCServiceClient
+	control_planev1beta1connect.WFControlPlaneServiceClient
 	cwobjectv1connect.CWObjectClient
 
-	s3Endpoint string
+	Inference               *InferenceClient
+	SandboxRunnerManagement sandboxv1connect.RunnerManagementServiceClient
+
+	apiEndpoint      string
+	httpClient       *http.Client
+	s3Endpoint       string
+	s3AttemptTimeout time.Duration
+	s3HTTPTransport  http.RoundTripper
+	s3Retryer        func() aws.Retryer
+	s3Now            func() time.Time
+	s3CacheIdentity  string
+	userAgent        string
 }
 
 func IsNotFoundError(err error) bool {
@@ -52,8 +136,46 @@ func IsNotFoundError(err error) bool {
 	return errors.As(err, &connectErr) && connectErr.Code() == connect.CodeNotFound
 }
 
-//nolint:gocyclo
+// HandleAPIError preserves API summaries, wrapping context, and structured error information.
 func HandleAPIError(ctx context.Context, err error, diagnostics *diag.Diagnostics) {
+	var details diag.Diagnostics
+	handleAPIError(ctx, err, &details)
+	var apiErr *connect.Error
+	if !errors.As(err, &apiErr) {
+		diagnostics.Append(details...)
+		return
+	}
+	contextMessages := []string{}
+	if err.Error() != apiErr.Error() {
+		contextMessages = append(contextMessages, err.Error())
+	}
+	for _, detail := range apiErr.Details() {
+		value, valueErr := connectproto.UnmarshalErrorDetail(detail)
+		if valueErr != nil {
+			continue
+		}
+		if info, ok := value.(*errdetails.ErrorInfo); ok {
+			if info.Reason != "" {
+				contextMessages = append(contextMessages, "Reason: "+info.Reason)
+			}
+			if etag := info.Metadata["current_etag"]; etag != "" {
+				contextMessages = append(contextMessages, "Current etag: "+etag)
+			}
+		}
+	}
+	for _, detail := range details {
+		message := detail.Detail()
+		if len(contextMessages) != 0 {
+			message = strings.Join(contextMessages, "\n") + "\n" + message
+		}
+		diagnostics.AddError(detail.Summary(), message)
+	}
+}
+
+// handleAPIError maps API status codes and their service-specific details to diagnostics.
+//
+//nolint:gocyclo
+func handleAPIError(ctx context.Context, err error, diagnostics *diag.Diagnostics) {
 	// Check if the error is a ConnectRPC error
 	var connectErr *connect.Error
 	if !errors.As(err, &connectErr) {
@@ -73,7 +195,7 @@ func HandleAPIError(ctx context.Context, err error, diagnostics *diag.Diagnostic
 	switch connectErr.Code() {
 	case connect.CodeNotFound:
 		for _, d := range details {
-			msg, valueErr := d.Value()
+			msg, valueErr := connectproto.UnmarshalErrorDetail(d)
 			if valueErr != nil {
 				diagnostics.AddError(connectErr.Error(), connectErr.Message())
 				break
@@ -90,7 +212,7 @@ func HandleAPIError(ctx context.Context, err error, diagnostics *diag.Diagnostic
 		}
 	case connect.CodeAlreadyExists:
 		for _, d := range details {
-			msg, valueErr := d.Value()
+			msg, valueErr := connectproto.UnmarshalErrorDetail(d)
 			if valueErr != nil {
 				diagnostics.AddError(connectErr.Error(), connectErr.Message())
 				break
@@ -107,7 +229,7 @@ func HandleAPIError(ctx context.Context, err error, diagnostics *diag.Diagnostic
 		}
 	case connect.CodeFailedPrecondition:
 		for _, d := range details {
-			msg, valueErr := d.Value()
+			msg, valueErr := connectproto.UnmarshalErrorDetail(d)
 			if valueErr != nil {
 				diagnostics.AddError(connectErr.Error(), connectErr.Message())
 				break
@@ -127,7 +249,7 @@ func HandleAPIError(ctx context.Context, err error, diagnostics *diag.Diagnostic
 
 	case connect.CodeInvalidArgument:
 		for _, d := range details {
-			msg, valueErr := d.Value()
+			msg, valueErr := connectproto.UnmarshalErrorDetail(d)
 			if valueErr != nil {
 				diagnostics.AddError(connectErr.Error(), connectErr.Message())
 				break
@@ -151,6 +273,24 @@ func HandleAPIError(ctx context.Context, err error, diagnostics *diag.Diagnostic
 			connectErr.Error(),
 		)
 
+	case connect.CodeCanceled:
+		diagnostics.AddError(
+			"Request Canceled",
+			connectErr.Error(),
+		)
+
+	case connect.CodeDeadlineExceeded:
+		diagnostics.AddError(
+			"Request Timed Out",
+			connectErr.Error(),
+		)
+
+	case connect.CodeUnavailable:
+		diagnostics.AddError(
+			"Service Unavailable",
+			connectErr.Error(),
+		)
+
 	case connect.CodePermissionDenied:
 		diagnostics.AddError(
 			"Unauthorized",
@@ -159,7 +299,7 @@ func HandleAPIError(ctx context.Context, err error, diagnostics *diag.Diagnostic
 
 	case connect.CodeResourceExhausted:
 		for _, d := range details {
-			msg, valueErr := d.Value()
+			msg, valueErr := connectproto.UnmarshalErrorDetail(d)
 			if valueErr != nil {
 				diagnostics.AddError(connectErr.Error(), connectErr.Message())
 				break

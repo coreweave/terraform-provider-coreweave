@@ -3,20 +3,28 @@
 page_title: "coreweave_cks_cluster Resource - coreweave"
 subcategory: ""
 description: |-
-  Create and manage clusters on CoreWeave Kubernetes Service (CKS) https://docs.coreweave.com/docs/products/cks/clusters/introduction.
+  Create and manage clusters on CoreWeave Kubernetes Service (CKS) https://docs.coreweave.com/products/cks/clusters/introduction.
 ---
 
 # coreweave_cks_cluster (Resource)
 
-Create and manage clusters on [CoreWeave Kubernetes Service (CKS)](https://docs.coreweave.com/docs/products/cks/clusters/introduction).
+Create and manage clusters on [CoreWeave Kubernetes Service (CKS)](https://docs.coreweave.com/products/cks/clusters/introduction).
 
 ## Example Usage
 
 ```terraform
 resource "coreweave_networking_vpc" "default" {
-  name        = "default"
-  zone        = "US-EAST-04A"
-  host_prefix = "10.16.192.0/18"
+  name = "default"
+  zone = "US-EAST-04A"
+
+  host_prefixes = [
+    {
+      name     = "primary"
+      type     = "PRIMARY"
+      prefixes = ["10.16.192.0/18"]
+    },
+  ]
+
   vpc_prefixes = [
     {
       name  = "pod cidr"
@@ -43,6 +51,7 @@ resource "coreweave_cks_cluster" "default" {
   service_cidr_name      = "service cidr"
   internal_lb_cidr_names = ["internal lb cidr"]
   audit_policy           = filebase64("${path.module}/audit-policy.yaml")
+  kubelet                = jsonencode({ maxPods = 256 })
   oidc = {
     ca              = filebase64("${path.module}/example-ca.crt")
     client_id       = "kbyuFDidLLm280LIwVFiazOqjO3ty8KH"
@@ -70,7 +79,7 @@ resource "coreweave_cks_cluster" "default" {
 
 ### Required
 
-- `internal_lb_cidr_names` (Set of String) The names of the vpc prefixes to use as internal load balancer CIDR ranges. Internal load balancers are reachable within the VPC but not accessible from the internet.
+- `internal_lb_cidr_names` (List of String) The names of the vpc prefixes to use as internal load balancer CIDR ranges. Internal load balancers are reachable within the VPC but not accessible from the internet.
 The prefixes must exist in the cluster's VPC. This field is append-only.
 - `name` (String) The name of the cluster. Must not be longer than 30 characters.
 - `pod_cidr_name` (String) The name of the vpc prefix to use as the pod CIDR range. The prefix must exist in the cluster's VPC.
@@ -81,13 +90,19 @@ The prefixes must exist in the cluster's VPC. This field is append-only.
 
 ### Optional
 
+- `additional_server_sans` (Set of String) Additional Subject Alternative Names (SANs) to include in the Kubernetes API server TLS certificate. Maximum 10 entries.
 - `audit_policy` (String) Audit policy for the cluster. Must be provided as a base64-encoded JSON/YAML string.
 - `authn_webhook` (Attributes) Authentication webhook configuration for the cluster. (see [below for nested schema](#nestedatt--authn_webhook))
 - `authz_webhook` (Attributes) Authorization webhook configuration for the cluster. (see [below for nested schema](#nestedatt--authz_webhook))
+- `internal_lb_cidr_names_v6` (List of String) IPv6 Internal Load Balancer CIDR names. If any IPv6 field is set, then ALL IPv6 fields must be set.
+- `kubelet` (String) Selective overrides applied to every cluster Node's kubelet configuration, as a JSON object (e.g. `jsonencode({ maxPods = 256 })`). A Node reboot is required for changes to take effect, and unknown options are stored but ignored by CKS. See the [Kubernetes kubelet configuration reference](https://kubernetes.io/docs/tasks/administer-cluster/kubelet-config-file/) for supported options.
 - `node_port_range` (Attributes) Kubernetes Service NodePort range. NodePort range can be expanded in existing clusters but not shrunk. Updating the NodePort range to a smaller range will require a replacement of the cluster. (see [below for nested schema](#nestedatt--node_port_range))
 - `oidc` (Attributes) OpenID Connect (OIDC) configuration for authentication to the api-server. (see [below for nested schema](#nestedatt--oidc))
+- `pod_cidr_name_v6` (String) IPv6 Pod CIDR name. If any IPv6 field is set, then ALL IPv6 fields must be set.
 - `public` (Boolean) Whether the cluster's api-server is publicly accessible from the internet.
-- `shared_storage_cluster_id` (String) The `cluster_id` of the cluster to share storage with. Must be enabled by CoreWeave suppport. Contact CoreWeave support if you are interested in this feature.
+- `service_cidr_name_v6` (String) IPv6 Service CIDR name. If any IPv6 field is set, then ALL IPv6 fields must be set.
+- `shared_storage_cluster_id` (String) The `cluster_id` of the cluster to share storage with. Must be enabled by CoreWeave support. Contact CoreWeave support if you are interested in this feature.
+- `tailscale` (Attributes) Tailscale configuration for the cluster. Enables cluster access via a Tailscale VPN. (see [below for nested schema](#nestedatt--tailscale))
 
 ### Read-Only
 
@@ -148,9 +163,28 @@ Optional:
 - `username_claim` (String) The claim to use as the username.
 - `username_prefix` (String) The prefix to use for the username.
 
+
+<a id="nestedatt--tailscale"></a>
+### Nested Schema for `tailscale`
+
+Required:
+
+- `client_id` (String) The Tailscale Client ID for the federated identity.
+
 ## Import
 
 Import is supported using the following syntax:
+
+In Terraform v1.5.0 and later, the [`import` block](https://developer.hashicorp.com/terraform/language/import) can be used with the `id` attribute, for example:
+
+```terraform
+import {
+  to = coreweave_cks_cluster.default
+  id = "{{id}}"
+}
+```
+
+The [`terraform import` command](https://developer.hashicorp.com/terraform/cli/commands/import) can be used, for example:
 
 ```shell
 terraform import coreweave_cks_cluster.default {{id}}

@@ -1,5 +1,207 @@
 # Changelog
 
+## [0.25.0](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.24.0...v0.25.0) (2026-10-13)
+
+
+### Features
+
+* **container_registry:** add sub-provider ([#458](https://github.com/coreweave/terraform-provider-coreweave/issues/458)) ([b64c278](https://github.com/coreweave/terraform-provider-coreweave/commit/b64c2785b17835f1c99c1d2c5c95181c8a59f333))
+* **inference:** Wait for the STATUS_UPDATING rollout to complete on update ([#449](https://github.com/coreweave/terraform-provider-coreweave/issues/449)) ([de8c5e0](https://github.com/coreweave/terraform-provider-coreweave/commit/de8c5e0ef15df7e9bfe9084c202f1049bc610d62))
+* **object_storage:** add bucket capacity caps support to Terraform ([#447](https://github.com/coreweave/terraform-provider-coreweave/issues/447)) ([1ea6d4c](https://github.com/coreweave/terraform-provider-coreweave/commit/1ea6d4cb7a33b43c14b62151030347c84ea4c724))
+
+
+### Bug Fixes
+
+* issuer-url shouldn't be unknown when updating cluster state ([#455](https://github.com/coreweave/terraform-provider-coreweave/issues/455)) ([81eeb2b](https://github.com/coreweave/terraform-provider-coreweave/commit/81eeb2b40cb0c2294e0a58c4610b1b104d5247b8))
+* **object_storage:** add missing principals to raw bucket policy test ([#459](https://github.com/coreweave/terraform-provider-coreweave/issues/459)) ([07cc3f8](https://github.com/coreweave/terraform-provider-coreweave/commit/07cc3f895ddf4c2e16d7aa2c0841f193498b1d29))
+* **sandbox:** support renamed HTTPS policy fields ([#451](https://github.com/coreweave/terraform-provider-coreweave/issues/451)) ([ddeaba1](https://github.com/coreweave/terraform-provider-coreweave/commit/ddeaba1a1749ee2f40eb8316189d87e8a4661c88))
+
+## [0.24.0](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.23.0...v0.24.0) (2026-09-11)
+
+
+### Features
+
+* **object-storage:** manage individual access keys ([#443](https://github.com/coreweave/terraform-provider-coreweave/issues/443)) ([c889605](https://github.com/coreweave/terraform-provider-coreweave/commit/c88960590f30fa06d49485528cd29703b6524b45))
+* **sandbox:** add v1 managed runner resource ([#440](https://github.com/coreweave/terraform-provider-coreweave/issues/440)) ([8eb913e](https://github.com/coreweave/terraform-provider-coreweave/commit/8eb913ebf3685dd2e0a5f075b38f7962f216816c))
+
+
+### Documentation
+
+* **object-storage:** complete native inventory example ([#441](https://github.com/coreweave/terraform-provider-coreweave/issues/441)) ([8a7272c](https://github.com/coreweave/terraform-provider-coreweave/commit/8a7272c31fee5f75307743b29395ed0a7fc938eb))
+
+## [0.23.0](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.22.1...v0.23.0) (2026-09-03)
+
+
+### Features
+
+* **auth:** add refreshable access token source support ([#424](https://github.com/coreweave/terraform-provider-coreweave/issues/424)) ([571c5e4](https://github.com/coreweave/terraform-provider-coreweave/commit/571c5e437b3d5b1a476689c9809c001b5982374f))
+* **inference:** Sync inference proto and enforce gateway name length ([#422](https://github.com/coreweave/terraform-provider-coreweave/issues/422)) ([595b733](https://github.com/coreweave/terraform-provider-coreweave/commit/595b733531cbe828ae395441282ccc612ad257e2))
+* **inference:** Use ResourcesApplied condition for inference deployments create and update ([#427](https://github.com/coreweave/terraform-provider-coreweave/issues/427)) ([6b7c61b](https://github.com/coreweave/terraform-provider-coreweave/commit/6b7c61b2ee93b36de3c816bb9eed6374c27ebc05))
+* **workload_federation:** add OIDC config resource ([#417](https://github.com/coreweave/terraform-provider-coreweave/issues/417)) ([1f295ae](https://github.com/coreweave/terraform-provider-coreweave/commit/1f295ae947e4448a095c63210f524474ec96ac43))
+* **workload-federation:** add OIDC config data source ([#436](https://github.com/coreweave/terraform-provider-coreweave/issues/436)) ([945eef9](https://github.com/coreweave/terraform-provider-coreweave/commit/945eef9c192dee6df0d9ac6eafc7d3ce09c51277))
+
+
+### Bug Fixes
+
+* **object_storage:** bound bucket creation reconciliation ([#426](https://github.com/coreweave/terraform-provider-coreweave/issues/426)) ([163a648](https://github.com/coreweave/terraform-provider-coreweave/commit/163a6484b52cef56c3b0be7abdbf3ba50f1fa98f))
+* **object_storage:** retry post-create InvalidRegion updates ([#432](https://github.com/coreweave/terraform-provider-coreweave/issues/432)) ([7f815af](https://github.com/coreweave/terraform-provider-coreweave/commit/7f815afdd68291c32f99d8d4d863adfb7b66c870))
+
+## [0.22.1](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.22.0...v0.22.1) (2026-08-27)
+
+
+### Bug Fixes
+
+* **object_storage:** preserve untagged buckets in state ([#407](https://github.com/coreweave/terraform-provider-coreweave/issues/407)) ([d0982a5](https://github.com/coreweave/terraform-provider-coreweave/commit/d0982a5eb5ea449541dadd4f38dab09b9fa05bf1))
+* **object_storage:** retry InvalidRegion after creating tagged buckets ([56c9c62](https://github.com/coreweave/terraform-provider-coreweave/commit/56c9c62663c1b2109b34dc5eeb370d692864e2ae))
+
+## [0.22.0](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.21.0...v0.22.0) (2026-08-26)
+
+
+### Features
+
+* add caller identity data source ([#416](https://github.com/coreweave/terraform-provider-coreweave/issues/416)) ([56a5d2a](https://github.com/coreweave/terraform-provider-coreweave/commit/56a5d2abb377c090cb3575b3804f49c9e94187fa))
+
+
+### Bug Fixes
+
+* **inference:** Drop support for customer capacity claim type ([#376](https://github.com/coreweave/terraform-provider-coreweave/issues/376)) ([88844b1](https://github.com/coreweave/terraform-provider-coreweave/commit/88844b1da8fab76317950025eec8685c16b137a2))
+* **object_storage:** preserve bucket policy conditions ([#409](https://github.com/coreweave/terraform-provider-coreweave/issues/409)) ([4d1103c](https://github.com/coreweave/terraform-provider-coreweave/commit/4d1103c48fa1f59a5996be274d13e752cbd0df20))
+* **object_storage:** propagate policy conversion diagnostics ([#415](https://github.com/coreweave/terraform-provider-coreweave/issues/415)) ([e4db5a5](https://github.com/coreweave/terraform-provider-coreweave/commit/e4db5a5c4de607df7adeb6f59c7fe6a29300a066))
+
+## [0.21.0](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.20.0...v0.21.0) (2026-08-18)
+
+
+### Features
+
+* **object_storage:** add support for bucket archive settings ([#381](https://github.com/coreweave/terraform-provider-coreweave/issues/381)) ([9b5acc0](https://github.com/coreweave/terraform-provider-coreweave/commit/9b5acc0a01c92da8f7d6325df083a677642fd7ce))
+
+
+### Dependency Updates
+
+* update go ( 1.26.5 → 1.26.6 ) ([#392](https://github.com/coreweave/terraform-provider-coreweave/issues/392)) ([2b5e9f3](https://github.com/coreweave/terraform-provider-coreweave/commit/2b5e9f3de2a8c3772ee59c8ab245f518dc3b41de))
+* update google.golang.org/genproto/googleapis ( 8636f87 → ec0a776 ) ([#370](https://github.com/coreweave/terraform-provider-coreweave/issues/370)) ([789038b](https://github.com/coreweave/terraform-provider-coreweave/commit/789038beca27c28c04d616880169e8e796a82209))
+
+## [0.20.0](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.19.0...v0.20.0) (2026-08-14)
+
+
+### Features
+
+* **inference:** Validate engine against API-advertised engines instead of a hardcoded list ([#389](https://github.com/coreweave/terraform-provider-coreweave/issues/389)) ([81d9a65](https://github.com/coreweave/terraform-provider-coreweave/commit/81d9a6550ecaf3be14902c332a656679e6e3db58))
+
+
+### Dependency Updates
+
+* update Go to 1.26.5 ([#377](https://github.com/coreweave/terraform-provider-coreweave/issues/377)) ([1e39f7a](https://github.com/coreweave/terraform-provider-coreweave/commit/1e39f7a20934cac47c56b22038b822653a6e323e))
+
+## [0.19.0](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.18.0...v0.19.0) (2026-07-23)
+
+
+### Features
+
+* **cks:** add kubelet configuration overrides to cks_cluster ([#346](https://github.com/coreweave/terraform-provider-coreweave/issues/346)) ([662325d](https://github.com/coreweave/terraform-provider-coreweave/commit/662325d5ea6100bbda46bcabd589f9cedf550d62))
+
+
+### Bug Fixes
+
+* **object_storage:** isolate S3 client from AWS configuration ([#356](https://github.com/coreweave/terraform-provider-coreweave/issues/356)) ([728fc6b](https://github.com/coreweave/terraform-provider-coreweave/commit/728fc6b47d7d481a7acddff52cfc59f8ebe8ae0a))
+* **object_storage:** use `Current` (not `Latest`) for bucket inventory included_object_versions ([#359](https://github.com/coreweave/terraform-provider-coreweave/issues/359)) ([7af403d](https://github.com/coreweave/terraform-provider-coreweave/commit/7af403dc6015c5e1945b378aa10bc3ff12e52e9a))
+
+## [0.18.0](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.17.0...v0.18.0) (2026-07-14)
+
+
+### Features
+
+* **inference:** support runtime engine env ([#347](https://github.com/coreweave/terraform-provider-coreweave/issues/347)) ([46b4d00](https://github.com/coreweave/terraform-provider-coreweave/commit/46b4d0009ab9813253ab9ea043b203153df063d0))
+* **object_storage:** Add bucket inventory resource ([#345](https://github.com/coreweave/terraform-provider-coreweave/issues/345)) ([e311ef7](https://github.com/coreweave/terraform-provider-coreweave/commit/e311ef7e5306ffc7b71669a8a01c81c7adfde010))
+
+
+### Bug Fixes
+
+* **inference:** Preserve observed status fields across updates ([#344](https://github.com/coreweave/terraform-provider-coreweave/issues/344)) ([6001160](https://github.com/coreweave/terraform-provider-coreweave/commit/6001160ece4b712035c79413c0b1aa3a7363df29))
+
+
+### Documentation
+
+* **network:** updates from SME feedback ([#339](https://github.com/coreweave/terraform-provider-coreweave/issues/339)) ([a85c813](https://github.com/coreweave/terraform-provider-coreweave/commit/a85c813b85926c9c7ce30eab6c032dfa333e0a7c))
+
+## [0.17.0](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.16.0...v0.17.0) (2026-07-01)
+
+
+### Features
+
+* **inference:** Add support for dynamo-vllm runtime engine ([#342](https://github.com/coreweave/terraform-provider-coreweave/issues/342)) ([71070f3](https://github.com/coreweave/terraform-provider-coreweave/commit/71070f364deee8e654ff95549c9ea65cace708e6))
+
+## [0.16.0](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.15.2...v0.16.0) (2026-06-30)
+
+
+### Features
+
+* **cks:** add support for cks tailscale integration ([#293](https://github.com/coreweave/terraform-provider-coreweave/issues/293)) ([c13a02d](https://github.com/coreweave/terraform-provider-coreweave/commit/c13a02d71a48f1cbf42d16f9142391c54f3a5782))
+
+## [0.15.2](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.15.1...v0.15.2) (2026-06-30)
+
+
+### Bug Fixes
+
+* **inference:** Allow W&B server_url without api_key on gateways ([#337](https://github.com/coreweave/terraform-provider-coreweave/issues/337)) ([fe9def8](https://github.com/coreweave/terraform-provider-coreweave/commit/fe9def8e89fb1779939d76331be2ffee729527da))
+
+## [0.15.1](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.15.0...v0.15.1) (2026-06-29)
+
+
+### Documentation
+
+* apply Terraform reference clarity edits from coreweave/docs[#3246](https://github.com/coreweave/terraform-provider-coreweave/issues/3246) ([#332](https://github.com/coreweave/terraform-provider-coreweave/issues/332)) ([873935d](https://github.com/coreweave/terraform-provider-coreweave/commit/873935dae8e1c973f89156cb77bd157ae26454cb))
+* **fix:** Broken doc URLs and minor documentation linting ([#326](https://github.com/coreweave/terraform-provider-coreweave/issues/326)) ([ec71cdf](https://github.com/coreweave/terraform-provider-coreweave/commit/ec71cdf2b4ced8b47cba338e37d6ddb6771256ed))
+* **networking_vpc:** scope host_prefix /18 requirement to SUNK ([#328](https://github.com/coreweave/terraform-provider-coreweave/issues/328)) ([8e2a6da](https://github.com/coreweave/terraform-provider-coreweave/commit/8e2a6daea4ad043714c40e73c3394c121cbc8998))
+
+## [0.15.0](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.14.0...v0.15.0) (2026-06-25)
+
+
+### Features
+
+* **inference:** accept full semver versions for deployment runtime ([#329](https://github.com/coreweave/terraform-provider-coreweave/issues/329)) ([a9d1221](https://github.com/coreweave/terraform-provider-coreweave/commit/a9d1221595847e2f04ab8fd5131a1c9aaacf4c39))
+
+## [0.14.0](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.13.0...v0.14.0) (2026-06-22)
+
+
+### Features
+
+* **inference:** Add inference deployment, gateway, and capacity claim   resources ([#279](https://github.com/coreweave/terraform-provider-coreweave/issues/279)) ([b134474](https://github.com/coreweave/terraform-provider-coreweave/commit/b134474209275013a82e98561a7066eab316fe0f))
+* **inference:** invalidate CAPACITY_TYPE_SERVERLESS, add superseding CAPACITY_TYPE_MANAGED ([#321](https://github.com/coreweave/terraform-provider-coreweave/issues/321)) ([7d4534a](https://github.com/coreweave/terraform-provider-coreweave/commit/7d4534a60ec94c1e2baba0d717fdf4218c30d03f))
+* **object_storage:** add acceptance sweeper and deprecate lifecycle rule.prefix ([#313](https://github.com/coreweave/terraform-provider-coreweave/issues/313)) ([b906619](https://github.com/coreweave/terraform-provider-coreweave/commit/b9066193886c1e54ec9ab06a3c00f98361a4ce2b))
+
+## [0.13.0](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.12.0...v0.13.0) (2026-04-02)
+
+
+### Features
+
+* **deps:** update aws-sdk-go-v2 monorepo ([#204](https://github.com/coreweave/terraform-provider-coreweave/issues/204)) ([56bba7c](https://github.com/coreweave/terraform-provider-coreweave/commit/56bba7c543a6fe18d2c7f066766dfebf94ceb42a))
+
+
+### Bug Fixes
+
+* **cks:** only populate changed fields in cluster update requests ([#295](https://github.com/coreweave/terraform-provider-coreweave/issues/295)) ([2120413](https://github.com/coreweave/terraform-provider-coreweave/commit/2120413717366c862b276834792fb9c0907004f7))
+
+## [0.12.0](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.11.0...v0.12.0) (2026-03-12)
+
+
+### Features
+
+* **cks:** additional server SANs ([#282](https://github.com/coreweave/terraform-provider-coreweave/issues/282)) ([a67d8fe](https://github.com/coreweave/terraform-provider-coreweave/commit/a67d8fe502e5390fc4a14fbf7301fe0dba747a6a))
+* **cks:** order internal LB prefix names ([#283](https://github.com/coreweave/terraform-provider-coreweave/issues/283)) ([4010122](https://github.com/coreweave/terraform-provider-coreweave/commit/4010122e45df3b41138f6e1baab6c834d6d5eb21))
+
+## [0.11.0](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.10.1...v0.11.0) (2026-02-12)
+
+
+### Features
+
+* **cks:** ✨  v6 fields for dual stack ([#240](https://github.com/coreweave/terraform-provider-coreweave/issues/240)) ([aba054e](https://github.com/coreweave/terraform-provider-coreweave/commit/aba054e8076757179d2ccd5ad9ce992ec67cedc6))
+
+
+### Bug Fixes
+
+* Update all docs to use new URLs ([#238](https://github.com/coreweave/terraform-provider-coreweave/issues/238)) ([cd42d86](https://github.com/coreweave/terraform-provider-coreweave/commit/cd42d86045664ecca567d4f1a5484c3d7c1f4678))
+
 ## [0.10.1](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.10.0...v0.10.1) (2026-02-02)
 
 

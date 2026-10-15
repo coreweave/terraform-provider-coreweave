@@ -6,7 +6,6 @@ import (
 	"fmt"
 
 	cwobjectv1 "buf.build/gen/go/coreweave/cwobject/protocolbuffers/go/cwobject/v1"
-	"connectrpc.com/connect"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
@@ -161,7 +160,7 @@ func (o *OrganizationAccessPolicyResource) Metadata(ctx context.Context, req res
 
 func (o *OrganizationAccessPolicyResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		MarkdownDescription: "[Organization access policies](https://docs.coreweave.com/docs/products/storage/object-storage/auth-access/organization-policies/about) enforce permissions for AI Object Storage across your entire CoreWeave organization, automatically covering every resource, bucket, and user in your account. At least one organization access policy must be in place before you can create a bucket.",
+		MarkdownDescription: "[Organization access policies](https://docs.coreweave.com/products/storage/object-storage/auth-access/organization-policies/about) enforce permissions for AI Object Storage across your entire CoreWeave organization, automatically covering every resource, bucket, and user in your account. At least one organization access policy must be in place before you can create a bucket.",
 		Attributes: map[string]schema.Attribute{
 			"name": schema.StringAttribute{
 				Required:            true,
@@ -200,7 +199,7 @@ func (o *OrganizationAccessPolicyResource) Schema(ctx context.Context, req resou
 						"resources": schema.SetAttribute{
 							Required:            true,
 							ElementType:         types.StringType,
-							MarkdownDescription: "Defines which resources the policy applies to. See the [AI Object Storage documentation](https://docs.coreweave.com/docs/products/storage/object-storage/concepts/policies/organization-policies#resources) for guidelines on defining resources.",
+							MarkdownDescription: "Defines which resources the policy applies to. See the [AI Object Storage documentation](https://docs.coreweave.com/products/storage/object-storage/auth-access/organization-policies/about) for guidelines on defining resources.",
 							Validators: []validator.Set{
 								atLeastOneElementSetValidator{},
 							},
@@ -208,7 +207,7 @@ func (o *OrganizationAccessPolicyResource) Schema(ctx context.Context, req resou
 						"principals": schema.SetAttribute{
 							Required:            true,
 							ElementType:         types.StringType,
-							MarkdownDescription: "Defines which users, roles, or groups the policy applies to. Only short-form identifiers are supported. If you use a full ARN, the policy will fail with an error. See the [AI Object Storage documentation](https://docs.coreweave.com/docs/products/storage/object-storage/concepts/policies/organization-policies#resources) for guidelines on defining principals.",
+							MarkdownDescription: "Defines which users, roles, or groups the policy applies to. Only short-form identifiers are supported. If you use a full ARN, the policy will fail with an error. See the [AI Object Storage documentation](https://docs.coreweave.com/products/storage/object-storage/auth-access/organization-policies/about) for guidelines on defining principals.",
 							Validators: []validator.Set{
 								atLeastOneElementSetValidator{},
 							},
@@ -253,7 +252,7 @@ func (o *OrganizationAccessPolicyResource) Create(ctx context.Context, req resou
 		return
 	}
 
-	_, err := o.client.EnsureAccessPolicy(ctx, connect.NewRequest(policyReq))
+	_, err := o.client.EnsureAccessPolicy(ctx, policyReq)
 	if err != nil {
 		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
 		return
@@ -270,13 +269,13 @@ func (o *OrganizationAccessPolicyResource) Read(ctx context.Context, req resourc
 		return
 	}
 
-	policies, err := o.client.ListAccessPolicies(ctx, &connect.Request[cwobjectv1.ListAccessPoliciesRequest]{})
+	policies, err := o.client.ListAccessPolicies(ctx, &cwobjectv1.ListAccessPoliciesRequest{})
 	if err != nil {
 		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
 		return
 	}
 
-	for _, p := range policies.Msg.Policies {
+	for _, p := range policies.Policies {
 		if p.Name == data.Name.ValueString() {
 			data.Set(p)
 			resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
@@ -302,7 +301,7 @@ func (o *OrganizationAccessPolicyResource) Update(ctx context.Context, req resou
 		return
 	}
 
-	_, err := o.client.EnsureAccessPolicy(ctx, connect.NewRequest(policyReq))
+	_, err := o.client.EnsureAccessPolicy(ctx, policyReq)
 	if err != nil {
 		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
 		return
@@ -319,9 +318,9 @@ func (o *OrganizationAccessPolicyResource) Delete(ctx context.Context, req resou
 		return
 	}
 
-	_, err := o.client.DeleteAccessPolicy(ctx, connect.NewRequest(&cwobjectv1.DeleteAccessPolicyRequest{
+	_, err := o.client.DeleteAccessPolicy(ctx, &cwobjectv1.DeleteAccessPolicyRequest{
 		Name: data.Name.ValueString(),
-	}))
+	})
 	if err != nil {
 		if coreweave.IsNotFoundError(err) {
 			resp.State.RemoveResource(ctx)
@@ -334,13 +333,13 @@ func (o *OrganizationAccessPolicyResource) Delete(ctx context.Context, req resou
 }
 
 func (o *OrganizationAccessPolicyResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	policies, err := o.client.ListAccessPolicies(ctx, &connect.Request[cwobjectv1.ListAccessPoliciesRequest]{})
+	policies, err := o.client.ListAccessPolicies(ctx, &cwobjectv1.ListAccessPoliciesRequest{})
 	if err != nil {
 		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
 		return
 	}
 
-	for _, p := range policies.Msg.Policies {
+	for _, p := range policies.Policies {
 		if p.Name == req.ID {
 			data := OrganizationAccessPolicyResourceModel{}
 			data.Set(p)
@@ -394,25 +393,25 @@ func MustRenderOrganizationAccessPolicy(ctx context.Context, resourceName string
 
 	resourceBody.SetAttributeValue("name", cty.StringVal(policy.Name.ValueString()))
 
-	statements := []cty.Value{}
+	statements := make([]cty.Value, 0, len(policy.Statements))
 	for _, s := range policy.Statements {
 		actionsSlice := []string{}
 		s.Actions.ElementsAs(ctx, &actionsSlice, false)
-		actions := []cty.Value{}
+		actions := make([]cty.Value, 0, len(actionsSlice))
 		for _, a := range actionsSlice {
 			actions = append(actions, cty.StringVal(a))
 		}
 
 		resourcesSlice := []string{}
 		s.Resources.ElementsAs(ctx, &resourcesSlice, false)
-		resources := []cty.Value{}
+		resources := make([]cty.Value, 0, len(resourcesSlice))
 		for _, a := range resourcesSlice {
 			resources = append(resources, cty.StringVal(a))
 		}
 
 		principalsSlice := []string{}
 		s.Principals.ElementsAs(ctx, &principalsSlice, false)
-		principals := []cty.Value{}
+		principals := make([]cty.Value, 0, len(principalsSlice))
 		for _, a := range principalsSlice {
 			principals = append(principals, cty.StringVal(a))
 		}

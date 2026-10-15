@@ -3,12 +3,12 @@
 page_title: "coreweave_object_storage_bucket_lifecycle_configuration Resource - coreweave"
 subcategory: ""
 description: |-
-  Lifecycle configurations automate object management by defining actions applied to objects over time, such as expiring objects after a specified period or transitioning them to different storage tiers. This helps optimize storage costs and maintain data hygiene. Lifecycle configurations automate object management by defining actions applied to objects over time, such as expiring objects after a specified period or transitioning them to different storage tiers. This helps optimize storage costs and maintain data hygiene. Learn more about S3-compatible lifecycle bucket configurations https://docs.coreweave.com/docs/products/storage/object-storage/reference/object-storage-s3#bucket-lifecycles.
+  Lifecycle configurations automate object management by defining actions applied to objects over time, such as expiring objects after a specified period or transitioning them to different storage tiers. This helps optimize storage costs and maintain data hygiene. Learn more about S3-compatible lifecycle bucket configurations https://docs.coreweave.com/products/storage/object-storage/reference/object-storage-s3#bucket-lifecycles.
 ---
 
 # coreweave_object_storage_bucket_lifecycle_configuration (Resource)
 
-Lifecycle configurations automate object management by defining actions applied to objects over time, such as expiring objects after a specified period or transitioning them to different storage tiers. This helps optimize storage costs and maintain data hygiene. Lifecycle configurations automate object management by defining actions applied to objects over time, such as expiring objects after a specified period or transitioning them to different storage tiers. This helps optimize storage costs and maintain data hygiene. [Learn more about S3-compatible lifecycle bucket configurations](https://docs.coreweave.com/docs/products/storage/object-storage/reference/object-storage-s3#bucket-lifecycles).
+Lifecycle configurations automate object management by defining actions applied to objects over time, such as expiring objects after a specified period or transitioning them to different storage tiers. This helps optimize storage costs and maintain data hygiene. [Learn more about S3-compatible lifecycle bucket configurations](https://docs.coreweave.com/products/storage/object-storage/reference/object-storage-s3#bucket-lifecycles).
 
 ## Example Usage
 
@@ -61,8 +61,11 @@ resource "coreweave_object_storage_bucket_lifecycle_configuration" "default" {
   # Rule 2: Abort abandoned multipart uploads and expire traces after a fixed date
   rule {
     id     = "expire-traces"
-    prefix = "traces/"
     status = "Enabled"
+
+    filter {
+      prefix = "traces/"
+    }
 
     abort_incomplete_multipart_upload {
       days_after_initiation = 5
@@ -101,7 +104,7 @@ Optional:
 - `id` (String) Unique identifier for the rule
 - `noncurrent_version_expiration` (Block, Optional) (see [below for nested schema](#nestedblock--rule--noncurrent_version_expiration))
 - `noncurrent_version_transition` (Block Set) (see [below for nested schema](#nestedblock--rule--noncurrent_version_transition))
-- `prefix` (String) Object key prefix to which the rule applies
+- `prefix` (String, Deprecated) Deprecated. Object key prefix to which the rule applies. CoreWeave AI Object Storage rejects requests that set this field; use `filter.prefix` instead.
 - `transition` (Block Set) (see [below for nested schema](#nestedblock--rule--transition))
 
 <a id="nestedblock--rule--abort_incomplete_multipart_upload"></a>
@@ -191,6 +194,17 @@ Optional:
 ## Import
 
 Import is supported using the following syntax:
+
+In Terraform v1.5.0 and later, the [`import` block](https://developer.hashicorp.com/terraform/language/import) can be used with the `id` attribute, for example:
+
+```terraform
+import {
+  to = coreweave_object_storage_bucket_lifecycle_configuration.default
+  id = "{{bucket_name}}"
+}
+```
+
+The [`terraform import` command](https://developer.hashicorp.com/terraform/cli/commands/import) can be used, for example:
 
 ```shell
 terraform import coreweave_object_storage_bucket_lifecycle_configuration.default {{bucket_name}}

@@ -7,11 +7,17 @@ import (
 	"os"
 	"time"
 
-	"connectrpc.com/connect"
+	"connectrpc.com/connect/v2"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
+	calleridentity "github.com/coreweave/terraform-provider-coreweave/coreweave/caller_identity"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave/cks"
+	containerregistry "github.com/coreweave/terraform-provider-coreweave/coreweave/container_registry"
+	"github.com/coreweave/terraform-provider-coreweave/coreweave/inference"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave/networking"
 	objectstorage "github.com/coreweave/terraform-provider-coreweave/coreweave/object_storage"
+	"github.com/coreweave/terraform-provider-coreweave/coreweave/sandbox"
+	workloadfederation "github.com/coreweave/terraform-provider-coreweave/coreweave/workload_federation"
+	"github.com/coreweave/terraform-provider-coreweave/internal/auth"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/function"
 	"github.com/hashicorp/terraform-plugin-framework/provider"
@@ -98,7 +104,7 @@ func (p *CoreweaveProvider) Schema(ctx context.Context, req provider.SchemaReque
 				Sensitive:           true,
 			},
 			"http_timeout": schema.StringAttribute{
-				MarkdownDescription: fmt.Sprintf("Timeout duration for the HTTP client to use. This can also be set via the %s environment variable, which takes precedence. If unset, defaults to 10 seconds", CoreweaveHTTPTimeoutEnvVar),
+				MarkdownDescription: fmt.Sprintf("Timeout for each CoreWeave API and Object Storage S3 HTTP attempt. This can also be set via the %s environment variable, which takes precedence. When unset, CoreWeave API attempts default to 10 seconds and S3 attempts default to 30 seconds. Values near or below service latency can cause request timeouts.", CoreweaveHTTPTimeoutEnvVar),
 				Optional:            true,
 				Validators: []validator.String{
 					durationValidator{},
@@ -131,13 +137,43 @@ func parseDuration(raw string) (*time.Duration, error) {
 	if err != nil {
 		// Try appending “s” to treat it as seconds
 		if parsed, err2 := time.ParseDuration(raw + "s"); err2 == nil {
+			if parsed <= 0 {
+				return nil, fmt.Errorf("duration must be greater than zero")
+			}
 			return &parsed, nil
 		}
 
 		return nil, err
 	}
+	if parsed <= 0 {
+		return nil, fmt.Errorf("duration must be greater than zero")
+	}
 
 	return &parsed, nil
+}
+
+func resolveHTTPTimeouts(ctx context.Context, configured types.String) (time.Duration, time.Duration) {
+	connectTimeout := DefaultHTTPTimeout
+	s3Timeout := coreweave.DefaultS3AttemptTimeout
+
+	if !configured.IsNull() && !configured.IsUnknown() && configured.ValueString() != "" {
+		if parsed, err := parseDuration(configured.ValueString()); err == nil {
+			connectTimeout = *parsed
+			s3Timeout = *parsed
+		}
+	}
+
+	if timeoutStr, ok := os.LookupEnv(CoreweaveHTTPTimeoutEnvVar); ok {
+		timeoutOverride, err := parseDuration(timeoutStr)
+		if err == nil {
+			connectTimeout = *timeoutOverride
+			s3Timeout = *timeoutOverride
+		} else {
+			tflog.Error(ctx, fmt.Sprintf("got invalid duration '%s' for %s, using configured/default timeouts", timeoutStr, CoreweaveHTTPTimeoutEnvVar))
+		}
+	}
+
+	return connectTimeout, s3Timeout
 }
 
 // Builds a CW client using the provided model, including any defaults or environment variables.
@@ -149,14 +185,7 @@ func BuildClient(ctx context.Context, model CoreweaveProviderModel, tfVersion, p
 	endpoint := model.Endpoint.ValueString()
 	s3Endpoint := model.S3Endpoint.ValueString()
 	token := model.Token.ValueString()
-	httpTimeout := model.HTTPTimeout.ValueString()
-	timeout := DefaultHTTPTimeout
-
-	// An error should not be able to happen in this case, as we specify a validator on the StringAttribute on the provider schema
-	// but for posterity we check for the error anyway
-	if userSpecified, err := parseDuration(httpTimeout); err == nil {
-		timeout = *userSpecified
-	}
+	timeout, s3Timeout := resolveHTTPTimeouts(ctx, model.HTTPTimeout)
 
 	if tokenFromEnv, ok := os.LookupEnv(CoreweaveApiTokenEnvVar); ok {
 		token = tokenFromEnv
@@ -167,15 +196,6 @@ func BuildClient(ctx context.Context, model CoreweaveProviderModel, tfVersion, p
 	if s3EndpointFrmEnv, ok := os.LookupEnv(CoreWeaveS3EndpointEnvVar); ok {
 		s3Endpoint = s3EndpointFrmEnv
 	}
-	if timeoutStr, ok := os.LookupEnv(CoreweaveHTTPTimeoutEnvVar); ok {
-		timeoutOverride, err := parseDuration(timeoutStr)
-		if err == nil {
-			timeout = *timeoutOverride
-		} else {
-			tflog.Error(ctx, fmt.Sprintf("got invalid duration '%s' for %s, using default timeout %v", timeoutStr, CoreweaveHTTPTimeoutEnvVar, DefaultHTTPTimeout))
-		}
-	}
-
 	if token == "" {
 		return nil, errors.New("token is required for coreweave client instantiation")
 	}
@@ -187,38 +207,65 @@ func BuildClient(ctx context.Context, model CoreweaveProviderModel, tfVersion, p
 	}
 
 	tflog.Debug(ctx, fmt.Sprintf("using http client timeout: %v", timeout))
+	userAgent := fmt.Sprintf("Terraform/%s terraform-provider-coreweave/%s (+https://github.com/coreweave/terraform-provider-coreweave)", tfVersion, providerVersion)
 
-	headerInterceptor := connect.UnaryInterceptorFunc(
-		func(next connect.UnaryFunc) connect.UnaryFunc {
-			return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
-				req.Header().Add("Authorization", fmt.Sprintf("Bearer %s", token))
-				req.Header().Set("User-Agent", fmt.Sprintf("Terraform/%s terraform-provider-coreweave/%s (+https://github.com/coreweave/terraform-provider-coreweave)", tfVersion, providerVersion))
-				return next(ctx, req)
-			}
-		},
+	tokenSource := auth.NewStaticTokenSource(token)
+	userAgentInterceptor := func(next connect.ClientFunc) connect.ClientFunc {
+		return func(ctx context.Context, spec connect.Spec) (connect.ClientStream, error) {
+			info, _ := connect.CallInfoForClientContext(ctx)
+			info.RequestHeader().Set("User-Agent", userAgent)
+			return next(ctx, spec)
+		}
+	}
+
+	return coreweave.NewClientWithOptions(
+		endpoint,
+		s3Endpoint,
+		timeout,
+		tokenSource,
+		userAgent,
+		coreweave.ClientOptions{S3AttemptTimeout: s3Timeout},
+		userAgentInterceptor,
+		coreweave.TFLogInterceptor(),
 	)
-
-	return coreweave.NewClient(endpoint, s3Endpoint, timeout, headerInterceptor, coreweave.TFLogInterceptor()), nil
 }
 
 func (p *CoreweaveProvider) Resources(ctx context.Context) []func() resource.Resource {
 	return []func() resource.Resource{
 		cks.NewClusterResource,
+		sandbox.NewManagedRunnerResource,
 		networking.NewVpcResource,
 		objectstorage.NewBucketResource,
+		objectstorage.NewAccessKeyResource,
 		objectstorage.NewOrganizationAccessPolicyResource,
 		objectstorage.NewBucketLifecycleResource,
+		objectstorage.NewBucketInventoryResource,
 		objectstorage.NewBucketVersioningResource,
 		objectstorage.NewBucketPolicyResource,
 		objectstorage.NewBucketSettingsResource,
+		inference.NewInferenceDeploymentResource,
+		inference.NewInferenceCapacityClaimResource,
+		inference.NewInferenceGatewayResource,
+		workloadfederation.NewOIDCConfigResource,
+		containerregistry.NewNamespaceResource,
+		containerregistry.NewAccessConfigurationResource,
+		containerregistry.NewLifecyclePolicyResource,
 	}
 }
 
 func (p *CoreweaveProvider) DataSources(ctx context.Context) []func() datasource.DataSource {
 	return []func() datasource.DataSource{
+		calleridentity.NewCallerIdentityDataSource,
 		networking.NewVpcDataSource,
 		cks.NewClusterDataSource,
 		objectstorage.NewBucketPolicyDocumentDataSource,
+		inference.NewInferenceDeploymentParametersDataSource,
+		inference.NewCapacityClaimParametersDataSource,
+		inference.NewGatewayParametersDataSource,
+		workloadfederation.NewOIDCConfigDataSource,
+		containerregistry.NewNamespaceDataSource,
+		containerregistry.NewNamespacesDataSource,
+		containerregistry.NewZonesDataSource,
 	}
 }
 

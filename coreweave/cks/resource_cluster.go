@@ -5,26 +5,34 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
 	"time"
 
 	cksv1beta1 "buf.build/gen/go/coreweave/cks/protocolbuffers/go/coreweave/cks/v1beta1"
-	"connectrpc.com/connect"
+	"connectrpc.com/connect/v2"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
 	"github.com/hashicorp/hcl/v2/hclsyntax"
 	"github.com/hashicorp/hcl/v2/hclwrite"
+	"github.com/hashicorp/terraform-plugin-framework-jsontypes/jsontypes"
+	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
+	"github.com/hashicorp/terraform-plugin-framework-validators/setvalidator"
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/setplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/retry"
 	"github.com/zclconf/go-cty/cty"
+	"google.golang.org/protobuf/types/known/fieldmaskpb"
+	"google.golang.org/protobuf/types/known/structpb"
 )
 
 const (
@@ -36,6 +44,7 @@ var (
 	_                        resource.Resource                = &ClusterResource{}
 	_                        resource.ResourceWithImportState = &ClusterResource{}
 	errClusterCreationFailed error                            = errors.New("cluster creation failed")
+	nonWhitespace                                             = regexp.MustCompile(`\S`)
 )
 
 func NewClusterResource() resource.Resource {
@@ -45,6 +54,10 @@ func NewClusterResource() resource.Resource {
 // ClusterResource defines the resource implementation.
 type ClusterResource struct {
 	client *coreweave.Client
+}
+
+type TailscaleResourceModel struct {
+	ClientID types.String `tfsdk:"client_id"`
 }
 
 type AuthWebhookResourceModel struct {
@@ -138,7 +151,10 @@ type ClusterResourceModel struct {
 	Public                      types.Bool                `tfsdk:"public"`
 	PodCidrName                 types.String              `tfsdk:"pod_cidr_name"`
 	ServiceCidrName             types.String              `tfsdk:"service_cidr_name"`
-	InternalLBCidrNames         types.Set                 `tfsdk:"internal_lb_cidr_names"`
+	InternalLBCidrNames         types.List                `tfsdk:"internal_lb_cidr_names"`
+	PodCidrNameV6               types.String              `tfsdk:"pod_cidr_name_v6"`
+	ServiceCidrNameV6           types.String              `tfsdk:"service_cidr_name_v6"`
+	InternalLBCidrNamesV6       types.List                `tfsdk:"internal_lb_cidr_names_v6"`
 	NodePortRange               types.Object              `tfsdk:"node_port_range"`
 	AuditPolicy                 types.String              `tfsdk:"audit_policy"`
 	Oidc                        *OidcResourceModel        `tfsdk:"oidc"`
@@ -148,6 +164,9 @@ type ClusterResourceModel struct {
 	Status                      types.String              `tfsdk:"status"`
 	ServiceAccountOIDCIssuerURL types.String              `tfsdk:"service_account_oidc_issuer_url"`
 	SharedStorageClusterId      types.String              `tfsdk:"shared_storage_cluster_id"` //nolint:staticcheck
+	AdditionalServerSans        types.Set                 `tfsdk:"additional_server_sans"`
+	Tailscale                   *TailscaleResourceModel   `tfsdk:"tailscale"`
+	Kubelet                     jsontypes.Normalized      `tfsdk:"kubelet"`
 }
 
 func nodePortEmpty(np *cksv1beta1.PortRange) bool {
@@ -206,11 +225,26 @@ func (c *ClusterResourceModel) Set(cluster *cksv1beta1.Cluster) {
 	if cluster.Network != nil {
 		c.PodCidrName = types.StringValue(cluster.Network.PodCidrName)
 		c.ServiceCidrName = types.StringValue(cluster.Network.ServiceCidrName)
-		internalLbCidrs := []attr.Value{}
-		for _, c := range cluster.Network.InternalLbCidrNames {
-			internalLbCidrs = append(internalLbCidrs, types.StringValue(c))
+
+		internalLbCidrs := make([]attr.Value, len(cluster.Network.InternalLbCidrNames))
+		for i, cidr := range cluster.Network.InternalLbCidrNames {
+			internalLbCidrs[i] = types.StringValue(cidr)
 		}
-		c.InternalLBCidrNames = types.SetValueMust(types.StringType, internalLbCidrs)
+		c.InternalLBCidrNames = types.ListValueMust(types.StringType, internalLbCidrs)
+
+		c.PodCidrNameV6 = types.StringPointerValue(cluster.Network.PodCidrNameV6)
+		c.ServiceCidrNameV6 = types.StringPointerValue(cluster.Network.ServiceCidrNameV6)
+
+		if c.InternalLBCidrNamesV6.IsNull() && len(cluster.Network.InternalLbCidrNamesV6) == 0 {
+			c.InternalLBCidrNamesV6 = types.ListNull(types.StringType)
+		} else {
+			internalLbCidrsV6 := make([]attr.Value, len(cluster.Network.InternalLbCidrNamesV6))
+			for i, cidr := range cluster.Network.InternalLbCidrNamesV6 {
+				internalLbCidrsV6[i] = types.StringValue(cidr)
+			}
+			c.InternalLBCidrNamesV6 = types.ListValueMust(types.StringType, internalLbCidrsV6)
+		}
+
 		if !nodePortEmpty(cluster.Network.ServiceNodePortRange) {
 			c.NodePortRange = types.ObjectValueMust(
 				map[string]attr.Type{
@@ -279,8 +313,65 @@ func (c *ClusterResourceModel) Set(cluster *cksv1beta1.Cluster) {
 
 	c.ApiServerEndpoint = types.StringValue(cluster.ApiServerEndpoint)
 
+	if c.AdditionalServerSans.IsNull() && len(cluster.AdditionalServerSans) == 0 {
+		c.AdditionalServerSans = types.SetNull(types.StringType)
+	} else {
+		sans := make([]attr.Value, len(cluster.AdditionalServerSans))
+		for i, s := range cluster.AdditionalServerSans {
+			sans[i] = types.StringValue(s)
+		}
+		c.AdditionalServerSans = types.SetValueMust(types.StringType, sans)
+	}
+
+	c.setTailscale(cluster)
+	c.setKubelet(cluster)
+
 	// Note: SharedStorageClusterId is not returned by the API, so we preserve it from the plan.
 	// This is intentional since it's marked as RequiresReplace - Terraform will manage this value.
+}
+
+func (c *ClusterResourceModel) setTailscale(cluster *cksv1beta1.Cluster) {
+	if cluster.Tailscale != nil && cluster.Tailscale.ClientId != "" {
+		c.Tailscale = &TailscaleResourceModel{ClientID: types.StringValue(cluster.Tailscale.ClientId)}
+	} else {
+		c.Tailscale = nil
+	}
+}
+
+// setKubelet flattens the API's kubelet override struct into normalized JSON
+// state. When the API returns no overrides we preserve a null value so an unset
+// HCL block does not perpetually diff against an empty object. Normalized JSON
+// state compares semantically, so key ordering differences never produce drift.
+func (c *ClusterResourceModel) setKubelet(cluster *cksv1beta1.Cluster) {
+	if cluster.Kubelet == nil || len(cluster.Kubelet.GetFields()) == 0 {
+		c.Kubelet = jsontypes.NewNormalizedNull()
+		return
+	}
+
+	raw, err := cluster.Kubelet.MarshalJSON()
+	if err != nil {
+		// The value came from the API as a well-formed struct; a marshal failure
+		// here is not actionable by the user, so fall back to null rather than panic.
+		c.Kubelet = jsontypes.NewNormalizedNull()
+		return
+	}
+	c.Kubelet = jsontypes.NewNormalizedValue(string(raw))
+}
+
+// kubeletStruct converts the normalized-JSON kubelet attribute into the
+// *structpb.Struct the API expects. It returns nil when the attribute is unset.
+// The value is validated as a JSON object at plan time (see kubeletValidator),
+// so a parse failure here is not expected in practice.
+func (c *ClusterResourceModel) kubeletStruct() (*structpb.Struct, error) {
+	if c.Kubelet.IsNull() || c.Kubelet.IsUnknown() {
+		return nil, nil
+	}
+
+	s := &structpb.Struct{}
+	if err := s.UnmarshalJSON([]byte(c.Kubelet.ValueString())); err != nil {
+		return nil, err
+	}
+	return s, nil
 }
 
 func (c *ClusterResourceModel) oidcSigningAlgs(ctx context.Context) []cksv1beta1.SigningAlgorithm {
@@ -306,6 +397,25 @@ func (c *ClusterResourceModel) InternalLbCidrNames(ctx context.Context) []string
 
 	c.InternalLBCidrNames.ElementsAs(ctx, &lbs, true)
 	return lbs
+}
+
+func (c *ClusterResourceModel) InternalLbCidrNamesV6(ctx context.Context) []string {
+	lbs := []string{}
+	if c.InternalLBCidrNamesV6.IsNull() {
+		return lbs
+	}
+
+	c.InternalLBCidrNamesV6.ElementsAs(ctx, &lbs, true)
+	return lbs
+}
+
+func (c *ClusterResourceModel) additionalServerSans(ctx context.Context) []string {
+	sans := []string{}
+	if c.AdditionalServerSans.IsNull() {
+		return sans
+	}
+	c.AdditionalServerSans.ElementsAs(ctx, &sans, true)
+	return sans
 }
 
 func (c *ClusterResourceModel) NodePorts() *cksv1beta1.PortRange {
@@ -339,6 +449,8 @@ func (c *ClusterResourceModel) ToCreateRequest(ctx context.Context) *cksv1beta1.
 			PodCidrName:         c.PodCidrName.ValueString(),
 			ServiceCidrName:     c.ServiceCidrName.ValueString(),
 			InternalLbCidrNames: c.InternalLbCidrNames(ctx),
+			PodCidrNameV6:       c.PodCidrNameV6.ValueStringPointer(),
+			ServiceCidrNameV6:   c.ServiceCidrNameV6.ValueStringPointer(),
 		},
 		AuditPolicy:            c.AuditPolicy.ValueString(),
 		SharedStorageClusterId: c.SharedStorageClusterId.ValueString(),
@@ -346,6 +458,10 @@ func (c *ClusterResourceModel) ToCreateRequest(ctx context.Context) *cksv1beta1.
 
 	req.Network.ServiceNodePortRange = c.NodePorts()
 
+	if !c.InternalLBCidrNamesV6.IsNull() && !c.InternalLBCidrNamesV6.IsUnknown() {
+		req.Network.InternalLbCidrNamesV6 = c.InternalLbCidrNamesV6(ctx)
+	}
+
 	if c.AuthNWebhook != nil {
 		req.AuthnWebhook = &cksv1beta1.AuthWebhookConfig{
 			Server: c.AuthNWebhook.Server.ValueString(),
@@ -373,61 +489,235 @@ func (c *ClusterResourceModel) ToCreateRequest(ctx context.Context) *cksv1beta1.
 			SigningAlgorithms: c.oidcSigningAlgs(ctx),
 			AdminGroupBinding: c.Oidc.AdminGroupBinding.ValueString(),
 		}
+	}
+
+	if !c.AdditionalServerSans.IsNull() && !c.AdditionalServerSans.IsUnknown() {
+		req.AdditionalServerSans = c.additionalServerSans(ctx)
+	}
+
+	if c.Tailscale != nil {
+		req.Tailscale = &cksv1beta1.Tailscale{ClientId: c.Tailscale.ClientID.ValueString()}
+	}
+
+	// Errors are ignored here because the value is validated as a JSON object at
+	// plan time; a nil result simply omits the field from the request.
+	if kubelet, _ := c.kubeletStruct(); kubelet != nil {
+		req.Kubelet = kubelet
 	}
 
 	return req
 }
 
-func (c *ClusterResourceModel) ToUpdateRequest(ctx context.Context) *cksv1beta1.UpdateClusterRequest {
-	req := cksv1beta1.UpdateClusterRequest{
-		Id:          c.Id.ValueString(),
-		Public:      c.Public.ValueBool(),
-		Version:     c.Version.ValueString(),
-		AuditPolicy: c.AuditPolicy.ValueString(),
-		Network: &cksv1beta1.UpdateClusterRequest_Network{
-			InternalLbCidrNames: c.InternalLbCidrNames(ctx),
-		},
+// oidcChanged reports whether the OIDC configuration differs between plan and state.
+func oidcChanged(plan, state *ClusterResourceModel) bool {
+	if (plan.Oidc == nil) != (state.Oidc == nil) {
+		return true
+	}
+	if plan.Oidc == nil {
+		return false
+	}
+	return !plan.Oidc.IssuerURL.Equal(state.Oidc.IssuerURL) ||
+		!plan.Oidc.ClientID.Equal(state.Oidc.ClientID) ||
+		!plan.Oidc.UsernameClaim.Equal(state.Oidc.UsernameClaim) ||
+		!plan.Oidc.UsernamePrefix.Equal(state.Oidc.UsernamePrefix) ||
+		!plan.Oidc.GroupsClaim.Equal(state.Oidc.GroupsClaim) ||
+		!plan.Oidc.GroupsPrefix.Equal(state.Oidc.GroupsPrefix) ||
+		!plan.Oidc.CA.Equal(state.Oidc.CA) ||
+		!plan.Oidc.RequiredClaim.Equal(state.Oidc.RequiredClaim) ||
+		!plan.Oidc.SigningAlgs.Equal(state.Oidc.SigningAlgs) ||
+		!plan.Oidc.AdminGroupBinding.Equal(state.Oidc.AdminGroupBinding)
+}
+
+// tailscaleChanged reports whether the Tailscale configuration differs between plan and state.
+func tailscaleChanged(plan, state *TailscaleResourceModel) bool {
+	if (plan == nil) != (state == nil) {
+		return true
+	}
+	if plan == nil {
+		return false
+	}
+	return !plan.ClientID.Equal(state.ClientID)
+}
+
+// authWebhookChanged reports whether an auth webhook block differs between plan and state.
+func authWebhookChanged(plan, state *AuthWebhookResourceModel) bool {
+	if (plan == nil) != (state == nil) {
+		return true
+	}
+	if plan == nil {
+		return false
+	}
+	return !plan.Server.Equal(state.Server) || !plan.CA.Equal(state.CA)
+}
+
+// kubeletChanged reports whether the kubelet configuration differs between plan
+// and state. It compares JSON semantically so that a re-serialized value with
+// reordered keys (as returned by the API) is not mistaken for a change, which
+// would otherwise trigger an unnecessary Node reboot.
+func kubeletChanged(ctx context.Context, plan, state *ClusterResourceModel) bool {
+	if plan.Kubelet.IsNull() != state.Kubelet.IsNull() {
+		return true
+	}
+	if plan.Kubelet.IsNull() {
+		return false
+	}
+	equal, _ := plan.Kubelet.StringSemanticEquals(ctx, state.Kubelet)
+	return !equal
+}
+
+// kubeletValidator ensures the kubelet attribute is a non-empty JSON object,
+// matching the google.protobuf.Struct shape the CKS API expects. jsontypes.Normalized
+// already guarantees the value is syntactically valid JSON; this rejects non-object
+// JSON (arrays, scalars) and empty objects with a clear error at plan time.
+type kubeletValidator struct{}
+
+var _ validator.String = kubeletValidator{}
+
+func (kubeletValidator) Description(_ context.Context) string {
+	return "must be a JSON object of kubelet configuration overrides"
+}
+
+func (v kubeletValidator) MarkdownDescription(ctx context.Context) string {
+	return v.Description(ctx)
+}
+
+func (kubeletValidator) ValidateString(_ context.Context, req validator.StringRequest, resp *validator.StringResponse) {
+	if req.ConfigValue.IsNull() || req.ConfigValue.IsUnknown() {
+		return
 	}
 
-	req.Network.ServiceNodePortRange = c.NodePorts()
+	s := &structpb.Struct{}
+	if err := s.UnmarshalJSON([]byte(req.ConfigValue.ValueString())); err != nil {
+		resp.Diagnostics.AddAttributeError(
+			req.Path,
+			"Invalid kubelet configuration",
+			fmt.Sprintf("The kubelet value must be a JSON object of kubelet configuration overrides: %s", err),
+		)
+		return
+	}
 
-	if c.AuthNWebhook != nil {
-		req.AuthnWebhook = &cksv1beta1.AuthWebhookConfig{
-			Server: c.AuthNWebhook.Server.ValueString(),
-			Ca:     c.AuthNWebhook.CA.ValueString(),
+	if len(s.GetFields()) == 0 {
+		resp.Diagnostics.AddAttributeError(
+			req.Path,
+			"Invalid kubelet configuration",
+			"The kubelet value must be a non-empty JSON object of kubelet configuration overrides; remove the attribute instead of setting it to an empty object.",
+		)
+	}
+}
+
+// buildUpdateRequest constructs an UpdateClusterRequest containing only the fields
+// that differ between plan and state. Fields that haven't changed are left as zero
+// values / nil on the request body. This is necessary because the CKS API validates
+// field presence on the raw request (e.g. rejecting non-nil network config during a
+// version upgrade), ignoring UpdateMask. The mask is still set as a signal to the
+// server for forward compatibility.
+func buildUpdateRequest(ctx context.Context, plan, state *ClusterResourceModel) *cksv1beta1.UpdateClusterRequest {
+	req := &cksv1beta1.UpdateClusterRequest{
+		Id: plan.Id.ValueString(),
+	}
+	var paths []string
+
+	if !plan.Public.Equal(state.Public) {
+		req.Public = plan.Public.ValueBool()
+		paths = append(paths, "public")
+	}
+	if !plan.Version.Equal(state.Version) {
+		req.Version = plan.Version.ValueString()
+		paths = append(paths, "version")
+	}
+	if !plan.AuditPolicy.Equal(state.AuditPolicy) {
+		req.AuditPolicy = plan.AuditPolicy.ValueString()
+		paths = append(paths, "audit_policy")
+	}
+	if !plan.InternalLBCidrNames.Equal(state.InternalLBCidrNames) || !plan.NodePortRange.Equal(state.NodePortRange) {
+		req.Network = &cksv1beta1.UpdateClusterRequest_Network{
+			InternalLbCidrNames:  plan.InternalLbCidrNames(ctx),
+			ServiceNodePortRange: plan.NodePorts(),
 		}
+		paths = append(paths,
+			"network.internal_lb_cidr_names",
+			"network.service_node_port_range.start",
+			"network.service_node_port_range.end",
+		)
 	}
-
-	if c.AuthZWebhook != nil {
-		req.AuthzWebhook = &cksv1beta1.AuthWebhookConfig{
-			Server: c.AuthZWebhook.Server.ValueString(),
-			Ca:     c.AuthZWebhook.CA.ValueString(),
+	if oidcChanged(plan, state) {
+		if plan.Oidc != nil {
+			req.Oidc = &cksv1beta1.OIDCConfig{
+				IssuerUrl:         plan.Oidc.IssuerURL.ValueString(),
+				ClientId:          plan.Oidc.ClientID.ValueString(),
+				UsernameClaim:     plan.Oidc.UsernameClaim.ValueString(),
+				UsernamePrefix:    plan.Oidc.UsernamePrefix.ValueString(),
+				GroupsClaim:       plan.Oidc.GroupsClaim.ValueString(),
+				GroupsPrefix:      plan.Oidc.GroupsPrefix.ValueString(),
+				Ca:                plan.Oidc.CA.ValueString(),
+				RequiredClaim:     plan.Oidc.RequiredClaim.ValueString(),
+				SigningAlgorithms: plan.oidcSigningAlgs(ctx),
+				AdminGroupBinding: plan.Oidc.AdminGroupBinding.ValueString(),
+			}
 		}
+		paths = append(paths,
+			"oidc.issuer_url",
+			"oidc.client_id",
+			"oidc.username_claim",
+			"oidc.username_prefix",
+			"oidc.groups_claim",
+			"oidc.groups_prefix",
+			"oidc.ca",
+			"oidc.required_claim",
+			"oidc.signing_algorithms",
+			"oidc.admin_group_binding",
+		)
 	}
-
-	if c.Oidc != nil {
-		req.Oidc = &cksv1beta1.OIDCConfig{
-			IssuerUrl:         c.Oidc.IssuerURL.ValueString(),
-			ClientId:          c.Oidc.ClientID.ValueString(),
-			UsernameClaim:     c.Oidc.UsernameClaim.ValueString(),
-			UsernamePrefix:    c.Oidc.UsernamePrefix.ValueString(),
-			GroupsClaim:       c.Oidc.GroupsClaim.ValueString(),
-			GroupsPrefix:      c.Oidc.GroupsPrefix.ValueString(),
-			Ca:                c.Oidc.CA.ValueString(),
-			RequiredClaim:     c.Oidc.RequiredClaim.ValueString(),
-			SigningAlgorithms: c.oidcSigningAlgs(ctx),
-			AdminGroupBinding: c.Oidc.AdminGroupBinding.ValueString(),
+	if authWebhookChanged(plan.AuthNWebhook, state.AuthNWebhook) {
+		if plan.AuthNWebhook != nil {
+			req.AuthnWebhook = &cksv1beta1.AuthWebhookConfig{
+				Server: plan.AuthNWebhook.Server.ValueString(),
+				Ca:     plan.AuthNWebhook.CA.ValueString(),
+			}
 		}
+		paths = append(paths, "authn_webhook.server", "authn_webhook.ca")
+	}
+	if authWebhookChanged(plan.AuthZWebhook, state.AuthZWebhook) {
+		if plan.AuthZWebhook != nil {
+			req.AuthzWebhook = &cksv1beta1.AuthWebhookConfig{
+				Server: plan.AuthZWebhook.Server.ValueString(),
+				Ca:     plan.AuthZWebhook.CA.ValueString(),
+			}
+		}
+		paths = append(paths, "authz_webhook.server", "authz_webhook.ca")
+	}
+	if !plan.AdditionalServerSans.Equal(state.AdditionalServerSans) {
+		req.AdditionalServerSans = plan.additionalServerSans(ctx)
+		paths = append(paths, "additional_server_sans")
 	}
 
-	return &req
+	if tailscaleChanged(plan.Tailscale, state.Tailscale) {
+		if plan.Tailscale != nil {
+			req.Tailscale = &cksv1beta1.Tailscale{ClientId: plan.Tailscale.ClientID.ValueString()}
+		} else {
+			req.Tailscale = &cksv1beta1.Tailscale{}
+		}
+		paths = append(paths, "tailscale.client_id")
+	}
+
+	if kubeletChanged(ctx, plan, state) {
+		// A nil struct clears the overrides; the mask path signals the change
+		// either way. Errors are ignored because the value is validated at plan time.
+		if kubelet, _ := plan.kubeletStruct(); kubelet != nil {
+			req.Kubelet = kubelet
+		}
+		paths = append(paths, "kubelet")
+	}
+
+	req.UpdateMask = &fieldmaskpb.FieldMask{Paths: paths}
+	return req
 }
 
 func (r *ClusterResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + "_cks_cluster"
 }
 
-func requireReplaceIfInternalLbCidrNames(ctx context.Context, req planmodifier.SetRequest, resp *setplanmodifier.RequiresReplaceIfFuncResponse) {
+func requireReplaceIfInternalLbCidrNames(ctx context.Context, req planmodifier.ListRequest, resp *listplanmodifier.RequiresReplaceIfFuncResponse) {
 	if req.StateValue.IsNull() || req.PlanValue.IsUnknown() || req.ConfigValue.IsUnknown() {
 		return
 	}
@@ -519,7 +809,7 @@ func requireReplaceIfStatusFailed(ctx context.Context, req planmodifier.StringRe
 
 func (r *ClusterResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		MarkdownDescription: "Create and manage clusters on [CoreWeave Kubernetes Service (CKS)](https://docs.coreweave.com/docs/products/cks/clusters/introduction).",
+		MarkdownDescription: "Create and manage clusters on [CoreWeave Kubernetes Service (CKS)](https://docs.coreweave.com/products/cks/clusters/introduction).",
 
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
@@ -574,12 +864,62 @@ func (r *ClusterResource) Schema(ctx context.Context, req resource.SchemaRequest
 					stringplanmodifier.RequiresReplace(),
 				},
 			},
-			"internal_lb_cidr_names": schema.SetAttribute{
+			"internal_lb_cidr_names": schema.ListAttribute{
 				ElementType:         types.StringType,
 				Required:            true,
 				MarkdownDescription: "The names of the vpc prefixes to use as internal load balancer CIDR ranges. Internal load balancers are reachable within the VPC but not accessible from the internet.\nThe prefixes must exist in the cluster's VPC. This field is append-only.",
-				PlanModifiers: []planmodifier.Set{
-					setplanmodifier.RequiresReplaceIf(requireReplaceIfInternalLbCidrNames, "", "Field `internal_lb_cidr_names` is append-only. Removing an existing value will force replacement."),
+				PlanModifiers: []planmodifier.List{
+					listplanmodifier.RequiresReplaceIf(requireReplaceIfInternalLbCidrNames, "", "Field `internal_lb_cidr_names` is append-only. Removing an existing value will force replacement."),
+				},
+				Validators: []validator.List{
+					listvalidator.UniqueValues(),
+				},
+			},
+			"pod_cidr_name_v6": schema.StringAttribute{
+				Optional:            true,
+				MarkdownDescription: "IPv6 Pod CIDR name. If any IPv6 field is set, then ALL IPv6 fields must be set.",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
+				Validators: []validator.String{
+					stringvalidator.RegexMatches(nonWhitespace, "must not be empty"),
+					stringvalidator.AlsoRequires(
+						path.MatchRoot("service_cidr_name_v6"),
+						path.MatchRoot("internal_lb_cidr_names_v6"),
+					),
+				},
+			},
+			"service_cidr_name_v6": schema.StringAttribute{
+				Optional:            true,
+				MarkdownDescription: "IPv6 Service CIDR name. If any IPv6 field is set, then ALL IPv6 fields must be set.",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
+				Validators: []validator.String{
+					stringvalidator.RegexMatches(nonWhitespace, "must not be empty"),
+					stringvalidator.AlsoRequires(
+						path.MatchRoot("pod_cidr_name_v6"),
+						path.MatchRoot("internal_lb_cidr_names_v6"),
+					),
+				},
+			},
+			"internal_lb_cidr_names_v6": schema.ListAttribute{
+				ElementType:         types.StringType,
+				Optional:            true,
+				MarkdownDescription: "IPv6 Internal Load Balancer CIDR names. If any IPv6 field is set, then ALL IPv6 fields must be set.",
+				PlanModifiers: []planmodifier.List{
+					listplanmodifier.RequiresReplace(),
+				},
+				Validators: []validator.List{
+					listvalidator.SizeAtLeast(1),
+					listvalidator.UniqueValues(),
+					listvalidator.AlsoRequires(
+						path.MatchRoot("pod_cidr_name_v6"),
+						path.MatchRoot("service_cidr_name_v6"),
+					),
+					listvalidator.ValueStringsAre(
+						stringvalidator.RegexMatches(nonWhitespace, "must not be empty"),
+					),
 				},
 			},
 			"node_port_range": schema.SingleNestedAttribute{
@@ -699,14 +1039,48 @@ func (r *ClusterResource) Schema(ctx context.Context, req resource.SchemaRequest
 			"service_account_oidc_issuer_url": schema.StringAttribute{
 				MarkdownDescription: "The URL of the OIDC issuer for the cluster's service account tokens. This value corresponds to the `--service-account-issuer` flag on the kube-apiserver.",
 				Computed:            true,
+				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
 			"shared_storage_cluster_id": schema.StringAttribute{
 				Optional:            true,
 				Required:            false,
-				MarkdownDescription: "The `cluster_id` of the cluster to share storage with. Must be enabled by CoreWeave suppport. Contact CoreWeave support if you are interested in this feature.",
+				MarkdownDescription: "The `cluster_id` of the cluster to share storage with. Must be enabled by CoreWeave support. Contact CoreWeave support if you are interested in this feature.",
 				Computed:            false,
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
+				},
+			},
+			"additional_server_sans": schema.SetAttribute{
+				ElementType:         types.StringType,
+				Optional:            true,
+				MarkdownDescription: "Additional Subject Alternative Names (SANs) to include in the Kubernetes API server TLS certificate. Maximum 10 entries.",
+				Validators: []validator.Set{
+					setvalidator.SizeAtMost(10),
+					setvalidator.ValueStringsAre(
+						stringvalidator.RegexMatches(nonWhitespace, "must not be empty"),
+					),
+				},
+			},
+			"tailscale": schema.SingleNestedAttribute{
+				Optional:            true,
+				MarkdownDescription: "Tailscale configuration for the cluster. Enables cluster access via a Tailscale VPN.",
+				Attributes: map[string]schema.Attribute{
+					"client_id": schema.StringAttribute{
+						Required:            true,
+						MarkdownDescription: "The Tailscale Client ID for the federated identity.",
+						Validators: []validator.String{
+							stringvalidator.LengthAtMost(255),
+							stringvalidator.RegexMatches(nonWhitespace, "must not be empty"),
+						},
+					},
+				},
+			},
+			"kubelet": schema.StringAttribute{
+				CustomType:          jsontypes.NormalizedType{},
+				Optional:            true,
+				MarkdownDescription: "Selective overrides applied to every cluster Node's kubelet configuration, as a JSON object (e.g. `jsonencode({ maxPods = 256 })`). A Node reboot is required for changes to take effect, and unknown options are stored but ignored by CKS. See the [Kubernetes kubelet configuration reference](https://kubernetes.io/docs/tasks/administer-cluster/kubelet-config-file/) for supported options.",
+				Validators: []validator.String{
+					kubeletValidator{},
 				},
 			},
 		},
@@ -740,14 +1114,14 @@ func (r *ClusterResource) Create(ctx context.Context, req resource.CreateRequest
 		return
 	}
 
-	createResp, err := r.client.CreateCluster(ctx, connect.NewRequest(data.ToCreateRequest(ctx)))
+	createResp, err := r.client.CreateCluster(ctx, data.ToCreateRequest(ctx))
 	if err != nil {
 		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
 		return
 	}
 
 	// set state once cluster is created
-	data.Set(createResp.Msg.Cluster)
+	data.Set(createResp.Cluster)
 	// if we fail to set state, return early as the resource will be orphaned
 	if diag := resp.State.Set(ctx, &data); diag.HasError() {
 		resp.Diagnostics.Append(diag...)
@@ -762,9 +1136,9 @@ func (r *ClusterResource) Create(ctx context.Context, req resource.CreateRequest
 		},
 		Target: []string{cksv1beta1.Cluster_STATUS_RUNNING.String()},
 		Refresh: func() (result interface{}, state string, err error) {
-			resp, err := r.client.GetCluster(ctx, connect.NewRequest(&cksv1beta1.GetClusterRequest{
-				Id: createResp.Msg.Cluster.Id,
-			}))
+			resp, err := r.client.GetCluster(ctx, &cksv1beta1.GetClusterRequest{
+				Id: createResp.Cluster.Id,
+			})
 			if err != nil {
 				tflog.Error(ctx, "failed to fetch cluster resource", map[string]interface{}{
 					"error": err,
@@ -772,11 +1146,11 @@ func (r *ClusterResource) Create(ctx context.Context, req resource.CreateRequest
 				return nil, cksv1beta1.Cluster_STATUS_UNSPECIFIED.String(), err
 			}
 
-			if resp.Msg.Cluster.Status == cksv1beta1.Cluster_STATUS_FAILED {
-				return resp.Msg.Cluster, resp.Msg.Cluster.Status.String(), errClusterCreationFailed
+			if resp.Cluster.Status == cksv1beta1.Cluster_STATUS_FAILED {
+				return resp.Cluster, resp.Cluster.Status.String(), errClusterCreationFailed
 			}
 
-			return resp.Msg.Cluster, resp.Msg.Cluster.Status.String(), nil
+			return resp.Cluster, resp.Cluster.Status.String(), nil
 		},
 		Timeout: 45 * time.Minute,
 	}
@@ -814,9 +1188,9 @@ func (r *ClusterResource) Read(ctx context.Context, req resource.ReadRequest, re
 		return
 	}
 
-	cluster, err := r.client.GetCluster(ctx, connect.NewRequest(&cksv1beta1.GetClusterRequest{
+	cluster, err := r.client.GetCluster(ctx, &cksv1beta1.GetClusterRequest{
 		Id: data.Id.ValueString(),
-	}))
+	})
 	if err != nil {
 		if coreweave.IsNotFoundError(err) {
 			resp.State.RemoveResource(ctx)
@@ -827,7 +1201,7 @@ func (r *ClusterResource) Read(ctx context.Context, req resource.ReadRequest, re
 		return
 	}
 
-	data.Set(cluster.Msg.Cluster)
+	data.Set(cluster.Cluster)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
@@ -840,7 +1214,16 @@ func (r *ClusterResource) Update(ctx context.Context, req resource.UpdateRequest
 		return
 	}
 
-	updateResp, err := r.client.UpdateCluster(ctx, connect.NewRequest(data.ToUpdateRequest(ctx)))
+	var state ClusterResourceModel
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	updateReq := buildUpdateRequest(ctx, &data, &state)
+
+	updateResp, err := r.client.UpdateCluster(ctx, updateReq)
 	if err != nil {
 		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
 		return
@@ -850,13 +1233,14 @@ func (r *ClusterResource) Update(ctx context.Context, req resource.UpdateRequest
 	conf := retry.StateChangeConf{
 		Pending: []string{
 			cksv1beta1.Cluster_STATUS_UPDATING.String(),
+			cksv1beta1.Cluster_STATUS_UPGRADING.String(),
 			cksv1beta1.Cluster_STATUS_UNSPECIFIED.String(),
 		},
 		Target: []string{cksv1beta1.Cluster_STATUS_RUNNING.String()},
 		Refresh: func() (result interface{}, state string, err error) {
-			resp, err := r.client.GetCluster(ctx, connect.NewRequest(&cksv1beta1.GetClusterRequest{
-				Id: updateResp.Msg.Cluster.Id,
-			}))
+			resp, err := r.client.GetCluster(ctx, &cksv1beta1.GetClusterRequest{
+				Id: updateResp.Cluster.Id,
+			})
 			if err != nil {
 				tflog.Error(ctx, "failed to fetch cluster resource", map[string]interface{}{
 					"error": err.Error(),
@@ -864,7 +1248,7 @@ func (r *ClusterResource) Update(ctx context.Context, req resource.UpdateRequest
 				return nil, cksv1beta1.Cluster_STATUS_UNSPECIFIED.String(), err
 			}
 
-			return resp.Msg.Cluster, resp.Msg.Cluster.Status.String(), nil
+			return resp.Cluster, resp.Cluster.Status.String(), nil
 		},
 		Timeout: 20 * time.Minute,
 	}
@@ -896,9 +1280,9 @@ func (r *ClusterResource) Delete(ctx context.Context, req resource.DeleteRequest
 		return
 	}
 
-	deleteResp, err := r.client.DeleteCluster(ctx, connect.NewRequest(&cksv1beta1.DeleteClusterRequest{
+	deleteResp, err := r.client.DeleteCluster(ctx, &cksv1beta1.DeleteClusterRequest{
 		Id: data.Id.ValueString(),
-	}))
+	})
 	if err != nil {
 		if coreweave.IsNotFoundError(err) {
 			return
@@ -914,9 +1298,9 @@ func (r *ClusterResource) Delete(ctx context.Context, req resource.DeleteRequest
 		},
 		Target: []string{cksv1beta1.Cluster_STATUS_DELETED.String()},
 		Refresh: func() (result interface{}, state string, err error) {
-			resp, err := r.client.GetCluster(ctx, connect.NewRequest(&cksv1beta1.GetClusterRequest{
-				Id: deleteResp.Msg.Cluster.Id,
-			}))
+			resp, err := r.client.GetCluster(ctx, &cksv1beta1.GetClusterRequest{
+				Id: deleteResp.Cluster.Id,
+			})
 			if err != nil {
 				var connectErr *connect.Error
 				if errors.As(err, &connectErr) && connectErr.Code() == connect.CodeNotFound {
@@ -929,7 +1313,7 @@ func (r *ClusterResource) Delete(ctx context.Context, req resource.DeleteRequest
 				return nil, cksv1beta1.Cluster_STATUS_UNSPECIFIED.String(), err
 			}
 
-			return resp.Msg.Cluster, resp.Msg.Cluster.Status.String(), nil
+			return resp.Cluster, resp.Cluster.Status.String(), nil
 		},
 		Timeout: 20 * time.Minute,
 	}
@@ -961,19 +1345,31 @@ func MustRenderClusterResource(ctx context.Context, resourceName string, cluster
 	resourceBody.SetAttributeValue("public", cty.BoolVal(cluster.Public.ValueBool()))
 	resourceBody.SetAttributeValue("pod_cidr_name", cty.StringVal(cluster.PodCidrName.ValueString()))
 	resourceBody.SetAttributeValue("service_cidr_name", cty.StringVal(cluster.ServiceCidrName.ValueString()))
-	internalLbCidrs := []types.String{}
-	cluster.InternalLBCidrNames.ElementsAs(ctx, &internalLbCidrs, false)
-	internalLbCidrSetVals := []cty.Value{}
-	for _, lb := range internalLbCidrs {
-		internalLbCidrSetVals = append(internalLbCidrSetVals, cty.StringVal(lb.ValueString()))
-	}
-	resourceBody.SetAttributeValue("internal_lb_cidr_names", cty.SetVal(internalLbCidrSetVals))
+
+	// internal_lb_cidr_names (required)
+	setStringListAttr(ctx, resourceBody, "internal_lb_cidr_names", cluster.InternalLBCidrNames)
+
 	if !cluster.AuditPolicy.IsNull() {
 		resourceBody.SetAttributeValue("audit_policy", cty.StringVal(cluster.AuditPolicy.ValueString()))
 	}
 
+	if !cluster.PodCidrNameV6.IsNull() && !cluster.PodCidrNameV6.IsUnknown() {
+		resourceBody.SetAttributeValue("pod_cidr_name_v6", cty.StringVal(cluster.PodCidrNameV6.ValueString()))
+	}
+
+	if !cluster.ServiceCidrNameV6.IsNull() && !cluster.ServiceCidrNameV6.IsUnknown() {
+		resourceBody.SetAttributeValue("service_cidr_name_v6", cty.StringVal(cluster.ServiceCidrNameV6.ValueString()))
+	}
+
+	if !cluster.InternalLBCidrNamesV6.IsNull() && !cluster.InternalLBCidrNamesV6.IsUnknown() {
+		setStringListAttr(ctx, resourceBody, "internal_lb_cidr_names_v6", cluster.InternalLBCidrNamesV6)
+	}
+
 	if !cluster.SharedStorageClusterId.IsNull() && !cluster.SharedStorageClusterId.IsUnknown() {
-		resourceBody.SetAttributeRaw("shared_storage_cluster_id", hclwrite.Tokens{{Type: hclsyntax.TokenIdent, Bytes: []byte(cluster.SharedStorageClusterId.ValueString())}})
+		resourceBody.SetAttributeRaw(
+			"shared_storage_cluster_id",
+			hclwrite.Tokens{{Type: hclsyntax.TokenIdent, Bytes: []byte(cluster.SharedStorageClusterId.ValueString())}},
+		)
 	}
 
 	if !cluster.NodePortRange.IsNull() && !cluster.NodePortRange.IsUnknown() {
@@ -988,45 +1384,10 @@ func MustRenderClusterResource(ctx context.Context, resourceName string, cluster
 		}
 	}
 
-	stringOrNull := func(s types.String) cty.Value {
-		if s.IsNull() || s.IsUnknown() {
-			return cty.NullVal(cty.String)
-		}
+	// oidc
+	setOIDCAttrIfPresent(ctx, resourceBody, cluster.Oidc)
 
-		return cty.StringVal(s.ValueString())
-	}
-
-	if cluster.Oidc != nil {
-		signingAlgVals := []cty.Value{}
-		if !cluster.Oidc.SigningAlgs.IsNull() {
-			signingAlgs := []types.String{}
-			cluster.Oidc.SigningAlgs.ElementsAs(ctx, &signingAlgs, false)
-			for _, s := range signingAlgs {
-				signingAlgVals = append(signingAlgVals, cty.StringVal(s.ValueString()))
-			}
-		}
-
-		var signingAlgs cty.Value
-		if len(signingAlgVals) == 0 {
-			signingAlgs = cty.SetValEmpty(cty.String)
-		} else {
-			signingAlgs = cty.SetVal(signingAlgVals)
-		}
-
-		resourceBody.SetAttributeValue("oidc", cty.ObjectVal(map[string]cty.Value{
-			"issuer_url":          stringOrNull(cluster.Oidc.IssuerURL),
-			"client_id":           stringOrNull(cluster.Oidc.ClientID),
-			"username_claim":      stringOrNull(cluster.Oidc.UsernameClaim),
-			"username_prefix":     stringOrNull(cluster.Oidc.UsernamePrefix),
-			"groups_claim":        stringOrNull(cluster.Oidc.GroupsClaim),
-			"groups_prefix":       stringOrNull(cluster.Oidc.GroupsPrefix),
-			"ca":                  stringOrNull(cluster.Oidc.CA),
-			"required_claim":      stringOrNull(cluster.Oidc.RequiredClaim),
-			"signing_algs":        signingAlgs,
-			"admin_group_binding": stringOrNull(cluster.Oidc.AdminGroupBinding),
-		}))
-	}
-
+	// authn/authz webhooks
 	if cluster.AuthNWebhook != nil {
 		resourceBody.SetAttributeValue("authn_webhook", cty.ObjectVal(map[string]cty.Value{
 			"server": cty.StringVal(cluster.AuthNWebhook.Server.ValueString()),
@@ -1041,9 +1402,104 @@ func MustRenderClusterResource(ctx context.Context, resourceName string, cluster
 		}))
 	}
 
+	if !cluster.AdditionalServerSans.IsNull() && !cluster.AdditionalServerSans.IsUnknown() {
+		setStringSetAttr(ctx, resourceBody, "additional_server_sans", cluster.AdditionalServerSans)
+	}
+
+	if cluster.Tailscale != nil {
+		resourceBody.SetAttributeValue("tailscale", cty.ObjectVal(map[string]cty.Value{
+			"client_id": cty.StringVal(cluster.Tailscale.ClientID.ValueString()),
+		}))
+	}
+
+	if !cluster.Kubelet.IsNull() && !cluster.Kubelet.IsUnknown() {
+		resourceBody.SetAttributeValue("kubelet", cty.StringVal(cluster.Kubelet.ValueString()))
+	}
+
 	var buf bytes.Buffer
 	if _, err := file.WriteTo(&buf); err != nil {
 		panic(err)
 	}
 	return buf.String()
+}
+
+func stringOrNull(s types.String) cty.Value {
+	if s.IsNull() || s.IsUnknown() {
+		return cty.NullVal(cty.String)
+	}
+	return cty.StringVal(s.ValueString())
+}
+
+func setStringListAttr(ctx context.Context, b *hclwrite.Body, name string, list types.List) {
+	vals := []types.String{}
+	diag := list.ElementsAs(ctx, &vals, false)
+	if diag.HasError() {
+		panic(fmt.Sprintf("failed to read %s: %v", name, diag.Errors()))
+	}
+
+	ctyVals := make([]cty.Value, 0, len(vals))
+	for _, v := range vals {
+		ctyVals = append(ctyVals, cty.StringVal(v.ValueString()))
+	}
+
+	if len(ctyVals) == 0 {
+		b.SetAttributeValue(name, cty.ListValEmpty(cty.String))
+	} else {
+		b.SetAttributeValue(name, cty.ListVal(ctyVals))
+	}
+}
+
+func setStringSetAttr(ctx context.Context, b *hclwrite.Body, name string, set types.Set) {
+	vals := []types.String{}
+	diag := set.ElementsAs(ctx, &vals, false)
+	if diag.HasError() {
+		panic(fmt.Sprintf("failed to read %s: %v", name, diag.Errors()))
+	}
+
+	ctyVals := make([]cty.Value, 0, len(vals))
+	for _, v := range vals {
+		ctyVals = append(ctyVals, cty.StringVal(v.ValueString()))
+	}
+
+	if len(ctyVals) == 0 {
+		b.SetAttributeValue(name, cty.SetValEmpty(cty.String))
+	} else {
+		b.SetAttributeValue(name, cty.SetVal(ctyVals))
+	}
+}
+
+func setOIDCAttrIfPresent(ctx context.Context, b *hclwrite.Body, oidc *OidcResourceModel) {
+	if oidc == nil {
+		return
+	}
+
+	signingAlgVals := []cty.Value{}
+	if !oidc.SigningAlgs.IsNull() {
+		signingAlgs := []types.String{}
+		diag := oidc.SigningAlgs.ElementsAs(ctx, &signingAlgs, false)
+		if diag.HasError() {
+			panic(fmt.Sprintf("failed to read oidc.signing_algs: %v", diag.Errors()))
+		}
+		for _, s := range signingAlgs {
+			signingAlgVals = append(signingAlgVals, cty.StringVal(s.ValueString()))
+		}
+	}
+
+	signingAlgs := cty.SetValEmpty(cty.String)
+	if len(signingAlgVals) > 0 {
+		signingAlgs = cty.SetVal(signingAlgVals)
+	}
+
+	b.SetAttributeValue("oidc", cty.ObjectVal(map[string]cty.Value{
+		"issuer_url":          stringOrNull(oidc.IssuerURL),
+		"client_id":           stringOrNull(oidc.ClientID),
+		"username_claim":      stringOrNull(oidc.UsernameClaim),
+		"username_prefix":     stringOrNull(oidc.UsernamePrefix),
+		"groups_claim":        stringOrNull(oidc.GroupsClaim),
+		"groups_prefix":       stringOrNull(oidc.GroupsPrefix),
+		"ca":                  stringOrNull(oidc.CA),
+		"required_claim":      stringOrNull(oidc.RequiredClaim),
+		"signing_algs":        signingAlgs,
+		"admin_group_binding": stringOrNull(oidc.AdminGroupBinding),
+	}))
 }
