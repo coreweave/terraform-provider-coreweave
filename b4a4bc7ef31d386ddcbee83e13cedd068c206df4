@@ -1,0 +1,20 @@
+## Conversation
+The user requested a draft PR for the provider changes tested locally against API PR #454.
+
+## Actions
+Fetched current origin/main 4ab8822 (177 commits ahead of the initial local base). After committing the tested feature as d99b81f, merged origin/main without rewriting history. Resolved resource_vpc.go conflicts by retaining current main's SUNK/NVL72 documentation and Connect Go v2 UpdateVPC call, plus append-only planning and conditional host-prefix serialization. Resolved generated docs conflict by preserving current main's descriptions and adding mutation semantics. Re-ran the local SDK overlay runner against the merged provider: networking unit tests passed in 0.847s; real Terraform host-prefix integration passed in 8.22s (API package invocation 13.153s). Diff against origin/main is limited to the five intended provider files. Local drafts are excluded via .git/info/exclude.
+
+## Errors & Mistakes
+Standard go test with the published SDK fails compilation: unknown field HostPrefixes in UpdateVPCRequest, plus corresponding getter/field references in tests. This is a known draft dependency, not a CI success. git diff --check --cached during merge reported two pre-existing upstream example files with blank lines at EOF; git diff origin/main --check passes for this PR's changes. No unrelated whitespace changes were made.
+
+## Dead Ends
+Did not commit a local filesystem replace directive or vendor the SDK to disguise the unpublished API dependency.
+
+## Hints for Future Agents
+Before this draft is mergeable, publish/select networking protobuf bindings exposing UpdateVPCRequest.host_prefixes and update go.mod/go.sum. Deployment requires coreweave/network-services-api#454 as well. See local/pr-provider-host-prefixes-description.md for draft body. The external API envtest harness is still uncommitted in the separate API worktree, not shipped in this PR.
+
+## Codebase Discoveries
+Current main uses Connect Go v2 and Go 1.27.2. The local SDK overlay works with that client. It retains module identity and replaces only the generated VPC and host-prefix messages.
+
+## Open Questions
+Draft CI is expected to fail build until the generated networking dependency is available and bumped. Nimbus/node behavior has not been tested by envtest.
