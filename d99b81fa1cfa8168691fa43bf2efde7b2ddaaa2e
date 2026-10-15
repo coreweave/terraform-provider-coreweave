@@ -1,0 +1,20 @@
+## Conversation
+The user requested real Terraform validation of network-services-api PR #454 before merging it. Implemented a development provider allowing append-only named host-prefix additions. After local Terraform validation passed, the user explicitly requested a draft PR for the provider changes.
+
+## Actions
+Changed host_prefixes planning from RequiresReplaceIfConfigured to an append-only diagnostic modifier. Existing elements must compare equal; unknown planned inputs defer validation and the API also enforces immutability. UpdateVPC sends the full desired list only when host_prefixes changes. Added unit tests for planning and serialization, updated the prior gateway-policy replacement acceptance expectation to an error, and updated schema/docs text. Tests passed with a local networking SDK overlay from the API branch. Real Terraform 1.16.4 against envtest passed PRIMARY-to-ROUTED and subsequent ATTACHED additions, same VPC ID, unchanged terraform_data dependent, no-op followups, reorder, DNS update, seven rejected mutations without prevent_destroy, and guarded destruction. API server package and lint passed. Re-ran provider networking tests before committing: passed in 0.747s.
+
+## Errors & Mistakes
+Initial provider development started from stale local main ccb892d without fetching. Fetching for this draft found origin/main 177 commits ahead at 4ab8822. Commit the verified implementation first, then merge current main without rewriting history and rerun relevant tests. The initial local Terraform fixture incorrectly used provider api_token instead of the supported token configuration; this was fixed by using isolated endpoint/token environment variables before successful runs.
+
+## Dead Ends
+No published SDK containing UpdateVPCRequest.HostPrefixes has been selected. Do not commit machine-local module replacements. Current tests use a separate provider.mod under the API worktree local directory.
+
+## Hints for Future Agents
+Provider checkout /Users/cfahey/coreweave/terraform-provider-coreweave, branch cfahey/test-vpc-host-prefix-updates. API worktree /Users/cfahey/coreweave/network-services-api-vpn/.claude/worktrees/update-vpc-host-prefixes. Run bash test/vpc/terraform/host-prefix-updates/run.sh /Users/cfahey/coreweave/terraform-provider-coreweave from the API worktree. The runner and API test are currently uncommitted in that separate repo and not part of this provider PR. Local override copies API generated VPC and host-prefix messages into the provider SDK module identity. Do not deploy this test provider remotely or enable remote acceptance tests; TF_ACC remains empty.
+
+## Codebase Discoveries
+Terraform dependency tracking alone does not prevent VPC destruction. This change avoids replacement for host_prefixes changes, not name/zone/legacy host_prefix changes or explicit destroy. prevent_destroy is additional configuration protection. Envtest simulates Nimbus readiness and does not test node networking.
+
+## Open Questions
+Need merge current main, validate the resulting provider, and create a draft documenting the SDK dependency and API PR #454. Standard builds may fail until published networking bindings contain the new UpdateVPC field.
