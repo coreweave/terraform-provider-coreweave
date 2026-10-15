@@ -257,8 +257,7 @@
   ],
   "prConcurrentLimit": 3,
   "prHourlyLimit": 2,
-  // TODO: Restore stale-branch pruning after replacements merge and cleanup is approved.
-  "pruneStaleBranches": false,
+  "pruneStaleBranches": true,
   "vulnerabilityAlerts": {
     "groupName": null,
     "groupSlug": null,

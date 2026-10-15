@@ -25,8 +25,8 @@ Routine updates group Go patches across both modules and Mise, Terraform plugin 
 
 Automated Go version updates stay within the minor allowed by the configuration. Raising that cap requires a manual Go/linter upgrade that passes the repository's fast checks. Routine Go and linter releases wait seven days; generated client and runner-image releases retain their existing age exception. Major upgrades stay separate for normal PR review. Security alerts are ungrouped and bypass the routine release-age delay and creation limits.
 
-## PR creation and retained branches
+## PR creation and stale branches
 
 Renovate automatically creates update PRs without Dependency Dashboard approval, subject to a normal budget of three concurrent PRs and two new PRs per hour. Security alerts bypass that budget. No new automerge or GitHub administrative settings are configured.
 
-Stale bot branches remain available while grouped replacements are reviewed. A new grouped PR may coexist with superseded PRs, and preserved stale branches may not count toward the creation budget. Closing superseded PRs or deleting their branches requires explicit approval after their replacements merge. Restore stale-branch pruning after that cleanup is approved.
+Stale-branch pruning is enabled. During normal runs, Renovate can close superseded update PRs and remove their obsolete branches.
