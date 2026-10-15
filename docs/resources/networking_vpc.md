@@ -95,7 +95,7 @@ resource "coreweave_networking_vpc" "example" {
 - `host_prefix` (String, Deprecated) An IPv4 CIDR range used to allocate host addresses when booting compute into a VPC.
 This CIDR must be have a mask size of /18. If left unspecified, a Zone-specific default value will be applied by the server.
 This field is immutable once set.
-- `host_prefixes` (Attributes Set) The IPv4 or IPv6 CIDR ranges used to allocate host addresses when booting compute into a VPC. (see [below for nested schema](#nestedatt--host_prefixes))
+- `host_prefixes` (Attributes Set) The IPv4 or IPv6 CIDR ranges used to allocate host addresses when booting compute into a VPC. New named host prefixes can be added in place. Existing elements cannot be removed or changed; unsupported changes produce an error rather than replacing the VPC. (see [below for nested schema](#nestedatt--host_prefixes))
 - `ingress` (Attributes) Settings affecting traffic entering the VPC. (see [below for nested schema](#nestedatt--ingress))
 - `vpc_prefixes` (Attributes Set) A list of additional prefixes associated with the VPC. For example, CKS clusters use these prefixes for Pod and service CIDR ranges. (see [below for nested schema](#nestedatt--vpc_prefixes))
 

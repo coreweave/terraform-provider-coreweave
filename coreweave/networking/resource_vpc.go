@@ -430,6 +430,9 @@ func (v *VpcResourceModel) ToCreateRequest(ctx context.Context) (*networkingv1be
 func (v *VpcResourceModel) ToUpdateRequest(ctx context.Context) (*networkingv1beta1.UpdateVPCRequest, diag.Diagnostics) {
 	var diagnostics diag.Diagnostics
 
+	hostPrefixes, diags := v.hostPrefixes(ctx)
+	diagnostics.Append(diags...)
+
 	dhcp, diags := v.GetDhcp(ctx)
 	diagnostics.Append(diags...)
 
@@ -438,11 +441,12 @@ func (v *VpcResourceModel) ToUpdateRequest(ctx context.Context) (*networkingv1be
 	}
 
 	req := networkingv1beta1.UpdateVPCRequest{
-		Id:          v.Id.ValueString(),
-		VpcPrefixes: v.vpcPrefixes(),
-		Ingress:     v.Ingress.ToProto(),
-		Egress:      v.Egress.ToProto(),
-		Dhcp:        dhcp,
+		Id:           v.Id.ValueString(),
+		HostPrefixes: hostPrefixes,
+		VpcPrefixes:  v.vpcPrefixes(),
+		Ingress:      v.Ingress.ToProto(),
+		Egress:       v.Egress.ToProto(),
+		Dhcp:         dhcp,
 	}
 
 	return &req, diagnostics
@@ -503,14 +507,16 @@ func (r *VpcResource) Schema(ctx context.Context, req resource.SchemaRequest, re
 				},
 			},
 			"host_prefixes": schema.SetNestedAttribute{
-				MarkdownDescription: "The IPv4 or IPv6 CIDR ranges used to allocate host addresses when booting compute into a VPC.",
-				Optional:            true,
-				Computed:            true,
+				MarkdownDescription: "The IPv4 or IPv6 CIDR ranges used to allocate host addresses when booting compute into a VPC. " +
+					"New named host prefixes can be added in place. Existing elements cannot be removed or changed; " +
+					"unsupported changes produce an error rather than replacing the VPC.",
+				Optional: true,
+				Computed: true,
 				Validators: []validator.Set{
 					setvalidator.SizeAtLeast(1),
 				},
 				PlanModifiers: []planmodifier.Set{
-					setplanmodifier.RequiresReplaceIfConfigured(),
+					hostPrefixesAppendOnly(),
 					setplanmodifier.UseStateForUnknown(), // this comes into play when this is not specified. Instead, we use the state as refreshed for the plan. This has no effect when this is specified.
 				},
 				NestedObject: schema.NestedAttributeObject{
@@ -718,10 +724,11 @@ func (r *VpcResource) Read(ctx context.Context, req resource.ReadRequest, resp *
 }
 
 func (r *VpcResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	var data VpcResourceModel
+	var data, prior VpcResourceModel
 
 	// Read Terraform plan data into the model
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+	resp.Diagnostics.Append(req.State.Get(ctx, &prior)...)
 
 	if resp.Diagnostics.HasError() {
 		return
@@ -731,6 +738,12 @@ func (r *VpcResource) Update(ctx context.Context, req resource.UpdateRequest, re
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
+	}
+
+	// Avoid sending the new field for unrelated updates, including to API
+	// deployments that have not yet enabled host-prefix updates.
+	if data.HostPrefixes.Equal(prior.HostPrefixes) {
+		updateReq.HostPrefixes = nil
 	}
 
 	updateResp, err := r.client.UpdateVPC(ctx, connect.NewRequest(updateReq))
