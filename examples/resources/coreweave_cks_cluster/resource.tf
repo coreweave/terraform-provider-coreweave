@@ -37,6 +37,17 @@ resource "coreweave_cks_cluster" "default" {
   internal_lb_cidr_names = ["internal lb cidr"]
   audit_policy           = filebase64("${path.module}/audit-policy.yaml")
   kubelet                = jsonencode({ maxPods = 256 })
+
+  # Direct public access to the Kubernetes API server, independent of `public`.
+  # This feature requires contacting CoreWeave support to enable it for your organization.
+  # Once enabled, uncomment this block and replace these documentation prefixes with your client source networks.
+  # kube_api_access = {
+  #   public = {
+  #     allow_cidrs = ["203.0.113.0/24", "2001:db8::/32"]
+  #     deny_cidrs  = ["203.0.113.128/25"]
+  #   }
+  # }
+
   oidc = {
     ca              = filebase64("${path.module}/example-ca.crt")
     client_id       = "kbyuFDidLLm280LIwVFiazOqjO3ty8KH"
@@ -56,4 +67,13 @@ resource "coreweave_cks_cluster" "default" {
     ca     = filebase64("${path.module}/example-ca.crt")
     server = "https://samples.auth0.com/"
   }
+}
+
+# Null until the endpoint and CA are reported.
+output "kube_api_endpoint" {
+  value = try(coreweave_cks_cluster.default.kube_api_access_status.public.endpoint, null)
+}
+
+output "kube_api_ca_pem" {
+  value = try(base64decode(coreweave_cks_cluster.default.kube_api_access_status.ca_data), null)
 }

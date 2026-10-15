@@ -149,6 +149,8 @@ type ClusterResourceModel struct {
 	Name                        types.String              `tfsdk:"name"`
 	Version                     types.String              `tfsdk:"version"`
 	Public                      types.Bool                `tfsdk:"public"`
+	KubeAPIAccess               types.Object              `tfsdk:"kube_api_access"`
+	KubeAPIAccessStatus         types.Object              `tfsdk:"kube_api_access_status"`
 	PodCidrName                 types.String              `tfsdk:"pod_cidr_name"`
 	ServiceCidrName             types.String              `tfsdk:"service_cidr_name"`
 	InternalLBCidrNames         types.List                `tfsdk:"internal_lb_cidr_names"`
@@ -212,6 +214,8 @@ func (c *ClusterResourceModel) Set(cluster *cksv1beta1.Cluster) {
 	c.Name = types.StringValue(cluster.Name)
 	c.Version = types.StringValue(cluster.Version)
 	c.Public = types.BoolValue(cluster.Public)
+	c.KubeAPIAccess = kubeAPIAccessFromProto(cluster.KubeApiAccess)
+	c.KubeAPIAccessStatus = kubeAPIAccessStatusFromProto(cluster.KubeApiAccessStatus)
 	c.Status = types.StringValue(cluster.Status.String())
 	c.ServiceAccountOIDCIssuerURL = types.StringValue(fmt.Sprintf("%s/id/%s", ServiceAccountOIDCBaseURL, cluster.Id))
 
@@ -440,11 +444,12 @@ func (c *ClusterResourceModel) NodePorts() *cksv1beta1.PortRange {
 
 func (c *ClusterResourceModel) ToCreateRequest(ctx context.Context) *cksv1beta1.CreateClusterRequest {
 	req := &cksv1beta1.CreateClusterRequest{
-		Name:    c.Name.ValueString(),
-		Zone:    c.Zone.ValueString(),
-		VpcId:   c.VpcId.ValueString(),
-		Public:  c.Public.ValueBool(),
-		Version: c.Version.ValueString(),
+		Name:          c.Name.ValueString(),
+		Zone:          c.Zone.ValueString(),
+		VpcId:         c.VpcId.ValueString(),
+		Public:        c.Public.ValueBool(),
+		KubeApiAccess: kubeAPIAccessToProto(c.KubeAPIAccess),
+		Version:       c.Version.ValueString(),
 		Network: &cksv1beta1.ClusterNetworkConfig{
 			PodCidrName:         c.PodCidrName.ValueString(),
 			ServiceCidrName:     c.ServiceCidrName.ValueString(),
@@ -620,6 +625,10 @@ func buildUpdateRequest(ctx context.Context, plan, state *ClusterResourceModel) 
 	if !plan.Public.Equal(state.Public) {
 		req.Public = plan.Public.ValueBool()
 		paths = append(paths, "public")
+	}
+	if !plan.KubeAPIAccess.Equal(state.KubeAPIAccess) {
+		req.KubeApiAccess = kubeAPIAccessToProto(plan.KubeAPIAccess)
+		paths = append(paths, "kube_api_access")
 	}
 	if !plan.Version.Equal(state.Version) {
 		req.Version = plan.Version.ValueString()
@@ -843,9 +852,11 @@ func (r *ClusterResource) Schema(ctx context.Context, req resource.SchemaRequest
 			"public": schema.BoolAttribute{
 				Optional:            true,
 				Computed:            true,
-				MarkdownDescription: "Whether the cluster's api-server is publicly accessible from the internet.",
+				MarkdownDescription: legacyPublicDescription,
 				Default:             booldefault.StaticBool(false),
 			},
+			"kube_api_access":        kubeAPIAccessResourceAttribute(),
+			"kube_api_access_status": kubeAPIAccessStatusResourceAttribute(),
 			"version": schema.StringAttribute{
 				Required:            true,
 				MarkdownDescription: "The version of Kubernetes to run on the cluster, in minor version format (e.g. 'v1.35'). Patch versions are automatically applied by CKS as they are released.",
@@ -1114,6 +1125,11 @@ func (r *ClusterResource) Create(ctx context.Context, req resource.CreateRequest
 		return
 	}
 
+	resp.Diagnostics.Append(validateKubeAPIAccessForApply(ctx, data.KubeAPIAccess)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
 	createResp, err := r.client.CreateCluster(ctx, data.ToCreateRequest(ctx))
 	if err != nil {
 		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
@@ -1217,6 +1233,12 @@ func (r *ClusterResource) Update(ctx context.Context, req resource.UpdateRequest
 	var state ClusterResourceModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	resp.Diagnostics.Append(validateKubeAPIAccessForApply(ctx, data.KubeAPIAccess)...)
+	resp.Diagnostics.Append(validateKubeAPIAccessUpgrade(&data, &state)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -1416,6 +1438,10 @@ func MustRenderClusterResource(ctx context.Context, resourceName string, cluster
 		resourceBody.SetAttributeValue("kubelet", cty.StringVal(cluster.Kubelet.ValueString()))
 	}
 
+	if access, ok := kubeAPIAccessCtyValue(cluster.KubeAPIAccess); ok {
+		resourceBody.SetAttributeValue("kube_api_access", access)
+	}
+
 	var buf bytes.Buffer
 	if _, err := file.WriteTo(&buf); err != nil {
 		panic(err)
@@ -1466,6 +1492,44 @@ func setStringSetAttr(ctx context.Context, b *hclwrite.Body, name string, set ty
 	} else {
 		b.SetAttributeValue(name, cty.SetVal(ctyVals))
 	}
+}
+
+// kubeAPIAccessCtyValue renders kube_api_access, preserving the presence of the outer and public objects.
+// Null or unknown values report false so the attribute is omitted; null or unknown CIDR sets are omitted.
+func kubeAPIAccessCtyValue(access types.Object) (cty.Value, bool) {
+	if access.IsNull() || access.IsUnknown() {
+		return cty.NilVal, false
+	}
+
+	attrs, ok := knownPublicAttributes(access)
+	if !ok {
+		return cty.EmptyObjectVal, true
+	}
+
+	publicAttrs := map[string]cty.Value{}
+	for name, value := range attrs {
+		set, ok := value.(types.Set)
+		if !ok || set.IsNull() || set.IsUnknown() {
+			continue
+		}
+		publicAttrs[name] = cidrSetCtyValue(cidrSetToProto(set))
+	}
+
+	return cty.ObjectVal(map[string]cty.Value{"public": cty.ObjectVal(publicAttrs)}), true
+}
+
+// cidrSetCtyValue exists because cty.SetVal panics on an empty slice.
+func cidrSetCtyValue(cidrs []string) cty.Value {
+	if len(cidrs) == 0 {
+		return cty.SetValEmpty(cty.String)
+	}
+
+	values := make([]cty.Value, len(cidrs))
+	for i, cidr := range cidrs {
+		values[i] = cty.StringVal(cidr)
+	}
+
+	return cty.SetVal(values)
 }
 
 func setOIDCAttrIfPresent(ctx context.Context, b *hclwrite.Body, oidc *OidcResourceModel) {

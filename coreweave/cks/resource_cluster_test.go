@@ -327,6 +327,10 @@ func createClusterTestStep(ctx context.Context, t *testing.T, config testStepCon
 		} else {
 			statechecks = append(statechecks, statecheck.ExpectKnownValue(config.Resources.FullResourceName, tfjsonpath.New("tailscale"), knownvalue.Null()))
 		}
+
+		// kube_api_access
+		// kube_api_access_status is not checked: it is observed asynchronously and may be absent after apply.
+		statechecks = append(statechecks, statecheck.ExpectKnownValue(config.Resources.FullResourceName, tfjsonpath.New("kube_api_access"), accessKnownValue(cks.KubeAPIAccessToProto(config.cluster.KubeAPIAccess))))
 	}
 
 	step := resource.TestStep{
@@ -779,6 +783,119 @@ func TestClusterResource_Tailscale(t *testing.T) {
 			ImportState:       true,
 			ImportStateVerify: true,
 		},
+	}
+
+	resource.ParallelTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+		PreCheck: func() {
+			testutil.SetEnvDefaults()
+		},
+		Steps: steps,
+	})
+}
+
+func TestClusterResource_KubeAPIAccess(t *testing.T) {
+	config := generateResourceNames(t, "cks-api-access")
+	zone := testutil.AcceptanceTestZone
+	kubeVersion := testutil.AcceptanceTestKubeVersion
+
+	vpc := defaultVpc(config.VPCName, zone)
+
+	base := &cks.ClusterResourceModel{
+		VpcId:               types.StringValue(fmt.Sprintf("coreweave_networking_vpc.%s.id", config.ResourceName)),
+		Name:                types.StringValue(config.ClusterName),
+		Zone:                types.StringValue(zone),
+		Version:             types.StringValue(kubeVersion),
+		Public:              types.BoolValue(false),
+		PodCidrName:         types.StringValue("pod-cidr"),
+		ServiceCidrName:     types.StringValue("service-cidr"),
+		InternalLBCidrNames: types.ListValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr")}),
+		KubeAPIAccess:       types.ObjectNull(cks.KubeAPIAccessAttrTypes),
+	}
+
+	withAccess := func(access types.Object) cks.ClusterResourceModel {
+		return with(*base, func(c *cks.ClusterResourceModel) {
+			c.KubeAPIAccess = access
+		})
+	}
+	allow := cks.KubeAPIAccessCIDRSet("203.0.113.0/24", "2001:db8::/32")
+	nullCIDRs := types.SetNull(types.StringType)
+
+	publicOnly := withAccess(cks.KubeAPIAccessObject(cks.KubeAPIPublicAccessObject(nullCIDRs, nullCIDRs)))
+	allowOnly := withAccess(cks.KubeAPIAccessObject(cks.KubeAPIPublicAccessObject(allow, nullCIDRs)))
+	allowAndDeny := withAccess(cks.KubeAPIAccessObject(cks.KubeAPIPublicAccessObject(allow, cks.KubeAPIAccessCIDRSet("203.0.113.128/25"))))
+	emptyCIDRs := withAccess(cks.KubeAPIAccessObject(cks.KubeAPIPublicAccessObject(cks.KubeAPIAccessCIDRSet(), cks.KubeAPIAccessCIDRSet())))
+
+	expectAction := func(action plancheck.ResourceActionType) resource.ConfigPlanChecks {
+		return resource.ConfigPlanChecks{
+			PreApply: []plancheck.PlanCheck{
+				plancheck.ExpectResourceAction(config.FullResourceName, action),
+			},
+		}
+	}
+
+	ctx := t.Context()
+
+	steps := []resource.TestStep{
+		// Step 1: create with public = {}
+		createClusterTestStep(ctx, t, testStepConfig{
+			TestName:         "create with kube_api_access public",
+			ConfigPlanChecks: expectAction(plancheck.ResourceActionCreate),
+			Resources:        config,
+			cluster:          publicOnly,
+			vpc:              *vpc,
+		}),
+		// Step 2: add allow_cidrs
+		createClusterTestStep(ctx, t, testStepConfig{
+			TestName:         "add allow_cidrs",
+			ConfigPlanChecks: expectAction(plancheck.ResourceActionUpdate),
+			Resources:        config,
+			cluster:          allowOnly,
+			vpc:              *vpc,
+		}),
+		// Step 3: add deny_cidrs
+		createClusterTestStep(ctx, t, testStepConfig{
+			TestName:         "add deny_cidrs",
+			ConfigPlanChecks: expectAction(plancheck.ResourceActionUpdate),
+			Resources:        config,
+			cluster:          allowAndDeny,
+			vpc:              *vpc,
+		}),
+		// Step 4: reapply same config, expect noop
+		{
+			PreConfig: func() {
+				t.Log("Reapplying kube_api_access config to verify noop (roundtrip)")
+			},
+			Config:           networking.MustRenderVpcResource(ctx, config.ResourceName, vpc) + "\n" + cks.MustRenderClusterResource(ctx, config.ResourceName, &allowAndDeny),
+			ConfigPlanChecks: expectAction(plancheck.ResourceActionNoop),
+		},
+		// Step 5: import verify while allow and deny cidrs are set
+		{
+			PreConfig: func() {
+				t.Log("Beginning coreweave_cks_cluster import test (kube_api_access)")
+			},
+			ResourceName:      config.FullResourceName,
+			ImportState:       true,
+			ImportStateVerify: true,
+			// kube_api_access_status is observed asynchronously and can advance between the prior step and the import.
+			ImportStateVerifyIgnore: []string{"kube_api_access_status"},
+		},
+		// Step 6: clear allow and deny cidrs
+		createClusterTestStep(ctx, t, testStepConfig{
+			TestName:         "clear allow and deny cidrs",
+			ConfigPlanChecks: expectAction(plancheck.ResourceActionUpdate),
+			Resources:        config,
+			cluster:          emptyCIDRs,
+			vpc:              *vpc,
+		}),
+		// Step 7: remove kube_api_access block
+		createClusterTestStep(ctx, t, testStepConfig{
+			TestName:         "remove kube_api_access block",
+			ConfigPlanChecks: expectAction(plancheck.ResourceActionUpdate),
+			Resources:        config,
+			cluster:          *base,
+			vpc:              *vpc,
+		}),
 	}
 
 	resource.ParallelTest(t, resource.TestCase{
@@ -1324,4 +1441,71 @@ func TestClusterResource_AdditionalServerSANs(t *testing.T) {
 		PreCheck:                 func() { testutil.SetEnvDefaults() },
 		Steps:                    steps,
 	})
+}
+
+func TestMustRenderClusterResourceKubeAPIAccess(t *testing.T) {
+	t.Parallel()
+
+	const header = `resource "coreweave_cks_cluster" "test" {
+  name                   = "test"
+  zone                   = "US-LAB-01A"
+  vpc_id                 = coreweave_networking_vpc.test.id
+  version                = "v1.35"
+  public                 = false
+  pod_cidr_name          = "pod-cidr"
+  service_cidr_name      = "service-cidr"
+  internal_lb_cidr_names = ["internal-lb-cidr"]
+`
+
+	cases := map[string]struct {
+		access types.Object
+		want   string
+	}{
+		"null is omitted": {
+			access: types.ObjectNull(cks.KubeAPIAccessAttrTypes),
+			want:   "",
+		},
+		"empty object is preserved": {
+			access: cks.KubeAPIAccessObject(types.ObjectNull(cks.PublicKubeAPIAccessAttrTypes)),
+			want:   "  kube_api_access        = {}\n",
+		},
+		"empty public is preserved": {
+			access: cks.KubeAPIAccessObject(cks.KubeAPIPublicAccessObject(types.SetNull(types.StringType), types.SetNull(types.StringType))),
+			want:   "  kube_api_access = {\n    public = {}\n  }\n",
+		},
+		"allow and deny": {
+			access: cks.KubeAPIAccessObject(cks.KubeAPIPublicAccessObject(cks.KubeAPIAccessCIDRSet("203.0.113.0/24", "2001:db8::/32"), cks.KubeAPIAccessCIDRSet("203.0.113.128/25"))),
+			want:   "  kube_api_access = {\n    public = {\n      allow_cidrs = [\"2001:db8::/32\", \"203.0.113.0/24\"]\n      deny_cidrs  = [\"203.0.113.128/25\"]\n    }\n  }\n",
+		},
+		"null set is omitted beside a present set": {
+			access: cks.KubeAPIAccessObject(cks.KubeAPIPublicAccessObject(cks.KubeAPIAccessCIDRSet("203.0.113.0/24"), types.SetNull(types.StringType))),
+			want:   "  kube_api_access = {\n    public = {\n      allow_cidrs = [\"203.0.113.0/24\"]\n    }\n  }\n",
+		},
+		"empty sets are preserved": {
+			access: cks.KubeAPIAccessObject(cks.KubeAPIPublicAccessObject(cks.KubeAPIAccessCIDRSet(), cks.KubeAPIAccessCIDRSet())),
+			want:   "  kube_api_access = {\n    public = {\n      allow_cidrs = []\n      deny_cidrs  = []\n    }\n  }\n",
+		},
+	}
+
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			cluster := &cks.ClusterResourceModel{
+				Name:                types.StringValue("test"),
+				Zone:                types.StringValue("US-LAB-01A"),
+				VpcId:               types.StringValue("coreweave_networking_vpc.test.id"),
+				Version:             types.StringValue("v1.35"),
+				Public:              types.BoolValue(false),
+				PodCidrName:         types.StringValue("pod-cidr"),
+				ServiceCidrName:     types.StringValue("service-cidr"),
+				InternalLBCidrNames: types.ListValueMust(types.StringType, []attr.Value{types.StringValue("internal-lb-cidr")}),
+				KubeAPIAccess:       tc.access,
+			}
+
+			got := cks.MustRenderClusterResource(t.Context(), "test", cluster)
+			if want := header + tc.want + "}\n"; got != want {
+				t.Fatalf("rendered HCL mismatch\n--- got ---\n%s\n--- want ---\n%s", got, want)
+			}
+		})
+	}
 }
