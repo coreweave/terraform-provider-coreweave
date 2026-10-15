@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.26.0](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.25.0...v0.26.0) (2026-10-15)
+
+
+### Features
+
+* **cks:** add Kubernetes API access configuration ([#453](https://github.com/coreweave/terraform-provider-coreweave/issues/453)) ([7708b3b](https://github.com/coreweave/terraform-provider-coreweave/commit/7708b3b1fd97f644c492a5970c75d7461032cae4))
+
+
+### Bug Fixes
+
+* **deps:** refresh nonmajor Go libraries ([#498](https://github.com/coreweave/terraform-provider-coreweave/issues/498)) ([30abe75](https://github.com/coreweave/terraform-provider-coreweave/commit/30abe7574aaf9715f59941fabb5817d6329eee79))
+* **deps:** upgrade AWS SDK and Smithy together ([#497](https://github.com/coreweave/terraform-provider-coreweave/issues/497)) ([529bec9](https://github.com/coreweave/terraform-provider-coreweave/commit/529bec913cc7b1eab4f47eff3b7cfce9d1f48fd0))
+* **deps:** upgrade compatible Terraform plugin libraries ([#495](https://github.com/coreweave/terraform-provider-coreweave/issues/495)) ([3c2433e](https://github.com/coreweave/terraform-provider-coreweave/commit/3c2433e5eb7e9008bdd6d148b025fa0d361827bf))
+* **deps:** upgrade longrunning and fix Renovate tidy ([#499](https://github.com/coreweave/terraform-provider-coreweave/issues/499)) ([604bd5f](https://github.com/coreweave/terraform-provider-coreweave/commit/604bd5f731d978df10cfcafad1b1baa5615f08f2))
+* **deps:** upgrade paired generated API clients ([#496](https://github.com/coreweave/terraform-provider-coreweave/issues/496)) ([7d4f3e8](https://github.com/coreweave/terraform-provider-coreweave/commit/7d4f3e84cb74d312fc3c78b4b1527282a3dc7538))
+
+
+### Documentation
+
+* fix generated schema typography for DOCS-3263 ([#493](https://github.com/coreweave/terraform-provider-coreweave/issues/493)) ([061881c](https://github.com/coreweave/terraform-provider-coreweave/commit/061881c84968a8e919e35dbcbcaa778c412992a8))
+
 ## [0.25.0](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.24.0...v0.25.0) (2026-10-13)
 
 
