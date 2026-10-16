@@ -27,6 +27,22 @@ resource "coreweave_sandbox_managed_runner" "development" {
       windows = [{ cron = "0 2 * * SAT", duration_seconds = 3600 }]
     }
     overrides = {
+      # Prefer nodes with this illustrative label. Other eligible nodes remain usable.
+      # Replace the label with one present on your cluster's Nodes.
+      affinity = jsonencode({
+        nodeAffinity = {
+          preferredDuringSchedulingIgnoredDuringExecution = [{
+            weight = 100
+            preference = {
+              matchExpressions = [{
+                key      = "example.com/capacity-class"
+                operator = "In"
+                values   = ["on-demand"]
+              }]
+            }
+          }]
+        }
+      })
       resources = {
         cpu_request    = "1"
         memory_request = "2Gi"

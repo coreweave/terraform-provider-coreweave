@@ -585,3 +585,50 @@ resource "terraform_data" "policy" {
 		})
 	}
 }
+
+func TestManagedRunnerAffinityLifecycle(t *testing.T) {
+	service := startRunnerServer(t)
+	config := func(affinity string) string {
+		return minimalConfig(`{}`, `spec = { overrides = { node_selector = { pool = "system" }, `+affinity+` } }`)
+	}
+	initial := config(`affinity = jsonencode({nodeAffinity = {preferredDuringSchedulingIgnoredDuringExecution = [{weight = 100, preference = {matchExpressions = [{key = "example.com/capacity-class", operator = "In", values = ["on-demand"]}]}}]}})`)
+	updated := strings.Replace(initial, "weight = 100", "weight = 50", 1)
+	check := func(want string) tfresource.TestCheckFunc {
+		return func(*terraform.State) error {
+			service.mu.Lock()
+			defer service.mu.Unlock()
+			require.Equal(t, map[string]string{"pool": "system"}, service.runner.Spec.Overrides.NodeSelector)
+			affinity := service.runner.Spec.Overrides.Affinity
+			if want == "absent" {
+				require.Nil(t, affinity)
+			} else {
+				require.NotNil(t, affinity)
+				if want == "empty" {
+					require.Empty(t, affinity.Fields)
+				} else {
+					weight := affinity.AsMap()["nodeAffinity"].(map[string]any)["preferredDuringSchedulingIgnoredDuringExecution"].([]any)[0].(map[string]any)["weight"]
+					require.Equal(t, want, fmt.Sprint(weight))
+				}
+			}
+			return nil
+		}
+	}
+	tfresource.UnitTest(t, tfresource.TestCase{
+		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+		CheckDestroy:             service.checkDestroyed,
+		Steps: []tfresource.TestStep{
+			{Config: initial, Check: check("100")},
+			{Config: initial, PlanOnly: true},
+			{ResourceName: runnerAddress, ImportState: true, ImportStateVerify: true},
+			{Config: updated, Check: check("50")},
+			{Config: updated, PlanOnly: true},
+			{Config: config(`affinity = jsonencode({})`), Check: check("empty")},
+			{Config: config(`affinity = jsonencode({})`), PlanOnly: true},
+			{Config: config(""), Check: check("absent")},
+			{Config: config(""), PlanOnly: true},
+		},
+	})
+	service.mu.Lock()
+	defer service.mu.Unlock()
+	assert.Equal(t, [][]string{{"spec.overrides"}, {"spec.overrides"}, {"spec.overrides"}}, service.updates)
+}
