@@ -104,3 +104,7 @@ require (
 	google.golang.org/genproto/googleapis/api v0.0.0-20260819154853-08b0e4226688 // indirect
 	google.golang.org/grpc v1.83.2 // indirect
 )
+
+replace buf.build/gen/go/coreweave/networking/protocolbuffers/go => /Users/cfahey/coreweave/network-services-api-vpn/.claude/worktrees/terraform-host-prefix-tests/test/vpc/terraform/sdk/protobuf
+
+replace buf.build/gen/go/coreweave/networking/connectrpc/go/v2 => /Users/cfahey/coreweave/network-services-api-vpn/.claude/worktrees/terraform-host-prefix-tests/test/vpc/terraform/sdk/connect
