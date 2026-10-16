@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	sandboxv1 "buf.build/gen/go/coreweave/sandbox/protocolbuffers/go/coreweave/sandbox/v1"
+	"github.com/hashicorp/terraform-plugin-framework-jsontypes/jsontypes"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -232,4 +233,46 @@ func TestExplicitFalseAndEmptyCollectionsRoundTrip(t *testing.T) {
 	number, err := jsonToValue(t.Context(), json.Number("9007199254740993"), types.Int64Unknown(), types.Int64Type)
 	require.NoError(t, err)
 	assert.Equal(t, types.Int64Value(9007199254740993), number)
+}
+
+func TestRunnerAffinityRoundTripAndRemoval(t *testing.T) {
+	t.Parallel()
+	typ := runnerSpecAttribute().GetType().(types.ObjectType)
+	for _, raw := range []string{
+		`{}`,
+		`{"nodeAffinity":{"preferredDuringSchedulingIgnoredDuringExecution":[{"weight":100,"preference":{"matchExpressions":[{"key":"example.com/capacity-class","operator":"In","values":["on-demand"]}]}}]}}`,
+		`{"podAffinity":{"requiredDuringSchedulingIgnoredDuringExecution":[{"labelSelector":{"matchLabels":{"app":"cache"}},"topologyKey":"kubernetes.io/hostname"}]},"podAntiAffinity":{"preferredDuringSchedulingIgnoredDuringExecution":[{"weight":50,"podAffinityTerm":{"labelSelector":{"matchLabels":{"app":"runner"}},"topologyKey":"topology.kubernetes.io/zone"}}]}}`,
+	} {
+		t.Run(raw, func(t *testing.T) {
+			affinity := &structpb.Struct{}
+			require.NoError(t, protojson.Unmarshal([]byte(raw), affinity))
+			spec := &sandboxv1.ManagedRunnerSpec{Overrides: &sandboxv1.RunnerDeploymentOverrides{Affinity: affinity, NodeSelector: map[string]string{"pool": "system"}}}
+			value, err := objectFromProto(t.Context(), spec, types.ObjectNull(typ.AttrTypes), typ)
+			require.NoError(t, err)
+			var actual sandboxv1.ManagedRunnerSpec
+			require.NoError(t, objectToProto(value, &actual))
+			require.True(t, proto.Equal(spec, &actual))
+			refreshed, err := objectFromProto(t.Context(), spec, value, typ)
+			require.NoError(t, err)
+			require.True(t, value.Equal(refreshed), "refresh must not introduce a diff")
+			before := managedRunnerModel{ID: types.StringValue("runner"), RunnerID: types.StringValue("runner"), Spec: value, Policy: policyObject(t, &sandboxv1.Policy{})}
+			after := before
+			spec.Overrides.Affinity = nil
+			after.Spec, err = objectFromProto(t.Context(), spec, value, typ)
+			require.NoError(t, err)
+			req, err := after.updateRequest(&before)
+			require.NoError(t, err)
+			require.Equal(t, []string{"spec.overrides"}, req.UpdateMask.Paths)
+			require.Nil(t, req.ManagedRunner.Spec.Overrides.Affinity)
+			require.Equal(t, map[string]string{"pool": "system"}, req.ManagedRunner.Spec.Overrides.NodeSelector)
+		})
+	}
+}
+
+func TestRunnerAffinityRejectsNonObjectJSON(t *testing.T) {
+	t.Parallel()
+	for _, raw := range []string{`[]`, `null`, `"value"`, `true`} {
+		_, err := valueToJSON(jsontypes.NewNormalizedValue(raw))
+		require.ErrorContains(t, err, "expected a JSON object")
+	}
 }

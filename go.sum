@@ -20,10 +20,10 @@ buf.build/gen/go/coreweave/networking/connectrpc/go/v2 v2.0.0-20260903175031-bfc
 buf.build/gen/go/coreweave/networking/connectrpc/go/v2 v2.0.0-20260903175031-bfceb1d95ae7.1/go.mod h1:h4t3uJqY9gC4MejRjh9eMNeYkVn61LYUblLZGtZiZqs=
 buf.build/gen/go/coreweave/networking/protocolbuffers/go v1.36.12-20260903175031-bfceb1d95ae7.2 h1:voMVoILtqd2E5+MHI1pexSPaZra59rLpujXdBHxDtMs=
 buf.build/gen/go/coreweave/networking/protocolbuffers/go v1.36.12-20260903175031-bfceb1d95ae7.2/go.mod h1:qKdLX13V3ARCVkiEC3KBAB0KtRtaM01bDBkSh/FM930=
-buf.build/gen/go/coreweave/sandbox/connectrpc/go/v2 v2.0.0-20261006200456-c94c38b78284.1 h1:XsE4LnOSEnQUNCHFT0kIZEKVOYa7i5/Gbw43N0w0yrw=
-buf.build/gen/go/coreweave/sandbox/connectrpc/go/v2 v2.0.0-20261006200456-c94c38b78284.1/go.mod h1:Qs0BHHVgOzRUrD9GZfezFO/WrDZDLDM5Ees40wvGy/s=
-buf.build/gen/go/coreweave/sandbox/protocolbuffers/go v1.36.12-20261006200456-c94c38b78284.2 h1:ln5r2o+8ongxkWCks7P2xpvrMlXvBI9mYLmLVKUJosI=
-buf.build/gen/go/coreweave/sandbox/protocolbuffers/go v1.36.12-20261006200456-c94c38b78284.2/go.mod h1:0FQ2NQQ6Ab7XQ2QEEU0yzQXMHTej8rwlafLER6uehw4=
+buf.build/gen/go/coreweave/sandbox/connectrpc/go/v2 v2.0.0-20261015202918-7074ae5be483.1 h1:+/7LQwFzT95Z2t2XBwyH7iJYn+SxT2iahpRkL/WR2kM=
+buf.build/gen/go/coreweave/sandbox/connectrpc/go/v2 v2.0.0-20261015202918-7074ae5be483.1/go.mod h1:tliWl/GmqKQ0LMlEZeXGuucoysR7xKfWGLorbDXTIpE=
+buf.build/gen/go/coreweave/sandbox/protocolbuffers/go v1.36.12-20261015202918-7074ae5be483.2 h1:NCWI5J3WhzEWJ/By5QtR7Uyq63nopSu7tyJznahJuN4=
+buf.build/gen/go/coreweave/sandbox/protocolbuffers/go v1.36.12-20261015202918-7074ae5be483.2/go.mod h1:0FQ2NQQ6Ab7XQ2QEEU0yzQXMHTej8rwlafLER6uehw4=
 buf.build/gen/go/coreweave/workload-federation/connectrpc/go/v2 v2.0.0-20261013191007-c36df30df3ed.1 h1:2VHEz+K1RjSPVX0c7wZ/MJWdu6qXZSaLHiN1L8CsBt8=
 buf.build/gen/go/coreweave/workload-federation/connectrpc/go/v2 v2.0.0-20261013191007-c36df30df3ed.1/go.mod h1:qQLuftwl1vZhQJASJmFHvHvXsu3e+CSoQq+uOdJOhd8=
 buf.build/gen/go/coreweave/workload-federation/protocolbuffers/go v1.36.12-20261013191007-c36df30df3ed.2 h1:9yIHtVJG6N7qyFvP36WsqMZO3rvpBancK7InJdvy9VI=

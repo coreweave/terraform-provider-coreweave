@@ -42,6 +42,22 @@ resource "coreweave_sandbox_managed_runner" "development" {
       windows = [{ cron = "0 2 * * SAT", duration_seconds = 3600 }]
     }
     overrides = {
+      # Prefer nodes with this illustrative label. Other eligible nodes remain usable.
+      # Replace the label with one present on your cluster's Nodes.
+      affinity = jsonencode({
+        nodeAffinity = {
+          preferredDuringSchedulingIgnoredDuringExecution = [{
+            weight = 100
+            preference = {
+              matchExpressions = [{
+                key      = "example.com/capacity-class"
+                operator = "In"
+                values   = ["on-demand"]
+              }]
+            }
+          }]
+        }
+      })
       resources = {
         cpu_request    = "1"
         memory_request = "2Gi"
@@ -539,6 +555,7 @@ Required:
 
 Optional:
 
+- `affinity` (String) Kubernetes Affinity JSON object for runner Pods, for example `jsonencode({ nodeAffinity = { ... } })`. Supports node affinity, Pod affinity, and Pod anti-affinity with Kubernetes camelCase keys. Replaced as a whole. Use `jsonencode({})` to clear inherited affinity; omit to restore platform defaults. Does not affect sandbox Pod placement or node budgets.
 - `annotations` (Map of String) Annotations on runner pods.
 - `args` (List of String) Ordered runner command-line arguments.
 - `cpu_runtime_class` (String) Runtime class for CPU sandboxes.

@@ -13,8 +13,8 @@ require (
 	buf.build/gen/go/coreweave/inference/protocolbuffers/go v1.36.12-20261008185853-22f8f31f8962.2
 	buf.build/gen/go/coreweave/networking/connectrpc/go/v2 v2.0.0-20260903175031-bfceb1d95ae7.1
 	buf.build/gen/go/coreweave/networking/protocolbuffers/go v1.36.12-20260903175031-bfceb1d95ae7.2
-	buf.build/gen/go/coreweave/sandbox/connectrpc/go/v2 v2.0.0-20261006200456-c94c38b78284.1
-	buf.build/gen/go/coreweave/sandbox/protocolbuffers/go v1.36.12-20261006200456-c94c38b78284.2
+	buf.build/gen/go/coreweave/sandbox/connectrpc/go/v2 v2.0.0-20261015202918-7074ae5be483.1
+	buf.build/gen/go/coreweave/sandbox/protocolbuffers/go v1.36.12-20261015202918-7074ae5be483.2
 	buf.build/gen/go/coreweave/workload-federation/connectrpc/go/v2 v2.0.0-20261013191007-c36df30df3ed.1
 	buf.build/gen/go/coreweave/workload-federation/protocolbuffers/go v1.36.12-20261013191007-c36df30df3ed.2
 	buf.build/go/protovalidate v1.4.0

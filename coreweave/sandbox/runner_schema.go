@@ -96,6 +96,11 @@ func runnerOverridesAttribute() schema.SingleNestedAttribute {
 	env := optionalMap("Runner environment overrides. Values are stored in Terraform state; use a protected state backend.")
 	env.Sensitive = true
 	return optionalObject("Customer-settable runner deployment overrides.", map[string]schema.Attribute{
+		"affinity": schema.StringAttribute{
+			Optional:            true,
+			CustomType:          jsontypes.NormalizedType{},
+			MarkdownDescription: "Kubernetes Affinity JSON object for runner Pods, for example `jsonencode({ nodeAffinity = { ... } })`. Supports node affinity, Pod affinity, and Pod anti-affinity with Kubernetes camelCase keys. Replaced as a whole. Use `jsonencode({})` to clear inherited affinity; omit to restore platform defaults. Does not affect sandbox Pod placement or node budgets.",
+		},
 		"node_selector": optionalMap("Node label selectors for the runner deployment."),
 		"tolerations": optionalObjects("Kubernetes tolerations for runner pods.", map[string]schema.Attribute{
 			"key":      optionalString("Taint key."),
