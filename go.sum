@@ -4,8 +4,8 @@ buf.build/gen/go/coreweave/cks/connectrpc/go/v2 v2.0.1-20261014193236-69d4f39fac
 buf.build/gen/go/coreweave/cks/connectrpc/go/v2 v2.0.1-20261014193236-69d4f39faca7.1/go.mod h1:QftHscfyj5XvxwY5PTvf/zd1waPPltoufEeFVEJ1HYw=
 buf.build/gen/go/coreweave/cks/protocolbuffers/go v1.36.12-20261014193236-69d4f39faca7.2 h1:899rtzMLlkBi/F5apZJE0oGJBprqNETmNHVGF/F+sr8=
 buf.build/gen/go/coreweave/cks/protocolbuffers/go v1.36.12-20261014193236-69d4f39faca7.2/go.mod h1:5MQ4mpYVLhxkSHHBolZ2nr4PNXvIjhmOlqAZ8JgdLtU=
-buf.build/gen/go/coreweave/container-registry-api/connectrpc/go/v2 v2.0.0-20261009031350-4d1490e50ed8.1 h1:iF/f2ZKzeD8WXlQDeawVbYgCuTICISLZAn1O9ekannY=
-buf.build/gen/go/coreweave/container-registry-api/connectrpc/go/v2 v2.0.0-20261009031350-4d1490e50ed8.1/go.mod h1:8MMUAu59/LjBx1OsQl0x5zllFq/f+Wh3m2dPowwDc6U=
+buf.build/gen/go/coreweave/container-registry-api/connectrpc/go/v2 v2.0.1-20261009031350-4d1490e50ed8.1 h1:BkFzAV12G6hJ2lct44gV7WomjUGlAtvL7Ci4Co+buC4=
+buf.build/gen/go/coreweave/container-registry-api/connectrpc/go/v2 v2.0.1-20261009031350-4d1490e50ed8.1/go.mod h1:3XVtW4xtSImXJYlua4YNDmEa7sbbGGULrE2VS/0T2vw=
 buf.build/gen/go/coreweave/container-registry-api/protocolbuffers/go v1.36.12-20261009031350-4d1490e50ed8.2 h1:jCb3ReZj33BTf57F3ei7Rcomq8RF+sWwA2qcMLmVinY=
 buf.build/gen/go/coreweave/container-registry-api/protocolbuffers/go v1.36.12-20261009031350-4d1490e50ed8.2/go.mod h1:MhfNoJWKF7kSBqvRiLqkiOfEMkHFZt7XUmfCcD7Xbww=
 buf.build/gen/go/coreweave/cwobject/connectrpc/go/v2 v2.0.0-20260831154917-08064e55742b.1 h1:nyy5dzUOX9nS9dVmCas6dljaIxBw9P9m4uN/kLOOwJg=
