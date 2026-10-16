@@ -3,12 +3,12 @@
 page_title: "coreweave_sandbox_managed_runner Resource - coreweave"
 subcategory: ""
 description: |-
-  Manages a CoreWeave Sandbox runner and its required policy through the v1 RunnerManagementService (/v1/sandbox/managedRunners). Requires a server implementing full v1 managed-runner CRUD; the policy-only v1 server cannot provision or fully refresh this resource. Creation and updates record the accepted desired configuration; installation and rollout continue asynchronously and are exposed in computed status attributes. Deletion waits up to 30 minutes for the runner to disappear.
+  Manages a CoreWeave Sandbox runner and its required policy through the v1 RunnerManagementService (/v1/sandbox/managedRunners). Requires a server implementing full v1 managed-runner CRUD; the policy-only v1 server cannot provision or fully refresh this resource. Creation and updates record the accepted desired configuration; installation and rollout continue asynchronously and are exposed in computed status attributes. Deletion waits up to 30 minutes for the runner to disappear. To apply an available channel update immediately, use the managed runner update action ../actions/sandbox_managed_runner_apply_update.md (Terraform 1.14+). Declaring the action alone does not cause ordinary applies to invoke it.
 ---
 
 # coreweave_sandbox_managed_runner (Resource)
 
-Manages a CoreWeave Sandbox runner and its required policy through the v1 RunnerManagementService (`/v1/sandbox/managedRunners`). Requires a server implementing full v1 managed-runner CRUD; the policy-only v1 server cannot provision or fully refresh this resource. Creation and updates record the accepted desired configuration; installation and rollout continue asynchronously and are exposed in computed status attributes. Deletion waits up to 30 minutes for the runner to disappear.
+Manages a CoreWeave Sandbox runner and its required policy through the v1 RunnerManagementService (`/v1/sandbox/managedRunners`). Requires a server implementing full v1 managed-runner CRUD; the policy-only v1 server cannot provision or fully refresh this resource. Creation and updates record the accepted desired configuration; installation and rollout continue asynchronously and are exposed in computed status attributes. Deletion waits up to 30 minutes for the runner to disappear. To apply an available channel update immediately, use the [managed runner update action](../actions/sandbox_managed_runner_apply_update.md) (Terraform 1.14+). Declaring the action alone does not cause ordinary applies to invoke it.
 
 ## Example Usage
 
