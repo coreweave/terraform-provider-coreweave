@@ -9,6 +9,7 @@ import (
 	typesv1beta1 "buf.build/gen/go/coreweave/telemetry-relay/protocolbuffers/go/coreweave/telemetryrelay/types/v1beta1"
 	"connectrpc.com/connect/v2"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
+	"github.com/hashicorp/terraform-plugin-framework-timeouts/resource/timeouts"
 	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
@@ -22,8 +23,21 @@ import (
 )
 
 const (
+	// Default deadline for an endpoint CRUD operation. Readiness depends on the
+	// customer's destination accepting traffic, so operators can override this
+	// per resource through the `timeouts` attribute.
 	endpointTimeout = 5 * time.Minute
 )
+
+// pollTimeout returns how long a poll may run: the remaining time on ctx when
+// the caller has already applied the operator's `timeouts` value, otherwise
+// fallback.
+func pollTimeout(ctx context.Context, fallback time.Duration) time.Duration {
+	if deadline, ok := ctx.Deadline(); ok {
+		return time.Until(deadline)
+	}
+	return fallback
+}
 
 func commonEndpointSchema() map[string]schema.Attribute {
 	return map[string]schema.Attribute{
@@ -92,6 +106,11 @@ func commonEndpointSchema() map[string]schema.Attribute {
 			Computed:            true,
 			CustomType:          timetypes.RFC3339Type{},
 		},
+		"timeouts": timeouts.Attributes(context.Background(), timeouts.Opts{
+			Create: true,
+			Update: true,
+			Delete: true,
+		}),
 	}
 }
 
@@ -152,7 +171,7 @@ func pollForEndpointReady(ctx context.Context, client *coreweave.Client, ref *ty
 
 			return endpoint, status.GetState().String(), nil
 		},
-		Timeout: endpointTimeout,
+		Timeout: pollTimeout(ctx, endpointTimeout),
 	}
 
 	rawEndpoint, err := pollConf.WaitForStateContext(ctx)
@@ -281,7 +300,7 @@ func deleteEndpointAndWait(ctx context.Context, client *coreweave.Client, ref *t
 			endpoint := result.Msg.GetEndpoint()
 			return endpoint, endpoint.GetStatus().GetState().String(), nil
 		},
-		Timeout: endpointTimeout,
+		Timeout: pollTimeout(ctx, endpointTimeout),
 	}
 
 	if _, err := pollConf.WaitForStateContext(ctx); err != nil {
