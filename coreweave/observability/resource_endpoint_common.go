@@ -281,10 +281,19 @@ func deleteEndpointAndWait(ctx context.Context, client *coreweave.Client, ref *t
 		return fmt.Errorf("failed to delete endpoint %q: %w", ref.Slug, err)
 	}
 
-	// Poll until the endpoint is fully deleted
+	// Poll until the endpoint is fully deleted.
+	//
+	// Every live state is Pending: we are waiting for the record to disappear,
+	// so how healthy it is on the way out is irrelevant. Listing only PENDING
+	// made the first poll fail with "unexpected state" whenever DeleteEndpoint
+	// returned before the server had moved the endpoint off CONNECTED.
+	// An empty Target plus a nil refresh result is what signals "it is gone".
 	pollConf := retry.StateChangeConf{
 		Pending: []string{
+			typesv1beta1.ForwardingEndpointState_FORWARDING_ENDPOINT_STATE_UNSPECIFIED.String(),
 			typesv1beta1.ForwardingEndpointState_FORWARDING_ENDPOINT_STATE_PENDING.String(),
+			typesv1beta1.ForwardingEndpointState_FORWARDING_ENDPOINT_STATE_CONNECTED.String(),
+			typesv1beta1.ForwardingEndpointState_FORWARDING_ENDPOINT_STATE_ERROR.String(),
 		},
 		Target: []string{},
 		Refresh: func() (any, string, error) {
