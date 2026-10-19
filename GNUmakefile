@@ -19,6 +19,7 @@ TEST_ACC_SWEEP_TIMEOUT?=45m
 SWEEP_DRY_RUN?=false
 TEST_ACC_PARALLEL?=
 TEST_ACC_TIMEOUT?=45m
+TEST_ACC_RUN?=
 
 export CGO_ENABLED?=0
 
@@ -67,7 +68,7 @@ testacc-sweep:
 
 testacc:
 	@set -e; for suite in $(SUITES); do \
-		TF_ACC=1 go test -v -cover -timeout=$(TEST_ACC_TIMEOUT) $(if $(TEST_ACC_PARALLEL),-parallel=$(TEST_ACC_PARALLEL)) ./coreweave/$$suite; \
+		TF_ACC=1 go test -v -cover -timeout=$(TEST_ACC_TIMEOUT) $(if $(TEST_ACC_PARALLEL),-parallel=$(TEST_ACC_PARALLEL)) $(if $(TEST_ACC_RUN),-run='$(TEST_ACC_RUN)') ./coreweave/$$suite; \
 	done
 
 .PHONY: debug fmt lint test testacc testacc-sweep build install generate clean
