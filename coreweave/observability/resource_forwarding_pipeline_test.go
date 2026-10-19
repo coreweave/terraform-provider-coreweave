@@ -651,6 +651,7 @@ func testForwardingPipelineInvalidConfig(t *testing.T) {
 			resource.ParallelTest(t, resource.TestCase{
 				ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
 				PreCheck:                 func() { testutil.SetEnvDefaults() },
+				CheckDestroy:             checkDestroyed(t),
 				Steps: []resource.TestStep{
 					{
 						Config:      renderForwardingPipelineResource(t, resourceName, tc.model, nil),
@@ -719,6 +720,7 @@ func testForwardingPipelineLifecycle(t *testing.T) {
 						resource.ParallelTest(t, resource.TestCase{
 							ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
 							PreCheck:                 func() { testutil.SetEnvDefaults() },
+							CheckDestroy:             checkDestroyed(t),
 							Steps: []resource.TestStep{
 								{
 									PreConfig: func() {
@@ -770,6 +772,7 @@ func testForwardingPipelineLifecycle(t *testing.T) {
 		resource.ParallelTest(t, resource.TestCase{
 			ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
 			PreCheck:                 func() { testutil.SetEnvDefaults() },
+			CheckDestroy:             checkDestroyed(t),
 			Steps: []resource.TestStep{
 				{
 					PreConfig: func() { t.Log("Step 1: Create pipeline (enabled)") },
@@ -890,6 +893,7 @@ func testForwardingPipelineLifecycle(t *testing.T) {
 		resource.ParallelTest(t, resource.TestCase{
 			ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
 			PreCheck:                 func() { testutil.SetEnvDefaults() },
+			CheckDestroy:             checkDestroyed(t),
 			Steps: []resource.TestStep{
 				{
 					PreConfig: func() { t.Log("create a zone-scoped pipeline") },
@@ -955,6 +959,7 @@ func testForwardingPipelineLifecycle(t *testing.T) {
 		resource.ParallelTest(t, resource.TestCase{
 			ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
 			PreCheck:                 func() { testutil.SetEnvDefaults() },
+			CheckDestroy:             checkDestroyed(t),
 			Steps: []resource.TestStep{
 				{
 					PreConfig: func() { t.Log("create the pipeline") },
@@ -1002,6 +1007,7 @@ func testForwardingPipelineLifecycle(t *testing.T) {
 		resource.ParallelTest(t, resource.TestCase{
 			ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
 			PreCheck:                 func() { testutil.SetEnvDefaults() },
+			CheckDestroy:             checkDestroyed(t),
 			Steps: []resource.TestStep{
 				{
 					PreConfig: func() { t.Log("create the pipeline to be deleted out of band") },
@@ -1044,6 +1050,7 @@ func testForwardingPipelineLifecycle(t *testing.T) {
 		resource.ParallelTest(t, resource.TestCase{
 			ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
 			PreCheck:                 func() { testutil.SetEnvDefaults() },
+			CheckDestroy:             checkDestroyed(t),
 			Steps: []resource.TestStep{
 				{
 					PreConfig:   func() { t.Log("Testing pipeline creation with invalid stream") },
