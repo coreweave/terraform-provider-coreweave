@@ -222,49 +222,6 @@ func compressionFromName(compression types.String) (typesv1beta1.HTTPSConfig_Com
 	return typesv1beta1.HTTPSConfig_CompressionType(value), diagnostics
 }
 
-type ForwardingEndpointPrometheus struct {
-	ForwardingEndpointCore
-	Endpoint    types.String           `tfsdk:"endpoint"`
-	TLS         *TLSConfig             `tfsdk:"tls"`
-	Credentials *PrometheusCredentials `tfsdk:"credentials"`
-}
-
-func (m *ForwardingEndpointPrometheus) Set(endpoint *typesv1beta1.ForwardingEndpoint) (diagnostics diag.Diagnostics) {
-	if endpoint.Spec.WhichConfig() != typesv1beta1.ForwardingEndpointSpec_Prometheus_case {
-		diagnostics.AddError("Invalid Endpoint Type", "The endpoint is not a Prometheus endpoint")
-		return
-	}
-
-	m.coreSet(endpoint)
-
-	prometheusConfig := endpoint.Spec.GetPrometheus()
-	m.Endpoint = types.StringValue(prometheusConfig.Endpoint)
-	if prometheusConfig.Tls != nil {
-		m.TLS = new(TLSConfig)
-		m.TLS.Set(prometheusConfig.Tls)
-	}
-
-	return
-}
-
-func (m *ForwardingEndpointPrometheus) ToMsg() (msg *typesv1beta1.ForwardingEndpoint, diagnostics diag.Diagnostics) {
-	if m == nil {
-		return
-	}
-
-	msg, diagnostics = m.coreMsg()
-	if diagnostics.HasError() {
-		return nil, diagnostics
-	}
-
-	msg.Spec.SetPrometheus(&typesv1beta1.PrometheusRemoteWriteConfig{
-		Endpoint: m.Endpoint.ValueString(),
-		Tls:      m.TLS.ToMsg(),
-	})
-
-	return msg, diagnostics
-}
-
 type ForwardingEndpointS3 struct {
 	ForwardingEndpointCore
 	URI         types.String   `tfsdk:"uri"`
