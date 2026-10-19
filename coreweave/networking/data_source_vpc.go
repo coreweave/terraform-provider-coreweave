@@ -136,6 +136,11 @@ func (d *VpcDataSource) Schema(ctx context.Context, req datasource.SchemaRequest
 								MarkdownDescription: "The DNS servers advertised to DHCP clients within the VPC.",
 								ElementType:         types.StringType,
 							},
+							"search_domains": schema.SetAttribute{
+								Computed:            true,
+								MarkdownDescription: "The DNS search domains advertised to DHCP clients within the VPC.",
+								ElementType:         types.StringType,
+							},
 						},
 					},
 				},

@@ -30,7 +30,32 @@ import (
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/retry"
 	"github.com/zclconf/go-cty/cty"
+	"google.golang.org/protobuf/types/known/fieldmaskpb"
 )
+
+// vpcUpdatePaths lists every VPC field that this provider manages so that
+// we can send it as an explicit field mask on every update.
+//
+// The field mask is optional, but we always send one because of how the server
+// treats an empty mask. An earlier version of the VPC service managed a fixed
+// set of fields, and an empty mask replaces all of them. Later versions added
+// more fields, and the server treats those newer fields differently. With an
+// empty mask it only updates a newer field when the request populates it, so
+// that clients unaware of the field do not clear it by accident. As a result,
+// without a mask Terraform can set such a field but cannot clear it, because an
+// empty value with no mask is preserved rather than removed.
+//
+// Sending an explicit mask that names every managed path makes the server
+// replace each field with its planned value, including clearing a field whose
+// planned value is empty. Any new field added to this resource must therefore
+// be added here too.
+var vpcUpdatePaths = []string{
+	"vpc_prefixes",
+	"ingress.disable_public_services",
+	"egress.disable_public_access",
+	"dhcp.dns.servers",
+	"dhcp.dns.search_domains",
+}
 
 // Ensure provider defined types fully satisfy framework interfaces.
 var (
@@ -72,11 +97,14 @@ func (r *VpcResource) ConfigValidators(context.Context) []resource.ConfigValidat
 }
 
 type VpcDhcpDnsResourceModel struct {
-	Servers types.Set `tfsdk:"servers"`
+	Servers       types.Set `tfsdk:"servers"`
+	SearchDomains types.Set `tfsdk:"search_domains"`
 }
 
 func (v *VpcDhcpDnsResourceModel) IsEmpty() bool {
-	return v.Servers.IsNull() || len(v.Servers.Elements()) == 0
+	serversEmpty := v.Servers.IsNull() || len(v.Servers.Elements()) == 0
+	searchDomainsEmpty := v.SearchDomains.IsNull() || len(v.SearchDomains.Elements()) == 0
+	return serversEmpty && searchDomainsEmpty
 }
 
 type VpcDhcpResourceModel struct {
@@ -92,22 +120,32 @@ func (v *VpcDhcpResourceModel) IsEmpty() bool {
 }
 
 func (v *VpcDhcpResourceModel) Set(dhcp *networkingv1beta1.DHCP) {
-	if dhcp == nil {
+	if dhcp == nil || dhcp.Dns == nil {
 		return
 	}
 
-	if dhcp.Dns != nil {
-		v.Dns = &VpcDhcpDnsResourceModel{}
+	v.Dns = &VpcDhcpDnsResourceModel{}
 
-		servers := make([]attr.Value, len(dhcp.Dns.Servers))
-		for i, s := range dhcp.Dns.Servers {
-			servers[i] = types.StringValue(s)
-		}
-		ds := types.SetValueMust(types.StringType, servers)
-		v.Dns.Servers = ds
+	servers := make([]attr.Value, len(dhcp.Dns.Servers))
+	for i, s := range dhcp.Dns.Servers {
+		servers[i] = types.StringValue(s)
+	}
+	v.Dns.Servers = types.SetValueMust(types.StringType, servers)
 
+	// The API always returns search_domains (empty when unset), so map an empty
+	// list back to a null set. Otherwise a config that sets servers but omits
+	// search_domains would see null in config and an empty set in state, which
+	// Terraform rejects as an inconsistent result.
+	if len(dhcp.Dns.SearchDomains) == 0 {
+		v.Dns.SearchDomains = types.SetNull(types.StringType)
 		return
 	}
+
+	searchDomains := make([]attr.Value, len(dhcp.Dns.SearchDomains))
+	for i, sd := range dhcp.Dns.SearchDomains {
+		searchDomains[i] = types.StringValue(sd)
+	}
+	v.Dns.SearchDomains = types.SetValueMust(types.StringType, searchDomains)
 }
 
 type HostPrefixResourceModel struct {
@@ -326,23 +364,27 @@ func (v *VpcResourceModel) Set(vpc *networkingv1beta1.VPC) (diagnostics diag.Dia
 }
 
 func (v *VpcResourceModel) GetDhcp(ctx context.Context) (*networkingv1beta1.DHCP, diag.Diagnostics) {
-	if v.Dhcp == nil {
+	if v.Dhcp == nil || v.Dhcp.Dns == nil {
 		return nil, nil
 	}
 
 	var diagnostics diag.Diagnostics
 
-	ds := make([]string, 0)
-	diagnostics.Append(v.Dhcp.Dns.Servers.ElementsAs(ctx, &ds, false)...)
+	servers := make([]string, 0)
+	diagnostics.Append(v.Dhcp.Dns.Servers.ElementsAs(ctx, &servers, false)...)
 
-	dhcp := &networkingv1beta1.DHCP{
-		Dns: &networkingv1beta1.DHCP_DNS{
-			Servers: ds,
-		},
-	}
+	searchDomains := make([]string, 0)
+	diagnostics.Append(v.Dhcp.Dns.SearchDomains.ElementsAs(ctx, &searchDomains, false)...)
 
 	if diagnostics.HasError() {
 		return nil, diagnostics
+	}
+
+	dhcp := &networkingv1beta1.DHCP{
+		Dns: &networkingv1beta1.DHCP_DNS{
+			Servers:       servers,
+			SearchDomains: searchDomains,
+		},
 	}
 
 	return dhcp, diagnostics
@@ -418,6 +460,7 @@ func (v *VpcResourceModel) ToUpdateRequest(ctx context.Context) (*networkingv1be
 	}
 
 	req := networkingv1beta1.UpdateVPCRequest{
+		UpdateMask:  &fieldmaskpb.FieldMask{Paths: vpcUpdatePaths},
 		Id:          v.Id.ValueString(),
 		VpcPrefixes: v.vpcPrefixes(),
 		Ingress:     v.Ingress.ToProto(),
@@ -570,6 +613,11 @@ func (r *VpcResource) Schema(ctx context.Context, req resource.SchemaRequest, re
 							"servers": schema.SetAttribute{
 								Optional:            true,
 								MarkdownDescription: "The DNS servers to be used by DHCP clients within the VPC.",
+								ElementType:         types.StringType,
+							},
+							"search_domains": schema.SetAttribute{
+								Optional:            true,
+								MarkdownDescription: "The DNS search domains to be used by DHCP clients within the VPC. Each entry must be a valid DNS name (RFC 1123) of at most 253 characters, and at most 100 may be specified.",
 								ElementType:         types.StringType,
 							},
 						},
@@ -926,6 +974,20 @@ func MustRenderVpcResource(ctx context.Context, resourceName string, vpc *VpcRes
 
 				if len(serverVals) > 0 {
 					dns["servers"] = cty.SetVal(serverVals)
+				}
+			}
+			if !vpc.Dhcp.Dns.SearchDomains.IsNull() {
+				searchDomains := []types.String{}
+				if diags := vpc.Dhcp.Dns.SearchDomains.ElementsAs(ctx, &searchDomains, false); diags.HasError() {
+					panic(fmt.Sprintf("failed to marshal DHCP search domains: %+v", diags))
+				}
+				searchDomainVals := make([]cty.Value, len(searchDomains))
+				for i, s := range searchDomains {
+					searchDomainVals[i] = cty.StringVal(s.ValueString())
+				}
+
+				if len(searchDomainVals) > 0 {
+					dns["search_domains"] = cty.SetVal(searchDomainVals)
 				}
 			}
 			if len(dns) > 0 {

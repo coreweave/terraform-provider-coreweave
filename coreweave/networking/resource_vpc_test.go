@@ -232,8 +232,25 @@ func defaultExpectedValues(t *testing.T, resourceAddress string, m *networking.V
 			for i, server := range servers {
 				serverChecks[i] = knownvalue.StringExact(server)
 			}
+
+			// The provider maps the API's empty search domain list back to null,
+			// so expect null whenever the model carries none.
+			var searchDomainsCheck knownvalue.Check = knownvalue.Null()
+			if !m.Dhcp.Dns.SearchDomains.IsNull() && len(m.Dhcp.Dns.SearchDomains.Elements()) > 0 {
+				searchDomains := make([]string, 0)
+				if diags := m.Dhcp.Dns.SearchDomains.ElementsAs(t.Context(), &searchDomains, false); diags.HasError() {
+					t.Fatalf("failed to get DHCP search domains from model: %+v", diags)
+				}
+				searchDomainChecks := make([]knownvalue.Check, len(searchDomains))
+				for i, sd := range searchDomains {
+					searchDomainChecks[i] = knownvalue.StringExact(sd)
+				}
+				searchDomainsCheck = knownvalue.SetExact(searchDomainChecks)
+			}
+
 			dhcpObj["dns"] = knownvalue.ObjectExact(map[string]knownvalue.Check{
-				"servers": knownvalue.SetExact(serverChecks),
+				"servers":        knownvalue.SetExact(serverChecks),
+				"search_domains": searchDomainsCheck,
 			})
 		}
 		stateChecks = append(stateChecks, statecheck.ExpectKnownValue(resourceAddress, tfjsonpath.New("dhcp"), knownvalue.ObjectExact(dhcpObj)))
@@ -281,6 +298,10 @@ func TestVpcResource(t *testing.T) {
 			Dhcp: &networking.VpcDhcpResourceModel{
 				Dns: &networking.VpcDhcpDnsResourceModel{
 					Servers: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("1.1.1.1")}),
+					SearchDomains: types.SetValueMust(types.StringType, []attr.Value{
+						types.StringValue("example.com"),
+						types.StringValue("corp.internal"),
+					}),
 				},
 			},
 		}
@@ -303,6 +324,21 @@ func TestVpcResource(t *testing.T) {
 					Value: types.StringValue("10.45.4.0/22"),
 				},
 			})
+		})
+
+		// clearSearchDomains drops the search domains while keeping the DNS
+		// servers. It verifies the provider actually clears search domains on
+		// update rather than leaving the server's existing values in place
+		// (which the API would do if we did not send the field in the update
+		// mask). A fresh Dhcp pointer is used so the shared pointer in
+		// initial/update is left untouched.
+		clearSearchDomains := with(t, update, func(t *testing.T, obj *networking.VpcResourceModel) {
+			t.Helper()
+			obj.Dhcp = &networking.VpcDhcpResourceModel{
+				Dns: &networking.VpcDhcpDnsResourceModel{
+					Servers: update.Dhcp.Dns.Servers,
+				},
+			}
 		})
 
 		updateWithGatewayPolicyChange := with(t, update, func(t *testing.T, obj *networking.VpcResourceModel) {
@@ -414,6 +450,20 @@ func TestVpcResource(t *testing.T) {
 						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("ingress").AtMapKey("disable_public_services"), knownvalue.Bool(true)),
 						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("egress").AtMapKey("disable_public_access"), knownvalue.Bool(true)),
 						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("vpc_prefixes"), knownvalue.SetSizeExact(4)),
+					}),
+				},
+				{
+					PreConfig: func() {
+						t.Log("Beginning coreweave_networking_vpc clear search domains test")
+					},
+					Config: networking.MustRenderVpcResource(ctx, resourceName, &clearSearchDomains),
+					ConfigPlanChecks: resource.ConfigPlanChecks{
+						PreApply: []plancheck.PlanCheck{
+							plancheck.ExpectResourceAction(fullResourceName, plancheck.ResourceActionUpdate),
+						},
+					},
+					ConfigStateChecks: slices.Concat(defaultExpectedValues(t, fullResourceName, &clearSearchDomains), []statecheck.StateCheck{
+						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("dhcp").AtMapKey("dns").AtMapKey("search_domains"), knownvalue.Null()),
 					}),
 				},
 				{
@@ -993,6 +1043,41 @@ resource "coreweave_networking_vpc" "test_vpc" {
   dhcp = {
     dns = {
       servers = ["1.1.1.1", "8.8.8.8"]
+    }
+  }
+}
+`
+		expected = strings.TrimLeft(expected, "\n")
+		assert.Equal(t, expected, networking.MustRenderVpcResource(ctx, resourceName, m))
+	})
+
+	t.Run("dhcp with search domains", func(t *testing.T) {
+		t.Parallel()
+		m := &networking.VpcResourceModel{
+			Name: types.StringValue("my-vpc"),
+			Zone: types.StringValue("US-WEST-04A"),
+			Dhcp: &networking.VpcDhcpResourceModel{
+				Dns: &networking.VpcDhcpDnsResourceModel{
+					Servers: types.SetValueMust(types.StringType, []attr.Value{
+						types.StringValue("1.1.1.1"),
+						types.StringValue("8.8.8.8"),
+					}),
+					SearchDomains: types.SetValueMust(types.StringType, []attr.Value{
+						types.StringValue("example.com"),
+						types.StringValue("corp.internal"),
+					}),
+				},
+			},
+		}
+
+		expected := `
+resource "coreweave_networking_vpc" "test_vpc" {
+  name = "my-vpc"
+  zone = "US-WEST-04A"
+  dhcp = {
+    dns = {
+      search_domains = ["corp.internal", "example.com"]
+      servers        = ["1.1.1.1", "8.8.8.8"]
     }
   }
 }
