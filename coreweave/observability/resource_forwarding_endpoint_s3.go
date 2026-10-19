@@ -59,7 +59,7 @@ func (r *S3ForwardingEndpointResource) Schema(ctx context.Context, req resource.
 	attributes["credentials"] = s3CredentialsAttribute()
 
 	resp.Schema = schema.Schema{
-		MarkdownDescription: "CoreWeave Telemetry Relay S3 forwarding endpoint. Forwards telemetry data to an S3-compatible bucket.",
+		MarkdownDescription: "CoreWeave Telemetry Relay S3 forwarding endpoint. Forwards telemetry data to an S3-compatible bucket.\n\n## Rotating credentials\n\nCredential attributes are write-only: Terraform sends them on apply but never stores them, so they are null in both plan and state and **changing one cannot produce a diff on its own**. Use `credentials_version` to signal a rotation — increment it in the same apply that changes a credential value, and the new credentials are sent. Change a credential without incrementing it and the apply is a silent no-op: the previously stored credentials stay in place. S3 endpoints require credentials, so they cannot be removed once set; leaving the block unchanged preserves them.",
 		Attributes:          attributes,
 	}
 }
@@ -157,6 +157,14 @@ func (r *S3ForwardingEndpointResource) Create(ctx context.Context, req resource.
 		return
 	}
 
+	timeout, diags := data.Timeouts.Create(ctx, endpointTimeout)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
 	created, diags := createEndpoint(ctx, r.Client, createReq)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
@@ -239,6 +247,14 @@ func (r *S3ForwardingEndpointResource) Update(ctx context.Context, req resource.
 		return
 	}
 
+	timeout, diags := data.Timeouts.Update(ctx, endpointTimeout)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
 	endpointMsg, diagnostics := data.ToMsg()
 	resp.Diagnostics.Append(diagnostics...)
 	if resp.Diagnostics.HasError() {
@@ -302,6 +318,14 @@ func (r *S3ForwardingEndpointResource) Delete(ctx context.Context, req resource.
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	timeout, diags := data.Timeouts.Delete(ctx, endpointTimeout)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
 
 	resp.Diagnostics.Append(deleteEndpoint(ctx, r.Client, &data)...)
 	if resp.Diagnostics.HasError() {

@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	typesv1beta1 "buf.build/gen/go/coreweave/telemetry-relay/protocolbuffers/go/coreweave/telemetryrelay/types/v1beta1"
+	"github.com/hashicorp/terraform-plugin-framework-timeouts/resource/timeouts"
 	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -49,6 +50,8 @@ type ForwardingEndpointCore struct {
 	StateMessage          types.String      `tfsdk:"state_message"`
 	CredentialsConfigured types.Bool        `tfsdk:"credentials_configured"`
 	CredentialsUpdatedAt  timetypes.RFC3339 `tfsdk:"credentials_updated_at"`
+
+	Timeouts timeouts.Value `tfsdk:"timeouts"`
 }
 
 // coreSet sets the model from a ForwardingEndpoint message.
