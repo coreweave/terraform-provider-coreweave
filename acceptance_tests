@@ -9,8 +9,8 @@
 #   ./acceptance_tests -r TestForwardingPipeline  # one resource, while iterating
 #   ./acceptance_tests -n                         # show what a sweep would delete, run nothing
 #
-# Requires COREWEAVE_API_TOKEN. Defaults to staging telecasterd, which serves the
-# lab zones the tests operate on; pointing it anywhere else needs
+# Requires COREWEAVE_API_TOKEN. Defaults to staging telecasterd, which serves
+# US-LAB-01A, the only zone the tests operate in; pointing it anywhere else needs
 # --allow-other-environment, because these tests create and destroy real
 # resources in whatever organization the token belongs to.
 
@@ -31,6 +31,10 @@ srcdir="$(git -C "$(dirname "$0")" rev-parse --show-toplevel)"
 # the server LoadBalancer. On the internal network only, so this needs Teleport
 # or the VPN. Lab zones are the only ones the tests touch.
 staging_endpoint="http://telecasterd-stg.us-east.int.coreweave.com:8080"
+
+# The one registered lab zone. Passed explicitly rather than relying on the
+# GNUmakefile default, so a change there cannot quietly send a sweep elsewhere.
+lab_zone="US-LAB-01A"
 run_filter=""
 sweep_filter=""
 sweep=true
@@ -98,6 +102,7 @@ Re-run with --allow-other-environment if that is what you intend."
 fi
 
 log "endpoint:  $COREWEAVE_API_ENDPOINT"
+log "zone:      $lab_zone"
 log "suites:    ${suites[*]}"
 [[ -n "$run_filter" ]] && log "run:       $run_filter"
 [[ -n "$sweep_filter" ]] && log "sweep-run: $sweep_filter"
@@ -114,6 +119,7 @@ run_sweep() {
     log "Sweeping leftover acceptance resources (dry_run=$dry)"
     make -C "$srcdir" testacc-sweep \
         SUITES="${suites[*]}" \
+        TEST_ACC_SWEEP_ZONE="$lab_zone" \
         SWEEP_DRY_RUN="$dry" \
         ${sweep_filter:+TEST_ACC_SWEEP_RUN="$sweep_filter"} \
         2>&1 | tee "$logdir/sweep-$stamp-dry$dry.log"
