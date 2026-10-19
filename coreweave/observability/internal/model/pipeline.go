@@ -4,6 +4,7 @@ import (
 	"context"
 
 	typesv1beta1 "buf.build/gen/go/coreweave/telemetry-relay/protocolbuffers/go/coreweave/telemetryrelay/types/v1beta1"
+	"github.com/hashicorp/terraform-plugin-framework-timeouts/resource/timeouts"
 	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -63,6 +64,8 @@ type ForwardingPipelineStatus struct {
 	UpdatedAt    timetypes.RFC3339 `tfsdk:"updated_at"`
 	State        types.String      `tfsdk:"state"`
 	StateMessage types.String      `tfsdk:"state_message"`
+
+	Timeouts timeouts.Value `tfsdk:"timeouts"`
 }
 
 func (s *ForwardingPipelineStatus) Set(status *typesv1beta1.ForwardingPipelineStatus) {
