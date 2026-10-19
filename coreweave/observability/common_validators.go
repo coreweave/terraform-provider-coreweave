@@ -16,7 +16,7 @@ const (
 	// ForwardingEndpointSpec.display_name.
 	displayNameMaxLength = 128
 
-	// HTTPSConfig.endpoint and PrometheusRemoteWriteConfig.endpoint.
+	// HTTPSConfig.endpoint.
 	endpointURLMaxLength = 2048
 
 	// S3Config.uri and S3Config.region.
