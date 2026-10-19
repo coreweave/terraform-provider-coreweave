@@ -873,8 +873,8 @@ func testForwardingPipelineLifecycle(t *testing.T) {
 	})
 
 	// zone_slugs is OPTIONAL and IMMUTABLE in the proto and UpdatePipeline
-	// hard-rejects a change, so every edit must plan as a replacement. Both
-	// steps are PlanOnly, so the replacement is proven without paying for it.
+	// hard-rejects a change, so every edit must plan as a replacement. The
+	// edit step is PlanOnly, so the replacement is proven without paying for it.
 	t.Run("zone_slugs_requires_replace", func(t *testing.T) {
 		resourceName := "zone_slugs"
 		fullResourceName := fmt.Sprintf("%s.%s", pipelineResourceName, resourceName)
@@ -904,9 +904,9 @@ func testForwardingPipelineLifecycle(t *testing.T) {
 					},
 				},
 				{
-					PreConfig: func() { t.Log("changing zone_slugs plans a replacement") },
+					PreConfig: func() { t.Log("removing zone_slugs plans a replacement") },
 					Config: renderForwardingPipelineResource(t, resourceName, with(pipeline, func(p *model.ForwardingPipeline) {
-						p.ZoneSlugs = zoneSlugSet(t, testLabZoneSlug, testSecondLabZoneSlug)
+						p.ZoneSlugs = types.SetNull(types.StringType)
 					}), endpoint),
 					PlanOnly:           true,
 					ExpectNonEmptyPlan: true,
@@ -919,10 +919,43 @@ func testForwardingPipelineLifecycle(t *testing.T) {
 						},
 					},
 				},
+			},
+		})
+	})
+
+	// The other edge of the same rule: a pipeline created without zone_slugs
+	// covers every zone, so naming one narrows it and must also replace. The
+	// removal direction is covered above; proving both needs two applied
+	// starting states, because a PlanOnly step always diffs against the last
+	// applied one.
+	t.Run("zone_slugs_added_requires_replace", func(t *testing.T) {
+		resourceName := "zone_slugs_add"
+		fullResourceName := fmt.Sprintf("%s.%s", pipelineResourceName, resourceName)
+
+		endpointSlug := slugify("zones-add-ep", randomInt)
+		endpoint := createHTTPSEndpoint(t, endpointSlug)
+
+		pipeline := &model.ForwardingPipeline{
+			Slug:            types.StringValue(slugify("zones-add-pipeline", randomInt)),
+			SourceSlug:      types.StringValue(logsStreams[0]),
+			DestinationSlug: types.StringValue(endpointSlug),
+			Enabled:         types.BoolValue(true),
+			ZoneSlugs:       types.SetNull(types.StringType),
+		}
+
+		resource.ParallelTest(t, resource.TestCase{
+			ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+			PreCheck:                 func() { testutil.SetEnvDefaults() },
+			CheckDestroy:             checkDestroyed(t),
+			Steps: []resource.TestStep{
 				{
-					PreConfig: func() { t.Log("removing zone_slugs also plans a replacement") },
+					PreConfig: func() { t.Log("create a pipeline covering every zone") },
+					Config:    renderForwardingPipelineResource(t, resourceName, pipeline, endpoint),
+				},
+				{
+					PreConfig: func() { t.Log("adding zone_slugs plans a replacement") },
 					Config: renderForwardingPipelineResource(t, resourceName, with(pipeline, func(p *model.ForwardingPipeline) {
-						p.ZoneSlugs = types.SetNull(types.StringType)
+						p.ZoneSlugs = zoneSlugSet(t, testLabZoneSlug)
 					}), endpoint),
 					PlanOnly:           true,
 					ExpectNonEmptyPlan: true,
