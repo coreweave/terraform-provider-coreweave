@@ -80,7 +80,7 @@ func (r *HTTPSForwardingEndpointResource) Schema(ctx context.Context, req resour
 	}
 
 	resp.Schema = schema.Schema{
-		MarkdownDescription: "CoreWeave Telemetry Relay HTTPS forwarding endpoint. Forwards telemetry data to an HTTPS endpoint.",
+		MarkdownDescription: "CoreWeave Telemetry Relay HTTPS forwarding endpoint. Forwards telemetry data to an HTTPS endpoint.\n\n## Rotating credentials\n\nCredential attributes are write-only: Terraform sends them on apply but never stores them, so they are null in both plan and state and **changing one cannot produce a diff on its own**. Use `credentials_version` to signal a rotation — increment it in the same apply that changes a credential value, and the new credentials are sent. Change a credential without incrementing it and the apply is a silent no-op: the previously stored credentials stay in place. Removing the `credentials` block clears the stored credentials; leaving it unchanged preserves them.",
 		Attributes:          attributes,
 	}
 }
@@ -190,6 +190,14 @@ func (r *HTTPSForwardingEndpointResource) Create(ctx context.Context, req resour
 		return
 	}
 
+	timeout, diags := data.Timeouts.Create(ctx, endpointTimeout)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
 	created, diags := createEndpoint(ctx, r.Client, createReq)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
@@ -277,6 +285,14 @@ func (r *HTTPSForwardingEndpointResource) Update(ctx context.Context, req resour
 		return
 	}
 
+	timeout, diags := data.Timeouts.Update(ctx, endpointTimeout)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
 	endpointMsg, diagnostics := data.ToMsg()
 	resp.Diagnostics.Append(diagnostics...)
 	if resp.Diagnostics.HasError() {
@@ -344,6 +360,14 @@ func (r *HTTPSForwardingEndpointResource) Delete(ctx context.Context, req resour
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	timeout, diags := data.Timeouts.Delete(ctx, endpointTimeout)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
 
 	resp.Diagnostics.Append(deleteEndpoint(ctx, r.Client, &data)...)
 	if resp.Diagnostics.HasError() {
