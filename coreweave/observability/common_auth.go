@@ -74,18 +74,3 @@ func s3CredentialsAttribute() schema.SingleNestedAttribute {
 		},
 	}
 }
-
-// prometheusCredentialsAttribute returns a reusable Prometheus credentials schema.
-func prometheusCredentialsAttribute() schema.SingleNestedAttribute {
-	return schema.SingleNestedAttribute{
-		// auth_headers is absent on purpose. PrometheusCredentials carries the
-		// field, but the API rejects it for Prometheus endpoints, so publishing it
-		// would advertise a configuration that cannot apply. Adding it later is
-		// additive.
-		MarkdownDescription: "Authentication credentials for the Prometheus Remote Write endpoint. `basic_auth` is required when the block is present.",
-		Optional:            true,
-		Attributes: map[string]schema.Attribute{
-			"basic_auth": basicAuthAttribute(),
-		},
-	}
-}
