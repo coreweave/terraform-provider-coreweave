@@ -142,9 +142,8 @@ var (
 type EndpointType string
 
 const (
-	EndpointTypeHTTPS      EndpointType = "https"
-	EndpointTypeS3         EndpointType = "s3"
-	EndpointTypePrometheus EndpointType = "prom"
+	EndpointTypeHTTPS EndpointType = "https"
+	EndpointTypeS3    EndpointType = "s3"
 )
 
 // StreamType represents the type of telemetry stream
@@ -187,17 +186,6 @@ func createS3Endpoint(t *testing.T, slug string) *model.ForwardingEndpointS3 {
 	}
 }
 
-func createPrometheusEndpoint(t *testing.T, slug string) *model.ForwardingEndpointPrometheus {
-	t.Helper()
-	return &model.ForwardingEndpointPrometheus{
-		ForwardingEndpointCore: model.ForwardingEndpointCore{
-			Slug:        types.StringValue(slug),
-			DisplayName: types.StringValue(fmt.Sprintf("Test Prometheus Endpoint - %s", slug)),
-		},
-		Endpoint: types.StringValue(testPrometheusEndpointURL),
-	}
-}
-
 // renderForwardingPipelineResource renders HCL for a forwarding pipeline with
 // an optional endpoint dependency. When an endpoint is supplied the
 // destination is a resource traversal, which is what creates the dependency
@@ -215,9 +203,6 @@ func renderForwardingPipelineResource(t *testing.T, resourceName string, pipelin
 		case *model.ForwardingEndpointS3:
 			endpointResourceType = s3EndpointResourceName
 			parts = append(parts, renderS3EndpointResource(resourceName, endpoint))
-		case *model.ForwardingEndpointPrometheus:
-			endpointResourceType = prometheusEndpointResourceName
-			parts = append(parts, renderPrometheusEndpointResource(resourceName, endpoint))
 		default:
 			t.Fatalf("Unknown endpoint type: %T", endpoint)
 		}
@@ -687,8 +672,9 @@ func testForwardingPipelineLifecycle(t *testing.T) {
 			StreamTypeLogs:    logsStreams,
 		}
 
-		// Prometheus endpoints are not registered as a resource type, so metrics
-		// streams have no destination the provider can create today.
+		// Metrics streams have no endpoint type the provider can create today;
+		// Prometheus remote write is the only destination the API accepts for
+		// them, and that resource is not implemented yet.
 		validEndpointsByStreamType := map[StreamType][]EndpointType{
 			StreamTypeMetrics: {},
 			StreamTypeLogs:    {EndpointTypeHTTPS, EndpointTypeS3},
@@ -718,8 +704,6 @@ func testForwardingPipelineLifecycle(t *testing.T) {
 							endpoint = createHTTPSEndpoint(t, endpointSlug)
 						case EndpointTypeS3:
 							endpoint = createS3Endpoint(t, endpointSlug)
-						case EndpointTypePrometheus:
-							endpoint = createPrometheusEndpoint(t, endpointSlug)
 						}
 
 						pipelineSlug := slugify(fmt.Sprintf("pipe-%s-%s", streamSlug, endpointType), randomInt)
