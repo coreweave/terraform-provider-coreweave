@@ -315,6 +315,7 @@ func TestForwardingEndpointHTTPS(t *testing.T) {
 				resource.ParallelTest(t, resource.TestCase{
 					ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
 					PreCheck:                 func() { testutil.SetEnvDefaults() },
+					CheckDestroy:             checkDestroyed(t),
 					Steps: []resource.TestStep{
 						{
 							Config:      renderHTTPSEndpointResource(resourceName, tc.model),
@@ -343,6 +344,7 @@ func TestForwardingEndpointHTTPS(t *testing.T) {
 		resource.ParallelTest(t, resource.TestCase{
 			ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
 			PreCheck:                 func() { testutil.SetEnvDefaults() },
+			CheckDestroy:             checkDestroyed(t),
 			Steps: []resource.TestStep{
 				createHTTPSEndpointTestStep(t, httpsEndpointTestStep{
 					TestName:     "initial HTTPS forwarding endpoint",
@@ -439,6 +441,7 @@ func TestForwardingEndpointHTTPS(t *testing.T) {
 		resource.ParallelTest(t, resource.TestCase{
 			ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
 			PreCheck:                 func() { testutil.SetEnvDefaults() },
+			CheckDestroy:             checkDestroyed(t),
 			Steps: []resource.TestStep{
 				createHTTPSEndpointTestStep(t, httpsEndpointTestStep{
 					TestName:     "initial HTTPS endpoint with TLS",
@@ -509,6 +512,7 @@ func TestForwardingEndpointHTTPS(t *testing.T) {
 		resource.ParallelTest(t, resource.TestCase{
 			ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
 			PreCheck:                 func() { testutil.SetEnvDefaults() },
+			CheckDestroy:             checkDestroyed(t),
 			Steps: []resource.TestStep{
 				createHTTPSEndpointTestStep(t, httpsEndpointTestStep{
 					TestName:     "create with gzip compression",
@@ -594,6 +598,7 @@ func TestForwardingEndpointHTTPS(t *testing.T) {
 		resource.ParallelTest(t, resource.TestCase{
 			ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
 			PreCheck:                 func() { testutil.SetEnvDefaults() },
+			CheckDestroy:             checkDestroyed(t),
 			Steps: []resource.TestStep{
 				createHTTPSEndpointTestStep(t, httpsEndpointTestStep{
 					TestName:     "create with basic auth credentials",
@@ -787,6 +792,7 @@ func TestForwardingEndpointHTTPS(t *testing.T) {
 				resource.ParallelTest(t, resource.TestCase{
 					ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
 					PreCheck:                 func() { testutil.SetEnvDefaults() },
+					CheckDestroy:             checkDestroyed(t),
 					Steps: []resource.TestStep{
 						{
 							Config:      renderHTTPSEndpointResource(resourceName, tc.model),
@@ -818,6 +824,7 @@ func TestForwardingEndpointHTTPS(t *testing.T) {
 		resource.ParallelTest(t, resource.TestCase{
 			ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
 			PreCheck:                 func() { testutil.SetEnvDefaults() },
+			CheckDestroy:             checkDestroyed(t),
 			Steps: []resource.TestStep{
 				createHTTPSEndpointTestStep(t, httpsEndpointTestStep{
 					TestName:     "create the endpoint to be deleted out of band",
