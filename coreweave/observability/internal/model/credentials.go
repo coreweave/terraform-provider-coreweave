@@ -132,69 +132,6 @@ func (h *AuthHeadersCredentials) ToMsg() (msg *typesv1beta1.AuthHeadersCredentia
 	return msg
 }
 
-// PrometheusCredentials contains authentication credentials for Prometheus Remote Write endpoints.
-// PrometheusCredentials omits auth_headers. The proto carries the field, but
-// the API rejects it for Prometheus endpoints, so there is nothing for the
-// provider to usefully model.
-type PrometheusCredentials struct {
-	BasicAuth *BasicAuthCredentials `tfsdk:"basic_auth"`
-}
-
-func (p *PrometheusCredentials) Set(ctx context.Context, msg *typesv1beta1.PrometheusCredentials) (diagnostics diag.Diagnostics) {
-	if msg == nil {
-		return nil
-	}
-
-	p.BasicAuth = nil
-
-	switch kind := msg.WhichAuth(); kind {
-	case typesv1beta1.PrometheusCredentials_Auth_not_set_case:
-		diagnostics.AddError("no auth set for prometheus", "Auth must be set when using prometheus endpoint")
-	case typesv1beta1.PrometheusCredentials_BasicAuth_case:
-		p.BasicAuth = new(BasicAuthCredentials)
-		p.BasicAuth.Set(ctx, msg.GetBasicAuth())
-	case typesv1beta1.PrometheusCredentials_AuthHeaders_case:
-		// The field exists in the proto, but the API rejects it for Prometheus
-		// endpoints, so the provider does not model it. Reaching here means the
-		// server's behavior changed.
-		diagnostics.AddError(
-			"Unsupported Prometheus auth type",
-			"The endpoint uses header authentication, which this provider does not model for Prometheus endpoints because the API rejects it. Manage this endpoint outside Terraform, or file an issue if the API now accepts it.",
-		)
-	default:
-		diagnostics.AddError("Unsupported Prometheus auth type", fmt.Sprintf("unsupported prometheus auth type: %s (%d)", kind.String(), kind))
-	}
-
-	return
-}
-
-func (p *PrometheusCredentials) ToMsg() (msg *typesv1beta1.PrometheusCredentials, diagnostics diag.Diagnostics) {
-	if p == nil {
-		return nil, nil
-	}
-
-	msg = &typesv1beta1.PrometheusCredentials{}
-	implementations := make([]string, 0)
-
-	if p.BasicAuth != nil {
-		implementations = append(implementations, "basic_auth")
-		basicAuth := p.BasicAuth.ToMsg()
-		msg.SetBasicAuth(basicAuth)
-	}
-
-	if len(implementations) != 1 {
-		diagnostics.AddError(
-			"Invalid PrometheusCredentials",
-			fmt.Sprintf("basic_auth must be set, got %d: %s", len(implementations), strings.Join(implementations, ", ")),
-		)
-	}
-	if diagnostics.HasError() {
-		return nil, diagnostics
-	}
-
-	return msg, diagnostics
-}
-
 // HTTPSCredentials contains authentication credentials for HTTPS endpoints.
 type HTTPSCredentials struct {
 	BasicAuth   *BasicAuthCredentials   `tfsdk:"basic_auth"`

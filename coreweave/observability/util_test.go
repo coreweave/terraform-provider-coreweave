@@ -24,8 +24,7 @@ const (
 	// CheckEndpoint performs no connectivity test. They do need to be public
 	// https, because buf.validate requires the https:// scheme and the service
 	// rejects targets resolving to loopback, private, or link-local addresses.
-	testHTTPSEndpointURL      = "https://telemetry.example.com/ingest"
-	testPrometheusEndpointURL = "https://prometheus.example.com/api/v1/write"
+	testHTTPSEndpointURL = "https://telemetry.example.com/ingest"
 
 	// Endpoint slugs are capped at 32 characters by buf.validate; the pipeline
 	// matrix generates names from stream and endpoint type and has to shorten
