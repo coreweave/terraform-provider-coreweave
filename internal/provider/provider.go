@@ -254,10 +254,6 @@ func (p *CoreweaveProvider) Resources(ctx context.Context) []func() resource.Res
 		observability.NewForwardingEndpointHTTPSResource,
 		observability.NewForwardingEndpointS3Resource,
 		observability.NewForwardingPipelineResource,
-		// observability.NewForwardingEndpointPrometheusResource is deliberately
-		// not registered: CreateEndpoint returns "endpoint type is not implemented
-		// yet: prometheus", so every apply would fail. Registering it later is
-		// additive; publishing a resource type name is permanent.
 	}
 }
 
