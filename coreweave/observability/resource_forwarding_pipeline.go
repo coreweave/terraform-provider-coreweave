@@ -12,6 +12,7 @@ import (
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave/observability/internal/model"
 	"github.com/coreweave/terraform-provider-coreweave/internal/coretf"
+	"github.com/hashicorp/terraform-plugin-framework-timeouts/resource/timeouts"
 	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
 	"github.com/hashicorp/terraform-plugin-framework-validators/setvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
@@ -175,6 +176,11 @@ func (r *ResourceForwardingPipeline) Schema(ctx context.Context, req resource.Sc
 				MarkdownDescription: "Additional context about the current state, most useful when `state` is `FORWARDING_PIPELINE_STATE_ERROR`.",
 				Computed:            true,
 			},
+			"timeouts": timeouts.Attributes(ctx, timeouts.Opts{
+				Create: true,
+				Update: true,
+				Delete: true,
+			}),
 		},
 	}
 }
@@ -186,6 +192,14 @@ func (r *ResourceForwardingPipeline) Create(ctx context.Context, req resource.Cr
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	timeout, diags := data.Timeouts.Create(ctx, pipelineTimeout)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
 
 	pipelineMsg, diags := data.ToMsg(ctx)
 	resp.Diagnostics.Append(diags...)
@@ -252,6 +266,14 @@ func (r *ResourceForwardingPipeline) Delete(ctx context.Context, req resource.De
 		return
 	}
 
+	timeout, diags := data.Timeouts.Delete(ctx, pipelineTimeout)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
 	ref := data.ToRef()
 
 	if _, err := r.Client.DeletePipeline(ctx, connect.NewRequest(&clusterv1beta1.DeletePipelineRequest{
@@ -284,7 +306,7 @@ func (r *ResourceForwardingPipeline) Delete(ctx context.Context, req resource.De
 			pipeline := result.Msg.Pipeline
 			return pipeline, pipeline.Status.State.String(), nil
 		},
-		Timeout: pipelineTimeout,
+		Timeout: pollTimeout(ctx, pipelineTimeout),
 	}
 
 	if _, err := pollConf.WaitForStateContext(ctx); err != nil {
@@ -331,6 +353,14 @@ func (r *ResourceForwardingPipeline) Update(ctx context.Context, req resource.Up
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	timeout, diags := data.Timeouts.Update(ctx, pipelineTimeout)
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
 
 	pipelineMsg, diags := data.ToMsg(ctx)
 	resp.Diagnostics.Append(diags...)
@@ -398,7 +428,7 @@ func awaitPipelineActive(ctx context.Context, client *coreweave.Client, ref *typ
 
 			return pipeline, status.GetState().String(), nil
 		},
-		Timeout: pipelineTimeout,
+		Timeout: pollTimeout(ctx, pipelineTimeout),
 	}
 
 	rawPipeline, err := pollConf.WaitForStateContext(ctx)
