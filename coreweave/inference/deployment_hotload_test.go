@@ -2,16 +2,16 @@ package inference_test
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
 
-	v1connect "buf.build/gen/go/coreweave/inference/connectrpc/go/coreweave/inference/v1alpha1/inferencev1alpha1connect"
+	v1connect "buf.build/gen/go/coreweave/inference/connectrpc/go/v2/coreweave/inference/v1alpha1/inferencev1alpha1connect"
 	v1 "buf.build/gen/go/coreweave/inference/protocolbuffers/go/coreweave/inference/v1alpha1"
-	"connectrpc.com/connect"
+	"connectrpc.com/connect/v2"
+	"connectrpc.com/connect/v2/connecthttp"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave/inference"
 	"github.com/coreweave/terraform-provider-coreweave/internal/provider"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
@@ -49,13 +49,13 @@ type hotLoadImportHandler struct {
 	deployment *v1.Deployment
 }
 
-func (h *hotLoadImportHandler) CreateDeployment(_ context.Context, req *connect.Request[v1.CreateDeploymentRequest]) (*connect.Response[v1.CreateDeploymentResponse], error) {
+func (h *hotLoadImportHandler) CreateDeployment(_ context.Context, req *v1.CreateDeploymentRequest) (*v1.CreateDeploymentResponse, error) {
 	h.deployment = &v1.Deployment{
 		Spec: &v1.DeploymentSpec{
-			Id: "11111111-1111-4111-8111-111111111111", Name: req.Msg.Name,
-			GatewayIds: req.Msg.GatewayIds, Runtime: req.Msg.Runtime,
-			Resources: req.Msg.Resources, Model: req.Msg.Model, Autoscaling: req.Msg.Autoscaling,
-			Traffic: req.Msg.Traffic, Disabled: req.Msg.Disabled, HotLoad: req.Msg.HotLoad,
+			Id: "11111111-1111-4111-8111-111111111111", Name: req.Name,
+			GatewayIds: req.GatewayIds, Runtime: req.Runtime,
+			Resources: req.Resources, Model: req.Model, Autoscaling: req.Autoscaling,
+			Traffic: req.Traffic, Disabled: req.Disabled, HotLoad: req.HotLoad,
 		},
 		Status: &v1.DeploymentStatus{
 			Status:     v1.Status_STATUS_READY,
@@ -64,23 +64,23 @@ func (h *hotLoadImportHandler) CreateDeployment(_ context.Context, req *connect.
 			Conditions: []*v1.Condition{{Type: "ResourcesApplied", Status: v1.Condition_STATUS_TRUE}},
 		},
 	}
-	return connect.NewResponse(&v1.CreateDeploymentResponse{Deployment: h.deployment}), nil
+	return &v1.CreateDeploymentResponse{Deployment: h.deployment}, nil
 }
 
-func (h *hotLoadImportHandler) GetDeployment(_ context.Context, _ *connect.Request[v1.GetDeploymentRequest]) (*connect.Response[v1.GetDeploymentResponse], error) {
+func (h *hotLoadImportHandler) GetDeployment(_ context.Context, _ *v1.GetDeploymentRequest) (*v1.GetDeploymentResponse, error) {
 	if h.deployment == nil {
-		return nil, connect.NewError(connect.CodeNotFound, errors.New("deployment not found"))
+		return nil, connect.NewError(connect.CodeNotFound, "deployment not found")
 	}
-	return connect.NewResponse(&v1.GetDeploymentResponse{Deployment: h.deployment}), nil
+	return &v1.GetDeploymentResponse{Deployment: h.deployment}, nil
 }
 
-func (h *hotLoadImportHandler) DeleteDeployment(_ context.Context, _ *connect.Request[v1.DeleteDeploymentRequest]) (*connect.Response[v1.DeleteDeploymentResponse], error) {
+func (h *hotLoadImportHandler) DeleteDeployment(_ context.Context, _ *v1.DeleteDeploymentRequest) (*v1.DeleteDeploymentResponse, error) {
 	h.deployment = nil
-	return connect.NewResponse(&v1.DeleteDeploymentResponse{}), nil
+	return &v1.DeleteDeploymentResponse{}, nil
 }
 
-func (h *hotLoadImportHandler) GetDeploymentParameters(_ context.Context, _ *connect.Request[v1.GetDeploymentParametersRequest]) (*connect.Response[v1.GetDeploymentParametersResponse], error) {
-	return connect.NewResponse(&v1.GetDeploymentParametersResponse{}), nil
+func (h *hotLoadImportHandler) GetDeploymentParameters(_ context.Context, _ *v1.GetDeploymentParametersRequest) (*v1.GetDeploymentParametersResponse, error) {
+	return &v1.GetDeploymentParametersResponse{}, nil
 }
 
 func TestDeploymentHotLoadImportNoop(t *testing.T) {
@@ -88,8 +88,9 @@ func TestDeploymentHotLoadImportNoop(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			h := &hotLoadImportHandler{}
 			mux := http.NewServeMux()
-			pattern, handler := v1connect.NewDeploymentServiceHandler(h)
-			mux.Handle(pattern, handler)
+			connectServer := connect.NewServer()
+			v1connect.RegisterDeploymentServiceHandler(connectServer, h)
+			connecthttp.Mount(mux, connectServer, connecthttp.WithReadMaxBytes(0))
 			srv := httptest.NewServer(mux)
 			defer srv.Close()
 			t.Setenv("COREWEAVE_API_ENDPOINT", srv.URL)
