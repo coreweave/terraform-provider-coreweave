@@ -287,10 +287,17 @@ func (r *ResourceForwardingPipeline) Delete(ctx context.Context, req resource.De
 		return
 	}
 
-	// Poll until the pipeline is fully deleted
+	// Poll until the pipeline is fully deleted. Every live state is Pending for
+	// the same reason as the endpoint delete: we are waiting for the record to
+	// disappear. Listing only PENDING meant deleting an ACTIVE pipeline — the
+	// normal case — could fail on the first poll with "unexpected state".
 	pollConf := retry.StateChangeConf{
 		Pending: []string{
+			typesv1beta1.ForwardingPipelineState_FORWARDING_PIPELINE_STATE_UNSPECIFIED.String(),
 			typesv1beta1.ForwardingPipelineState_FORWARDING_PIPELINE_STATE_PENDING.String(),
+			typesv1beta1.ForwardingPipelineState_FORWARDING_PIPELINE_STATE_ACTIVE.String(),
+			typesv1beta1.ForwardingPipelineState_FORWARDING_PIPELINE_STATE_ERROR.String(),
+			typesv1beta1.ForwardingPipelineState_FORWARDING_PIPELINE_STATE_STOPPED.String(),
 		},
 		Target: []string{},
 		Refresh: func() (any, string, error) {
