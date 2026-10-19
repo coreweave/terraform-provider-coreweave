@@ -9,8 +9,9 @@
 #   ./acceptance_tests -r TestForwardingPipeline  # one resource, while iterating
 #   ./acceptance_tests -n                         # show what a sweep would delete, run nothing
 #
-# Requires COREWEAVE_API_TOKEN. Defaults to the QA API; pointing it at another
-# environment needs --allow-non-qa, because these tests create and destroy real
+# Requires COREWEAVE_API_TOKEN. Defaults to staging telecasterd, which serves the
+# lab zones the tests operate on; pointing it anywhere else needs
+# --allow-other-environment, because these tests create and destroy real
 # resources in whatever organization the token belongs to.
 
 set -euo pipefail
@@ -26,12 +27,15 @@ die() {
 
 srcdir="$(git -C "$(dirname "$0")" rev-parse --show-toplevel)"
 
-qa_endpoint="https://api.qa.coreweave.com"
+# telecasterd-stg in us-east-03a-core-services, published by external-dns from
+# the server LoadBalancer. On the internal network only, so this needs Teleport
+# or the VPN. Lab zones are the only ones the tests touch.
+staging_endpoint="http://telecasterd-stg.us-east.int.coreweave.com:8080"
 run_filter=""
 sweep_filter=""
 sweep=true
 dry_run=false
-allow_non_qa=false
+allow_other_environment=false
 sweep_only=false
 timeout="60m"
 parallel="10"
@@ -50,7 +54,8 @@ Options:
   -n, --dry-run      sweep in dry-run mode and stop; creates and deletes nothing
   -s, --sweep-only   sweep for real, then stop
       --no-sweep     skip the pre-run sweep
-      --allow-non-qa run against a COREWEAVE_API_ENDPOINT other than QA
+      --allow-other-environment
+                     run against a COREWEAVE_API_ENDPOINT other than staging
   -h, --help         this message
 EOF
 }
@@ -64,7 +69,7 @@ while [[ $# -gt 0 ]]; do
         -n|--dry-run) dry_run=true; shift ;;
         -s|--sweep-only) sweep_only=true; shift ;;
         --no-sweep) sweep=false; shift ;;
-        --allow-non-qa) allow_non_qa=true; shift ;;
+        --allow-other-environment) allow_other_environment=true; shift ;;
         -h|--help) usage; exit 0 ;;
         -*) die "unknown option: $1" ;;
         *) suites+=("$1"); shift ;;
@@ -82,13 +87,14 @@ done
 # Preflight. A missing token fails late and confusingly inside the test binary,
 # and the default endpoint in internal/testutil points at a local address that
 # nothing will answer, so both are checked up front.
-[[ -n "${COREWEAVE_API_TOKEN:-}" ]] || die "COREWEAVE_API_TOKEN is not set. Create a token in the console for the QA account documented in the team KB."
+[[ -n "${COREWEAVE_API_TOKEN:-}" ]] || die "COREWEAVE_API_TOKEN is not set. Create a token in the console for the test account documented in the team KB."
 
-export COREWEAVE_API_ENDPOINT="${COREWEAVE_API_ENDPOINT:-$qa_endpoint}"
-if [[ "$COREWEAVE_API_ENDPOINT" != "$qa_endpoint" ]] && ! $allow_non_qa; then
-    die "COREWEAVE_API_ENDPOINT is $COREWEAVE_API_ENDPOINT, not $qa_endpoint.
-These tests create and delete real resources in the token's organization.
-Re-run with --allow-non-qa if that is what you intend."
+export COREWEAVE_API_ENDPOINT="${COREWEAVE_API_ENDPOINT:-$staging_endpoint}"
+if [[ "$COREWEAVE_API_ENDPOINT" != "$staging_endpoint" ]] && ! $allow_other_environment; then
+    die "COREWEAVE_API_ENDPOINT is $COREWEAVE_API_ENDPOINT, not staging.
+These tests create and delete real resources in the token's organization, and
+the zone slugs they use are lab zones that only staging telecasterd serves.
+Re-run with --allow-other-environment if that is what you intend."
 fi
 
 log "endpoint:  $COREWEAVE_API_ENDPOINT"
