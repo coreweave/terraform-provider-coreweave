@@ -238,6 +238,7 @@ func TestForwardingEndpointS3(t *testing.T) {
 				resource.ParallelTest(t, resource.TestCase{
 					ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
 					PreCheck:                 func() { testutil.SetEnvDefaults() },
+					CheckDestroy:             checkDestroyed(t),
 					Steps: []resource.TestStep{
 						{
 							Config:      renderS3EndpointResource(resourceName, tc.model),
@@ -268,6 +269,7 @@ func TestForwardingEndpointS3(t *testing.T) {
 		resource.ParallelTest(t, resource.TestCase{
 			ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
 			PreCheck:                 func() { testutil.SetEnvDefaults() },
+			CheckDestroy:             checkDestroyed(t),
 			Steps: []resource.TestStep{
 				createS3EndpointTestStep(t, s3EndpointTestStep{
 					TestName:     "initial S3 forwarding endpoint",
@@ -368,6 +370,7 @@ func TestForwardingEndpointS3(t *testing.T) {
 		resource.ParallelTest(t, resource.TestCase{
 			ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
 			PreCheck:                 func() { testutil.SetEnvDefaults() },
+			CheckDestroy:             checkDestroyed(t),
 			Steps: []resource.TestStep{
 				createS3EndpointTestStep(t, s3EndpointTestStep{
 					TestName:     "create with credentials",
@@ -455,6 +458,7 @@ func TestForwardingEndpointS3(t *testing.T) {
 		resource.ParallelTest(t, resource.TestCase{
 			ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
 			PreCheck:                 func() { testutil.SetEnvDefaults() },
+			CheckDestroy:             checkDestroyed(t),
 			Steps: []resource.TestStep{
 				createS3EndpointTestStep(t, s3EndpointTestStep{
 					TestName:     "initial S3 endpoint with session token",
@@ -488,6 +492,7 @@ func TestForwardingEndpointS3(t *testing.T) {
 		resource.ParallelTest(t, resource.TestCase{
 			ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
 			PreCheck:                 func() { testutil.SetEnvDefaults() },
+			CheckDestroy:             checkDestroyed(t),
 			Steps: []resource.TestStep{
 				createS3EndpointTestStep(t, s3EndpointTestStep{
 					TestName:     "create the endpoint to be deleted out of band",
