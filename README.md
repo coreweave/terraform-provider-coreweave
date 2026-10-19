@@ -110,7 +110,8 @@ TF_ACC=1 INFR_HOTLOAD_ACCEPTANCE=1 \
 
 Live cancellation is not exercised while staging returns `UNIMPLEMENTED`.
 Mock tests cover active cancellation, terminal destroy and state retention on
-cancellation errors, including `UNIMPLEMENTED`. If a live run fails with an
+cancellation errors, and the `UNIMPLEMENTED` warning that removes the operation
+from state while it keeps running. If a live run fails with an
 active operation, cancellation may prevent automatic cleanup; inspect the
 reported test resource IDs instead of sweeping unrelated deployments.
 

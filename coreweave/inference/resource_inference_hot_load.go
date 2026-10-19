@@ -71,7 +71,7 @@ func (r *InferenceHotLoadResource) Metadata(_ context.Context, req resource.Meta
 func (r *InferenceHotLoadResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	immutable := []planmodifier.String{stringplanmodifier.RequiresReplace()}
 	resp.Schema = schema.Schema{
-		MarkdownDescription: "Submit an immutable checkpoint hot-load to a deployment configured with hot_load. Creation returns after acceptance; refresh observes progress. Destroy cancels an active operation without waiting for replica updates to stop or rolling back weights. Cancellation requires server support: if the API returns Unimplemented, destroy reports an error and retains state until the operation becomes terminal. Terminal operation history remains on the server.",
+		MarkdownDescription: "Submit an immutable checkpoint hot-load to a deployment configured with hot_load. Creation returns after acceptance; refresh observes progress. Destroy cancels an active operation without waiting for replica updates to stop or rolling back weights. If the API does not implement cancellation, destroy warns and removes the operation from state while it keeps running. Terminal operation history remains on the server.",
 		Attributes: map[string]schema.Attribute{
 			"id":                  schema.StringAttribute{Computed: true, MarkdownDescription: "Hot-load operation UUID.", PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()}},
 			"deployment_id":       schema.StringAttribute{Required: true, MarkdownDescription: "UUID of the target deployment.", PlanModifiers: immutable, Validators: []validator.String{stringvalidator.RegexMatches(operationUUIDPattern, "must be a UUID")}},
@@ -283,7 +283,9 @@ func (r *InferenceHotLoadResource) Delete(ctx context.Context, req resource.Dele
 	switch state {
 	case v1.HotLoadState_HOT_LOAD_STATE_PENDING, v1.HotLoadState_HOT_LOAD_STATE_IN_PROGRESS:
 		_, err = r.client.CancelHotLoad(ctx, &v1.CancelHotLoadRequest{Id: m.ID.ValueString()})
-		if err != nil && !coreweave.IsNotFoundError(err) {
+		if connect.CodeOf(err) == connect.CodeUnimplemented {
+			resp.Diagnostics.AddWarning("Hot-load cancellation unsupported", "The API does not implement cancellation yet; the operation keeps running and is removed from state.")
+		} else if err != nil && !coreweave.IsNotFoundError(err) {
 			resp.Diagnostics.AddError("Canceling hot-load failed", err.Error())
 		}
 	case v1.HotLoadState_HOT_LOAD_STATE_COMPLETED, v1.HotLoadState_HOT_LOAD_STATE_FAILED, v1.HotLoadState_HOT_LOAD_STATE_CANCELED:

@@ -108,9 +108,9 @@ func TestHotLoadResourceLifecycle(t *testing.T) {
 
 func TestHotLoadDestroy(t *testing.T) {
 	for name, tc := range map[string]struct {
-		getErr, cancelErr error
-		state             v1.HotLoadState
-		cancel, fail      bool
+		getErr, cancelErr  error
+		state              v1.HotLoadState
+		cancel, fail, warn bool
 	}{
 		"pending":            {state: v1.HotLoadState_HOT_LOAD_STATE_PENDING, cancel: true},
 		"updating":           {state: v1.HotLoadState_HOT_LOAD_STATE_IN_PROGRESS, cancel: true},
@@ -119,7 +119,7 @@ func TestHotLoadDestroy(t *testing.T) {
 		"missing":            {getErr: connect.NewError(connect.CodeNotFound, "missing")},
 		"read error":         {getErr: connect.NewError(connect.CodeUnavailable, "offline"), fail: true},
 		"cancel error":       {state: v1.HotLoadState_HOT_LOAD_STATE_PENDING, cancelErr: connect.NewError(connect.CodeUnavailable, "offline"), cancel: true, fail: true},
-		"cancel unsupported": {state: v1.HotLoadState_HOT_LOAD_STATE_IN_PROGRESS, cancelErr: connect.NewError(connect.CodeUnimplemented, "not implemented"), cancel: true, fail: true},
+		"cancel unsupported": {state: v1.HotLoadState_HOT_LOAD_STATE_IN_PROGRESS, cancelErr: connect.NewError(connect.CodeUnimplemented, "not implemented"), cancel: true, warn: true},
 		"unknown state":      {state: v1.HotLoadState_HOT_LOAD_STATE_UNSPECIFIED, fail: true},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -127,7 +127,7 @@ func TestHotLoadDestroy(t *testing.T) {
 			h.operation.Status.State, h.getErr, h.cancelErr = tc.state, tc.getErr, tc.cancelErr
 			resp := resource.DeleteResponse{State: state}
 			r.Delete(t.Context(), resource.DeleteRequest{State: state}, &resp)
-			if resp.Diagnostics.HasError() != tc.fail || h.canceled != tc.cancel {
+			if resp.Diagnostics.HasError() != tc.fail || h.canceled != tc.cancel || (resp.Diagnostics.WarningsCount() > 0) != tc.warn {
 				t.Fatalf("cancel=%v diagnostics=%v", h.canceled, resp.Diagnostics)
 			}
 			if tc.fail {
