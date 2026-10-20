@@ -744,7 +744,7 @@ func TestForwardingEndpointHTTPS(t *testing.T) {
 						},
 					}
 				}),
-				expectError: regexp.MustCompile(`(?s)(?i)(cannot be specified when|conflict)`),
+				expectError: regexp.MustCompile(`(?s)(?i)cannot\s+be\s+configured\s+together`),
 			},
 			{
 				// Content-Type is set by the connector. This rule lives only in the
@@ -769,7 +769,9 @@ func TestForwardingEndpointHTTPS(t *testing.T) {
 						},
 					}
 				}),
-				expectError: regexp.MustCompile(`(?s)(?i)unique ignoring case`),
+				// \s+ rather than literal spaces: terraform wraps diagnostic text, so
+				// a pattern spanning the wrap point never matches.
+				expectError: regexp.MustCompile(`(?s)(?i)unique\s+ignoring\s+case`),
 			},
 			{
 				name: "empty credentials block",
