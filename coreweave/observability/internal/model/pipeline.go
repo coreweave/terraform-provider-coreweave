@@ -59,22 +59,6 @@ func (m *ForwardingPipelineSpec) ToMsg() (msg *typesv1beta1.ForwardingPipelineSp
 	return msg
 }
 
-type ForwardingPipelineStatus struct {
-	CreatedAt    timetypes.RFC3339 `tfsdk:"created_at"`
-	UpdatedAt    timetypes.RFC3339 `tfsdk:"updated_at"`
-	State        types.String      `tfsdk:"state"`
-	StateMessage types.String      `tfsdk:"state_message"`
-
-	Timeouts timeouts.Value `tfsdk:"timeouts"`
-}
-
-func (s *ForwardingPipelineStatus) Set(status *typesv1beta1.ForwardingPipelineStatus) {
-	s.CreatedAt = timestampToTimeValue(status.GetCreatedAt())
-	s.UpdatedAt = timestampToTimeValue(status.GetUpdatedAt())
-	s.State = types.StringValue(status.GetState().String())
-	s.StateMessage = types.StringPointerValue(status.StateMessage)
-}
-
 // ForwardingPipeline is a flattened model that combines ref, spec, and status
 // fields at the top level, similar to endpoint resources and stream data source.
 type ForwardingPipeline struct {
@@ -89,6 +73,8 @@ type ForwardingPipeline struct {
 	UpdatedAt    timetypes.RFC3339 `tfsdk:"updated_at"`
 	State        types.String      `tfsdk:"state"`
 	StateMessage types.String      `tfsdk:"state_message"`
+
+	Timeouts timeouts.Value `tfsdk:"timeouts"`
 }
 
 // Set sets the model from a ForwardingPipeline message.

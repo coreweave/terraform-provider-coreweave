@@ -207,10 +207,10 @@ func (r *ResourceForwardingPipeline) Create(ctx context.Context, req resource.Cr
 		return
 	}
 
-	createResp, err := r.Client.CreatePipeline(ctx, connect.NewRequest(&clusterv1beta1.CreatePipelineRequest{
+	createResp, err := r.Client.CreatePipeline(ctx, &clusterv1beta1.CreatePipelineRequest{
 		Ref:  pipelineMsg.GetRef(),
 		Spec: pipelineMsg.GetSpec(),
-	}))
+	})
 	if err != nil {
 		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
 		return
@@ -219,7 +219,7 @@ func (r *ResourceForwardingPipeline) Create(ctx context.Context, req resource.Cr
 	// Save state before polling. The pipeline exists the moment CreatePipeline
 	// returns; without this, a poll failure orphans it and the next apply fails
 	// AlreadyExists.
-	resp.Diagnostics.Append(data.Set(ctx, createResp.Msg.GetPipeline())...)
+	resp.Diagnostics.Append(data.Set(ctx, createResp.GetPipeline())...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -228,7 +228,7 @@ func (r *ResourceForwardingPipeline) Create(ctx context.Context, req resource.Cr
 		return
 	}
 
-	pipeline, diags := awaitPipelineActive(ctx, r.Client, createResp.Msg.GetPipeline().GetRef())
+	pipeline, diags := awaitPipelineActive(ctx, r.Client, createResp.GetPipeline().GetRef())
 	r.recordPipelineOutcome(ctx, &data, pipeline, diags, &resp.State, &resp.Diagnostics)
 }
 
@@ -276,9 +276,9 @@ func (r *ResourceForwardingPipeline) Delete(ctx context.Context, req resource.De
 
 	ref := data.ToRef()
 
-	if _, err := r.Client.DeletePipeline(ctx, connect.NewRequest(&clusterv1beta1.DeletePipelineRequest{
+	if _, err := r.Client.DeletePipeline(ctx, &clusterv1beta1.DeletePipelineRequest{
 		Ref: ref,
-	})); err != nil {
+	}); err != nil {
 		if connect.CodeOf(err) == connect.CodeNotFound {
 			resp.State.RemoveResource(ctx)
 			return
@@ -301,16 +301,16 @@ func (r *ResourceForwardingPipeline) Delete(ctx context.Context, req resource.De
 		},
 		Target: []string{},
 		Refresh: func() (any, string, error) {
-			result, err := r.Client.GetPipeline(ctx, connect.NewRequest(&clusterv1beta1.GetPipelineRequest{
+			result, err := r.Client.GetPipeline(ctx, &clusterv1beta1.GetPipelineRequest{
 				Ref: ref,
-			}))
+			})
 			if err != nil {
 				if coreweave.IsNotFoundError(err) {
 					return nil, "", nil
 				}
 				return nil, typesv1beta1.ForwardingPipelineState_FORWARDING_PIPELINE_STATE_UNSPECIFIED.String(), err
 			}
-			pipeline := result.Msg.Pipeline
+			pipeline := result.Pipeline
 			return pipeline, pipeline.Status.State.String(), nil
 		},
 		Timeout: pollTimeout(ctx, pipelineTimeout),
@@ -332,9 +332,9 @@ func (r *ResourceForwardingPipeline) Read(ctx context.Context, req resource.Read
 	}
 
 	ref := &typesv1beta1.ForwardingPipelineRef{Slug: data.Slug.ValueString()}
-	getResp, err := r.Client.GetPipeline(ctx, connect.NewRequest(&clusterv1beta1.GetPipelineRequest{
+	getResp, err := r.Client.GetPipeline(ctx, &clusterv1beta1.GetPipelineRequest{
 		Ref: ref,
-	}))
+	})
 	if err != nil {
 		// Deleted out of band: drop it from state so the next plan re-creates
 		// it, rather than reporting an error the user cannot act on.
@@ -346,7 +346,7 @@ func (r *ResourceForwardingPipeline) Read(ctx context.Context, req resource.Read
 		return
 	}
 
-	resp.Diagnostics.Append(data.Set(ctx, getResp.Msg.GetPipeline())...)
+	resp.Diagnostics.Append(data.Set(ctx, getResp.GetPipeline())...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -375,10 +375,10 @@ func (r *ResourceForwardingPipeline) Update(ctx context.Context, req resource.Up
 		return
 	}
 
-	updateResp, err := r.Client.UpdatePipeline(ctx, connect.NewRequest(&clusterv1beta1.UpdatePipelineRequest{
+	updateResp, err := r.Client.UpdatePipeline(ctx, &clusterv1beta1.UpdatePipelineRequest{
 		Ref:  pipelineMsg.GetRef(),
 		Spec: pipelineMsg.GetSpec(),
-	}))
+	})
 	if err != nil {
 		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
 		return
@@ -386,7 +386,7 @@ func (r *ResourceForwardingPipeline) Update(ctx context.Context, req resource.Up
 
 	// Save state before polling so a poll failure doesn't leave state
 	// describing the pre-update pipeline.
-	resp.Diagnostics.Append(data.Set(ctx, updateResp.Msg.GetPipeline())...)
+	resp.Diagnostics.Append(data.Set(ctx, updateResp.GetPipeline())...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -415,14 +415,14 @@ func awaitPipelineActive(ctx context.Context, client *coreweave.Client, ref *typ
 			typesv1beta1.ForwardingPipelineState_FORWARDING_PIPELINE_STATE_ACTIVE.String(),
 		},
 		Refresh: func() (result any, state string, err error) {
-			getResp, err := client.GetPipeline(ctx, connect.NewRequest(&clusterv1beta1.GetPipelineRequest{
+			getResp, err := client.GetPipeline(ctx, &clusterv1beta1.GetPipelineRequest{
 				Ref: ref,
-			}))
+			})
 			if err != nil {
 				return nil, typesv1beta1.ForwardingPipelineState_FORWARDING_PIPELINE_STATE_UNSPECIFIED.String(), err
 			}
 
-			pipeline := getResp.Msg.GetPipeline()
+			pipeline := getResp.GetPipeline()
 			lastSeen = pipeline
 			status := pipeline.GetStatus()
 

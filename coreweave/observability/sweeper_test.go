@@ -10,7 +10,6 @@ import (
 
 	clusterv1beta1 "buf.build/gen/go/coreweave/telemetry-relay/protocolbuffers/go/coreweave/telemetryrelay/svc/cluster/v1beta1"
 	typesv1beta1 "buf.build/gen/go/coreweave/telemetry-relay/protocolbuffers/go/coreweave/telemetryrelay/types/v1beta1"
-	"connectrpc.com/connect/v2"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave/observability"
 	"github.com/coreweave/terraform-provider-coreweave/internal/provider"
@@ -73,11 +72,11 @@ func typedEndpointSweeper(specType string) func(string) error {
 		// Run producer in a goroutine, so the errgroup can handle all error propagation.
 		eg.Go(func() error {
 			defer close(endpoints) // Producer must close the channel when done; this forces all downstream goroutines to break their loops or die.
-			listResp, err := client.ListEndpoints(ctx, connect.NewRequest(&clusterv1beta1.ListEndpointsRequest{}))
+			listResp, err := client.ListEndpoints(ctx, &clusterv1beta1.ListEndpointsRequest{})
 			if err != nil {
 				return fmt.Errorf("failed to list endpoints: %w", err)
 			}
-			for _, endpoint := range listResp.Msg.Endpoints {
+			for _, endpoint := range listResp.Endpoints {
 				if endpoint.GetSpec().WhichConfig().String() != specType {
 					continue
 				}
