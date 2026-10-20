@@ -229,7 +229,7 @@ func TestForwardingEndpointS3(t *testing.T) {
 				model: with(valid(), func(m *model.ForwardingEndpointS3) {
 					m.Credentials = nil
 				}),
-				expectError: regexp.MustCompile(`(?s)(?i)credentials.*required`),
+				expectError: regexp.MustCompile(`(?s)(?i)require\w*\s+credentials`),
 			},
 		}
 
