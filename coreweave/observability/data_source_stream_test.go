@@ -10,7 +10,6 @@ import (
 
 	clusterv1beta1 "buf.build/gen/go/coreweave/telemetry-relay/protocolbuffers/go/coreweave/telemetryrelay/svc/cluster/v1beta1"
 	typesv1beta1 "buf.build/gen/go/coreweave/telemetry-relay/protocolbuffers/go/coreweave/telemetryrelay/types/v1beta1"
-	"connectrpc.com/connect/v2"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave/observability"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave/observability/internal/model"
 	"github.com/coreweave/terraform-provider-coreweave/internal/provider"
@@ -327,10 +326,10 @@ func findFilteredStream(t *testing.T) (string, bool) {
 	t.Helper()
 
 	client := testClient(t)
-	listResp, err := client.ListStreams(t.Context(), connect.NewRequest(&clusterv1beta1.ListStreamsRequest{}))
+	listResp, err := client.ListStreams(t.Context(), &clusterv1beta1.ListStreamsRequest{})
 	require.NoError(t, err, "failed to list streams")
 
-	for _, stream := range listResp.Msg.GetStreams() {
+	for _, stream := range listResp.GetStreams() {
 		if stream.GetSpec().GetFilter() != nil {
 			return stream.GetRef().GetSlug(), true
 		}

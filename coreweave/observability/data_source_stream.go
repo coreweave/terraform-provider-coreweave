@@ -7,7 +7,6 @@ import (
 	clusterv1beta1 "buf.build/gen/go/coreweave/telemetry-relay/protocolbuffers/go/coreweave/telemetryrelay/svc/cluster/v1beta1"
 	typesv1beta1 "buf.build/gen/go/coreweave/telemetry-relay/protocolbuffers/go/coreweave/telemetryrelay/types/v1beta1"
 	"buf.build/go/protovalidate"
-	"connectrpc.com/connect/v2"
 
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave/observability/internal/model"
@@ -148,7 +147,7 @@ func (s *TelemetryStreamDataSource) Read(ctx context.Context, req datasource.Rea
 		Ref: data.ToRef(),
 	}
 
-	getResp, err := s.Client.GetStream(ctx, connect.NewRequest(getReq))
+	getResp, err := s.Client.GetStream(ctx, getReq)
 	if err != nil {
 		if coreweave.IsNotFoundError(err) {
 			resp.Diagnostics.AddError(
@@ -161,7 +160,7 @@ func (s *TelemetryStreamDataSource) Read(ctx context.Context, req datasource.Rea
 		return
 	}
 
-	resp.Diagnostics.Append(data.Set(getResp.Msg.Stream)...)
+	resp.Diagnostics.Append(data.Set(getResp.Stream)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
