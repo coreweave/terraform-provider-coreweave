@@ -136,6 +136,22 @@ var (
 		"logs-events",
 		"logs-journald",
 	}
+
+	// The per-cluster log streams, which are the only ones a lab-scoped
+	// pipeline can bind to. logs-audit-console and logs-audit-cw-api are
+	// org-scoped: the control plane produces them once per org in us-east-03a,
+	// the zone hosting the console, under a fixed cluster segment
+	// (logs.us-east-03a.<org>.fluffybunny.audit.console). Cluster registration
+	// deliberately skips them per-cluster, so they never exist in the org's own
+	// zone and a pipeline reaching them would create a connector in a
+	// production zone.
+	matrixLogsStreams = []string{
+		"logs-audit-caios",
+		"logs-audit-kube-api",
+		"logs-customer-cluster",
+		"logs-events",
+		"logs-journald",
+	}
 )
 
 // EndpointType represents the type of forwarding endpoint
@@ -670,7 +686,7 @@ func testForwardingPipelineLifecycle(t *testing.T) {
 	t.Run("stream_to_endpoint_matrix", func(t *testing.T) {
 		streamsByStreamType := map[StreamType][]string{
 			StreamTypeMetrics: metricsStreams,
-			StreamTypeLogs:    logsStreams,
+			StreamTypeLogs:    matrixLogsStreams,
 		}
 
 		// Metrics streams have no endpoint type the provider can create today;
@@ -709,12 +725,20 @@ func testForwardingPipelineLifecycle(t *testing.T) {
 
 						pipelineSlug := slugify(fmt.Sprintf("pipe-%s-%s", streamSlug, endpointType), randomInt)
 
+						// Always scope to the lab zone. A pipeline fans out one connector
+						// per Kafka cluster holding the stream's topics, so an unscoped
+						// pipeline creates connectors in whatever production zones the org
+						// reaches -- which an acceptance test may not do. It also fails
+						// there: a production kafkaclusterd unwraps credentials with
+						// telecasterd-secrets while staging telecasterd sealed them with
+						// telecasterd-secrets-stg, so a credentialed endpoint dies on
+						// crypto/rsa: decryption error after the ten minute poll timeout.
 						pipeline := &model.ForwardingPipeline{
 							Slug:            types.StringValue(pipelineSlug),
 							SourceSlug:      types.StringValue(streamSlug),
 							DestinationSlug: types.StringValue(endpointSlug),
 							Enabled:         types.BoolValue(true),
-							ZoneSlugs:       types.SetNull(types.StringType),
+							ZoneSlugs:       zoneSlugSet(t, testLabZoneSlug),
 						}
 
 						resource.ParallelTest(t, resource.TestCase{
@@ -737,7 +761,9 @@ func testForwardingPipelineLifecycle(t *testing.T) {
 										statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("source_slug"), knownvalue.StringExact(streamSlug)),
 										statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("destination_slug"), knownvalue.StringExact(endpointSlug)),
 										statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("enabled"), knownvalue.Bool(true)),
-										statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("zone_slugs"), knownvalue.Null()),
+										statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("zone_slugs"), knownvalue.SetExact([]knownvalue.Check{
+											knownvalue.StringExact(testLabZoneSlug),
+										})),
 										statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("state"), knownvalue.StringExact(typesv1beta1.ForwardingPipelineState_FORWARDING_PIPELINE_STATE_ACTIVE.String())),
 									},
 								},
