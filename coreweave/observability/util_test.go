@@ -19,12 +19,12 @@ import (
 const (
 	AcceptanceTestPrefix = "tf-acc-tc-"
 
-	// Endpoint URLs used by acceptance tests. They do not need to resolve:
-	// forwarding endpoints are database-only records server-side and
-	// CheckEndpoint performs no connectivity test. They do need to be public
-	// https, because buf.validate requires the https:// scheme and the service
-	// rejects targets resolving to loopback, private, or link-local addresses.
-	testHTTPSEndpointURL = "https://telemetry.example.com/ingest"
+	// Endpoint URLs used by acceptance tests. The host must resolve to a public
+	// address: buf.validate requires the https:// scheme, and CreateEndpoint
+	// resolves the host to reject loopback, private and link-local targets, so
+	// a name that does not resolve fails with TELEMETRYRELAY_INVALID_URL.
+	// telemetry.example.com has no record -- example.com itself does.
+	testHTTPSEndpointURL = "https://example.com/ingest"
 
 	// Endpoint slugs are capped at 32 characters by buf.validate; the pipeline
 	// matrix generates names from stream and endpoint type and has to shorten
