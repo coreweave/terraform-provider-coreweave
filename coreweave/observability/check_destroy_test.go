@@ -6,7 +6,6 @@ import (
 
 	clusterv1beta1 "buf.build/gen/go/coreweave/telemetry-relay/protocolbuffers/go/coreweave/telemetryrelay/svc/cluster/v1beta1"
 	typesv1beta1 "buf.build/gen/go/coreweave/telemetry-relay/protocolbuffers/go/coreweave/telemetryrelay/types/v1beta1"
-	"connectrpc.com/connect/v2"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
 	"github.com/coreweave/terraform-provider-coreweave/internal/provider"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
@@ -49,13 +48,13 @@ func checkDestroyed(t *testing.T) resource.TestCheckFunc {
 				var lookup error
 				switch res.Type {
 				case httpsEndpointResourceName, s3EndpointResourceName:
-					_, lookup = client.GetEndpoint(ctx, connect.NewRequest(&clusterv1beta1.GetEndpointRequest{
+					_, lookup = client.GetEndpoint(ctx, &clusterv1beta1.GetEndpointRequest{
 						Ref: &typesv1beta1.ForwardingEndpointRef{Slug: slug},
-					}))
+					})
 				case pipelineResourceName:
-					_, lookup = client.GetPipeline(ctx, connect.NewRequest(&clusterv1beta1.GetPipelineRequest{
+					_, lookup = client.GetPipeline(ctx, &clusterv1beta1.GetPipelineRequest{
 						Ref: &typesv1beta1.ForwardingPipelineRef{Slug: slug},
-					}))
+					})
 				default:
 					// Data sources and any other provider's resources.
 					continue

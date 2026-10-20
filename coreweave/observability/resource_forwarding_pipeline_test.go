@@ -52,7 +52,7 @@ func init() {
 				return fmt.Errorf("failed to build client: %w", err)
 			}
 
-			listResp, err := client.ListPipelines(ctx, connect.NewRequest(&clusterv1beta1.ListPipelinesRequest{}))
+			listResp, err := client.ListPipelines(ctx, &clusterv1beta1.ListPipelinesRequest{})
 			if err != nil {
 				return fmt.Errorf("failed to list forwarding pipelines: %w", err)
 			}
@@ -64,7 +64,7 @@ func init() {
 			prefixPattern := fmt.Sprintf(`^(%s-)?%s`, strings.Join(streamPrefixes, "|"), AcceptanceTestPrefix)
 			prefixMatcher := regexp.MustCompile(prefixPattern)
 
-			for _, pipeline := range listResp.Msg.GetPipelines() {
+			for _, pipeline := range listResp.GetPipelines() {
 				if !prefixMatcher.MatchString(pipeline.Ref.Slug) {
 					log.Printf("skipping forwarding pipeline %q because it does not match regular expression %q", pipeline.Ref.Slug, prefixMatcher)
 					continue
@@ -79,9 +79,9 @@ func init() {
 				deleteCtx, deleteCancel := context.WithTimeout(ctx, 5*time.Minute)
 				defer deleteCancel()
 
-				if _, err := client.DeletePipeline(deleteCtx, connect.NewRequest(&clusterv1beta1.DeletePipelineRequest{
+				if _, err := client.DeletePipeline(deleteCtx, &clusterv1beta1.DeletePipelineRequest{
 					Ref: pipeline.Ref,
-				})); err != nil {
+				}); err != nil {
 					if connect.CodeOf(err) == connect.CodeNotFound {
 						log.Printf("forwarding pipeline %q already deleted", pipeline.Ref.Slug)
 						continue
@@ -101,9 +101,9 @@ func init() {
 					case <-waitCtx.Done():
 						return fmt.Errorf("timeout waiting for forwarding pipeline %q to be deleted: %w", pipeline.Ref.Slug, waitCtx.Err())
 					case <-ticker.C:
-						_, err := client.GetPipeline(waitCtx, connect.NewRequest(&clusterv1beta1.GetPipelineRequest{
+						_, err := client.GetPipeline(waitCtx, &clusterv1beta1.GetPipelineRequest{
 							Ref: pipeline.Ref,
-						}))
+						})
 						if connect.CodeOf(err) == connect.CodeNotFound {
 							log.Printf("forwarding pipeline %q successfully deleted", pipeline.Ref.Slug)
 							goto nextPipeline
@@ -1002,9 +1002,9 @@ func testForwardingPipelineLifecycle(t *testing.T) {
 					PreConfig: func() {
 						t.Log("delete the pipeline behind Terraform's back")
 						client := testClient(t)
-						_, err := client.DeletePipeline(t.Context(), connect.NewRequest(&clusterv1beta1.DeletePipelineRequest{
+						_, err := client.DeletePipeline(t.Context(), &clusterv1beta1.DeletePipelineRequest{
 							Ref: &typesv1beta1.ForwardingPipelineRef{Slug: pipelineSlug},
-						}))
+						})
 						require.NoError(t, err)
 					},
 					Config: renderForwardingPipelineResource(t, resourceName, pipeline, endpoint),
