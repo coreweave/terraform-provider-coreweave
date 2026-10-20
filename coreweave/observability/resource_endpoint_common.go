@@ -152,13 +152,13 @@ func pollForEndpointReady(ctx context.Context, client *coreweave.Client, ref *ty
 			typesv1beta1.ForwardingEndpointState_FORWARDING_ENDPOINT_STATE_CONNECTED.String(),
 		},
 		Refresh: func() (result any, state string, err error) {
-			getResp, err := client.GetEndpoint(ctx, connect.NewRequest(&clusterv1beta1.GetEndpointRequest{
+			getResp, err := client.GetEndpoint(ctx, &clusterv1beta1.GetEndpointRequest{
 				Ref: ref,
-			}))
+			})
 			if err != nil {
 				return nil, typesv1beta1.ForwardingEndpointState_FORWARDING_ENDPOINT_STATE_UNSPECIFIED.String(), err
 			}
-			endpoint := getResp.Msg.GetEndpoint()
+			endpoint := getResp.GetEndpoint()
 			status := endpoint.GetStatus()
 
 			// ERROR is terminal. Without this the poll treats it as an unrecognized
@@ -198,9 +198,9 @@ func endpointStateMessage(status *typesv1beta1.ForwardingEndpointStatus) string 
 
 func readEndpoint(ctx context.Context, client *coreweave.Client, slug string, diags *diag.Diagnostics) *typesv1beta1.ForwardingEndpoint {
 	ref := &typesv1beta1.ForwardingEndpointRef{Slug: slug}
-	getResp, err := client.GetEndpoint(ctx, connect.NewRequest(&clusterv1beta1.GetEndpointRequest{
+	getResp, err := client.GetEndpoint(ctx, &clusterv1beta1.GetEndpointRequest{
 		Ref: ref,
-	}))
+	})
 	if err != nil {
 		if coreweave.IsNotFoundError(err) {
 			return nil
@@ -209,7 +209,7 @@ func readEndpoint(ctx context.Context, client *coreweave.Client, slug string, di
 		return nil
 	}
 
-	return getResp.Msg.GetEndpoint()
+	return getResp.GetEndpoint()
 }
 
 // createEndpoint issues the Create RPC and returns the server's immediate view
@@ -217,26 +217,26 @@ func readEndpoint(ctx context.Context, client *coreweave.Client, slug string, di
 // view to state first, so a poll failure or timeout cannot orphan an endpoint
 // the API has already accepted.
 func createEndpoint(ctx context.Context, client *coreweave.Client, req *clusterv1beta1.CreateEndpointRequest) (endpoint *typesv1beta1.ForwardingEndpoint, diagnostics diag.Diagnostics) {
-	createResp, err := client.CreateEndpoint(ctx, connect.NewRequest(req))
+	createResp, err := client.CreateEndpoint(ctx, req)
 	if err != nil {
 		coreweave.HandleAPIError(ctx, err, &diagnostics)
 		return nil, diagnostics
 	}
 
-	return createResp.Msg.GetEndpoint(), diagnostics
+	return createResp.GetEndpoint(), diagnostics
 }
 
 // updateEndpoint issues the Update RPC and returns the server's immediate view
 // of the endpoint. As with createEndpoint, polling is the caller's job so that
 // state can be written in between.
 func updateEndpoint(ctx context.Context, client *coreweave.Client, req *clusterv1beta1.UpdateEndpointRequest) (endpoint *typesv1beta1.ForwardingEndpoint, diagnostics diag.Diagnostics) {
-	updateResp, err := client.UpdateEndpoint(ctx, connect.NewRequest(req))
+	updateResp, err := client.UpdateEndpoint(ctx, req)
 	if err != nil {
 		coreweave.HandleAPIError(ctx, err, &diagnostics)
 		return nil, diagnostics
 	}
 
-	return updateResp.Msg.GetEndpoint(), diagnostics
+	return updateResp.GetEndpoint(), diagnostics
 }
 
 // awaitEndpointReady polls the endpoint to a terminal state and converts the
@@ -271,9 +271,9 @@ func deleteEndpoint(ctx context.Context, client *coreweave.Client, data interfac
 }
 
 func deleteEndpointAndWait(ctx context.Context, client *coreweave.Client, ref *typesv1beta1.ForwardingEndpointRef) error {
-	if _, err := client.DeleteEndpoint(ctx, connect.NewRequest(&clusterv1beta1.DeleteEndpointRequest{
+	if _, err := client.DeleteEndpoint(ctx, &clusterv1beta1.DeleteEndpointRequest{
 		Ref: ref,
-	})); err != nil {
+	}); err != nil {
 		if connect.CodeOf(err) == connect.CodeNotFound {
 			return nil
 		}
@@ -297,16 +297,16 @@ func deleteEndpointAndWait(ctx context.Context, client *coreweave.Client, ref *t
 		},
 		Target: []string{},
 		Refresh: func() (any, string, error) {
-			result, err := client.GetEndpoint(ctx, connect.NewRequest(&clusterv1beta1.GetEndpointRequest{
+			result, err := client.GetEndpoint(ctx, &clusterv1beta1.GetEndpointRequest{
 				Ref: ref,
-			}))
+			})
 			if err != nil {
 				if coreweave.IsNotFoundError(err) {
 					return nil, "", nil
 				}
 				return nil, typesv1beta1.ForwardingEndpointState_FORWARDING_ENDPOINT_STATE_UNSPECIFIED.String(), err
 			}
-			endpoint := result.Msg.GetEndpoint()
+			endpoint := result.GetEndpoint()
 			return endpoint, endpoint.GetStatus().GetState().String(), nil
 		},
 		Timeout: pollTimeout(ctx, endpointTimeout),
