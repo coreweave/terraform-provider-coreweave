@@ -121,6 +121,39 @@ func (d *ClusterDataSource) Schema(ctx context.Context, req datasource.SchemaReq
 						MarkdownDescription: "The client ID of the OIDC configuration.",
 						Computed:            true,
 					},
+					"username_claim": schema.StringAttribute{
+						MarkdownDescription: "The claim to use as the username.",
+						Computed:            true,
+					},
+					"username_prefix": schema.StringAttribute{
+						MarkdownDescription: "The prefix to use for the username.",
+						Computed:            true,
+					},
+					"groups_claim": schema.StringAttribute{
+						MarkdownDescription: "The claim to use as the groups.",
+						Computed:            true,
+					},
+					"groups_prefix": schema.StringAttribute{
+						MarkdownDescription: "The prefix to use for the groups.",
+						Computed:            true,
+					},
+					"ca": schema.StringAttribute{
+						MarkdownDescription: "The CA certificate for the OIDC issuer. Must be a base64-encoded PEM-encoded certificate.",
+						Computed:            true,
+					},
+					"required_claim": schema.StringAttribute{
+						MarkdownDescription: "The claim to require for authentication.",
+						Computed:            true,
+					},
+					"signing_algs": schema.SetAttribute{
+						ElementType:         types.StringType,
+						MarkdownDescription: "A list of signing algorithms that the OpenID Connect discovery endpoint uses.",
+						Computed:            true,
+					},
+					"admin_group_binding": schema.StringAttribute{
+						MarkdownDescription: "The OIDC group that is bound to the cluster-admin role for bootstrap access to the cluster.",
+						Computed:            true,
+					},
 				},
 			},
 			"authn_webhook": schema.SingleNestedAttribute{

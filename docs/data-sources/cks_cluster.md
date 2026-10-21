@@ -133,8 +133,16 @@ Read-Only:
 
 Read-Only:
 
+- `admin_group_binding` (String) The OIDC group that is bound to the cluster-admin role for bootstrap access to the cluster.
+- `ca` (String) The CA certificate for the OIDC issuer. Must be a base64-encoded PEM-encoded certificate.
 - `client_id` (String) The client ID of the OIDC configuration.
+- `groups_claim` (String) The claim to use as the groups.
+- `groups_prefix` (String) The prefix to use for the groups.
 - `issuer_url` (String) The issuer URL of the OIDC configuration.
+- `required_claim` (String) The claim to require for authentication.
+- `signing_algs` (Set of String) A list of signing algorithms that the OpenID Connect discovery endpoint uses.
+- `username_claim` (String) The claim to use as the username.
+- `username_prefix` (String) The prefix to use for the username.
 
 
 <a id="nestedatt--tailscale"></a>
