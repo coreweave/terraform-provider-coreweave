@@ -102,6 +102,9 @@ type httpsEndpointTestStep struct {
 	ConfigPlanChecks resource.ConfigPlanChecks
 	ExtraChecks      []statecheck.StateCheck
 	Options          []testStepOption
+	// ExpectError asserts the apply is refused. State checks are skipped when
+	// it is set, since nothing was applied to check.
+	ExpectError *regexp.Regexp
 }
 
 func createHTTPSEndpointTestStep(t *testing.T, opts httpsEndpointTestStep) resource.TestStep {
@@ -155,9 +158,13 @@ func createHTTPSEndpointTestStep(t *testing.T, opts httpsEndpointTestStep) resou
 				opts.PreConfig()
 			}
 		},
-		Config:            renderHTTPSEndpointResource(opts.ResourceName, opts.Model),
-		ConfigPlanChecks:  opts.ConfigPlanChecks,
-		ConfigStateChecks: stateChecks,
+		Config:           renderHTTPSEndpointResource(opts.ResourceName, opts.Model),
+		ConfigPlanChecks: opts.ConfigPlanChecks,
+		ExpectError:      opts.ExpectError,
+	}
+
+	if opts.ExpectError == nil {
+		testStep.ConfigStateChecks = stateChecks
 	}
 
 	for _, option := range opts.Options {
@@ -365,11 +372,16 @@ func TestForwardingEndpointHTTPS(t *testing.T) {
 						},
 					},
 				}),
+				// Updates the endpoint URL rather than display_name. UpdateEndpoint
+				// rejects any changed display_name as immutable, though the proto
+				// marks it REQUIRED and reserves "cannot be changed after creation"
+				// for the config oneof. Restore display_name here once the server
+				// stops rejecting it; it is the more natural thing to assert.
 				createHTTPSEndpointTestStep(t, httpsEndpointTestStep{
-					TestName:     "update display name (update)",
+					TestName:     "update endpoint url (update)",
 					ResourceName: resourceName,
 					Model: with(baseModel, func(m *model.ForwardingEndpointHTTPS) {
-						m.DisplayName = types.StringValue("Updated HTTPS Endpoint")
+						m.Endpoint = types.StringValue("https://192.0.2.1/ingest-v2")
 					}),
 					ConfigPlanChecks: resource.ConfigPlanChecks{
 						PreApply: []plancheck.PlanCheck{
@@ -378,7 +390,7 @@ func TestForwardingEndpointHTTPS(t *testing.T) {
 					},
 				}),
 				createHTTPSEndpointTestStep(t, httpsEndpointTestStep{
-					TestName:     "revert display name (update)",
+					TestName:     "revert endpoint url (update)",
 					ResourceName: resourceName,
 					Model:        baseModel,
 					ConfigPlanChecks: resource.ConfigPlanChecks{
@@ -624,8 +636,13 @@ func TestForwardingEndpointHTTPS(t *testing.T) {
 					// credentials are untouched, and credentials_updated_at must not move.
 					TestName:     "changed secret without a version bump is a no-op (PRESERVE)",
 					ResourceName: resourceName,
+					// Carries a spec change alongside the secret so the step proves a
+					// spec update does not rewrite credentials. That was display_name
+					// until the server began rejecting it as immutable; compression is
+					// equivalent here and, unlike the endpoint URL, is not an input to
+					// the credential AAD.
 					Model: with(baseModel, func(m *model.ForwardingEndpointHTTPS) {
-						m.DisplayName = types.StringValue("Renamed, credentials untouched")
+						m.Compression = types.StringValue("COMPRESSION_TYPE_GZIP")
 						m.Credentials = &model.HTTPSCredentials{
 							BasicAuth: &model.BasicAuthCredentials{
 								Username: types.StringValue("telemetry"),
@@ -666,8 +683,14 @@ func TestForwardingEndpointHTTPS(t *testing.T) {
 					},
 				}),
 				createHTTPSEndpointTestStep(t, httpsEndpointTestStep{
-					// Switching auth method is also a rotation, so it needs a bump too.
-					TestName:     "switch from basic auth to headers",
+					// The credential type is fixed for the life of an endpoint's
+					// credentials: UpdateEndpoint refuses to move between basic_auth
+					// and header_auth, naming both in the violation. The provider
+					// cannot catch this at plan time — credentials are write-only and
+					// state records only credentials_configured, never which type is
+					// stored — so the server's refusal is the only possible signal.
+					// Switching method means clearing first, as the next two steps do.
+					TestName:     "switching auth method in place is refused",
 					ResourceName: resourceName,
 					Model: with(baseModel, func(m *model.ForwardingEndpointHTTPS) {
 						m.CredentialsVersion = types.Int64Value(3)
@@ -677,11 +700,7 @@ func TestForwardingEndpointHTTPS(t *testing.T) {
 							},
 						}
 					}),
-					ConfigPlanChecks: resource.ConfigPlanChecks{
-						PreApply: []plancheck.PlanCheck{
-							plancheck.ExpectResourceAction(fullResourceName, plancheck.ResourceActionUpdate),
-						},
-					},
+					ExpectError: regexp.MustCompile(`cannot change credential_type`),
 				}),
 				createHTTPSEndpointTestStep(t, httpsEndpointTestStep{
 					// Removing the block sends CLEAR, which is legal for HTTPS (unlike
@@ -699,9 +718,22 @@ func TestForwardingEndpointHTTPS(t *testing.T) {
 					},
 				}),
 				createHTTPSEndpointTestStep(t, httpsEndpointTestStep{
-					TestName:     "adding credentials back on an endpoint that has none (REPLACE)",
+					// Adds back with the *other* auth method, which the clear above
+					// makes legal: the stored credential type is gone, so there is
+					// nothing for the server to refuse a change against. This is the
+					// supported route to switching method, and the pair of steps is
+					// what proves the earlier refusal is about changing in place
+					// rather than about header auth being unusable.
+					TestName:     "adding credentials back with the other method (REPLACE)",
 					ResourceName: resourceName,
-					Model:        baseModel,
+					Model: with(baseModel, func(m *model.ForwardingEndpointHTTPS) {
+						m.CredentialsVersion = types.Int64Value(3)
+						m.Credentials = &model.HTTPSCredentials{
+							AuthHeaders: &model.AuthHeadersCredentials{
+								Headers: map[string]string{"X-API-Key": "header-secret"},
+							},
+						}
+					}),
 					ConfigPlanChecks: resource.ConfigPlanChecks{
 						PreApply: []plancheck.PlanCheck{
 							plancheck.ExpectResourceAction(fullResourceName, plancheck.ResourceActionUpdate),
