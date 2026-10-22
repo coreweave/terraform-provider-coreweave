@@ -21,7 +21,11 @@ It is `workflow_dispatch` only. Dispatch requires write access and can only sele
 
 It does not reuse `acceptance-test.yaml`. That workflow's freshness guard requires a `pull_request` event and rejects every other event, which `current-pr.test.mjs` pins; routing a dispatch through it would mean weakening that guard.
 
-Credentials come from the `observability-acceptance` environment, not `QA`. The token there belongs to an organization whose registered clusters are lab-only, which is what makes the pipeline suites safe to run: a pipeline creates one connector per source Kafka cluster holding the stream's topics, so an organization with a production cluster footprint would provision real connectors in a production zone. The environment is the boundary — workflow conditions alone do not protect a credential from modified branch code.
+Credentials come from the `QA` environment, with the suite carrying its own secret — `COREWEAVE_OBSERVABILITY_API_TOKEN` — the way object_storage already carries `COREWEAVE_OBJS_API_TOKEN`.
+
+That token must belong to an organization whose registered clusters are **lab-only**. This is what makes the pipeline suites safe to run: a pipeline creates one connector per source Kafka cluster holding the stream's topics, so an organization with a production cluster footprint would provision real connectors in a production zone.
+
+Because this shares the `QA` environment with release acceptance, a dispatched branch can read that environment's other secrets. Dispatch requires write access, and that is the control being relied on.
 
 To confirm an organization is lab-only before trusting it, list its streams and check every `zones_active` entry:
 
