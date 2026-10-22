@@ -13,7 +13,6 @@ import (
 	"github.com/coreweave/terraform-provider-coreweave/coreweave/observability"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave/observability/internal/model"
 	"github.com/coreweave/terraform-provider-coreweave/internal/provider"
-	"github.com/coreweave/terraform-provider-coreweave/internal/testutil"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -239,7 +238,7 @@ func TestTelemetryStream(t *testing.T) {
 
 					resource.ParallelTest(t, resource.TestCase{
 						ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
-						PreCheck:                 func() { testutil.SetEnvDefaults() },
+						PreCheck:                 func() { setAccEnvDefaults() },
 						Steps: []resource.TestStep{
 							createStreamDataSourceTestStep(t, streamDataSourceTestStep{
 								TestName:       fmt.Sprintf("%s stream: %s", tt.streamType, slug),
@@ -275,7 +274,7 @@ func TestTelemetryStream(t *testing.T) {
 
 		resource.ParallelTest(t, resource.TestCase{
 			ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
-			PreCheck:                 func() { testutil.SetEnvDefaults() },
+			PreCheck:                 func() { setAccEnvDefaults() },
 			Steps: []resource.TestStep{
 				createStreamDataSourceTestStep(t, streamDataSourceTestStep{
 					TestName:       fmt.Sprintf("filtered stream: %s", slug),
@@ -292,7 +291,7 @@ func TestTelemetryStream(t *testing.T) {
 	t.Run("not_found", func(t *testing.T) {
 		resource.ParallelTest(t, resource.TestCase{
 			ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
-			PreCheck:                 func() { testutil.SetEnvDefaults() },
+			PreCheck:                 func() { setAccEnvDefaults() },
 			Steps: []resource.TestStep{
 				createStreamDataSourceTestStep(t, streamDataSourceTestStep{
 					TestName:       "stream not found",
@@ -307,7 +306,7 @@ func TestTelemetryStream(t *testing.T) {
 	t.Run("invalid_slug", func(t *testing.T) {
 		resource.ParallelTest(t, resource.TestCase{
 			ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
-			PreCheck:                 func() { testutil.SetEnvDefaults() },
+			PreCheck:                 func() { setAccEnvDefaults() },
 			Steps: []resource.TestStep{
 				createStreamDataSourceTestStep(t, streamDataSourceTestStep{
 					TestName:       "invalid slug validation",

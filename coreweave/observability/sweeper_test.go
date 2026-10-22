@@ -54,7 +54,7 @@ func sweepEndpoint(ctx context.Context, client *coreweave.Client, endpoint *type
 // This may be reused for endpoints of different types to implement discrete sweepers for each resource.
 func typedEndpointSweeper(specType string) func(string) error {
 	return func(_ string) error {
-		testutil.SetEnvDefaults()
+		setAccEnvDefaults()
 		ctx, cancel := context.WithTimeout(context.Background(), sweeperTimeout)
 		defer cancel()
 
