@@ -53,6 +53,7 @@ resource "coreweave_observability_telemetry_relay_pipeline" "example" {
 ### Optional
 
 - `enabled` (Boolean) Whether the forwarding pipeline is enabled. **This is not currently enforced.** The value is stored and returned, but the forwarding workflow never reads it, so setting it to `false` does not stop data being forwarded. To stop forwarding today, destroy the pipeline.
+- `timeouts` (Attributes) (see [below for nested schema](#nestedatt--timeouts))
 - `zone_slugs` (Set of String) Restricts the pipeline to these zones. Omit to use every zone with an active cluster registration for the organization. Immutable: `UpdatePipeline` rejects any change, so editing this replaces the pipeline.
 
 ### Read-Only
@@ -61,6 +62,15 @@ resource "coreweave_observability_telemetry_relay_pipeline" "example" {
 - `state` (String) The current state of the forwarding pipeline. One of: `FORWARDING_PIPELINE_STATE_PENDING`, `FORWARDING_PIPELINE_STATE_ACTIVE`, `FORWARDING_PIPELINE_STATE_ERROR`, `FORWARDING_PIPELINE_STATE_STOPPED`.
 - `state_message` (String) Additional context about the current state, most useful when `state` is `FORWARDING_PIPELINE_STATE_ERROR`.
 - `updated_at` (String) The time the forwarding pipeline was last updated.
+
+<a id="nestedatt--timeouts"></a>
+### Nested Schema for `timeouts`
+
+Optional:
+
+- `create` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours).
+- `delete` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours). Setting a timeout for a Delete operation is only applicable if changes are saved into state before the destroy operation occurs.
+- `update` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours).
 
 ## Import
 

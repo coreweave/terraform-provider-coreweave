@@ -4,11 +4,17 @@ page_title: "coreweave_observability_telemetry_relay_endpoint_https Resource - c
 subcategory: ""
 description: |-
   CoreWeave Telemetry Relay HTTPS forwarding endpoint. Forwards telemetry data to an HTTPS endpoint.
+  Rotating credentials
+  Credential attributes are write-only: Terraform sends them on apply but never stores them, so they are null in both plan and state and changing one cannot produce a diff on its own. Use credentials_version to signal a rotation — increment it in the same apply that changes a credential value, and the new credentials are sent. Change a credential without incrementing it and the apply is a silent no-op: the previously stored credentials stay in place. Removing the credentials block clears the stored credentials; leaving it unchanged preserves them.
 ---
 
 # coreweave_observability_telemetry_relay_endpoint_https (Resource)
 
 CoreWeave Telemetry Relay HTTPS forwarding endpoint. Forwards telemetry data to an HTTPS endpoint.
+
+## Rotating credentials
+
+Credential attributes are write-only: Terraform sends them on apply but never stores them, so they are null in both plan and state and **changing one cannot produce a diff on its own**. Use `credentials_version` to signal a rotation — increment it in the same apply that changes a credential value, and the new credentials are sent. Change a credential without incrementing it and the apply is a silent no-op: the previously stored credentials stay in place. Removing the `credentials` block clears the stored credentials; leaving it unchanged preserves them.
 
 ## Example Usage
 
@@ -49,6 +55,7 @@ resource "coreweave_observability_telemetry_relay_endpoint_https" "example" {
 - `compression` (String) Compression applied to the request body. Must be one of: `COMPRESSION_TYPE_NONE`, `COMPRESSION_TYPE_GZIP`. Omit for uncompressed delivery; `COMPRESSION_TYPE_NONE` records that compression was explicitly disabled.
 - `credentials` (Attributes) Authentication credentials for the HTTPS endpoint. Exactly one of `basic_auth` or `auth_headers` must be set. The values are write-only: they are sent to the API and never read back, so changing one only takes effect if you also increment `credentials_version`. Removing this block clears the stored credentials. (see [below for nested schema](#nestedatt--credentials))
 - `credentials_version` (Number) Rotation counter for `credentials`. Credential attributes are write-only, so they are null in both plan and state and cannot produce a diff on their own. Increment this whenever you change a credential value; the next apply then sends the new credentials. **Changing a credential without incrementing this is a silent no-op** — the stored credentials are left as they are.
+- `timeouts` (Attributes) (see [below for nested schema](#nestedatt--timeouts))
 - `tls` (Attributes) Configuration for TLS connections. (see [below for nested schema](#nestedatt--tls))
 
 ### Read-Only
@@ -84,6 +91,16 @@ Required:
 - `password` (String, Sensitive, [Write-only](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments)) Password for HTTP Basic authentication.
 - `username` (String, Sensitive, [Write-only](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments)) Username for HTTP Basic authentication.
 
+
+
+<a id="nestedatt--timeouts"></a>
+### Nested Schema for `timeouts`
+
+Optional:
+
+- `create` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours).
+- `delete` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours). Setting a timeout for a Delete operation is only applicable if changes are saved into state before the destroy operation occurs.
+- `update` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours).
 
 
 <a id="nestedatt--tls"></a>
