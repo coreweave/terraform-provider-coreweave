@@ -206,22 +206,45 @@ func createS3Endpoint(t *testing.T, slug string) *model.ForwardingEndpointS3 {
 // an optional endpoint dependency. When an endpoint is supplied the
 // destination is a resource traversal, which is what creates the dependency
 // edge CreatePipeline's synchronous existence check needs.
-func renderForwardingPipelineResource(t *testing.T, resourceName string, pipeline *model.ForwardingPipeline, endpoint any) string {
+// renderForwardingPipelineResource renders a pipeline together with the
+// endpoints the config needs.
+//
+// destination_slug is always written as a reference to whichever rendered
+// endpoint carries that slug, never as a literal. The reference is what gives
+// Terraform the dependency edge, and without it the pipeline is updated before
+// its new destination exists — which the server reports as
+// TELEMETRYRELAY_PIPELINE_HAS_INVALID_STREAM even though the missing resource
+// is the endpoint.
+//
+// Pass extraEndpoints to keep an endpoint in the config that the pipeline no
+// longer points at. Dropping one instead has Terraform destroy it during the
+// repoint, and the server refuses to delete an endpoint that any pipeline
+// still references.
+func renderForwardingPipelineResource(t *testing.T, resourceName string, pipeline *model.ForwardingPipeline, endpoint any, extraEndpoints ...any) string {
 	t.Helper()
 	var parts []string
 
-	var endpointResourceType string
-	if endpoint != nil {
-		switch endpoint := endpoint.(type) {
+	// slug -> the rendered address destination_slug can reference.
+	addressBySlug := map[string]string{}
+
+	render := func(name string, ep any) {
+		switch ep := ep.(type) {
 		case *model.ForwardingEndpointHTTPS:
-			endpointResourceType = httpsEndpointResourceName
-			parts = append(parts, renderHTTPSEndpointResource(resourceName, endpoint))
+			parts = append(parts, renderHTTPSEndpointResource(name, ep))
+			addressBySlug[ep.Slug.ValueString()] = fmt.Sprintf("%s.%s", httpsEndpointResourceName, name)
 		case *model.ForwardingEndpointS3:
-			endpointResourceType = s3EndpointResourceName
-			parts = append(parts, renderS3EndpointResource(resourceName, endpoint))
+			parts = append(parts, renderS3EndpointResource(name, ep))
+			addressBySlug[ep.Slug.ValueString()] = fmt.Sprintf("%s.%s", s3EndpointResourceName, name)
 		default:
-			t.Fatalf("Unknown endpoint type: %T", endpoint)
+			t.Fatalf("Unknown endpoint type: %T", ep)
 		}
+	}
+
+	if endpoint != nil {
+		render(resourceName, endpoint)
+	}
+	for i, extra := range extraEndpoints {
+		render(fmt.Sprintf("%s_extra_%d", resourceName, i), extra)
 	}
 
 	var hcl strings.Builder
@@ -229,8 +252,8 @@ func renderForwardingPipelineResource(t *testing.T, resourceName string, pipelin
 	fmt.Fprintf(&hcl, "  slug             = %q\n", pipeline.Slug.ValueString())
 	fmt.Fprintf(&hcl, "  source_slug      = %q\n", pipeline.SourceSlug.ValueString())
 
-	if endpoint != nil {
-		fmt.Fprintf(&hcl, "  destination_slug = %s.%s.slug\n", endpointResourceType, resourceName)
+	if address, ok := addressBySlug[pipeline.DestinationSlug.ValueString()]; ok {
+		fmt.Fprintf(&hcl, "  destination_slug = %s.slug\n", address)
 	} else {
 		fmt.Fprintf(&hcl, "  destination_slug = %q\n", pipeline.DestinationSlug.ValueString())
 	}
@@ -283,6 +306,13 @@ func zoneSlugSet(t *testing.T, zones ...string) types.Set {
 // CreatePipeline cannot succeed at all, because the workflow fails the
 // precondition that the stream has topics. These need an organization whose
 // registered clusters are lab-only.
+//
+// Run these serially: `-parallel=1`, or TEST_ACC_PARALLEL=1 through the
+// Makefile. Every subtest's connectors live in the one Connect cluster the
+// organization has, and Kafka Connect rebalances whenever a connector is
+// added or removed, so concurrent subtests fail with "Request cannot be
+// completed because a rebalance is expected". The suite passes serially and
+// fails intermittently otherwise, in whichever subtest happens to collide.
 func TestForwardingPipeline(t *testing.T) {
 	t.Parallel()
 
@@ -889,17 +919,20 @@ func testForwardingPipelineLifecycle(t *testing.T) {
 					// UpdatePipeline accepts a new destination, so repointing is an
 					// in-place update. Forcing replacement would leave a window with
 					// no pipeline at all.
+					// Holds the pipeline's Terraform address steady and keeps the
+					// original endpoint in the config. Renaming the address while
+					// holding the slug would put two addresses on one server object,
+					// and dropping the old endpoint would have Terraform delete it
+					// mid-repoint; both were tried and both fail.
 					PreConfig: func() { t.Log("Step 7: Repoint destination in place (no replacement)") },
-					Config: renderForwardingPipelineResource(t, resourceName+"_b",
+					Config: renderForwardingPipelineResource(t, resourceName,
 						with(pipeline, func(p *model.ForwardingPipeline) {
 							p.DestinationSlug = types.StringValue(secondEndpointSlug)
 						}),
-						createHTTPSEndpoint(t, secondEndpointSlug)),
+						endpoint, createHTTPSEndpoint(t, secondEndpointSlug)),
 					ConfigPlanChecks: resource.ConfigPlanChecks{
 						PreApply: []plancheck.PlanCheck{
-							plancheck.ExpectResourceAction(
-								fmt.Sprintf("%s.%s_b", pipelineResourceName, resourceName),
-								plancheck.ResourceActionCreate),
+							plancheck.ExpectResourceAction(fullResourceName, plancheck.ResourceActionUpdate),
 						},
 					},
 				},
