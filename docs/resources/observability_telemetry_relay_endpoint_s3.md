@@ -4,11 +4,17 @@ page_title: "coreweave_observability_telemetry_relay_endpoint_s3 Resource - core
 subcategory: ""
 description: |-
   CoreWeave Telemetry Relay S3 forwarding endpoint. Forwards telemetry data to an S3-compatible bucket.
+  Rotating credentials
+  Credential attributes are write-only: Terraform sends them on apply but never stores them, so they are null in both plan and state and changing one cannot produce a diff on its own. Use credentials_version to signal a rotation — increment it in the same apply that changes a credential value, and the new credentials are sent. Change a credential without incrementing it and the apply is a silent no-op: the previously stored credentials stay in place. S3 endpoints require credentials, so they cannot be removed once set; leaving the block unchanged preserves them.
 ---
 
 # coreweave_observability_telemetry_relay_endpoint_s3 (Resource)
 
 CoreWeave Telemetry Relay S3 forwarding endpoint. Forwards telemetry data to an S3-compatible bucket.
+
+## Rotating credentials
+
+Credential attributes are write-only: Terraform sends them on apply but never stores them, so they are null in both plan and state and **changing one cannot produce a diff on its own**. Use `credentials_version` to signal a rotation — increment it in the same apply that changes a credential value, and the new credentials are sent. Change a credential without incrementing it and the apply is a silent no-op: the previously stored credentials stay in place. S3 endpoints require credentials, so they cannot be removed once set; leaving the block unchanged preserves them.
 
 ## Example Usage
 
@@ -45,6 +51,7 @@ resource "coreweave_observability_telemetry_relay_endpoint_s3" "example" {
 
 - `credentials` (Attributes) AWS credentials for S3 bucket access. (see [below for nested schema](#nestedatt--credentials))
 - `credentials_version` (Number) Rotation counter for `credentials`. Credential attributes are write-only, so they are null in both plan and state and cannot produce a diff on their own. Increment this whenever you change a credential value; the next apply then sends the new credentials. **Changing a credential without incrementing this is a silent no-op** — the stored credentials are left as they are.
+- `timeouts` (Attributes) (see [below for nested schema](#nestedatt--timeouts))
 
 ### Read-Only
 
@@ -66,6 +73,16 @@ Required:
 Optional:
 
 - `session_token` (String, Sensitive, [Write-only](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments)) AWS Session Token for temporary S3 credentials (optional).
+
+
+<a id="nestedatt--timeouts"></a>
+### Nested Schema for `timeouts`
+
+Optional:
+
+- `create` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours).
+- `delete` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours). Setting a timeout for a Delete operation is only applicable if changes are saved into state before the destroy operation occurs.
+- `update` (String) A string that can be [parsed as a duration](https://pkg.go.dev/time#ParseDuration) consisting of numbers and unit suffixes, such as "30s" or "2h45m". Valid time units are "s" (seconds), "m" (minutes), "h" (hours).
 
 ## Import
 
