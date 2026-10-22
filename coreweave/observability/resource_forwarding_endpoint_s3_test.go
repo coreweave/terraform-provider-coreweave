@@ -319,11 +319,14 @@ func TestForwardingEndpointS3(t *testing.T) {
 					PreConfig: func() {
 						t.Log("import")
 					},
-					ResourceName:            fullResourceName,
-					ImportState:             true,
-					ImportStateId:           baseModel.Slug.ValueString(),
-					ImportStateVerify:       true,
-					ImportStateVerifyIgnore: []string{"credentials", "credentials_version"},
+					ResourceName:      fullResourceName,
+					ImportState:       true,
+					ImportStateId:     baseModel.Slug.ValueString(),
+					ImportStateVerify: true,
+					// The resource has no id attribute; slug is the identity the
+					// import passthrough reads, so verification has to match on it.
+					ImportStateVerifyIdentifierAttribute: "slug",
+					ImportStateVerifyIgnore:              []string{"credentials", "credentials_version"},
 				},
 				createS3EndpointTestStep(t, s3EndpointTestStep{
 					TestName:     "update slug (requires replacement, plan only)",

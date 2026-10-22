@@ -872,6 +872,9 @@ func testForwardingPipelineLifecycle(t *testing.T) {
 					ImportState:       true,
 					ImportStateId:     pipelineSlug,
 					ImportStateVerify: true,
+					// The resource has no id attribute; slug is the identity the
+					// import passthrough reads, so verification has to match on it.
+					ImportStateVerifyIdentifierAttribute: "slug",
 					// enabled is Optional with no default, so an imported pipeline
 					// reads it as null regardless of what the server stored.
 					ImportStateVerifyIgnore: []string{"enabled"},

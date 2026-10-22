@@ -395,6 +395,9 @@ func TestForwardingEndpointHTTPS(t *testing.T) {
 					ImportState:       true,
 					ImportStateId:     baseModel.Slug.ValueString(),
 					ImportStateVerify: true,
+					// The resource has no id attribute; slug is the identity the
+					// import passthrough reads, so verification has to match on it.
+					ImportStateVerifyIdentifierAttribute: "slug",
 					// Write-only credential inputs and the user-owned rotation counter
 					// are not recoverable from the API, so import cannot reproduce them.
 					ImportStateVerifyIgnore: []string{"credentials", "credentials_version"},
