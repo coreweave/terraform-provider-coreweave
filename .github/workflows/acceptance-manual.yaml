@@ -83,12 +83,7 @@ jobs:
       - name: Sweep ${{ inputs.suite }} resources
         run: make testacc-sweep SUITES='${{ inputs.suite }}'
 
-      # observability runs serially: its pipeline subtests all provision
-      # connectors in the organization's single Kafka Connect cluster, and
-      # Connect rebalances on every connector add or remove, so concurrent
-      # subtests collide with "a rebalance is expected".
       - name: Validate ${{ inputs.suite }} acceptance tests
         run: |
           make testacc SUITES='${{ inputs.suite }}' \
-            ${{ inputs.suite == 'cks' && 'TEST_ACC_PARALLEL=3 TEST_ACC_TIMEOUT=60m' || '' }} \
-            ${{ inputs.suite == 'observability' && 'TEST_ACC_PARALLEL=1' || '' }}
+            ${{ inputs.suite == 'cks' && 'TEST_ACC_PARALLEL=3 TEST_ACC_TIMEOUT=60m' || '' }}
