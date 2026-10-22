@@ -137,6 +137,18 @@ var (
 		"logs-journald",
 	}
 
+	// The lifecycle subtests run in parallel and are indifferent to which
+	// stream they bind to, so each takes its own. Sharing one made them all
+	// mutate connectors over the same topics at the same moment, and Kafka
+	// Connect rebalances on every connector add or remove — whichever subtest
+	// lost the race failed with "a rebalance is expected". Values must come
+	// from matrixLogsStreams: the org-scoped streams would place a connector
+	// in a production zone.
+	lifecycleCrudStream        = matrixLogsStreams[1]
+	lifecycleSlugReplaceStream = matrixLogsStreams[2]
+	lifecycleZoneReplaceStream = matrixLogsStreams[3]
+	lifecycleDisappearsStream  = matrixLogsStreams[4]
+
 	// The per-cluster log streams, which are the only ones a lab-scoped
 	// pipeline can bind to. logs-audit-console and logs-audit-cw-api are
 	// org-scoped: the control plane produces them once per org in us-east-03a,
@@ -307,12 +319,18 @@ func zoneSlugSet(t *testing.T, zones ...string) types.Set {
 // precondition that the stream has topics. These need an organization whose
 // registered clusters are lab-only.
 //
-// Run these serially: `-parallel=1`, or TEST_ACC_PARALLEL=1 through the
-// Makefile. Every subtest's connectors live in the one Connect cluster the
-// organization has, and Kafka Connect rebalances whenever a connector is
-// added or removed, so concurrent subtests fail with "Request cannot be
-// completed because a rebalance is expected". The suite passes serially and
-// fails intermittently otherwise, in whichever subtest happens to collide.
+// These can still fail intermittently with "Request cannot be completed
+// because a rebalance is expected". Every subtest's connectors live in the one
+// Connect cluster the organization has, and Kafka Connect rebalances whenever
+// a connector is added or removed, so a concurrent subtest's status read can
+// be rejected. The lifecycle subtests each take their own stream to cut the
+// collision rate, but the stream matrix still fans out over the same cluster,
+// so it is reduced rather than eliminated.
+//
+// The fix is in telecasterd rather than here: updatePipelineState turns a
+// status carrying that message into a terminal PipelineStateError, where a
+// bounded re-read would let it settle. Until then, a failure naming a
+// rebalance is environmental and the run can be repeated.
 func TestForwardingPipeline(t *testing.T) {
 	t.Parallel()
 
@@ -809,7 +827,7 @@ func testForwardingPipelineLifecycle(t *testing.T) {
 		resourceName := "lifecycle"
 		fullResourceName := fmt.Sprintf("%s.%s", pipelineResourceName, resourceName)
 
-		streamSlug := logsStreams[0]
+		streamSlug := lifecycleCrudStream
 
 		endpointSlug := slugify("lifecycle-ep", randomInt)
 		endpoint := createHTTPSEndpoint(t, endpointSlug)
@@ -955,7 +973,7 @@ func testForwardingPipelineLifecycle(t *testing.T) {
 
 		pipeline := &model.ForwardingPipeline{
 			Slug:            types.StringValue(slugify("zones-pipeline", randomInt)),
-			SourceSlug:      types.StringValue(logsStreams[0]),
+			SourceSlug:      types.StringValue(lifecycleZoneReplaceStream),
 			DestinationSlug: types.StringValue(endpointSlug),
 			Enabled:         types.BoolValue(true),
 			ZoneSlugs:       zoneSlugSet(t, testLabZoneSlug),
@@ -1003,7 +1021,7 @@ func testForwardingPipelineLifecycle(t *testing.T) {
 
 		pipeline := &model.ForwardingPipeline{
 			Slug:            types.StringValue(slugify("slugrep-pipeline", randomInt)),
-			SourceSlug:      types.StringValue(logsStreams[0]),
+			SourceSlug:      types.StringValue(lifecycleSlugReplaceStream),
 			DestinationSlug: types.StringValue(endpointSlug),
 			Enabled:         types.BoolValue(true),
 			ZoneSlugs:       types.SetNull(types.StringType),
@@ -1051,7 +1069,7 @@ func testForwardingPipelineLifecycle(t *testing.T) {
 		pipelineSlug := slugify("gone-pipeline", randomInt)
 		pipeline := &model.ForwardingPipeline{
 			Slug:            types.StringValue(pipelineSlug),
-			SourceSlug:      types.StringValue(logsStreams[0]),
+			SourceSlug:      types.StringValue(lifecycleDisappearsStream),
 			DestinationSlug: types.StringValue(endpointSlug),
 			Enabled:         types.BoolValue(true),
 			ZoneSlugs:       types.SetNull(types.StringType),
