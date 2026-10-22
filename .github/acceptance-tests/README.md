@@ -27,6 +27,12 @@ That token must belong to an organization whose registered clusters are **lab-on
 
 Because this shares the `QA` environment with release acceptance, a dispatched branch can read that environment's other secrets. Dispatch requires write access, and that is the control being relied on.
 
+### Token rotation
+
+`COREWEAVE_OBSERVABILITY_API_TOKEN` expires **2027-10-01**. Rotate it before then: mint a replacement in the QA console for the same organization and overwrite the secret in the `QA` environment. Nothing else changes, and no workflow edit is needed.
+
+An expired token does not fail loudly in a way that points at the cause — the suites fail on `401` responses from the first API call, which reads as a broken test rather than a lapsed credential. If a previously green suite starts failing wholesale on authentication, check the expiry first.
+
 To confirm an organization is lab-only before trusting it, list its streams and check every `zones_active` entry:
 
 ```sh
