@@ -6,6 +6,33 @@ Every release-please PR from this repository's `release-please--branches--main` 
 
 Selection fetches current PR metadata and requires an open PR at the requested head SHA. A stale rerun, closed PR, incomplete metadata, or lookup failure fails selection. Forks and similarly named branches do not qualify as release candidates.
 
+## Manual runs
+
+Because selection only fires for the release PR, and the release PR is created from changes already on `main`, a suite is never exercised against code that is still in review. `Acceptance (manual)` closes that gap.
+
+Run it from the Actions tab, or:
+
+```sh
+gh workflow run acceptance-manual.yaml --ref <branch> -f suite=observability
+gh workflow run acceptance-manual.yaml --ref <branch> -f suite=observability -f run=TestForwardingEndpointHTTPS
+```
+
+It is `workflow_dispatch` only. Dispatch requires write access and can only select a ref that exists in this repository, so a fork's pull request branch cannot reach it — which matters because this repository is public. The workflow must exist on the default branch before it appears; dispatching a ref runs that ref's copy.
+
+It does not reuse `acceptance-test.yaml`. That workflow's freshness guard requires a `pull_request` event and rejects every other event, which `current-pr.test.mjs` pins; routing a dispatch through it would mean weakening that guard.
+
+Credentials come from the `observability-acceptance` environment, not `QA`. The token there belongs to an organization whose registered clusters are lab-only, which is what makes the pipeline suites safe to run: a pipeline creates one connector per source Kafka cluster holding the stream's topics, so an organization with a production cluster footprint would provision real connectors in a production zone. The environment is the boundary — workflow conditions alone do not protect a credential from modified branch code.
+
+To confirm an organization is lab-only before trusting it, list its streams and check every `zones_active` entry:
+
+```sh
+curl -s -X POST "$COREWEAVE_API_ENDPOINT/coreweave.telemetryrelay.svc.cluster.v1beta1.TelemetryRelayService/ListStreams" \
+  -H "Authorization: Bearer $COREWEAVE_API_TOKEN" \
+  -H 'Content-Type: application/json' -H 'Connect-Protocol-Version: 1' -d '{}'
+```
+
+The `Connect-Protocol-Version` header is required. Without it the request 404s, and the 404 is reported as `TELEMETRYRELAY_ENDPOINT_NOT_FOUND`, which reads like a missing forwarding endpoint rather than a missing route.
+
 Release Please creates and updates PRs with the repository's `GITHUB_TOKEN`. GitHub holds the resulting `pull_request` workflows for human approval. On the release PR, click **Approve workflows to run** in the checks/merge area to start `Tests`, including its full six-suite acceptance matrix. No separate environment approval or navigation to workflow runs is needed. Each automation-triggered PR revision requires approval. Human pushes, **Update branch**, or reopening the release PR can start workflows without that prompt; use those actions only when you intend to start QA. See [GitHub's workflow triggering documentation](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow).
 
 After approval, acceptance waits for compilation, lint, module consistency, and unit tests. Snapshot builds and documentation generation remain parallel. Each suite holds its shared `acceptance-test-<suite>` lock; queued arrivals do not cancel running sweeps or tests. Before checkout and each resource command, QA verifies that the PR is still open at the requested revision. Started commands finish their cleanup; outdated queued commands fail before using resources.
