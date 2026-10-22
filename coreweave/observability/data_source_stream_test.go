@@ -35,8 +35,8 @@ var (
 
 func mustRenderTelemetryStreamDataSource(resourceName string, stream *model.TelemetryStreamDataSource) string {
 	var buf strings.Builder
-	buf.WriteString(fmt.Sprintf("data %q %q {\n", telemetryStreamDataSourceName, resourceName))
-	buf.WriteString(fmt.Sprintf("  slug = %q\n", stream.Slug.ValueString()))
+	fmt.Fprintf(&buf, "data %q %q {\n", telemetryStreamDataSourceName, resourceName)
+	fmt.Fprintf(&buf, "  slug = %q\n", stream.Slug.ValueString())
 	buf.WriteString("}\n")
 
 	return buf.String()
