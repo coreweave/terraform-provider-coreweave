@@ -12,6 +12,10 @@ buf.build/gen/go/coreweave/cwobject/connectrpc/go/v2 v2.0.0-20260831154917-08064
 buf.build/gen/go/coreweave/cwobject/connectrpc/go/v2 v2.0.0-20260831154917-08064e55742b.1/go.mod h1:VGsgiwR5jsMVeQuUtHmGg0ujX0AAat00AsDlc0bpcW4=
 buf.build/gen/go/coreweave/cwobject/protocolbuffers/go v1.36.12-20260831154917-08064e55742b.2 h1:H4aGnMhVx0uldc68oFWvgicOLVrZVcnd71ggM1LsmBI=
 buf.build/gen/go/coreweave/cwobject/protocolbuffers/go v1.36.12-20260831154917-08064e55742b.2/go.mod h1:JbpoSIgxpcOE0i1S2f36tdO5w10CsLMpZI7f/0zSyrM=
+buf.build/gen/go/coreweave/directory/connectrpc/go/v2 v2.0.1-20261022011331-2af0c9345d0d.1 h1:gB3yLh/EoaEEgdyn60Bpk7QZj3bUOq8okjRbRwuwPI8=
+buf.build/gen/go/coreweave/directory/connectrpc/go/v2 v2.0.1-20261022011331-2af0c9345d0d.1/go.mod h1:WVPsWnThOwng8+IfOTcP8kf3h33YLZ3sGJ5N92OgO/w=
+buf.build/gen/go/coreweave/directory/protocolbuffers/go v1.36.12-20261022011331-2af0c9345d0d.2 h1:qlfKeq6knmx0Pb4VR5p/yObrP1FdpEkzTK1U02N7IyI=
+buf.build/gen/go/coreweave/directory/protocolbuffers/go v1.36.12-20261022011331-2af0c9345d0d.2/go.mod h1:h7rxRyNB2/dzwQyMxNM5MgIzItgg79s65Aryd4aKYeM=
 buf.build/gen/go/coreweave/inference/connectrpc/go/v2 v2.0.2-20261016211223-a1f4fb425137.1 h1:PltRevEk50najxLiejhHiIwNDgeK+gBZIpbZT4UbWeQ=
 buf.build/gen/go/coreweave/inference/connectrpc/go/v2 v2.0.2-20261016211223-a1f4fb425137.1/go.mod h1:EwswnjeU6IxiUciu4eNWoVmeDZDr0nTyzjg+22tk2I0=
 buf.build/gen/go/coreweave/inference/protocolbuffers/go v1.36.12-20261016211223-a1f4fb425137.2 h1:OP2fkCBtQd//JcBBbmrJnPeTxy2jpckemOJyVuI6cIo=
