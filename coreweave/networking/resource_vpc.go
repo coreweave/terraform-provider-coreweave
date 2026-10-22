@@ -899,6 +899,27 @@ func hostPrefixToCtyValue(hp HostPrefixResourceModel) cty.Value {
 	return cty.ObjectVal(hpObj)
 }
 
+// stringSetToCtyValues converts a Terraform string set into a slice of cty
+// string values, panicking (with what describing the field) if the set cannot
+// be marshaled. A null set yields a nil slice.
+func stringSetToCtyValues(ctx context.Context, set types.Set, what string) []cty.Value {
+	if set.IsNull() {
+		return nil
+	}
+
+	var elems []types.String
+	if diags := set.ElementsAs(ctx, &elems, false); diags.HasError() {
+		panic(fmt.Sprintf("failed to marshal %s: %+v", what, diags))
+	}
+
+	vals := make([]cty.Value, len(elems))
+	for i, s := range elems {
+		vals[i] = cty.StringVal(s.ValueString())
+	}
+
+	return vals
+}
+
 // MustRenderVpcResource is a helper to render HCL for use in acceptance testing.
 // It should not be used by clients of this library.
 func MustRenderVpcResource(ctx context.Context, resourceName string, vpc *VpcResourceModel) string {
@@ -962,33 +983,11 @@ func MustRenderVpcResource(ctx context.Context, resourceName string, vpc *VpcRes
 		dhcp := map[string]cty.Value{}
 		if vpc.Dhcp.Dns != nil {
 			dns := map[string]cty.Value{}
-			if !vpc.Dhcp.Dns.Servers.IsNull() {
-				servers := []types.String{}
-				if diags := vpc.Dhcp.Dns.Servers.ElementsAs(ctx, &servers, false); diags.HasError() {
-					panic(fmt.Sprintf("failed to marshal DHCP servers: %+v", diags))
-				}
-				serverVals := make([]cty.Value, len(servers))
-				for i, s := range servers {
-					serverVals[i] = cty.StringVal(s.ValueString())
-				}
-
-				if len(serverVals) > 0 {
-					dns["servers"] = cty.SetVal(serverVals)
-				}
+			if servers := stringSetToCtyValues(ctx, vpc.Dhcp.Dns.Servers, "DHCP servers"); len(servers) > 0 {
+				dns["servers"] = cty.SetVal(servers)
 			}
-			if !vpc.Dhcp.Dns.SearchDomains.IsNull() {
-				searchDomains := []types.String{}
-				if diags := vpc.Dhcp.Dns.SearchDomains.ElementsAs(ctx, &searchDomains, false); diags.HasError() {
-					panic(fmt.Sprintf("failed to marshal DHCP search domains: %+v", diags))
-				}
-				searchDomainVals := make([]cty.Value, len(searchDomains))
-				for i, s := range searchDomains {
-					searchDomainVals[i] = cty.StringVal(s.ValueString())
-				}
-
-				if len(searchDomainVals) > 0 {
-					dns["search_domains"] = cty.SetVal(searchDomainVals)
-				}
+			if searchDomains := stringSetToCtyValues(ctx, vpc.Dhcp.Dns.SearchDomains, "DHCP search domains"); len(searchDomains) > 0 {
+				dns["search_domains"] = cty.SetVal(searchDomains)
 			}
 			if len(dns) > 0 {
 				dhcp["dns"] = cty.ObjectVal(dns)
