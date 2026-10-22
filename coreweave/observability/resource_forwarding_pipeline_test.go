@@ -877,7 +877,13 @@ func testForwardingPipelineLifecycle(t *testing.T) {
 					ImportStateVerifyIdentifierAttribute: "slug",
 					// enabled is Optional with no default, so an imported pipeline
 					// reads it as null regardless of what the server stored.
-					ImportStateVerifyIgnore: []string{"enabled"},
+					//
+					// updated_at moves on its own: the reconcile workflow writes
+					// pipeline state once its connectors settle, which lands after
+					// the apply returns, so comparing it across an import is a race
+					// rather than an assertion. Observed differing by one second.
+					// state and state_message are deliberately still verified.
+					ImportStateVerifyIgnore: []string{"enabled", "updated_at"},
 				},
 				{
 					// UpdatePipeline accepts a new destination, so repointing is an
