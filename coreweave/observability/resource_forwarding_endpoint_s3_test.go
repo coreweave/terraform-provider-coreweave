@@ -84,6 +84,9 @@ type s3EndpointTestStep struct {
 	ConfigPlanChecks resource.ConfigPlanChecks
 	ExtraChecks      []statecheck.StateCheck
 	Options          []testStepOption
+	// ExpectError asserts the apply is refused. State checks are skipped when
+	// it is set, since nothing was applied to check.
+	ExpectError *regexp.Regexp
 }
 
 func createS3EndpointTestStep(t *testing.T, opts s3EndpointTestStep) resource.TestStep {
@@ -117,9 +120,13 @@ func createS3EndpointTestStep(t *testing.T, opts s3EndpointTestStep) resource.Te
 				opts.PreConfig()
 			}
 		},
-		Config:            renderS3EndpointResource(opts.ResourceName, opts.Model),
-		ConfigPlanChecks:  opts.ConfigPlanChecks,
-		ConfigStateChecks: stateChecks,
+		Config:           renderS3EndpointResource(opts.ResourceName, opts.Model),
+		ConfigPlanChecks: opts.ConfigPlanChecks,
+		ExpectError:      opts.ExpectError,
+	}
+
+	if opts.ExpectError == nil {
+		testStep.ConfigStateChecks = stateChecks
 	}
 
 	for _, option := range opts.Options {
@@ -294,10 +301,15 @@ func TestForwardingEndpointS3(t *testing.T) {
 					// The case that sent empty credentials before Update learned to read
 					// req.Config: nothing about the credentials changed, so the request
 					// must carry PRESERVE and no credential payload.
-					TestName:     "update display name only, credentials untouched",
+					//
+					// Changes region rather than display_name: UpdateEndpoint rejects
+					// any changed display_name as immutable. Region is confirmed
+					// mutable and, unlike uri, is not an input to the credential AAD,
+					// so the stored credentials stay decryptable.
+					TestName:     "update region only, credentials untouched",
 					ResourceName: resourceName,
 					Model: with(baseModel, func(m *model.ForwardingEndpointS3) {
-						m.DisplayName = types.StringValue("Updated S3 Endpoint")
+						m.Region = types.StringValue("us-west-2")
 					}),
 					ConfigPlanChecks: resource.ConfigPlanChecks{
 						PreApply: []plancheck.PlanCheck{
@@ -306,7 +318,7 @@ func TestForwardingEndpointS3(t *testing.T) {
 					},
 				}),
 				createS3EndpointTestStep(t, s3EndpointTestStep{
-					TestName:     "revert display name (update)",
+					TestName:     "revert region (update)",
 					ResourceName: resourceName,
 					Model:        baseModel,
 					ConfigPlanChecks: resource.ConfigPlanChecks{
@@ -367,7 +379,7 @@ func TestForwardingEndpointS3(t *testing.T) {
 			Credentials: fixtureS3Credentials(),
 		}
 
-		var afterCreate, afterNoopUpdate, afterRotation string
+		var afterCreate, afterNoopUpdate string
 
 		resource.ParallelTest(t, resource.TestCase{
 			ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
@@ -390,10 +402,12 @@ func TestForwardingEndpointS3(t *testing.T) {
 					},
 				}),
 				createS3EndpointTestStep(t, s3EndpointTestStep{
-					TestName:     "display_name-only update preserves credentials (PRESERVE)",
+					// Was a display_name-only update until the server began rejecting
+					// that as immutable; region is the equivalent spec-only change.
+					TestName:     "spec-only update preserves credentials (PRESERVE)",
 					ResourceName: resourceName,
 					Model: with(baseModel, func(m *model.ForwardingEndpointS3) {
-						m.DisplayName = types.StringValue("Renamed, credentials untouched")
+						m.Region = types.StringValue("us-west-2")
 					}),
 					ExtraChecks: []statecheck.StateCheck{
 						extractCredentialsUpdatedAt(fullResourceName, &afterNoopUpdate),
@@ -406,7 +420,16 @@ func TestForwardingEndpointS3(t *testing.T) {
 					},
 				}),
 				createS3EndpointTestStep(t, s3EndpointTestStep{
-					TestName:     "bumping credentials_version rotates the key (REPLACE)",
+					// REPLACE on an S3 endpoint runs a live bucket probe before the
+					// credentials are stored, so a rotation only succeeds with keys
+					// that genuinely reach the bucket. Fixture keys cannot, and this
+					// asserts the refusal rather than pretending otherwise.
+					//
+					// The consequence is that successful S3 rotation is not covered
+					// here; exercising it needs a real bucket and working keys for
+					// the test organization. The HTTPS suite covers the full
+					// PRESERVE/REPLACE/CLEAR matrix, which has no such probe.
+					TestName:     "rotating S3 credentials probes the bucket first (REPLACE)",
 					ResourceName: resourceName,
 					Model: with(baseModel, func(m *model.ForwardingEndpointS3) {
 						m.CredentialsVersion = types.Int64Value(2)
@@ -415,15 +438,7 @@ func TestForwardingEndpointS3(t *testing.T) {
 							c.SecretAccessKey = types.StringValue("je7MtGbClwBF/2Zp9Utk/h3yCo8nvbEXAMPLEKEY")
 						})
 					}),
-					ExtraChecks: []statecheck.StateCheck{
-						extractCredentialsUpdatedAt(fullResourceName, &afterRotation),
-						expectChanged(credentialsUpdatedAtAttribute, &afterNoopUpdate, &afterRotation),
-					},
-					ConfigPlanChecks: resource.ConfigPlanChecks{
-						PreApply: []plancheck.PlanCheck{
-							plancheck.ExpectResourceAction(fullResourceName, plancheck.ResourceActionUpdate),
-						},
-					},
+					ExpectError: regexp.MustCompile(`ACCESS_DENIED`),
 				}),
 				{
 					// Clearing is rejected at plan, with the attribute named, rather
@@ -436,6 +451,15 @@ func TestForwardingEndpointS3(t *testing.T) {
 					PlanOnly:    true,
 					ExpectError: regexp.MustCompile(`(?s)(?i)credentials.*cannot be removed`),
 				},
+				// Leaves a valid config behind. The framework destroys using the
+				// last step's config, and the rejection above is deliberately
+				// unappliable, so ending there fails the destroy rather than the
+				// assertion.
+				createS3EndpointTestStep(t, s3EndpointTestStep{
+					TestName:     "restore a destroyable config",
+					ResourceName: resourceName,
+					Model:        baseModel,
+				}),
 			},
 		})
 	})
