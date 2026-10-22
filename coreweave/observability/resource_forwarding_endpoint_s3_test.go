@@ -12,7 +12,6 @@ import (
 	"github.com/coreweave/terraform-provider-coreweave/coreweave/observability"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave/observability/internal/model"
 	"github.com/coreweave/terraform-provider-coreweave/internal/provider"
-	"github.com/coreweave/terraform-provider-coreweave/internal/testutil"
 	"github.com/hashicorp/hcl/v2/hclwrite"
 	fwresource "github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -38,7 +37,7 @@ func init() {
 		Name:         s3EndpointResourceName,
 		Dependencies: []string{pipelineResourceName},
 		F: func(r string) error {
-			testutil.SetEnvDefaults()
+			setAccEnvDefaults()
 			return typedEndpointSweeper(typesv1beta1.ForwardingEndpointSpec_S3_case.String())(r)
 		},
 	})
@@ -237,7 +236,7 @@ func TestForwardingEndpointS3(t *testing.T) {
 			t.Run(tc.name, func(t *testing.T) {
 				resource.ParallelTest(t, resource.TestCase{
 					ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
-					PreCheck:                 func() { testutil.SetEnvDefaults() },
+					PreCheck:                 func() { setAccEnvDefaults() },
 					CheckDestroy:             checkDestroyed(t),
 					Steps: []resource.TestStep{
 						{
@@ -268,7 +267,7 @@ func TestForwardingEndpointS3(t *testing.T) {
 
 		resource.ParallelTest(t, resource.TestCase{
 			ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
-			PreCheck:                 func() { testutil.SetEnvDefaults() },
+			PreCheck:                 func() { setAccEnvDefaults() },
 			CheckDestroy:             checkDestroyed(t),
 			Steps: []resource.TestStep{
 				createS3EndpointTestStep(t, s3EndpointTestStep{
@@ -369,7 +368,7 @@ func TestForwardingEndpointS3(t *testing.T) {
 
 		resource.ParallelTest(t, resource.TestCase{
 			ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
-			PreCheck:                 func() { testutil.SetEnvDefaults() },
+			PreCheck:                 func() { setAccEnvDefaults() },
 			CheckDestroy:             checkDestroyed(t),
 			Steps: []resource.TestStep{
 				createS3EndpointTestStep(t, s3EndpointTestStep{
@@ -457,7 +456,7 @@ func TestForwardingEndpointS3(t *testing.T) {
 
 		resource.ParallelTest(t, resource.TestCase{
 			ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
-			PreCheck:                 func() { testutil.SetEnvDefaults() },
+			PreCheck:                 func() { setAccEnvDefaults() },
 			CheckDestroy:             checkDestroyed(t),
 			Steps: []resource.TestStep{
 				createS3EndpointTestStep(t, s3EndpointTestStep{
@@ -491,7 +490,7 @@ func TestForwardingEndpointS3(t *testing.T) {
 
 		resource.ParallelTest(t, resource.TestCase{
 			ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
-			PreCheck:                 func() { testutil.SetEnvDefaults() },
+			PreCheck:                 func() { setAccEnvDefaults() },
 			CheckDestroy:             checkDestroyed(t),
 			Steps: []resource.TestStep{
 				createS3EndpointTestStep(t, s3EndpointTestStep{

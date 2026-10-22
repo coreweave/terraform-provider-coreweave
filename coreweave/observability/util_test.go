@@ -3,6 +3,7 @@ package observability_test
 import (
 	"context"
 	"fmt"
+	"os"
 	"testing"
 
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
@@ -19,12 +20,20 @@ import (
 const (
 	AcceptanceTestPrefix = "tf-acc-tc-"
 
-	// Endpoint URLs used by acceptance tests. The host must resolve to a public
-	// address: buf.validate requires the https:// scheme, and CreateEndpoint
-	// resolves the host to reject loopback, private and link-local targets, so
-	// a name that does not resolve fails with TELEMETRYRELAY_INVALID_URL.
-	// telemetry.example.com has no record -- example.com itself does.
-	testHTTPSEndpointURL = "https://example.com/ingest"
+	// Endpoint URL used by acceptance tests. buf.validate requires the https://
+	// scheme, and the host must survive two independent SSRF checks:
+	// telecasterd's CreateEndpoint and kafkaclusterd's connector builder. Both
+	// reject loopback, private, link-local, multicast and carrier-grade-NAT
+	// targets, and both treat a name that does not resolve as a failure, so a
+	// .test or .invalid host is rejected outright.
+	//
+	// 192.0.2.1 is TEST-NET-1 (RFC 5737). It takes the literal-IP branch in
+	// telecasterd's validator and is absent from kafkaclusterd's reserved-block
+	// list, so it passes both, and unlike example.com it is guaranteed never to
+	// route anywhere -- no risk of a test POSTing records at a live host.
+	// Connections to it hang until timeout rather than returning a status, so
+	// it exercises endpoint lifecycle only, never delivery.
+	testHTTPSEndpointURL = "https://192.0.2.1/ingest"
 
 	// Endpoint slugs are capped at 32 characters by buf.validate; the pipeline
 	// matrix generates names from stream and endpoint type and has to shorten
@@ -45,6 +54,24 @@ const (
 	testCACertificateData = "LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUJURENDQWZPZ0F3SUJBZ0lVZmRLdDdHWU9hRDZuL2pvb3A3OEVoT3Y3YkFvd0NnWUlLb1pJemowRUF3SXcKSERFYU1CZ0dBMVVFQXd3UlkyOXlaWGRsWVhabFkyRXRjbTl2ZEMwd0hoY05NalF4TVRFek1EQTBNVEExV2hjTgpNalV4TVRFek1EQTBNVEExV2pBY01Sb3dHQVlEVlFRRERCRmpiM0psZDJWaGRtVmpZUzF5YjI5ME1Ea1ZNQk1HCkJ5cUdTTTQ5QWdFR0NDcUdTTTQ5QXdFSEEwSUFCUElIdUMyQklIdlFyUlV0bjdodFFnY1NGRDlDbEs0U3BLN0sKaEhWaS9RQm9naVREMC9yMWRqRkViYmZHOW9DTzFodHpXWjd4aE1CRUY4NFJ2TlhtdWNlamdZWXdnWU13RGdZRApWUjBQQVFIL0JBUURBZ0VHTUJJR0ExVWRFd0VCL3dRSU1BWUJBZjhDQVFBd0hRWURWUjBPQkJZRUZOckZjS1dJClVOcWdXcWNxWk5FSVRzOVJuZGh4TUI4R0ExVWRJd1FZTUJhQUZOckZjS1dJVU5xZ1dxY3FaTkVJVHM5Um5kaHgKTUJrR0ExVWRFUVFTTUJDQ0RuZGxkR2h2YjJ0ekxuTjJZekFLQmdncWhrak9QUVFEQWdOSEFEQkVBaUJlM3NsYQpTWjc5bmxQeWJlYVY4NXp5VW9VQ1hVWjNvTnhjN1lZc3N0WDFuZ0lnSUhYQ0xEZUZWKzF2Mlk1RzdwN3N0VTRCClA0VTlScHlyVzhMWnhRdWhFYjQ9Ci0tLS0tRU5EIENFUlRJRklDQVRFLS0tLS0K"
 )
 
+// setAccEnvDefaults is the PreCheck for every acceptance test in this package.
+//
+// testutil.SetEnvDefaults defaults COREWEAVE_API_ENDPOINT to a private address
+// that resolves from one network only. Everywhere else a local run spends the
+// first test step retrying it and fails on a context deadline that never names
+// the variable to set. Default to QA instead, which is where these tests run.
+//
+// Both calls only fill unset variables, so an explicit COREWEAVE_API_ENDPOINT
+// still wins, and CI — which sets it for every suite — is unaffected. The token
+// still has to come from the environment; testutil's "test" placeholder gets a
+// 401 from QA, which at least says what is wrong.
+func setAccEnvDefaults() {
+	if _, ok := os.LookupEnv(provider.CoreweaveApiEndpointEnvVar); !ok {
+		_ = os.Setenv(provider.CoreweaveApiEndpointEnvVar, "https://api.qa.coreweave.com")
+	}
+	testutil.SetEnvDefaults()
+}
+
 func with[T any](value *T, fn func(*T)) *T {
 	v := *value
 	fn(&v)
@@ -62,7 +89,7 @@ func slugify(name string, randomInt int) string {
 func testClient(t *testing.T) *coreweave.Client {
 	t.Helper()
 
-	testutil.SetEnvDefaults()
+	setAccEnvDefaults()
 	client, err := provider.BuildClient(t.Context(), provider.CoreweaveProviderModel{}, "", "")
 	require.NoError(t, err, "failed to build API client")
 	return client
