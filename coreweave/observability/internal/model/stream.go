@@ -103,7 +103,7 @@ func (a *ActiveZone) Set(zone *typesv1beta1.TelemetryStreamStatus_ZoneClusterSta
 	clustersRaw := make([]ActiveCluster, len(zone.Clusters))
 	for i, cluster := range zone.Clusters {
 		clustersRaw[i] = ActiveCluster{
-			Id: types.StringValue(cluster.Id),
+			ID: types.StringValue(cluster.Id),
 		}
 	}
 	a.Clusters, diagnostics = types.ListValueFrom(context.Background(), types.ObjectType{
@@ -115,7 +115,7 @@ func (a *ActiveZone) Set(zone *typesv1beta1.TelemetryStreamStatus_ZoneClusterSta
 }
 
 type ActiveCluster struct {
-	Id types.String `tfsdk:"id"`
+	ID types.String `tfsdk:"id"`
 }
 
 func (s *TelemetryStreamStatus) Set(status *typesv1beta1.TelemetryStreamStatus) {
