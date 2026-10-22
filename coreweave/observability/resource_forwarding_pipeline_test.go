@@ -225,18 +225,18 @@ func renderForwardingPipelineResource(t *testing.T, resourceName string, pipelin
 	}
 
 	var hcl strings.Builder
-	hcl.WriteString(fmt.Sprintf("resource %q %q {\n", pipelineResourceName, resourceName))
-	hcl.WriteString(fmt.Sprintf("  slug             = %q\n", pipeline.Slug.ValueString()))
-	hcl.WriteString(fmt.Sprintf("  source_slug      = %q\n", pipeline.SourceSlug.ValueString()))
+	fmt.Fprintf(&hcl, "resource %q %q {\n", pipelineResourceName, resourceName)
+	fmt.Fprintf(&hcl, "  slug             = %q\n", pipeline.Slug.ValueString())
+	fmt.Fprintf(&hcl, "  source_slug      = %q\n", pipeline.SourceSlug.ValueString())
 
 	if endpoint != nil {
-		hcl.WriteString(fmt.Sprintf("  destination_slug = %s.%s.slug\n", endpointResourceType, resourceName))
+		fmt.Fprintf(&hcl, "  destination_slug = %s.%s.slug\n", endpointResourceType, resourceName)
 	} else {
-		hcl.WriteString(fmt.Sprintf("  destination_slug = %q\n", pipeline.DestinationSlug.ValueString()))
+		fmt.Fprintf(&hcl, "  destination_slug = %q\n", pipeline.DestinationSlug.ValueString())
 	}
 
 	if !pipeline.Enabled.IsNull() {
-		hcl.WriteString(fmt.Sprintf("  enabled          = %t\n", pipeline.Enabled.ValueBool()))
+		fmt.Fprintf(&hcl, "  enabled          = %t\n", pipeline.Enabled.ValueBool())
 	}
 
 	if !pipeline.ZoneSlugs.IsNull() {
@@ -248,7 +248,7 @@ func renderForwardingPipelineResource(t *testing.T, resourceName string, pipelin
 			}
 			quoted = append(quoted, fmt.Sprintf("%q", zone.ValueString()))
 		}
-		hcl.WriteString(fmt.Sprintf("  zone_slugs       = [%s]\n", strings.Join(quoted, ", ")))
+		fmt.Fprintf(&hcl, "  zone_slugs       = [%s]\n", strings.Join(quoted, ", "))
 	}
 
 	hcl.WriteString("}\n")
