@@ -46,7 +46,7 @@ func init() {
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 			defer cancel()
 
-			testutil.SetEnvDefaults()
+			setAccEnvDefaults()
 			client, err := provider.BuildClient(ctx, provider.CoreweaveProviderModel{}, "", "")
 			if err != nil {
 				return fmt.Errorf("failed to build client: %w", err)
@@ -666,7 +666,7 @@ func testForwardingPipelineInvalidConfig(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			resource.ParallelTest(t, resource.TestCase{
 				ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
-				PreCheck:                 func() { testutil.SetEnvDefaults() },
+				PreCheck:                 func() { setAccEnvDefaults() },
 				CheckDestroy:             checkDestroyed(t),
 				Steps: []resource.TestStep{
 					{
@@ -743,7 +743,7 @@ func testForwardingPipelineLifecycle(t *testing.T) {
 
 						resource.ParallelTest(t, resource.TestCase{
 							ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
-							PreCheck:                 func() { testutil.SetEnvDefaults() },
+							PreCheck:                 func() { setAccEnvDefaults() },
 							CheckDestroy:             checkDestroyed(t),
 							Steps: []resource.TestStep{
 								{
@@ -797,7 +797,7 @@ func testForwardingPipelineLifecycle(t *testing.T) {
 
 		resource.ParallelTest(t, resource.TestCase{
 			ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
-			PreCheck:                 func() { testutil.SetEnvDefaults() },
+			PreCheck:                 func() { setAccEnvDefaults() },
 			CheckDestroy:             checkDestroyed(t),
 			Steps: []resource.TestStep{
 				{
@@ -921,7 +921,7 @@ func testForwardingPipelineLifecycle(t *testing.T) {
 
 		resource.ParallelTest(t, resource.TestCase{
 			ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
-			PreCheck:                 func() { testutil.SetEnvDefaults() },
+			PreCheck:                 func() { setAccEnvDefaults() },
 			CheckDestroy:             checkDestroyed(t),
 			Steps: []resource.TestStep{
 				{
@@ -969,7 +969,7 @@ func testForwardingPipelineLifecycle(t *testing.T) {
 
 		resource.ParallelTest(t, resource.TestCase{
 			ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
-			PreCheck:                 func() { testutil.SetEnvDefaults() },
+			PreCheck:                 func() { setAccEnvDefaults() },
 			CheckDestroy:             checkDestroyed(t),
 			Steps: []resource.TestStep{
 				{
@@ -1017,7 +1017,7 @@ func testForwardingPipelineLifecycle(t *testing.T) {
 
 		resource.ParallelTest(t, resource.TestCase{
 			ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
-			PreCheck:                 func() { testutil.SetEnvDefaults() },
+			PreCheck:                 func() { setAccEnvDefaults() },
 			CheckDestroy:             checkDestroyed(t),
 			Steps: []resource.TestStep{
 				{
@@ -1060,7 +1060,7 @@ func testForwardingPipelineLifecycle(t *testing.T) {
 
 		resource.ParallelTest(t, resource.TestCase{
 			ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
-			PreCheck:                 func() { testutil.SetEnvDefaults() },
+			PreCheck:                 func() { setAccEnvDefaults() },
 			CheckDestroy:             checkDestroyed(t),
 			Steps: []resource.TestStep{
 				{
