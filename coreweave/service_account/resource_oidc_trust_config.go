@@ -63,7 +63,7 @@ func (r *OIDCTrustConfigResource) Schema(_ context.Context, _ resource.SchemaReq
 			"name":                               schema.StringAttribute{Computed: true, PlanModifiers: computed, MarkdownDescription: "The canonical resource name."},
 			"uid":                                schema.StringAttribute{Computed: true, PlanModifiers: computed, MarkdownDescription: "The server-generated unique identifier."},
 			"description":                        schema.StringAttribute{Optional: true, Validators: []validator.String{stringvalidator.UTF8LengthAtMost(2048)}, MarkdownDescription: "An optional description of the trust rule."},
-			"cel":                                schema.StringAttribute{Required: true, Validators: []validator.String{stringvalidator.UTF8LengthBetween(1, 4096)}, MarkdownDescription: "The CEL expression evaluated against verified OIDC token claims."},
+			"cel":                                schema.StringAttribute{Required: true, Validators: []validator.String{stringvalidator.UTF8LengthBetween(1, 4096)}, MarkdownDescription: "The CEL expression evaluated against verified OIDC token claims exposed through the `token` namespace."},
 			"workload_federation_oidc_config_id": schema.StringAttribute{Required: true, Validators: []validator.String{stringvalidator.RegexMatches(uuidPattern, "must be a UUID")}, MarkdownDescription: "The UID of the workload federation OIDC configuration used to verify tokens."},
 			"created_at":                         schema.StringAttribute{Computed: true, PlanModifiers: computed, MarkdownDescription: "The RFC 3339 creation timestamp."},
 			"updated_at":                         schema.StringAttribute{Computed: true, MarkdownDescription: "The RFC 3339 last-update timestamp."},

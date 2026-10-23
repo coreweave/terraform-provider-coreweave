@@ -32,7 +32,7 @@ func TestOIDCTrustConfigCreateRequest(t *testing.T) {
 	t.Parallel()
 	model := OIDCTrustConfigResourceModel{
 		ID: types.StringValue("main-repo"), OrganizationID: types.StringValue("a1b2c3"), ServiceAccountID: types.StringValue("ci-agent"),
-		Description: types.StringValue("main branch"), CEL: types.StringValue(`claims.ref == "refs/heads/main"`),
+		Description: types.StringValue("main branch"), CEL: types.StringValue(`token.ref == "refs/heads/main"`),
 		WorkloadFederationOIDCConfigID: types.StringValue("8d39f431-715c-4c6c-916a-849292f97920"),
 	}
 	request := model.createRequest()
