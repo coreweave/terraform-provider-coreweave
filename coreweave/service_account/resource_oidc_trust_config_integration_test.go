@@ -214,7 +214,7 @@ resource "coreweave_service_account_oidc_trust_config" "test" {
   organization_id                    = "a1b2c3"
   service_account_id                 = "ci-agent"
   description                        = %q
-  cel                                = "claims.repository == 'example/repo'"
+  cel                                = "token.repository == 'example/repo'"
   workload_federation_oidc_config_id = "8d39f431-715c-4c6c-916a-849292f97920"
 }
 `, endpoint, description)
@@ -237,7 +237,7 @@ resource "coreweave_service_account_oidc_trust_config" "test" {
   organization_id                    = "a1b2c3"
   service_account_id                 = "ci-agent"
   description                        = terraform_data.description.output
-  cel                                = "claims.repository == 'example/repo'"
+  cel                                = "token.repository == 'example/repo'"
   workload_federation_oidc_config_id = "8d39f431-715c-4c6c-916a-849292f97920"
 }
 `, endpoint, replacement)
@@ -263,8 +263,8 @@ resource "coreweave_service_account_oidc_trust_config" "test" {
 
 func TestOIDCTrustConfigResourceLifecycle(t *testing.T) {
 	service, server := startOIDCTrustConfigTestServer(t)
-	initial := oidcTrustConfigTestConfig(server.URL, "main branch", `claims.ref == "refs/heads/main"`, "8d39f431-715c-4c6c-916a-849292f97920")
-	updated := oidcTrustConfigTestConfig(server.URL, "", `claims.repository == "example/repo"`, "e3bb1892-f89e-4258-9495-427ed5ace8c7")
+	initial := oidcTrustConfigTestConfig(server.URL, "main branch", `token.ref == "refs/heads/main"`, "8d39f431-715c-4c6c-916a-849292f97920")
+	updated := oidcTrustConfigTestConfig(server.URL, "", `token.repository == "example/repo"`, "e3bb1892-f89e-4258-9495-427ed5ace8c7")
 
 	tfresource.UnitTest(t, tfresource.TestCase{
 		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
@@ -290,7 +290,7 @@ func TestOIDCTrustConfigResourceLifecycle(t *testing.T) {
 				Config: updated,
 				Check: tfresource.ComposeAggregateTestCheckFunc(
 					tfresource.TestCheckNoResourceAttr(oidcTrustConfigResourceAddress, "description"),
-					tfresource.TestCheckResourceAttr(oidcTrustConfigResourceAddress, "cel", `claims.repository == "example/repo"`),
+					tfresource.TestCheckResourceAttr(oidcTrustConfigResourceAddress, "cel", `token.repository == "example/repo"`),
 					tfresource.TestCheckResourceAttr(oidcTrustConfigResourceAddress, "workload_federation_oidc_config_id", "e3bb1892-f89e-4258-9495-427ed5ace8c7"),
 				),
 			},
@@ -371,7 +371,7 @@ func TestOIDCTrustConfigResourceRejectsCreateResponseWithoutUID(t *testing.T) {
 func TestOIDCTrustConfigResourceUpdateNotFoundRetainsState(t *testing.T) {
 	service, server := startOIDCTrustConfigTestServer(t)
 	initial := oidcTrustConfigTestConfig(server.URL, "initial", "true", "8d39f431-715c-4c6c-916a-849292f97920")
-	updated := oidcTrustConfigTestConfig(server.URL, "updated", "claims.repository == 'example/repo'", "8d39f431-715c-4c6c-916a-849292f97920")
+	updated := oidcTrustConfigTestConfig(server.URL, "updated", "token.repository == 'example/repo'", "8d39f431-715c-4c6c-916a-849292f97920")
 
 	tfresource.UnitTest(t, tfresource.TestCase{
 		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
@@ -394,7 +394,7 @@ func TestOIDCTrustConfigResourceUpdateNotFoundRetainsState(t *testing.T) {
 func TestOIDCTrustConfigResourceRecoversEmptyUpdateResponse(t *testing.T) {
 	service, server := startOIDCTrustConfigTestServer(t)
 	initial := oidcTrustConfigTestConfig(server.URL, "initial", "true", "8d39f431-715c-4c6c-916a-849292f97920")
-	updated := oidcTrustConfigTestConfig(server.URL, "updated", "claims.repository == 'example/repo'", "8d39f431-715c-4c6c-916a-849292f97920")
+	updated := oidcTrustConfigTestConfig(server.URL, "updated", "token.repository == 'example/repo'", "8d39f431-715c-4c6c-916a-849292f97920")
 
 	tfresource.UnitTest(t, tfresource.TestCase{
 		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
@@ -406,7 +406,7 @@ func TestOIDCTrustConfigResourceRecoversEmptyUpdateResponse(t *testing.T) {
 				PreConfig: service.returnEmptyUpdateResponse,
 				Check: tfresource.ComposeAggregateTestCheckFunc(
 					tfresource.TestCheckResourceAttr(oidcTrustConfigResourceAddress, "description", "updated"),
-					tfresource.TestCheckResourceAttr(oidcTrustConfigResourceAddress, "cel", "claims.repository == 'example/repo'"),
+					tfresource.TestCheckResourceAttr(oidcTrustConfigResourceAddress, "cel", "token.repository == 'example/repo'"),
 				),
 			},
 		},

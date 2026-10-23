@@ -11,7 +11,7 @@ resource "coreweave_service_account_oidc_trust_config" "main" {
   workload_federation_oidc_config_id = coreweave_workload_federation_oidc_config.github.id
   description                        = "Trust workflows from the main repository"
   cel                                = <<-EOT
-    claims.repository == "example/example" &&
-    claims.ref == "refs/heads/main"
+    token.repository == "example/example" &&
+    token.ref == "refs/heads/main"
   EOT
 }
