@@ -137,13 +137,11 @@ var (
 		"logs-journald",
 	}
 
-	// The lifecycle subtests run in parallel and are indifferent to which
-	// stream they bind to, so each takes its own. Sharing one made them all
-	// mutate connectors over the same topics at the same moment, and Kafka
-	// Connect rebalances on every connector add or remove — whichever subtest
-	// lost the race failed with "a rebalance is expected". Values must come
-	// from matrixLogsStreams: the org-scoped streams would place a connector
-	// in a production zone.
+	// Keep the lifecycle subtests on separate streams even though the pipeline
+	// acceptance cases run serially. This also limits interference from a
+	// developer or another client using the same QA organization. Values must
+	// come from matrixLogsStreams: the org-scoped streams would place a
+	// connector in a production zone.
 	lifecycleCrudStream        = matrixLogsStreams[1]
 	lifecycleSlugReplaceStream = matrixLogsStreams[2]
 	lifecycleZoneReplaceStream = matrixLogsStreams[3]
@@ -319,18 +317,13 @@ func zoneSlugSet(t *testing.T, zones ...string) types.Set {
 // precondition that the stream has topics. These need an organization whose
 // registered clusters are lab-only.
 //
-// These can still fail intermittently with "Request cannot be completed
-// because a rebalance is expected". Every subtest's connectors live in the one
-// Connect cluster the organization has, and Kafka Connect rebalances whenever
-// a connector is added or removed, so a concurrent subtest's status read can
-// be rejected. The lifecycle subtests each take their own stream to cut the
-// collision rate, but the stream matrix still fans out over the same cluster,
-// so it is reduced rather than eliminated.
-//
-// The fix is in telecasterd rather than here: updatePipelineState turns a
-// status carrying that message into a terminal PipelineStateError, where a
-// bounded re-read would let it settle. Until then, a failure naming a
-// rebalance is environmental and the run can be repeated.
+// Run the acceptance cases serially. Every pipeline's connectors live in the
+// organization's one Connect cluster, and Kafka Connect rebalances whenever a
+// connector is added or removed. Concurrent cases make telecasterd record the
+// transient "a rebalance is expected" status as a terminal pipeline error.
+// HTTP retries cannot recover that server-side state, so pipeline concurrency
+// is bounded here while unit tests and the endpoint acceptance suites remain
+// parallel.
 func TestForwardingPipeline(t *testing.T) {
 	t.Parallel()
 
@@ -342,6 +335,16 @@ func TestForwardingPipeline(t *testing.T) {
 	t.Run("spec_to_msg", testForwardingPipelineSpecToMsg)
 	t.Run("invalid_config", testForwardingPipelineInvalidConfig)
 	t.Run("lifecycle", testForwardingPipelineLifecycle)
+}
+
+// runForwardingPipelineAcceptanceTest deliberately uses resource.Test: all
+// callers execute below sequential t.Run calls, which prevents their connector
+// mutations from triggering Kafka rebalances in one another's status checks.
+func runForwardingPipelineAcceptanceTest(t *testing.T, testCase resource.TestCase) {
+	t.Helper()
+
+	//nolint:forbidigo // serial Kafka Connect constraint, see TestForwardingPipeline
+	resource.Test(t, testCase)
 }
 
 // testForwardingPipelineSchema validates the resource schema
@@ -712,7 +715,7 @@ func testForwardingPipelineInvalidConfig(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			resource.ParallelTest(t, resource.TestCase{
+			runForwardingPipelineAcceptanceTest(t, resource.TestCase{
 				ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
 				PreCheck:                 func() { setAccEnvDefaults() },
 				CheckDestroy:             checkDestroyed(t),
@@ -789,7 +792,7 @@ func testForwardingPipelineLifecycle(t *testing.T) {
 							ZoneSlugs:       zoneSlugSet(t, testLabZoneSlug),
 						}
 
-						resource.ParallelTest(t, resource.TestCase{
+						runForwardingPipelineAcceptanceTest(t, resource.TestCase{
 							ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
 							PreCheck:                 func() { setAccEnvDefaults() },
 							CheckDestroy:             checkDestroyed(t),
@@ -843,7 +846,7 @@ func testForwardingPipelineLifecycle(t *testing.T) {
 			ZoneSlugs:       types.SetNull(types.StringType),
 		}
 
-		resource.ParallelTest(t, resource.TestCase{
+		runForwardingPipelineAcceptanceTest(t, resource.TestCase{
 			ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
 			PreCheck:                 func() { setAccEnvDefaults() },
 			CheckDestroy:             checkDestroyed(t),
@@ -979,7 +982,7 @@ func testForwardingPipelineLifecycle(t *testing.T) {
 			ZoneSlugs:       zoneSlugSet(t, testLabZoneSlug),
 		}
 
-		resource.ParallelTest(t, resource.TestCase{
+		runForwardingPipelineAcceptanceTest(t, resource.TestCase{
 			ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
 			PreCheck:                 func() { setAccEnvDefaults() },
 			CheckDestroy:             checkDestroyed(t),
@@ -1027,7 +1030,7 @@ func testForwardingPipelineLifecycle(t *testing.T) {
 			ZoneSlugs:       types.SetNull(types.StringType),
 		}
 
-		resource.ParallelTest(t, resource.TestCase{
+		runForwardingPipelineAcceptanceTest(t, resource.TestCase{
 			ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
 			PreCheck:                 func() { setAccEnvDefaults() },
 			CheckDestroy:             checkDestroyed(t),
@@ -1075,7 +1078,7 @@ func testForwardingPipelineLifecycle(t *testing.T) {
 			ZoneSlugs:       types.SetNull(types.StringType),
 		}
 
-		resource.ParallelTest(t, resource.TestCase{
+		runForwardingPipelineAcceptanceTest(t, resource.TestCase{
 			ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
 			PreCheck:                 func() { setAccEnvDefaults() },
 			CheckDestroy:             checkDestroyed(t),
@@ -1118,7 +1121,7 @@ func testForwardingPipelineLifecycle(t *testing.T) {
 			ZoneSlugs:       types.SetNull(types.StringType),
 		}
 
-		resource.ParallelTest(t, resource.TestCase{
+		runForwardingPipelineAcceptanceTest(t, resource.TestCase{
 			ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
 			PreCheck:                 func() { setAccEnvDefaults() },
 			CheckDestroy:             checkDestroyed(t),
