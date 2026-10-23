@@ -55,7 +55,7 @@ func (s *oidcTrustConfigTestServer) CreateServiceAccountOidcTrustConfig(_ contex
 	now := timestamppb.Now()
 	input := request.GetServiceAccountOidcTrustConfig()
 	config := &directoryv1alpha.ServiceAccountOidcTrustConfig{
-		Name: name, Uid: proto.String("74931f1b-b5cc-48d4-9a97-24073d43fd82"), Description: input.Description,
+		Name: name, Uid: proto.String("74931f1b-b5cc-48d4-9a97-24073d43fd82"), Description: proto.String(input.GetDescription()),
 		Cel: input.Cel, WorkloadFederationOidcConfigUid: input.WorkloadFederationOidcConfigUid,
 		CreateTime: now, UpdateTime: now,
 	}
@@ -99,7 +99,7 @@ func (s *oidcTrustConfigTestServer) UpdateServiceAccountOidcTrustConfig(_ contex
 	for _, field := range request.GetUpdateMask().GetPaths() {
 		switch field {
 		case "description":
-			config.Description = input.Description
+			config.Description = proto.String(input.GetDescription())
 		case "cel":
 			config.Cel = input.Cel
 		case "workload_federation_oidc_config_uid":
@@ -424,6 +424,26 @@ func TestOIDCTrustConfigResourcePreservesExplicitEmptyDescription(t *testing.T) 
 			Config: config,
 			Check:  tfresource.TestCheckResourceAttr(oidcTrustConfigResourceAddress, "description", ""),
 		}},
+	})
+}
+
+func TestOIDCTrustConfigResourcePreservesOmittedDescription(t *testing.T) {
+	service, server := startOIDCTrustConfigTestServer(t)
+	config := oidcTrustConfigTestConfig(server.URL, "", "true", "8d39f431-715c-4c6c-916a-849292f97920")
+
+	tfresource.UnitTest(t, tfresource.TestCase{
+		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+		CheckDestroy:             service.checkEmpty,
+		Steps: []tfresource.TestStep{
+			{
+				Config: config,
+				Check:  tfresource.TestCheckNoResourceAttr(oidcTrustConfigResourceAddress, "description"),
+			},
+			{
+				Config:   config,
+				PlanOnly: true,
+			},
+		},
 	})
 }
 
