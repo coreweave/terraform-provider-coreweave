@@ -1129,3 +1129,64 @@ resource "coreweave_networking_vpc" "test_vpc" {
 		assert.Equal(t, expected, networking.MustRenderVpcResource(ctx, resourceName, m))
 	})
 }
+
+// TestVpcResourceModelSetPreservesEmptyDhcp exercises VpcResourceModel.Set
+// directly because the HCL renderer omits empty collections and so cannot
+// express configurations like dhcp = { dns = { search_domains = [] } }. It
+// guards the case where an explicitly configured but empty DHCP/DNS object must
+// survive decoding rather than collapsing to null, which Terraform would reject
+// as an inconsistent result after apply (dhcp is optional, not computed).
+func TestVpcResourceModelSetPreservesEmptyDhcp(t *testing.T) {
+	t.Parallel()
+
+	// plan models dhcp = { dns = { search_domains = [] } } with servers omitted:
+	// search_domains is an explicit empty list, servers is null.
+	plan := func() *networking.VpcResourceModel {
+		return &networking.VpcResourceModel{
+			Dhcp: &networking.VpcDhcpResourceModel{
+				Dns: &networking.VpcDhcpDnsResourceModel{
+					Servers:       types.SetNull(types.StringType),
+					SearchDomains: types.ListValueMust(types.StringType, []attr.Value{}),
+				},
+			},
+		}
+	}
+
+	// The API may echo an empty DNS submessage or omit it entirely; both must
+	// leave the configured empty block intact.
+	cases := map[string]*networkingv1beta1.VPC{
+		"api returns empty dns submessage": {
+			Id:   "vpc-id",
+			Name: "vpc",
+			Zone: "zone",
+			Dhcp: &networkingv1beta1.DHCP{Dns: &networkingv1beta1.DHCP_DNS{}},
+		},
+		"api omits dns submessage": {
+			Id:   "vpc-id",
+			Name: "vpc",
+			Zone: "zone",
+			Dhcp: &networkingv1beta1.DHCP{},
+		},
+		"api omits dhcp entirely": {
+			Id:   "vpc-id",
+			Name: "vpc",
+			Zone: "zone",
+		},
+	}
+
+	for name, vpc := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			m := plan()
+			if diags := m.Set(vpc); diags.HasError() {
+				t.Fatalf("Set returned errors: %+v", diags)
+			}
+
+			require.NotNil(t, m.Dhcp, "configured dhcp block collapsed to null")
+			require.NotNil(t, m.Dhcp.Dns, "configured dns block collapsed to null")
+			assert.True(t, m.Dhcp.Dns.Servers.IsNull(), "omitted servers should decode to null")
+			assert.False(t, m.Dhcp.Dns.SearchDomains.IsNull(), "configured empty search_domains should stay empty, not null")
+			assert.Equal(t, 0, len(m.Dhcp.Dns.SearchDomains.Elements()), "configured empty search_domains should have no elements")
+		})
+	}
+}

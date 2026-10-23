@@ -131,14 +131,29 @@ func (v *VpcDhcpResourceModel) IsEmpty() bool {
 func (v *VpcDhcpResourceModel) Set(dhcp *networkingv1beta1.DHCP) {
 	prior := v.Dns
 
-	if dhcp == nil || dhcp.Dns == nil {
+	var apiDns *networkingv1beta1.DHCP_DNS
+	if dhcp != nil {
+		apiDns = dhcp.Dns
+	}
+
+	// Keep an explicitly configured DNS block even when the API omits the empty
+	// submessage; only drop it when it was neither configured nor returned.
+	// Otherwise a configured empty object would collapse to null and trip
+	// Terraform's inconsistent-result-after-apply check.
+	if prior == nil && apiDns == nil {
 		v.Dns = nil
 		return
 	}
 
+	var servers, searchDomains []string
+	if apiDns != nil {
+		servers = apiDns.Servers
+		searchDomains = apiDns.SearchDomains
+	}
+
 	v.Dns = &VpcDhcpDnsResourceModel{
-		Servers:       serversFromAPI(prior, dhcp.Dns.Servers),
-		SearchDomains: searchDomainsFromAPI(prior, dhcp.Dns.SearchDomains),
+		Servers:       serversFromAPI(prior, servers),
+		SearchDomains: searchDomainsFromAPI(prior, searchDomains),
 	}
 }
 
@@ -386,12 +401,16 @@ func (v *VpcResourceModel) Set(vpc *networkingv1beta1.VPC) (diagnostics diag.Dia
 
 	// Decode DHCP in place so Set can read the prior value and preserve each
 	// collection's null-versus-empty representation when the API returns empty.
+	priorDhcp := v.Dhcp
 	if v.Dhcp == nil {
 		v.Dhcp = &VpcDhcpResourceModel{}
 	}
 	v.Dhcp.Set(vpc.Dhcp)
-	// Drop the DHCP block entirely when the API returns nothing meaningful.
-	if v.Dhcp.IsEmpty() {
+	// Collapse to nil only when DHCP was neither explicitly configured nor
+	// returned by the API. An explicitly configured (possibly empty) block must
+	// survive, since dhcp is optional-not-computed and Terraform would reject a
+	// configured object collapsing to null as an inconsistent result.
+	if priorDhcp == nil && v.Dhcp.IsEmpty() {
 		v.Dhcp = nil
 	}
 	return diagnostics
