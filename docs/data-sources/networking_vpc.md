@@ -52,7 +52,7 @@ Optional:
 
 Read-Only:
 
-- `search_domains` (Set of String) The DNS search domains advertised to DHCP clients within the VPC.
+- `search_domains` (List of String) The DNS search domains advertised to DHCP clients within the VPC, in order of resolution precedence.
 
 
 

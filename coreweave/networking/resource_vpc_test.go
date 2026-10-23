@@ -245,7 +245,7 @@ func defaultExpectedValues(t *testing.T, resourceAddress string, m *networking.V
 				for i, sd := range searchDomains {
 					searchDomainChecks[i] = knownvalue.StringExact(sd)
 				}
-				searchDomainsCheck = knownvalue.SetExact(searchDomainChecks)
+				searchDomainsCheck = knownvalue.ListExact(searchDomainChecks)
 			}
 
 			dhcpObj["dns"] = knownvalue.ObjectExact(map[string]knownvalue.Check{
@@ -298,7 +298,7 @@ func TestVpcResource(t *testing.T) {
 			Dhcp: &networking.VpcDhcpResourceModel{
 				Dns: &networking.VpcDhcpDnsResourceModel{
 					Servers: types.SetValueMust(types.StringType, []attr.Value{types.StringValue("1.1.1.1")}),
-					SearchDomains: types.SetValueMust(types.StringType, []attr.Value{
+					SearchDomains: types.ListValueMust(types.StringType, []attr.Value{
 						types.StringValue("example.com"),
 						types.StringValue("corp.internal"),
 					}),
@@ -1062,7 +1062,7 @@ resource "coreweave_networking_vpc" "test_vpc" {
 						types.StringValue("1.1.1.1"),
 						types.StringValue("8.8.8.8"),
 					}),
-					SearchDomains: types.SetValueMust(types.StringType, []attr.Value{
+					SearchDomains: types.ListValueMust(types.StringType, []attr.Value{
 						types.StringValue("example.com"),
 						types.StringValue("corp.internal"),
 					}),
@@ -1076,7 +1076,7 @@ resource "coreweave_networking_vpc" "test_vpc" {
   zone = "US-WEST-04A"
   dhcp = {
     dns = {
-      search_domains = ["corp.internal", "example.com"]
+      search_domains = ["example.com", "corp.internal"]
       servers        = ["1.1.1.1", "8.8.8.8"]
     }
   }

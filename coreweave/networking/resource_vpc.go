@@ -97,8 +97,11 @@ func (r *VpcResource) ConfigValidators(context.Context) []resource.ConfigValidat
 }
 
 type VpcDhcpDnsResourceModel struct {
-	Servers       types.Set `tfsdk:"servers"`
-	SearchDomains types.Set `tfsdk:"search_domains"`
+	Servers types.Set `tfsdk:"servers"`
+	// SearchDomains is an ordered list: DNS resolution tries search domains in
+	// the order they are listed, so the order is semantically significant and
+	// must be preserved (unlike Servers, which is modeled as an unordered set).
+	SearchDomains types.List `tfsdk:"search_domains"`
 }
 
 func (v *VpcDhcpDnsResourceModel) IsEmpty() bool {
@@ -133,11 +136,11 @@ func (v *VpcDhcpResourceModel) Set(dhcp *networkingv1beta1.DHCP) {
 	v.Dns.Servers = types.SetValueMust(types.StringType, servers)
 
 	// The API always returns search_domains (empty when unset), so map an empty
-	// list back to a null set. Otherwise a config that sets servers but omits
-	// search_domains would see null in config and an empty set in state, which
+	// list back to a null list. Otherwise a config that sets servers but omits
+	// search_domains would see null in config and an empty list in state, which
 	// Terraform rejects as an inconsistent result.
 	if len(dhcp.Dns.SearchDomains) == 0 {
-		v.Dns.SearchDomains = types.SetNull(types.StringType)
+		v.Dns.SearchDomains = types.ListNull(types.StringType)
 		return
 	}
 
@@ -145,7 +148,7 @@ func (v *VpcDhcpResourceModel) Set(dhcp *networkingv1beta1.DHCP) {
 	for i, sd := range dhcp.Dns.SearchDomains {
 		searchDomains[i] = types.StringValue(sd)
 	}
-	v.Dns.SearchDomains = types.SetValueMust(types.StringType, searchDomains)
+	v.Dns.SearchDomains = types.ListValueMust(types.StringType, searchDomains)
 }
 
 type HostPrefixResourceModel struct {
@@ -615,9 +618,9 @@ func (r *VpcResource) Schema(ctx context.Context, req resource.SchemaRequest, re
 								MarkdownDescription: "The DNS servers to be used by DHCP clients within the VPC.",
 								ElementType:         types.StringType,
 							},
-							"search_domains": schema.SetAttribute{
+							"search_domains": schema.ListAttribute{
 								Optional:            true,
-								MarkdownDescription: "The DNS search domains to be used by DHCP clients within the VPC. Each entry must be a valid DNS name (RFC 1123) of at most 253 characters, and at most 100 may be specified.",
+								MarkdownDescription: "The DNS search domains to be used by DHCP clients within the VPC, in order of resolution precedence. Each entry must be a valid DNS name (RFC 1123) of at most 253 characters, and at most 100 may be specified.",
 								ElementType:         types.StringType,
 							},
 						},
@@ -920,6 +923,27 @@ func stringSetToCtyValues(ctx context.Context, set types.Set, what string) []cty
 	return vals
 }
 
+// stringListToCtyValues converts a Terraform string list into a slice of cty
+// string values, preserving element order and panicking (with what describing
+// the field) if the list cannot be marshaled. A null list yields a nil slice.
+func stringListToCtyValues(ctx context.Context, list types.List, what string) []cty.Value {
+	if list.IsNull() {
+		return nil
+	}
+
+	var elems []types.String
+	if diags := list.ElementsAs(ctx, &elems, false); diags.HasError() {
+		panic(fmt.Sprintf("failed to marshal %s: %+v", what, diags))
+	}
+
+	vals := make([]cty.Value, len(elems))
+	for i, s := range elems {
+		vals[i] = cty.StringVal(s.ValueString())
+	}
+
+	return vals
+}
+
 // MustRenderVpcResource is a helper to render HCL for use in acceptance testing.
 // It should not be used by clients of this library.
 func MustRenderVpcResource(ctx context.Context, resourceName string, vpc *VpcResourceModel) string {
@@ -986,8 +1010,8 @@ func MustRenderVpcResource(ctx context.Context, resourceName string, vpc *VpcRes
 			if servers := stringSetToCtyValues(ctx, vpc.Dhcp.Dns.Servers, "DHCP servers"); len(servers) > 0 {
 				dns["servers"] = cty.SetVal(servers)
 			}
-			if searchDomains := stringSetToCtyValues(ctx, vpc.Dhcp.Dns.SearchDomains, "DHCP search domains"); len(searchDomains) > 0 {
-				dns["search_domains"] = cty.SetVal(searchDomains)
+			if searchDomains := stringListToCtyValues(ctx, vpc.Dhcp.Dns.SearchDomains, "DHCP search domains"); len(searchDomains) > 0 {
+				dns["search_domains"] = cty.ListVal(searchDomains)
 			}
 			if len(dns) > 0 {
 				dhcp["dns"] = cty.ObjectVal(dns)

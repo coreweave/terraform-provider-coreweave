@@ -114,7 +114,7 @@ Optional:
 
 Optional:
 
-- `search_domains` (Set of String) The DNS search domains to be used by DHCP clients within the VPC. Each entry must be a valid DNS name (RFC 1123) of at most 253 characters, and at most 100 may be specified.
+- `search_domains` (List of String) The DNS search domains to be used by DHCP clients within the VPC, in order of resolution precedence. Each entry must be a valid DNS name (RFC 1123) of at most 253 characters, and at most 100 may be specified.
 - `servers` (Set of String) The DNS servers to be used by DHCP clients within the VPC.
 
 
