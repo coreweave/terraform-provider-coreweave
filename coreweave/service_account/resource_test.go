@@ -56,6 +56,8 @@ func TestResourceSchemas(t *testing.T) {
 	assert.Len(t, creator.PlanModifiers, 1)
 	systemManaged := response.Schema.Attributes["system_managed"].(resourceschema.BoolAttribute)
 	assert.Len(t, systemManaged.PlanModifiers, 1)
+	active := response.Schema.Attributes["active"].(resourceschema.BoolAttribute)
+	assert.Len(t, active.PlanModifiers, 1)
 }
 
 func TestServiceAccountCreateRequest(t *testing.T) {
@@ -96,6 +98,18 @@ func TestServiceAccountSetFromProto(t *testing.T) {
 	assert.Equal(t, "CI agent", model.DisplayName.ValueString())
 	assert.True(t, model.Active.ValueBool())
 	assert.Equal(t, created.Format(time.RFC3339), model.CreatedAt.ValueString())
+	assert.Equal(t, created.Add(time.Hour).Format(time.RFC3339), model.UpdatedAt.ValueString())
+}
+
+func TestServiceAccountSetFromProtoPreservesAbsentUpdateTime(t *testing.T) {
+	t.Parallel()
+	account := &directoryv1alpha.ServiceAccount{
+		Name: "organizations/a1b2c3/serviceAccounts/ci-agent",
+		Uid:  proto.String("8d39f431-715c-4c6c-916a-849292f97920"),
+	}
+	var model ServiceAccountResourceModel
+	require.NoError(t, model.setFromProto(account))
+	assert.True(t, model.UpdatedAt.IsNull())
 }
 
 func TestCanonicalNameParsing(t *testing.T) {

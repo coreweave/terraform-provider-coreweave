@@ -53,11 +53,10 @@ func (s *serviceAccountTestServer) CreateServiceAccount(_ context.Context, reque
 	if _, exists := s.accounts[name]; exists {
 		return nil, connect.Errorf(connect.CodeAlreadyExists, "service account exists")
 	}
-	now := timestamppb.Now()
 	account := &directoryv1alpha.ServiceAccount{
 		Name: name, Uid: proto.String("c4f985e4-a2f0-44f8-937e-4fc7a4a67d06"), OrgId: proto.String("a1b2c3"),
 		Creator: proto.String("organizations/a1b2c3/users/test-user"), DisplayName: request.GetServiceAccount().DisplayName,
-		SystemManaged: proto.Bool(false), Active: proto.Bool(true), CreateTime: now, UpdateTime: now,
+		SystemManaged: proto.Bool(false), Active: proto.Bool(true), CreateTime: timestamppb.Now(),
 	}
 	s.accounts[name] = account
 	if s.emptyCreateResponse {
@@ -100,7 +99,6 @@ func (s *serviceAccountTestServer) UpdateServiceAccount(_ context.Context, reque
 			account.DisplayName = request.GetServiceAccount().DisplayName
 		}
 	}
-	account.UpdateTime = timestamppb.Now()
 	if s.emptyUpdateResponse {
 		s.emptyUpdateResponse = false
 		return nil, nil
@@ -139,7 +137,6 @@ func (s *serviceAccountTestServer) deactivateAll() {
 	defer s.mu.Unlock()
 	for _, account := range s.accounts {
 		account.Active = proto.Bool(false)
-		account.UpdateTime = timestamppb.Now()
 	}
 }
 
@@ -270,7 +267,7 @@ func TestServiceAccountResourceLifecycle(t *testing.T) {
 					tfresource.TestCheckResourceAttr(serviceAccountResourceAddress, "display_name", "CI agent"),
 					tfresource.TestCheckResourceAttrSet(serviceAccountResourceAddress, "uid"),
 					tfresource.TestCheckResourceAttrSet(serviceAccountResourceAddress, "created_at"),
-					tfresource.TestCheckResourceAttrSet(serviceAccountResourceAddress, "updated_at"),
+					tfresource.TestCheckNoResourceAttr(serviceAccountResourceAddress, "updated_at"),
 				),
 			},
 			{
@@ -326,7 +323,7 @@ func TestServiceAccountResourceResolvedNoOpUpdate(t *testing.T) {
 					tfresource.TestCheckResourceAttr(serviceAccountResourceAddress, "display_name", "stable display name"),
 					tfresource.TestCheckResourceAttrSet(serviceAccountResourceAddress, "uid"),
 					tfresource.TestCheckResourceAttrSet(serviceAccountResourceAddress, "created_at"),
-					tfresource.TestCheckResourceAttrSet(serviceAccountResourceAddress, "updated_at"),
+					tfresource.TestCheckNoResourceAttr(serviceAccountResourceAddress, "updated_at"),
 				),
 			},
 		},
