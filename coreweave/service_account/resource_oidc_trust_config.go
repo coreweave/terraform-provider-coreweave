@@ -203,8 +203,16 @@ func (r *OIDCTrustConfigResource) Update(ctx context.Context, req resource.Updat
 		return
 	}
 	if err := plan.setFromProto(remote); err != nil {
-		resp.Diagnostics.AddError("Unexpected API Response", err.Error())
-		return
+		name := state.Name.ValueString()
+		readBack, readErr := r.client.Directory.GetServiceAccountOidcTrustConfig(ctx, &directoryv1alpha.GetServiceAccountOidcTrustConfigRequest{Name: &name})
+		if readErr != nil {
+			coreweave.HandleAPIError(ctx, readErr, &resp.Diagnostics)
+			return
+		}
+		if readBackErr := plan.setFromProto(readBack); readBackErr != nil {
+			resp.Diagnostics.AddError("Unexpected API Response", fmt.Sprintf("The Directory API returned an invalid OIDC trust configuration after update and the subsequent read could not recover it: %s.", readBackErr))
+			return
+		}
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }

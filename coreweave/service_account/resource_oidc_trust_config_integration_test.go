@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
+	"strings"
 	"sync"
 	"testing"
 
@@ -27,6 +29,11 @@ type oidcTrustConfigTestServer struct {
 
 	mu      sync.Mutex
 	configs map[string]*directoryv1alpha.ServiceAccountOidcTrustConfig
+
+	emptyCreateResponse      bool
+	emptyCreateResponseUID   bool
+	emptyUpdateResponse      bool
+	notFoundOnNextUpdateCall bool
 }
 
 func newOIDCTrustConfigTestServer() *oidcTrustConfigTestServer {
@@ -53,7 +60,16 @@ func (s *oidcTrustConfigTestServer) CreateServiceAccountOidcTrustConfig(_ contex
 		CreateTime: now, UpdateTime: now,
 	}
 	s.configs[name] = config
-	return cloneOIDCTrustConfig(config), nil
+	if s.emptyCreateResponse {
+		s.emptyCreateResponse = false
+		return nil, nil
+	}
+	response := cloneOIDCTrustConfig(config)
+	if s.emptyCreateResponseUID {
+		s.emptyCreateResponseUID = false
+		response.Uid = nil
+	}
+	return response, nil
 }
 
 func (s *oidcTrustConfigTestServer) GetServiceAccountOidcTrustConfig(_ context.Context, request *directoryv1alpha.GetServiceAccountOidcTrustConfigRequest) (*directoryv1alpha.ServiceAccountOidcTrustConfig, error) {
@@ -72,6 +88,10 @@ func (s *oidcTrustConfigTestServer) UpdateServiceAccountOidcTrustConfig(_ contex
 	defer s.mu.Unlock()
 
 	input := request.GetServiceAccountOidcTrustConfig()
+	if s.notFoundOnNextUpdateCall {
+		s.notFoundOnNextUpdateCall = false
+		return nil, connect.Errorf(connect.CodeNotFound, "OIDC trust config not found")
+	}
 	config, exists := s.configs[input.GetName()]
 	if !exists {
 		return nil, connect.Errorf(connect.CodeNotFound, "OIDC trust config not found")
@@ -87,6 +107,10 @@ func (s *oidcTrustConfigTestServer) UpdateServiceAccountOidcTrustConfig(_ contex
 		}
 	}
 	config.UpdateTime = timestamppb.Now()
+	if s.emptyUpdateResponse {
+		s.emptyUpdateResponse = false
+		return nil, nil
+	}
 	return cloneOIDCTrustConfig(config), nil
 }
 
@@ -108,6 +132,36 @@ func (s *oidcTrustConfigTestServer) checkEmpty(*terraform.State) error {
 		return fmt.Errorf("expected all OIDC trust configs deleted, found %d", len(s.configs))
 	}
 	return nil
+}
+
+func (s *oidcTrustConfigTestServer) removeAll() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.configs = make(map[string]*directoryv1alpha.ServiceAccountOidcTrustConfig)
+}
+
+func (s *oidcTrustConfigTestServer) returnEmptyCreateResponse() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.emptyCreateResponse = true
+}
+
+func (s *oidcTrustConfigTestServer) returnEmptyCreateResponseUID() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.emptyCreateResponseUID = true
+}
+
+func (s *oidcTrustConfigTestServer) returnEmptyUpdateResponse() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.emptyUpdateResponse = true
+}
+
+func (s *oidcTrustConfigTestServer) returnNotFoundOnNextUpdate() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.notFoundOnNextUpdateCall = true
 }
 
 func startOIDCTrustConfigTestServer(t *testing.T) (*oidcTrustConfigTestServer, *httptest.Server) {
@@ -148,6 +202,65 @@ resource "coreweave_service_account_oidc_trust_config" "test" {
 `, endpoint, oidcConfigID, descriptionAttribute, cel)
 }
 
+func oidcTrustConfigTestConfigWithExplicitDescription(endpoint, description string) string {
+	return fmt.Sprintf(`
+provider "coreweave" {
+  endpoint = %q
+  token    = "test-token"
+}
+
+resource "coreweave_service_account_oidc_trust_config" "test" {
+  id                                 = "main-repo"
+  organization_id                    = "a1b2c3"
+  service_account_id                 = "ci-agent"
+  description                        = %q
+  cel                                = "claims.repository == 'example/repo'"
+  workload_federation_oidc_config_id = "8d39f431-715c-4c6c-916a-849292f97920"
+}
+`, endpoint, description)
+}
+
+func oidcTrustConfigTestConfigWithReplacedDescription(endpoint, replacement string) string {
+	return fmt.Sprintf(`
+provider "coreweave" {
+  endpoint = %q
+  token    = "test-token"
+}
+
+resource "terraform_data" "description" {
+  input            = "stable description"
+  triggers_replace = %q
+}
+
+resource "coreweave_service_account_oidc_trust_config" "test" {
+  id                                 = "main-repo"
+  organization_id                    = "a1b2c3"
+  service_account_id                 = "ci-agent"
+  description                        = terraform_data.description.output
+  cel                                = "claims.repository == 'example/repo'"
+  workload_federation_oidc_config_id = "8d39f431-715c-4c6c-916a-849292f97920"
+}
+`, endpoint, replacement)
+}
+
+func oidcTrustConfigTestConfigWithIdentity(endpoint, id, organizationID, serviceAccountID, description, cel, oidcConfigID string) string {
+	return fmt.Sprintf(`
+provider "coreweave" {
+  endpoint = %q
+  token    = "test-token"
+}
+
+resource "coreweave_service_account_oidc_trust_config" "test" {
+  id                                 = %q
+  organization_id                    = %q
+  service_account_id                 = %q
+  description                        = %q
+  cel                                = %q
+  workload_federation_oidc_config_id = %q
+}
+`, endpoint, id, organizationID, serviceAccountID, description, cel, oidcConfigID)
+}
+
 func TestOIDCTrustConfigResourceLifecycle(t *testing.T) {
 	service, server := startOIDCTrustConfigTestServer(t)
 	initial := oidcTrustConfigTestConfig(server.URL, "main branch", `claims.ref == "refs/heads/main"`, "8d39f431-715c-4c6c-916a-849292f97920")
@@ -183,4 +296,198 @@ func TestOIDCTrustConfigResourceLifecycle(t *testing.T) {
 			},
 		},
 	})
+}
+
+func TestOIDCTrustConfigResourceNotFoundRemovesState(t *testing.T) {
+	service, server := startOIDCTrustConfigTestServer(t)
+	config := oidcTrustConfigTestConfig(server.URL, "remote deletion", "true", "8d39f431-715c-4c6c-916a-849292f97920")
+
+	tfresource.UnitTest(t, tfresource.TestCase{
+		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+		CheckDestroy:             service.checkEmpty,
+		Steps: []tfresource.TestStep{
+			{Config: config},
+			{
+				Config:             config,
+				PreConfig:          service.removeAll,
+				PlanOnly:           true,
+				ExpectNonEmptyPlan: true,
+			},
+		},
+	})
+}
+
+func TestOIDCTrustConfigResourceResolvedNoOpUpdate(t *testing.T) {
+	service, server := startOIDCTrustConfigTestServer(t)
+
+	tfresource.UnitTest(t, tfresource.TestCase{
+		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+		CheckDestroy:             service.checkEmpty,
+		Steps: []tfresource.TestStep{
+			{
+				Config: oidcTrustConfigTestConfigWithReplacedDescription(server.URL, "initial"),
+				Check:  tfresource.TestCheckResourceAttr(oidcTrustConfigResourceAddress, "description", "stable description"),
+			},
+			{
+				Config: oidcTrustConfigTestConfigWithReplacedDescription(server.URL, "replacement"),
+				Check: tfresource.ComposeAggregateTestCheckFunc(
+					tfresource.TestCheckResourceAttr(oidcTrustConfigResourceAddress, "description", "stable description"),
+					tfresource.TestCheckResourceAttrSet(oidcTrustConfigResourceAddress, "uid"),
+					tfresource.TestCheckResourceAttrSet(oidcTrustConfigResourceAddress, "created_at"),
+				),
+			},
+		},
+	})
+}
+
+func TestOIDCTrustConfigResourceRejectsEmptyCreateResponse(t *testing.T) {
+	service, server := startOIDCTrustConfigTestServer(t)
+	service.returnEmptyCreateResponse()
+	t.Cleanup(service.removeAll)
+
+	tfresource.UnitTest(t, tfresource.TestCase{
+		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+		Steps: []tfresource.TestStep{{
+			Config:      oidcTrustConfigTestConfig(server.URL, "empty response", "true", "8d39f431-715c-4c6c-916a-849292f97920"),
+			ExpectError: regexp.MustCompile("expected"),
+		}},
+	})
+}
+
+func TestOIDCTrustConfigResourceRejectsCreateResponseWithoutUID(t *testing.T) {
+	service, server := startOIDCTrustConfigTestServer(t)
+	service.returnEmptyCreateResponseUID()
+	t.Cleanup(service.removeAll)
+
+	tfresource.UnitTest(t, tfresource.TestCase{
+		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+		Steps: []tfresource.TestStep{{
+			Config:      oidcTrustConfigTestConfig(server.URL, "missing UID", "true", "8d39f431-715c-4c6c-916a-849292f97920"),
+			ExpectError: regexp.MustCompile("OIDC trust configuration UID is missing"),
+		}},
+	})
+}
+
+func TestOIDCTrustConfigResourceUpdateNotFoundRetainsState(t *testing.T) {
+	service, server := startOIDCTrustConfigTestServer(t)
+	initial := oidcTrustConfigTestConfig(server.URL, "initial", "true", "8d39f431-715c-4c6c-916a-849292f97920")
+	updated := oidcTrustConfigTestConfig(server.URL, "updated", "claims.repository == 'example/repo'", "8d39f431-715c-4c6c-916a-849292f97920")
+
+	tfresource.UnitTest(t, tfresource.TestCase{
+		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+		CheckDestroy:             service.checkEmpty,
+		Steps: []tfresource.TestStep{
+			{Config: initial},
+			{
+				Config:      updated,
+				PreConfig:   service.returnNotFoundOnNextUpdate,
+				ExpectError: regexp.MustCompile("[Nn]ot [Ff]ound|not found"),
+			},
+			{
+				Config: updated,
+				Check:  tfresource.TestCheckResourceAttr(oidcTrustConfigResourceAddress, "description", "updated"),
+			},
+		},
+	})
+}
+
+func TestOIDCTrustConfigResourceRecoversEmptyUpdateResponse(t *testing.T) {
+	service, server := startOIDCTrustConfigTestServer(t)
+	initial := oidcTrustConfigTestConfig(server.URL, "initial", "true", "8d39f431-715c-4c6c-916a-849292f97920")
+	updated := oidcTrustConfigTestConfig(server.URL, "updated", "claims.repository == 'example/repo'", "8d39f431-715c-4c6c-916a-849292f97920")
+
+	tfresource.UnitTest(t, tfresource.TestCase{
+		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+		CheckDestroy:             service.checkEmpty,
+		Steps: []tfresource.TestStep{
+			{Config: initial},
+			{
+				Config:    updated,
+				PreConfig: service.returnEmptyUpdateResponse,
+				Check: tfresource.ComposeAggregateTestCheckFunc(
+					tfresource.TestCheckResourceAttr(oidcTrustConfigResourceAddress, "description", "updated"),
+					tfresource.TestCheckResourceAttr(oidcTrustConfigResourceAddress, "cel", "claims.repository == 'example/repo'"),
+				),
+			},
+		},
+	})
+}
+
+func TestOIDCTrustConfigResourcePreservesExplicitEmptyDescription(t *testing.T) {
+	service, server := startOIDCTrustConfigTestServer(t)
+	config := oidcTrustConfigTestConfigWithExplicitDescription(server.URL, "")
+
+	tfresource.UnitTest(t, tfresource.TestCase{
+		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+		CheckDestroy:             service.checkEmpty,
+		Steps: []tfresource.TestStep{{
+			Config: config,
+			Check:  tfresource.TestCheckResourceAttr(oidcTrustConfigResourceAddress, "description", ""),
+		}},
+	})
+}
+
+func TestOIDCTrustConfigResourceAcceptsUnicodeByCodePointLength(t *testing.T) {
+	service, server := startOIDCTrustConfigTestServer(t)
+	description := strings.Repeat("界", 400)
+	cel := strings.Repeat("界", 400)
+	config := oidcTrustConfigTestConfig(server.URL, description, cel, "8d39f431-715c-4c6c-916a-849292f97920")
+
+	tfresource.UnitTest(t, tfresource.TestCase{
+		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+		CheckDestroy:             service.checkEmpty,
+		Steps: []tfresource.TestStep{{
+			Config: config,
+			Check: tfresource.ComposeAggregateTestCheckFunc(
+				tfresource.TestCheckResourceAttr(oidcTrustConfigResourceAddress, "description", description),
+				tfresource.TestCheckResourceAttr(oidcTrustConfigResourceAddress, "cel", cel),
+			),
+		}},
+	})
+}
+
+func TestOIDCTrustConfigResourceRejectsInvalidInputs(t *testing.T) {
+	tests := map[string]struct {
+		id, organizationID, serviceAccountID, description, cel, oidcConfigID string
+		errorPattern                                                         string
+	}{
+		"uppercase config ID": {
+			id: "Main-repo", organizationID: "a1b2c3", serviceAccountID: "ci-agent", cel: "true", oidcConfigID: "8d39f431-715c-4c6c-916a-849292f97920",
+			errorPattern: "must start with a lowercase letter",
+		},
+		"short organization ID": {
+			id: "main-repo", organizationID: "abc12", serviceAccountID: "ci-agent", cel: "true", oidcConfigID: "8d39f431-715c-4c6c-916a-849292f97920",
+			errorPattern: "must contain exactly six",
+		},
+		"uppercase service account ID": {
+			id: "main-repo", organizationID: "a1b2c3", serviceAccountID: "CI-agent", cel: "true", oidcConfigID: "8d39f431-715c-4c6c-916a-849292f97920",
+			errorPattern: "must start with a lowercase letter",
+		},
+		"empty CEL": {
+			id: "main-repo", organizationID: "a1b2c3", serviceAccountID: "ci-agent", cel: "", oidcConfigID: "8d39f431-715c-4c6c-916a-849292f97920",
+			errorPattern: "between 1 and 4096",
+		},
+		"invalid OIDC config UID": {
+			id: "main-repo", organizationID: "a1b2c3", serviceAccountID: "ci-agent", cel: "true", oidcConfigID: "not-a-uuid",
+			errorPattern: "must be a UUID",
+		},
+		"description over 2048 code points": {
+			id: "main-repo", organizationID: "a1b2c3", serviceAccountID: "ci-agent", description: strings.Repeat("界", 2049), cel: "true", oidcConfigID: "8d39f431-715c-4c6c-916a-849292f97920",
+			errorPattern: "at most 2048",
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			service, server := startOIDCTrustConfigTestServer(t)
+			tfresource.UnitTest(t, tfresource.TestCase{
+				ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+				CheckDestroy:             service.checkEmpty,
+				Steps: []tfresource.TestStep{{
+					Config:      oidcTrustConfigTestConfigWithIdentity(server.URL, test.id, test.organizationID, test.serviceAccountID, test.description, test.cel, test.oidcConfigID),
+					ExpectError: regexp.MustCompile(test.errorPattern),
+				}},
+			})
+		})
+	}
 }

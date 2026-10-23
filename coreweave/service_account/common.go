@@ -20,10 +20,6 @@ func serviceAccountName(organizationID, serviceAccountID string) string {
 	return fmt.Sprintf("organizations/%s/serviceAccounts/%s", organizationID, serviceAccountID)
 }
 
-func oidcTrustConfigName(organizationID, serviceAccountID, configID string) string {
-	return fmt.Sprintf("%s/oidcTrustConfigs/%s", serviceAccountName(organizationID, serviceAccountID), configID)
-}
-
 func parseOIDCTrustConfigName(name string) (string, string, string, error) {
 	matches := oidcTrustConfigNameRE.FindStringSubmatch(name)
 	if matches == nil {
