@@ -10,4 +10,4 @@ runs:
   - name: Setup mise
     uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8 # v5.1.2
     with:
-      version: v2026.10.10
+      version: v2026.10.11
