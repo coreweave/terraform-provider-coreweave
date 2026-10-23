@@ -5,8 +5,8 @@ go 1.27.2
 require (
 	buf.build/gen/go/coreweave/cks/connectrpc/go/v2 v2.0.1-20261014193236-69d4f39faca7.1
 	buf.build/gen/go/coreweave/cks/protocolbuffers/go v1.36.12-20261014193236-69d4f39faca7.2
-	buf.build/gen/go/coreweave/container-registry-api/connectrpc/go/v2 v2.0.1-20261009031350-4d1490e50ed8.1
-	buf.build/gen/go/coreweave/container-registry-api/protocolbuffers/go v1.36.12-20261009031350-4d1490e50ed8.2
+	buf.build/gen/go/coreweave/container-registry-api/connectrpc/go/v2 v2.0.2-20261019135501-78f7b7d0869d.1
+	buf.build/gen/go/coreweave/container-registry-api/protocolbuffers/go v1.36.12-20261019135501-78f7b7d0869d.2
 	buf.build/gen/go/coreweave/cwobject/connectrpc/go/v2 v2.0.0-20260831154917-08064e55742b.1
 	buf.build/gen/go/coreweave/cwobject/protocolbuffers/go v1.36.12-20260831154917-08064e55742b.2
 	buf.build/gen/go/coreweave/inference/connectrpc/go/v2 v2.0.0-20261008185853-22f8f31f8962.1
@@ -19,7 +19,7 @@ require (
 	buf.build/gen/go/coreweave/workload-federation/protocolbuffers/go v1.36.12-20261013191007-c36df30df3ed.2
 	buf.build/go/protovalidate v1.4.0
 	cloud.google.com/go/longrunning v1.3.0
-	connectrpc.com/connect/v2 v2.0.1
+	connectrpc.com/connect/v2 v2.0.2
 	github.com/aws/aws-sdk-go-v2 v1.47.3
 	github.com/aws/aws-sdk-go-v2/credentials v1.20.9
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.114.3
