@@ -66,7 +66,7 @@ func (r *OIDCTrustConfigResource) Schema(_ context.Context, _ resource.SchemaReq
 			"cel":                                schema.StringAttribute{Required: true, Validators: []validator.String{stringvalidator.UTF8LengthBetween(1, 4096)}, MarkdownDescription: "The CEL expression evaluated against verified OIDC token claims exposed through the `token` namespace."},
 			"workload_federation_oidc_config_id": schema.StringAttribute{Required: true, Validators: []validator.String{stringvalidator.RegexMatches(uuidPattern, "must be a UUID")}, MarkdownDescription: "The UID of the workload federation OIDC configuration used to verify tokens."},
 			"created_at":                         schema.StringAttribute{Computed: true, PlanModifiers: computed, MarkdownDescription: "The RFC 3339 creation timestamp."},
-			"updated_at":                         schema.StringAttribute{Computed: true, MarkdownDescription: "The RFC 3339 last-update timestamp."},
+			"updated_at":                         schema.StringAttribute{Computed: true, PlanModifiers: computed, MarkdownDescription: "The RFC 3339 last-update timestamp."},
 		},
 	}
 }
@@ -185,6 +185,7 @@ func (r *OIDCTrustConfigResource) Update(ctx context.Context, req resource.Updat
 	if resp.Diagnostics.HasError() {
 		return
 	}
+	plannedUpdatedAt := plan.UpdatedAt
 	config := &directoryv1alpha.ServiceAccountOidcTrustConfig{Name: state.Name.ValueString()}
 	paths := make([]string, 0, 3)
 	if !plan.Description.Equal(state.Description) && !plan.Description.IsUnknown() {
@@ -227,6 +228,9 @@ func (r *OIDCTrustConfigResource) Update(ctx context.Context, req resource.Updat
 			return
 		}
 	}
+	// updated_at uses UseStateForUnknown so no-op plans remain empty. Preserve
+	// that planned value during apply; the next refresh reads the new timestamp.
+	plan.UpdatedAt = plannedUpdatedAt
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
