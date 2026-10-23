@@ -21,7 +21,7 @@ It is `workflow_dispatch` only. Dispatch requires write access and can only sele
 
 It does not reuse `acceptance-test.yaml`. That workflow's freshness guard requires a `pull_request` event and rejects every other event, which `current-pr.test.mjs` pins; routing a dispatch through it would mean weakening that guard.
 
-Credentials come from the `QA` environment, with the suite carrying its own secret — `COREWEAVE_OBSERVABILITY_API_TOKEN` — the way object_storage already carries `COREWEAVE_OBJS_API_TOKEN`.
+Credentials come from the `QA` environment, with the suite carrying its own secret — `COREWEAVE_OBSERVABILITY_API_TOKEN` — the way object_storage already carries `COREWEAVE_OBJS_API_TOKEN`. Both manual observability runs and release acceptance use this token; a missing suite-specific secret fails closed rather than falling back to the shared `COREWEAVE_API_TOKEN` organization.
 
 That token must belong to an organization whose registered clusters are **lab-only**. This is what makes the pipeline suites safe to run: a pipeline creates one connector per source Kafka cluster holding the stream's topics, so an organization with a production cluster footprint would provision real connectors in a production zone.
 
@@ -43,7 +43,7 @@ curl -s -X POST "$COREWEAVE_API_ENDPOINT/coreweave.telemetryrelay.svc.cluster.v1
 
 The `Connect-Protocol-Version` header is required. Without it the request 404s, and the 404 is reported as `TELEMETRYRELAY_ENDPOINT_NOT_FOUND`, which reads like a missing forwarding endpoint rather than a missing route.
 
-Release Please creates and updates PRs with the repository's `GITHUB_TOKEN`. GitHub holds the resulting `pull_request` workflows for human approval. On the release PR, click **Approve workflows to run** in the checks/merge area to start `Tests`, including its full six-suite acceptance matrix. No separate environment approval or navigation to workflow runs is needed. Each automation-triggered PR revision requires approval. Human pushes, **Update branch**, or reopening the release PR can start workflows without that prompt; use those actions only when you intend to start QA. See [GitHub's workflow triggering documentation](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow).
+Release Please creates and updates PRs with the repository's `GITHUB_TOKEN`. GitHub holds the resulting `pull_request` workflows for human approval. On the release PR, click **Approve workflows to run** in the checks/merge area to start `Tests`, including its full seven-suite acceptance matrix. No separate environment approval or navigation to workflow runs is needed. Each automation-triggered PR revision requires approval. Human pushes, **Update branch**, or reopening the release PR can start workflows without that prompt; use those actions only when you intend to start QA. See [GitHub's workflow triggering documentation](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow).
 
 After approval, acceptance waits for compilation, lint, module consistency, and unit tests. Snapshot builds and documentation generation remain parallel. Each suite holds its shared `acceptance-test-<suite>` lock; queued arrivals do not cancel running sweeps or tests. Before checkout and each resource command, QA verifies that the PR is still open at the requested revision. Started commands finish their cleanup; outdated queued commands fail before using resources.
 
