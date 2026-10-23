@@ -18,6 +18,7 @@ import (
 	"github.com/coreweave/terraform-provider-coreweave/coreweave/sandbox"
 	workloadfederation "github.com/coreweave/terraform-provider-coreweave/coreweave/workload_federation"
 	"github.com/coreweave/terraform-provider-coreweave/internal/auth"
+	"github.com/hashicorp/terraform-plugin-framework/action"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/function"
 	"github.com/hashicorp/terraform-plugin-framework/provider"
@@ -58,6 +59,7 @@ var TestProtoV6ProviderFactories = map[string]func() (tfprotov6.ProviderServer, 
 var (
 	_ provider.Provider              = &CoreweaveProvider{}
 	_ provider.ProviderWithFunctions = &CoreweaveProvider{}
+	_ provider.ProviderWithActions   = &CoreweaveProvider{}
 )
 
 // CoreweaveProvider defines the provider implementation.
@@ -130,6 +132,7 @@ func (p *CoreweaveProvider) Configure(ctx context.Context, req provider.Configur
 
 	resp.DataSourceData = client
 	resp.ResourceData = client
+	resp.ActionData = client
 }
 
 func parseDuration(raw string) (*time.Duration, error) {
@@ -280,4 +283,8 @@ func New(version string) func() provider.Provider {
 			version: version,
 		}
 	}
+}
+
+func (p *CoreweaveProvider) Actions(_ context.Context) []func() action.Action {
+	return []func() action.Action{sandbox.NewManagedRunnerApplyUpdateAction}
 }
