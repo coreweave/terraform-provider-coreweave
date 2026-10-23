@@ -287,6 +287,10 @@ func TestOIDCTrustConfigResourceLifecycle(t *testing.T) {
 				ImportStateVerify: true,
 			},
 			{
+				Config:   initial,
+				PlanOnly: true,
+			},
+			{
 				Config: updated,
 				Check: tfresource.ComposeAggregateTestCheckFunc(
 					tfresource.TestCheckNoResourceAttr(oidcTrustConfigResourceAddress, "description"),
