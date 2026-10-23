@@ -1,5 +1,5 @@
 ---
-# Manual acceptance runs against a dedicated organization.
+# Manual observability acceptance runs against a dedicated organization.
 #
 # Ordinary PRs never select QA suites (see .github/acceptance-tests/README.md);
 # acceptance runs only on the release-please PR, which is after merge. This
@@ -9,12 +9,13 @@
 # guard requires a pull_request event and rejects every other event, a property
 # its tests pin; dispatching through it would mean weakening that.
 #
-# The suite's token is its own secret in the QA environment, the way
+# The observability token is its own secret in the QA environment, the way
 # object_storage already carries COREWEAVE_OBJS_API_TOKEN. It must belong to an
 # organization whose registered clusters are lab-only: a pipeline creates one
 # connector per source Kafka cluster holding the stream's topics, so running the
 # pipeline suites as an organization with production clusters registered would
-# provision real connectors in a production zone.
+# provision real connectors in a production zone. Other suites continue to use
+# their release-acceptance credentials.
 #
 # Note this shares the QA environment with release acceptance, so a dispatched
 # branch can read that environment's other secrets. Dispatch already requires
@@ -56,10 +57,14 @@ jobs:
       contents: read
       packages: read
     env:
-      COREWEAVE_API_ENDPOINT: ${{ vars.COREWEAVE_API_ENDPOINT }}
-      COREWEAVE_API_TOKEN: ${{ secrets.COREWEAVE_OBSERVABILITY_API_TOKEN }}
-      TEST_ACC_SWEEP_ZONE: US-LAB-01A
-      TEST_ACC_SWEEP_TIMEOUT: '45m'
+      COREWEAVE_API_ENDPOINT: ${{ inputs.suite == 'object_storage' && secrets.COREWEAVE_OBJS_API_ENDPOINT || vars.COREWEAVE_API_ENDPOINT }}
+      COREWEAVE_API_TOKEN: ${{ secrets[inputs.suite == 'object_storage' && 'COREWEAVE_OBJS_API_TOKEN' || inputs.suite == 'observability' && 'COREWEAVE_OBSERVABILITY_API_TOKEN' || 'COREWEAVE_API_TOKEN'] }}
+      TEST_ACC_SWEEP_ZONE: ${{ inputs.suite == 'object_storage' && 'US-EAST-04A' || inputs.suite == 'inference' && 'RNO2A' || 'US-LAB-01A' }}
+      TEST_ACC_SWEEP_TIMEOUT: ${{ inputs.suite == 'inference' && '105m' || '45m' }}
+      COREWEAVE_CONTAINER_REGISTRY_TEST_ZONE: ${{ inputs.suite == 'container_registry' && 'US-LAB-01A' || '' }}
+      COREWEAVE_CONTAINER_REGISTRY_TEST_PREFIX: ${{ inputs.suite == 'container_registry' && (vars.COREWEAVE_CONTAINER_REGISTRY_TEST_PREFIX || 'q-tfacc-cr-') || '' }}
+      INFR_ZONE: 'RNO2A'
+      INFR_INSTANCE_ID: 'gd-1xgh200'
       TEST_ACC_RUN: ${{ inputs.run }}
       TF_IN_AUTOMATION: '1'
     steps:
