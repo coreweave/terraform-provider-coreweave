@@ -122,33 +122,59 @@ func (v *VpcDhcpResourceModel) IsEmpty() bool {
 	return v.Dns.IsEmpty()
 }
 
+// Set populates the model from the API response. The receiver is expected to
+// already hold the prior (planned or state) value so that, when the API returns
+// an empty collection, the null-versus-empty representation the practitioner
+// configured can be preserved. The API cannot distinguish a null collection
+// from an empty one, so blindly decoding its response would flip null to empty
+// (or vice versa) and trip Terraform's inconsistent-result-after-apply check.
 func (v *VpcDhcpResourceModel) Set(dhcp *networkingv1beta1.DHCP) {
+	prior := v.Dns
+
 	if dhcp == nil || dhcp.Dns == nil {
+		v.Dns = nil
 		return
 	}
 
-	v.Dns = &VpcDhcpDnsResourceModel{}
-
-	servers := make([]attr.Value, len(dhcp.Dns.Servers))
-	for i, s := range dhcp.Dns.Servers {
-		servers[i] = types.StringValue(s)
+	v.Dns = &VpcDhcpDnsResourceModel{
+		Servers:       serversFromAPI(prior, dhcp.Dns.Servers),
+		SearchDomains: searchDomainsFromAPI(prior, dhcp.Dns.SearchDomains),
 	}
-	v.Dns.Servers = types.SetValueMust(types.StringType, servers)
+}
 
-	// The API always returns search_domains (empty when unset), so map an empty
-	// list back to a null list. Otherwise a config that sets servers but omits
-	// search_domains would see null in config and an empty list in state, which
-	// Terraform rejects as an inconsistent result.
-	if len(dhcp.Dns.SearchDomains) == 0 {
-		v.Dns.SearchDomains = types.ListNull(types.StringType)
-		return
+// serversFromAPI builds the servers set from the API response. When the API
+// returns no servers it mirrors the prior value's null-versus-empty
+// representation; with no prior value it preserves the historical behavior of
+// emitting an empty set.
+func serversFromAPI(prior *VpcDhcpDnsResourceModel, values []string) types.Set {
+	if len(values) == 0 && prior != nil && prior.Servers.IsNull() {
+		return types.SetNull(types.StringType)
 	}
 
-	searchDomains := make([]attr.Value, len(dhcp.Dns.SearchDomains))
-	for i, sd := range dhcp.Dns.SearchDomains {
-		searchDomains[i] = types.StringValue(sd)
+	elems := make([]attr.Value, len(values))
+	for i, s := range values {
+		elems[i] = types.StringValue(s)
 	}
-	v.Dns.SearchDomains = types.ListValueMust(types.StringType, searchDomains)
+	return types.SetValueMust(types.StringType, elems)
+}
+
+// searchDomainsFromAPI builds the ordered search-domain list from the API
+// response. When the API returns no entries it mirrors the prior value's
+// null-versus-empty representation, defaulting to null when there is no prior
+// value.
+func searchDomainsFromAPI(prior *VpcDhcpDnsResourceModel, values []string) types.List {
+	if len(values) == 0 {
+		if prior == nil || prior.SearchDomains.IsNull() {
+			return types.ListNull(types.StringType)
+		}
+		return types.ListValueMust(types.StringType, []attr.Value{})
+	}
+
+	elems := make([]attr.Value, len(values))
+	for i, sd := range values {
+		elems[i] = types.StringValue(sd)
+	}
+	return types.ListValueMust(types.StringType, elems)
 }
 
 type HostPrefixResourceModel struct {
@@ -355,12 +381,14 @@ func (v *VpcResourceModel) Set(vpc *networkingv1beta1.VPC) (diagnostics diag.Dia
 		v.VpcPrefixes = vpcPrefixes
 	}
 
-	dhcp := VpcDhcpResourceModel{}
-	dhcp.Set(vpc.Dhcp)
-	// if there is any dhcp config returned from the API, set it
-	if !dhcp.IsEmpty() {
-		v.Dhcp = &dhcp
-	} else { // otherwise, remove it
+	// Decode DHCP in place so Set can read the prior value and preserve each
+	// collection's null-versus-empty representation when the API returns empty.
+	if v.Dhcp == nil {
+		v.Dhcp = &VpcDhcpResourceModel{}
+	}
+	v.Dhcp.Set(vpc.Dhcp)
+	// Drop the DHCP block entirely when the API returns nothing meaningful.
+	if v.Dhcp.IsEmpty() {
 		v.Dhcp = nil
 	}
 	return diagnostics

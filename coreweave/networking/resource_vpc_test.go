@@ -224,19 +224,24 @@ func defaultExpectedValues(t *testing.T, resourceAddress string, m *networking.V
 		if m.Dhcp.Dns == nil {
 			dhcpObj["dns"] = knownvalue.Null()
 		} else {
-			servers := make([]string, 0)
-			if diags := m.Dhcp.Dns.Servers.ElementsAs(t.Context(), &servers, false); diags.HasError() {
-				t.Fatalf("failed to get DHCP servers from model: %+v", diags)
-			}
-			serverChecks := make([]knownvalue.Check, len(servers))
-			for i, server := range servers {
-				serverChecks[i] = knownvalue.StringExact(server)
+			// The provider preserves each collection's null-versus-empty
+			// representation, so a model carrying a null collection must yield
+			// null in state rather than an empty set/list.
+			var serversCheck knownvalue.Check = knownvalue.Null()
+			if !m.Dhcp.Dns.Servers.IsNull() {
+				servers := make([]string, 0)
+				if diags := m.Dhcp.Dns.Servers.ElementsAs(t.Context(), &servers, false); diags.HasError() {
+					t.Fatalf("failed to get DHCP servers from model: %+v", diags)
+				}
+				serverChecks := make([]knownvalue.Check, len(servers))
+				for i, server := range servers {
+					serverChecks[i] = knownvalue.StringExact(server)
+				}
+				serversCheck = knownvalue.SetExact(serverChecks)
 			}
 
-			// The provider maps the API's empty search domain list back to null,
-			// so expect null whenever the model carries none.
 			var searchDomainsCheck knownvalue.Check = knownvalue.Null()
-			if !m.Dhcp.Dns.SearchDomains.IsNull() && len(m.Dhcp.Dns.SearchDomains.Elements()) > 0 {
+			if !m.Dhcp.Dns.SearchDomains.IsNull() {
 				searchDomains := make([]string, 0)
 				if diags := m.Dhcp.Dns.SearchDomains.ElementsAs(t.Context(), &searchDomains, false); diags.HasError() {
 					t.Fatalf("failed to get DHCP search domains from model: %+v", diags)
@@ -249,7 +254,7 @@ func defaultExpectedValues(t *testing.T, resourceAddress string, m *networking.V
 			}
 
 			dhcpObj["dns"] = knownvalue.ObjectExact(map[string]knownvalue.Check{
-				"servers":        knownvalue.SetExact(serverChecks),
+				"servers":        serversCheck,
 				"search_domains": searchDomainsCheck,
 			})
 		}
@@ -337,6 +342,19 @@ func TestVpcResource(t *testing.T) {
 			obj.Dhcp = &networking.VpcDhcpResourceModel{
 				Dns: &networking.VpcDhcpDnsResourceModel{
 					Servers: update.Dhcp.Dns.Servers,
+				},
+			}
+		})
+
+		// searchDomainsOnly configures search domains while omitting servers. The
+		// API returns an empty server list, and the provider must map that back to
+		// null (matching the omitted config) rather than an empty set, which
+		// Terraform would reject as an inconsistent result after apply.
+		searchDomainsOnly := with(t, update, func(t *testing.T, obj *networking.VpcResourceModel) {
+			t.Helper()
+			obj.Dhcp = &networking.VpcDhcpResourceModel{
+				Dns: &networking.VpcDhcpDnsResourceModel{
+					SearchDomains: update.Dhcp.Dns.SearchDomains,
 				},
 			}
 		})
@@ -473,6 +491,20 @@ func TestVpcResource(t *testing.T) {
 					ResourceName:      fullResourceName,
 					ImportState:       true,
 					ImportStateVerify: true,
+				},
+				{
+					PreConfig: func() {
+						t.Log("Beginning coreweave_networking_vpc search-domains-only test")
+					},
+					Config: networking.MustRenderVpcResource(ctx, resourceName, &searchDomainsOnly),
+					ConfigPlanChecks: resource.ConfigPlanChecks{
+						PreApply: []plancheck.PlanCheck{
+							plancheck.ExpectResourceAction(fullResourceName, plancheck.ResourceActionUpdate),
+						},
+					},
+					ConfigStateChecks: slices.Concat(defaultExpectedValues(t, fullResourceName, &searchDomainsOnly), []statecheck.StateCheck{
+						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("dhcp").AtMapKey("dns").AtMapKey("servers"), knownvalue.Null()),
+					}),
 				},
 				{
 					PreConfig: func() {
