@@ -144,11 +144,14 @@ func (v *VpcDhcpResourceModel) Set(dhcp *networkingv1beta1.DHCP) {
 
 // serversFromAPI builds the servers set from the API response. When the API
 // returns no servers it mirrors the prior value's null-versus-empty
-// representation; with no prior value it preserves the historical behavior of
-// emitting an empty set.
+// representation, defaulting to null when there is no prior value (e.g. during
+// import) so the result matches what create/update stores for omitted servers.
 func serversFromAPI(prior *VpcDhcpDnsResourceModel, values []string) types.Set {
-	if len(values) == 0 && prior != nil && prior.Servers.IsNull() {
-		return types.SetNull(types.StringType)
+	if len(values) == 0 {
+		if prior == nil || prior.Servers.IsNull() {
+			return types.SetNull(types.StringType)
+		}
+		return types.SetValueMust(types.StringType, []attr.Value{})
 	}
 
 	elems := make([]attr.Value, len(values))

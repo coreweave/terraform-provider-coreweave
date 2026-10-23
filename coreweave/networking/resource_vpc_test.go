@@ -507,6 +507,17 @@ func TestVpcResource(t *testing.T) {
 					}),
 				},
 				{
+					// Verify a search-domains-only VPC round-trips through import:
+					// with no prior model, the omitted servers must decode back to
+					// null to match the create/update state.
+					PreConfig: func() {
+						t.Log("Beginning coreweave_networking_vpc search-domains-only import test")
+					},
+					ResourceName:      fullResourceName,
+					ImportState:       true,
+					ImportStateVerify: true,
+				},
+				{
 					PreConfig: func() {
 						t.Log("Beginning coreweave_networking_vpc gateway policy replace test")
 					},
