@@ -37,6 +37,16 @@ test('both QA jobs guard checkout and the resource command', () => {
   }
 });
 
+test('suite-specific QA credentials are selected without a generic-token fallback', () => {
+  const selection = "secrets[inputs.suite == 'object_storage' && 'COREWEAVE_OBJS_API_TOKEN' || " +
+    "inputs.suite == 'observability' && 'COREWEAVE_OBSERVABILITY_API_TOKEN' || 'COREWEAVE_API_TOKEN']";
+  assert.equal(workflow.split(selection).length - 1, 2, 'sweep and test must use the same secret selection');
+  assert.doesNotMatch(workflow, /secrets\.COREWEAVE_(?:OBJS|OBSERVABILITY)_API_TOKEN\s*\|\|\s*secrets\.COREWEAVE_API_TOKEN/);
+
+  const manual = readFileSync(new URL('../workflows/acceptance-manual.yaml', import.meta.url), 'utf8');
+  assert.equal(manual.split(selection).length - 1, 1, 'manual runs must use the same secret selection');
+});
+
 async function check(ctx, current, error) {
   const calls = [];
   const messages = [];

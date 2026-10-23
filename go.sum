@@ -24,6 +24,10 @@ buf.build/gen/go/coreweave/sandbox/connectrpc/go/v2 v2.0.1-20261015202918-7074ae
 buf.build/gen/go/coreweave/sandbox/connectrpc/go/v2 v2.0.1-20261015202918-7074ae5be483.1/go.mod h1:2x8Y1VWdZlNeum03qs34agSe+IonuRmhXlPneLS9amQ=
 buf.build/gen/go/coreweave/sandbox/protocolbuffers/go v1.36.12-20261015202918-7074ae5be483.2 h1:NCWI5J3WhzEWJ/By5QtR7Uyq63nopSu7tyJznahJuN4=
 buf.build/gen/go/coreweave/sandbox/protocolbuffers/go v1.36.12-20261015202918-7074ae5be483.2/go.mod h1:0FQ2NQQ6Ab7XQ2QEEU0yzQXMHTej8rwlafLER6uehw4=
+buf.build/gen/go/coreweave/telemetry-relay/connectrpc/go/v2 v2.0.1-20261020165954-9af87285dbd8.1 h1:Vhbu9nglMz9F/Q79bxJ2voJNs3wS43fvT7AqQgNpJgk=
+buf.build/gen/go/coreweave/telemetry-relay/connectrpc/go/v2 v2.0.1-20261020165954-9af87285dbd8.1/go.mod h1:TgifiHtKF6vKtbNeKVuyfK975ORP+Ij+ZArFwYsSR30=
+buf.build/gen/go/coreweave/telemetry-relay/protocolbuffers/go v1.36.12-20261020165954-9af87285dbd8.2 h1:TBWsQvTqkK9B/LyKrFZMBdgFXA6ykYox6ZkDon1apRQ=
+buf.build/gen/go/coreweave/telemetry-relay/protocolbuffers/go v1.36.12-20261020165954-9af87285dbd8.2/go.mod h1:NR0sF3FVB0AjIj0YH14EllnMLTBcWLGYb3/npXF3Zxo=
 buf.build/gen/go/coreweave/workload-federation/connectrpc/go/v2 v2.0.0-20261013191007-c36df30df3ed.1 h1:2VHEz+K1RjSPVX0c7wZ/MJWdu6qXZSaLHiN1L8CsBt8=
 buf.build/gen/go/coreweave/workload-federation/connectrpc/go/v2 v2.0.0-20261013191007-c36df30df3ed.1/go.mod h1:qQLuftwl1vZhQJASJmFHvHvXsu3e+CSoQq+uOdJOhd8=
 buf.build/gen/go/coreweave/workload-federation/protocolbuffers/go v1.36.12-20261013191007-c36df30df3ed.2 h1:9yIHtVJG6N7qyFvP36WsqMZO3rvpBancK7InJdvy9VI=
@@ -166,6 +170,8 @@ github.com/hashicorp/terraform-plugin-framework-nettypes v0.3.0 h1:cEiRvdFAhFniv
 github.com/hashicorp/terraform-plugin-framework-nettypes v0.3.0/go.mod h1:SDIm7W2x3Bs9otNC0ysbaSQ7H4H/EPimoACTy+7Z9rU=
 github.com/hashicorp/terraform-plugin-framework-timeouts v0.7.0 h1:jblRy1PkLfPm5hb5XeMa3tezusnMRziUGqtT5epSYoI=
 github.com/hashicorp/terraform-plugin-framework-timeouts v0.7.0/go.mod h1:5jm2XK8uqrdiSRfD5O47OoxyGMCnwTcl8eoiDgSa+tc=
+github.com/hashicorp/terraform-plugin-framework-timetypes v0.5.0 h1:v3DapR8gsp3EM8fKMh6up9cJUFQ2iRaFsYLP8UJnCco=
+github.com/hashicorp/terraform-plugin-framework-timetypes v0.5.0/go.mod h1:c3PnGE9pHBDfdEVG9t1S1C9ia5LW+gkFR0CygXlM8ak=
 github.com/hashicorp/terraform-plugin-framework-validators v0.19.0 h1:Zz3iGgzxe/1XBkooZCewS0nJAaCFPFPHdNJd8FgE4Ow=
 github.com/hashicorp/terraform-plugin-framework-validators v0.19.0/go.mod h1:GBKTNGbGVJohU03dZ7U8wHqc2zYnMUawgCN+gC0itLc=
 github.com/hashicorp/terraform-plugin-go v0.31.0 h1:0Fz2r9DQ+kNNl6bx8HRxFd1TfMKUvnrOtvJPmp3Z0q8=
