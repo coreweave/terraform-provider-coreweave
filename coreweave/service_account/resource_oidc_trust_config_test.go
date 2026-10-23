@@ -61,28 +61,6 @@ func TestOIDCTrustConfigSetFromProto(t *testing.T) {
 	assert.Equal(t, "true", model.CEL.ValueString())
 }
 
-func TestOIDCTrustConfigSetFromProtoPreservesNullDescription(t *testing.T) {
-	t.Parallel()
-	config := &directoryv1alpha.ServiceAccountOidcTrustConfig{
-		Name:                            "organizations/a1b2c3/serviceAccounts/ci-agent/oidcTrustConfigs/main-repo",
-		Uid:                             proto.String("e3bb1892-f89e-4258-9495-427ed5ace8c7"),
-		Description:                     proto.String(""),
-		Cel:                             proto.String("true"),
-		WorkloadFederationOidcConfigUid: proto.String("8d39f431-715c-4c6c-916a-849292f97920"),
-	}
-
-	for name, description := range map[string]types.String{
-		"omitted remains null":         types.StringNull(),
-		"explicit empty remains empty": types.StringValue(""),
-	} {
-		t.Run(name, func(t *testing.T) {
-			model := OIDCTrustConfigResourceModel{Description: description}
-			require.NoError(t, model.setFromProtoPreservingNullDescription(config, description))
-			assert.True(t, model.Description.Equal(description))
-		})
-	}
-}
-
 func TestOIDCTrustConfigCanonicalNameParsing(t *testing.T) {
 	t.Parallel()
 	organizationID, serviceAccountID, configID, err := parseOIDCTrustConfigName("organizations/a1b2c3/serviceAccounts/ci-agent/oidcTrustConfigs/main-repo")

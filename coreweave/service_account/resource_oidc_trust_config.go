@@ -11,6 +11,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -62,7 +63,7 @@ func (r *OIDCTrustConfigResource) Schema(_ context.Context, _ resource.SchemaReq
 			"service_account_id":                 schema.StringAttribute{Required: true, PlanModifiers: immutable, Validators: idValidator, MarkdownDescription: "The ID of the service account that owns this trust configuration."},
 			"name":                               schema.StringAttribute{Computed: true, PlanModifiers: computed, MarkdownDescription: "The canonical resource name."},
 			"uid":                                schema.StringAttribute{Computed: true, PlanModifiers: computed, MarkdownDescription: "The server-generated unique identifier."},
-			"description":                        schema.StringAttribute{Optional: true, Validators: []validator.String{stringvalidator.UTF8LengthAtMost(2048)}, MarkdownDescription: "An optional description of the trust rule."},
+			"description":                        schema.StringAttribute{Optional: true, Computed: true, Default: stringdefault.StaticString(""), Validators: []validator.String{stringvalidator.UTF8LengthAtMost(2048)}, MarkdownDescription: "An optional description of the trust rule. Defaults to an empty string."},
 			"cel":                                schema.StringAttribute{Required: true, Validators: []validator.String{stringvalidator.UTF8LengthBetween(1, 4096)}, MarkdownDescription: "The CEL expression evaluated against verified OIDC token claims exposed through the `token` namespace."},
 			"workload_federation_oidc_config_id": schema.StringAttribute{Required: true, Validators: []validator.String{stringvalidator.RegexMatches(uuidPattern, "must be a UUID")}, MarkdownDescription: "The UID of the workload federation OIDC configuration used to verify tokens."},
 			"created_at":                         schema.StringAttribute{Computed: true, PlanModifiers: computed, MarkdownDescription: "The RFC 3339 creation timestamp."},
@@ -111,19 +112,6 @@ func (m *OIDCTrustConfigResourceModel) setFromProto(config *directoryv1alpha.Ser
 	return nil
 }
 
-// setFromProtoPreservingNullDescription keeps an omitted Terraform description
-// null when the API returns its equivalent stored representation, an explicitly
-// present empty string. An explicit description = "" remains an empty string.
-func (m *OIDCTrustConfigResourceModel) setFromProtoPreservingNullDescription(config *directoryv1alpha.ServiceAccountOidcTrustConfig, priorDescription types.String) error {
-	if err := m.setFromProto(config); err != nil {
-		return err
-	}
-	if priorDescription.IsNull() && m.Description.ValueString() == "" {
-		m.Description = types.StringNull()
-	}
-	return nil
-}
-
 func (m *OIDCTrustConfigResourceModel) createRequest() *directoryv1alpha.CreateServiceAccountOidcTrustConfigRequest {
 	config := &directoryv1alpha.ServiceAccountOidcTrustConfig{}
 	if !m.Description.IsNull() && !m.Description.IsUnknown() {
@@ -148,7 +136,7 @@ func (r *OIDCTrustConfigResource) Create(ctx context.Context, req resource.Creat
 		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
 		return
 	}
-	if err := data.setFromProtoPreservingNullDescription(config, data.Description); err != nil {
+	if err := data.setFromProto(config); err != nil {
 		resp.Diagnostics.AddError("Unexpected API Response", err.Error())
 		return
 	}
@@ -171,7 +159,7 @@ func (r *OIDCTrustConfigResource) Read(ctx context.Context, req resource.ReadReq
 		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
 		return
 	}
-	if err := data.setFromProtoPreservingNullDescription(config, data.Description); err != nil {
+	if err := data.setFromProto(config); err != nil {
 		resp.Diagnostics.AddError("Unexpected API Response", err.Error())
 		return
 	}
@@ -216,14 +204,14 @@ func (r *OIDCTrustConfigResource) Update(ctx context.Context, req resource.Updat
 		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
 		return
 	}
-	if err := plan.setFromProtoPreservingNullDescription(remote, plan.Description); err != nil {
+	if err := plan.setFromProto(remote); err != nil {
 		name := state.Name.ValueString()
 		readBack, readErr := r.client.Directory.GetServiceAccountOidcTrustConfig(ctx, &directoryv1alpha.GetServiceAccountOidcTrustConfigRequest{Name: &name})
 		if readErr != nil {
 			coreweave.HandleAPIError(ctx, readErr, &resp.Diagnostics)
 			return
 		}
-		if readBackErr := plan.setFromProtoPreservingNullDescription(readBack, plan.Description); readBackErr != nil {
+		if readBackErr := plan.setFromProto(readBack); readBackErr != nil {
 			resp.Diagnostics.AddError("Unexpected API Response", fmt.Sprintf("The Directory API returned an invalid OIDC trust configuration after update and the subsequent read could not recover it: %s.", readBackErr))
 			return
 		}
