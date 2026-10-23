@@ -111,6 +111,19 @@ func (m *OIDCTrustConfigResourceModel) setFromProto(config *directoryv1alpha.Ser
 	return nil
 }
 
+// setFromProtoPreservingNullDescription keeps an omitted Terraform description
+// null when the API returns its equivalent stored representation, an explicitly
+// present empty string. An explicit description = "" remains an empty string.
+func (m *OIDCTrustConfigResourceModel) setFromProtoPreservingNullDescription(config *directoryv1alpha.ServiceAccountOidcTrustConfig, priorDescription types.String) error {
+	if err := m.setFromProto(config); err != nil {
+		return err
+	}
+	if priorDescription.IsNull() && m.Description.ValueString() == "" {
+		m.Description = types.StringNull()
+	}
+	return nil
+}
+
 func (m *OIDCTrustConfigResourceModel) createRequest() *directoryv1alpha.CreateServiceAccountOidcTrustConfigRequest {
 	config := &directoryv1alpha.ServiceAccountOidcTrustConfig{}
 	if !m.Description.IsNull() && !m.Description.IsUnknown() {
@@ -135,7 +148,7 @@ func (r *OIDCTrustConfigResource) Create(ctx context.Context, req resource.Creat
 		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
 		return
 	}
-	if err := data.setFromProto(config); err != nil {
+	if err := data.setFromProtoPreservingNullDescription(config, data.Description); err != nil {
 		resp.Diagnostics.AddError("Unexpected API Response", err.Error())
 		return
 	}
@@ -158,7 +171,7 @@ func (r *OIDCTrustConfigResource) Read(ctx context.Context, req resource.ReadReq
 		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
 		return
 	}
-	if err := data.setFromProto(config); err != nil {
+	if err := data.setFromProtoPreservingNullDescription(config, data.Description); err != nil {
 		resp.Diagnostics.AddError("Unexpected API Response", err.Error())
 		return
 	}
@@ -202,14 +215,14 @@ func (r *OIDCTrustConfigResource) Update(ctx context.Context, req resource.Updat
 		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
 		return
 	}
-	if err := plan.setFromProto(remote); err != nil {
+	if err := plan.setFromProtoPreservingNullDescription(remote, plan.Description); err != nil {
 		name := state.Name.ValueString()
 		readBack, readErr := r.client.Directory.GetServiceAccountOidcTrustConfig(ctx, &directoryv1alpha.GetServiceAccountOidcTrustConfigRequest{Name: &name})
 		if readErr != nil {
 			coreweave.HandleAPIError(ctx, readErr, &resp.Diagnostics)
 			return
 		}
-		if readBackErr := plan.setFromProto(readBack); readBackErr != nil {
+		if readBackErr := plan.setFromProtoPreservingNullDescription(readBack, plan.Description); readBackErr != nil {
 			resp.Diagnostics.AddError("Unexpected API Response", fmt.Sprintf("The Directory API returned an invalid OIDC trust configuration after update and the subsequent read could not recover it: %s.", readBackErr))
 			return
 		}
