@@ -51,7 +51,7 @@ resource "coreweave_service_account_oidc_trust_config" "main" {
 
 ### Optional
 
-- `description` (String) An optional description of the trust rule.
+- `description` (String) An optional description of the trust rule. Defaults to an empty string.
 
 ### Read-Only
 

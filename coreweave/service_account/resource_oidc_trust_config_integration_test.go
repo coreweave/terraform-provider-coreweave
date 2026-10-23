@@ -293,7 +293,7 @@ func TestOIDCTrustConfigResourceLifecycle(t *testing.T) {
 			{
 				Config: updated,
 				Check: tfresource.ComposeAggregateTestCheckFunc(
-					tfresource.TestCheckNoResourceAttr(oidcTrustConfigResourceAddress, "description"),
+					tfresource.TestCheckResourceAttr(oidcTrustConfigResourceAddress, "description", ""),
 					tfresource.TestCheckResourceAttr(oidcTrustConfigResourceAddress, "cel", `token.repository == "example/repo"`),
 					tfresource.TestCheckResourceAttr(oidcTrustConfigResourceAddress, "workload_federation_oidc_config_id", "e3bb1892-f89e-4258-9495-427ed5ace8c7"),
 				),
@@ -424,14 +424,26 @@ func TestOIDCTrustConfigResourcePreservesExplicitEmptyDescription(t *testing.T) 
 	tfresource.UnitTest(t, tfresource.TestCase{
 		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
 		CheckDestroy:             service.checkEmpty,
-		Steps: []tfresource.TestStep{{
-			Config: config,
-			Check:  tfresource.TestCheckResourceAttr(oidcTrustConfigResourceAddress, "description", ""),
-		}},
+		Steps: []tfresource.TestStep{
+			{
+				Config: config,
+				Check:  tfresource.TestCheckResourceAttr(oidcTrustConfigResourceAddress, "description", ""),
+			},
+			{
+				ResourceName:      oidcTrustConfigResourceAddress,
+				ImportState:       true,
+				ImportStateId:     "organizations/a1b2c3/serviceAccounts/ci-agent/oidcTrustConfigs/main-repo",
+				ImportStateVerify: true,
+			},
+			{
+				Config:   config,
+				PlanOnly: true,
+			},
+		},
 	})
 }
 
-func TestOIDCTrustConfigResourcePreservesOmittedDescription(t *testing.T) {
+func TestOIDCTrustConfigResourceDefaultsOmittedDescriptionToEmpty(t *testing.T) {
 	service, server := startOIDCTrustConfigTestServer(t)
 	config := oidcTrustConfigTestConfig(server.URL, "", "true", "8d39f431-715c-4c6c-916a-849292f97920")
 
@@ -441,7 +453,13 @@ func TestOIDCTrustConfigResourcePreservesOmittedDescription(t *testing.T) {
 		Steps: []tfresource.TestStep{
 			{
 				Config: config,
-				Check:  tfresource.TestCheckNoResourceAttr(oidcTrustConfigResourceAddress, "description"),
+				Check:  tfresource.TestCheckResourceAttr(oidcTrustConfigResourceAddress, "description", ""),
+			},
+			{
+				ResourceName:      oidcTrustConfigResourceAddress,
+				ImportState:       true,
+				ImportStateId:     "organizations/a1b2c3/serviceAccounts/ci-agent/oidcTrustConfigs/main-repo",
+				ImportStateVerify: true,
 			},
 			{
 				Config:   config,
