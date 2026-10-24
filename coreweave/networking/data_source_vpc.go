@@ -153,7 +153,7 @@ func (d *VpcDataSource) Configure(_ context.Context, req datasource.ConfigureReq
 	client, ok := req.ProviderData.(*coreweave.Client)
 	if !ok {
 		resp.Diagnostics.AddError(
-			"Unexpected Resource Configure Type",
+			"Unexpected Data Source Configure Type",
 			fmt.Sprintf("Expected *coreweave.Client, got: %T. Please report this issue to the provider developers.", req.ProviderData),
 		)
 
