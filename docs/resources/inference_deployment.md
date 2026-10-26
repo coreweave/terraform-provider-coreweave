@@ -121,7 +121,7 @@ Required:
 
 Required:
 
-- `gpu_count` (Number) Number of GPUs per instance. Must be one of: 1, 2, 4, 8, 16.
+- `gpu_count` (Number) Number of GPUs per instance. Must be one of: 1, 2, 4, 8, 16, 32, 64. Values above 16 require an enabled organization.
 - `instance_type` (String) The instance type to use.
 
 
