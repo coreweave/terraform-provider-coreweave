@@ -59,7 +59,8 @@ resource "coreweave_networking_vpc" "example" {
 
   dhcp = {
     dns = {
-      servers = ["1.1.1.1", "8.8.8.8"]
+      servers        = ["1.1.1.1", "8.8.8.8"]
+      search_domains = ["example.com", "corp.internal"]
     }
   }
 }
