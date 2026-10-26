@@ -55,7 +55,7 @@ func (h *hotLoadImportHandler) CreateDeployment(_ context.Context, req *v1.Creat
 			Id: "11111111-1111-4111-8111-111111111111", Name: req.Name,
 			GatewayIds: req.GatewayIds, Runtime: req.Runtime,
 			Resources: req.Resources, Model: req.Model, Autoscaling: req.Autoscaling,
-			Traffic: req.Traffic, Disabled: req.Disabled, HotLoad: req.HotLoad,
+			Traffic: req.Traffic, Disabled: req.Disabled, HotLoad: req.HotLoad, Pd: req.Pd,
 		},
 		Status: &v1.DeploymentStatus{
 			Status:     v1.Status_STATUS_READY,

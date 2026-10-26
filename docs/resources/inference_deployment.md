@@ -80,6 +80,7 @@ resource "coreweave_inference_deployment" "example" {
 
 - `disabled` (Boolean) Whether the deployment is disabled.
 - `hot_load` (Attributes) Checkpoint hot-loading configuration. Immutable after creation; adding, changing or removing it replaces the deployment. (see [below for nested schema](#nestedatt--hot_load))
+- `pd` (Attributes) Prefill/decode disaggregation. When set, `resources` and `autoscaling` configure the decode pool and this object configures the prefill pool. Requires the `dynamo-vllm` engine and an organization enabled for prefill/decode disaggregation. Adding, changing or removing it updates the deployment in place. (see [below for nested schema](#nestedatt--pd))
 - `traffic` (Attributes) Traffic configuration. Omit to accept the API default (weight 0, which normalizes to 100% when no other deployment shares the model name). After apply, `weight` is populated from the API. (see [below for nested schema](#nestedatt--traffic))
 
 ### Read-Only
@@ -150,6 +151,37 @@ Required:
 Optional:
 
 - `path_prefix` (String) Path prefix holding snapshots. Defaults to an empty string (bucket root). The snapshot identity is appended to this prefix.
+
+
+<a id="nestedatt--pd"></a>
+### Nested Schema for `pd`
+
+Required:
+
+- `prefill_autoscaling` (Attributes) Autoscaling configuration for the prefill pool. The deployment-wide `autoscaling.priority` applies to both pools. (see [below for nested schema](#nestedatt--pd--prefill_autoscaling))
+- `prefill_resources` (Attributes) GPU resource configuration for the prefill pool. (see [below for nested schema](#nestedatt--pd--prefill_resources))
+
+<a id="nestedatt--pd--prefill_autoscaling"></a>
+### Nested Schema for `pd.prefill_autoscaling`
+
+Required:
+
+- `max` (Number) Maximum number of prefill instances. Must be ≥1.
+- `min` (Number) Minimum number of prefill instances. Must be ≥1.
+
+Optional:
+
+- `concurrency` (Number) Concurrency per prefill instance target (≥1).
+
+
+<a id="nestedatt--pd--prefill_resources"></a>
+### Nested Schema for `pd.prefill_resources`
+
+Required:
+
+- `gpu_count` (Number) Number of GPUs per prefill instance. Must be one of: 1, 2, 4, 8, 16, 32, 64. Values above 16 require an enabled organization.
+- `instance_type` (String) The instance type to use for prefill workers.
+
 
 
 <a id="nestedatt--traffic"></a>

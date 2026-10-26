@@ -252,6 +252,17 @@ type DeploymentHotLoadModel struct {
 	TransitionMode types.String `tfsdk:"transition_mode"`
 }
 
+type PDPoolAutoscalingModel struct {
+	Min         types.Int64 `tfsdk:"min"`
+	Max         types.Int64 `tfsdk:"max"`
+	Concurrency types.Int64 `tfsdk:"concurrency"`
+}
+
+type DeploymentPDModel struct {
+	PrefillResources   *ResourcesModel         `tfsdk:"prefill_resources"`
+	PrefillAutoscaling *PDPoolAutoscalingModel `tfsdk:"prefill_autoscaling"`
+}
+
 type ConditionModel struct {
 	Type           types.String `tfsdk:"type"`
 	Status         types.String `tfsdk:"status"`
@@ -279,6 +290,7 @@ type InferenceDeploymentResourceModel struct {
 	Autoscaling *AutoscalingModel       `tfsdk:"autoscaling"`
 	Traffic     *TrafficModel           `tfsdk:"traffic"`
 	HotLoad     *DeploymentHotLoadModel `tfsdk:"hot_load"`
+	PD          *DeploymentPDModel      `tfsdk:"pd"`
 }
 
 func (r *InferenceDeploymentResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -488,6 +500,48 @@ func (r *InferenceDeploymentResource) Schema(_ context.Context, _ resource.Schem
 						MarkdownDescription: "Concurrency per instance target (≥1). Controls latency vs throughput tradeoffs.",
 						Validators: []validator.Int64{
 							int64validator.AtLeast(1),
+						},
+					},
+				},
+			},
+			"pd": schema.SingleNestedAttribute{
+				Optional:            true,
+				MarkdownDescription: "Prefill/decode disaggregation. When set, `resources` and `autoscaling` configure the decode pool and this object configures the prefill pool. Requires the `dynamo-vllm` engine and an organization enabled for prefill/decode disaggregation. Adding, changing or removing it updates the deployment in place.",
+				Attributes: map[string]schema.Attribute{
+					"prefill_resources": schema.SingleNestedAttribute{
+						Required:            true,
+						MarkdownDescription: "GPU resource configuration for the prefill pool.",
+						Attributes: map[string]schema.Attribute{
+							"instance_type": schema.StringAttribute{
+								Required:            true,
+								MarkdownDescription: "The instance type to use for prefill workers.",
+							},
+							"gpu_count": schema.Int64Attribute{
+								Required:            true,
+								MarkdownDescription: "Number of GPUs per prefill instance. Must be one of: 1, 2, 4, 8, 16, 32, 64. Values above 16 require an enabled organization.",
+								Validators:          []validator.Int64{int64validator.OneOf(1, 2, 4, 8, 16, 32, 64)},
+							},
+						},
+					},
+					"prefill_autoscaling": schema.SingleNestedAttribute{
+						Required:            true,
+						MarkdownDescription: "Autoscaling configuration for the prefill pool. The deployment-wide `autoscaling.priority` applies to both pools.",
+						Attributes: map[string]schema.Attribute{
+							"min": schema.Int64Attribute{
+								Required:            true,
+								MarkdownDescription: "Minimum number of prefill instances. Must be ≥1.",
+								Validators:          []validator.Int64{int64validator.AtLeast(1)},
+							},
+							"max": schema.Int64Attribute{
+								Required:            true,
+								MarkdownDescription: "Maximum number of prefill instances. Must be ≥1.",
+								Validators:          []validator.Int64{int64validator.AtLeast(1)},
+							},
+							"concurrency": schema.Int64Attribute{
+								Optional:            true,
+								MarkdownDescription: "Concurrency per prefill instance target (≥1).",
+								Validators:          []validator.Int64{int64validator.AtLeast(1)},
+							},
 						},
 					},
 				},
@@ -849,6 +903,7 @@ type deploymentFields struct {
 	Autoscaling *inferencev1.DeploymentAutoscaling
 	Traffic     *inferencev1.DeploymentTraffic
 	HotLoad     *inferencev1.DeploymentHotLoad
+	PD          *inferencev1.DeploymentPD
 }
 
 // buildDeploymentFields extracts the fields common to both create and update requests
@@ -942,7 +997,26 @@ func buildDeploymentFields(ctx context.Context, m *InferenceDeploymentResourceMo
 		}
 		f.Autoscaling.CapacityClasses = protoClasses
 	}
+	f.PD = pdToProto(m.PD)
 	return f, diagnostics
+}
+
+func pdToProto(m *DeploymentPDModel) *inferencev1.DeploymentPD {
+	if m == nil {
+		return nil
+	}
+	pool := m.PrefillAutoscaling
+	return &inferencev1.DeploymentPD{
+		PrefillResources: &inferencev1.DeploymentResources{
+			InstanceType: m.PrefillResources.InstanceType.ValueString(),
+			GpuCount:     uint32(m.PrefillResources.GpuCount.ValueInt64()), //nolint:gosec
+		},
+		PrefillAutoscaling: &inferencev1.DeploymentPDPoolAutoscaling{
+			Min:         uint32(pool.Min.ValueInt64()),         //nolint:gosec
+			Max:         uint32(pool.Max.ValueInt64()),         //nolint:gosec
+			Concurrency: uint32(pool.Concurrency.ValueInt64()), //nolint:gosec
+		},
+	}
 }
 
 func toCreateRequest(ctx context.Context, m *InferenceDeploymentResourceModel) (*inferencev1.CreateDeploymentRequest, diag.Diagnostics) {
@@ -960,6 +1034,7 @@ func toCreateRequest(ctx context.Context, m *InferenceDeploymentResourceModel) (
 		Autoscaling: f.Autoscaling,
 		Traffic:     f.Traffic,
 		HotLoad:     f.HotLoad,
+		Pd:          f.PD,
 	}, diags
 }
 
@@ -979,6 +1054,7 @@ func toUpdateRequest(ctx context.Context, m *InferenceDeploymentResourceModel) (
 		Autoscaling: f.Autoscaling,
 		Traffic:     f.Traffic,
 		HotLoad:     f.HotLoad,
+		Pd:          f.PD,
 	}, diags
 }
 
@@ -1026,6 +1102,28 @@ func stringMapFromProtoPreservingNull(current types.Map, values map[string]strin
 	result, diags := types.MapValue(types.StringType, mapVals)
 	diagnostics.Append(diags...)
 	return result, diagnostics
+}
+
+func pdFromProto(pd *inferencev1.DeploymentPD) *DeploymentPDModel {
+	if pd == nil {
+		return nil
+	}
+	as := pd.GetPrefillAutoscaling()
+	concurrency := types.Int64Null()
+	if as.GetConcurrency() != 0 {
+		concurrency = types.Int64Value(int64(as.GetConcurrency()))
+	}
+	return &DeploymentPDModel{
+		PrefillResources: &ResourcesModel{
+			InstanceType: types.StringValue(pd.GetPrefillResources().GetInstanceType()),
+			GpuCount:     types.Int64Value(int64(pd.GetPrefillResources().GetGpuCount())),
+		},
+		PrefillAutoscaling: &PDPoolAutoscalingModel{
+			Min:         types.Int64Value(int64(as.GetMin())),
+			Max:         types.Int64Value(int64(as.GetMax())),
+			Concurrency: concurrency,
+		},
+	}
 }
 
 func setRuntimeFromDeployment(m *RuntimeModel, rt *inferencev1.DeploymentRuntime) (diagnostics diag.Diagnostics) {
@@ -1146,6 +1244,8 @@ func setFromDeployment(m *InferenceDeploymentResourceModel, d *inferencev1.Deplo
 			m.Autoscaling.CapacityClasses = ccList
 		}
 	}
+
+	m.PD = pdFromProto(spec.GetPd())
 
 	// traffic block is optional; weight is computed from the API when omitted in config.
 	weight := int64(0)
