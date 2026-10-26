@@ -1,0 +1,142 @@
+## Intent & Decisions
+Let the provider configure the prefill pool of a prefill/decode (PD)
+deployment, which the inference API already supports.
+
+Settled choices:
+- An optional pd attribute holds prefill_resources and
+  prefill_autoscaling (min, max, capacity_classes, concurrency), mapped
+  to the API DeploymentPD message. The existing resources and
+  autoscaling attributes keep configuring the decode pool.
+- A change to pd updates the deployment in place. hot_load uses
+  RequiresReplace because the API treats it as immutable; pd is not.
+- Create and update both send Pd, because UpdateDeployment replaces the
+  whole specification. Without Pd in the update request, any update
+  from Terraform would remove the prefill pool.
+- Superseded: the first version left out prefill capacity_classes to
+  save 39 lines. A /code-review high pass showed the cost: every
+  Terraform update cleared prefill classes set outside Terraform with
+  no visible diff, and the docs did not say the prefill pool ignores
+  autoscaling.capacity_classes. The user asked to fix the review
+  findings, so the attribute is back. The schema, request mapping, and
+  null-preserving read are shared with the decode pool through
+  capacityClassesAttribute, capacityClassesToProto, and
+  capacityClassesFromProtoPreservingNull, so the cost is small.
+- Superseded: pdFromProto was a pure mapping from the API message. It
+  now takes the prior model, because a list attribute needs the prior
+  value to keep null (see Findings). Concurrency uses the same
+  int64FromProtoPreservingNull rule as decode priority and concurrency.
+- pdFromProto returns an error when the API returns pd without
+  prefill_resources or prefill_autoscaling, instead of writing zero
+  values into state.
+- gpuCountAttribute holds the one copy of the allowed GPU counts for
+  both pools. optionalUint32 replaces the explicit null guards in the
+  decode request mapping so both pools use one rule.
+- rolloutStartGracePeriod is now a package var so the lifecycle test
+  can apply updates without a 30 s wait per step.
+  SetRolloutStartGracePeriod in export_test.go sets it and restores it
+  with t.Cleanup. Only sequential tests may call it; parallel tests
+  resume after sequential tests finish, and go test -race passed.
+- Not changed from the review: (4) prefill concurrency stays Optional
+  and not Computed. The proto comment does not say the API defaults or
+  inherits it, and decode concurrency has the same shape. (5) No
+  plan-time check that the engine is dynamo-vllm or that prefill
+  min <= max. ModifyPlan deliberately takes the engine list from the
+  API instead of hardcoding it, and decode has no min <= max check
+  either; the API rejects both at apply.
+- After a /cs-review pass, the shared mock hotLoadImportHandler was
+  renamed fakeDeploymentService, because it now records Create and
+  Update for both the hot_load and pd tests. It stays in
+  deployment_hotload_test.go, following the convention that test files
+  are named for the tests they hold. The earlier rejection of a rename
+  (to keep the diff small) predates the mock gaining UpdateDeployment.
+- The rolloutStartGracePeriod declaration now says that it is a var
+  only for SetRolloutStartGracePeriod. Moving it into a resource field
+  was rejected: provider.TestProtoV6ProviderFactories is a global map
+  with no options, so a field would need a new provider-level test
+  hook.
+- Deferred: setFromDeployment still mutates its model argument, a
+  pattern that predates this change. The new helpers return values.
+
+## Actions & Verification
+- gh stack submit opened draft PR #535 (stack #536) for the first
+  version. alexeldeib was requested as a reviewer.
+- 57a312f (the review-fix amend) was force-pushed to
+  pd-wide-ep/deployment-pd with a lease on cf09947, and the PR body was
+  replaced with its commit message. The /cs-review amend after it is
+  not pushed yet.
+- TestDeploymentPDLifecycle now applies all steps: create with decode
+  gpu_count 64 and prefill concurrency 8, import with
+  ImportStateVerify, apply a pd change (gpu_count 8, min 2, max 6,
+  capacity_classes RESERVED, no concurrency), then apply pd removal.
+  Each update step checks PreApply that the action is Update and checks
+  with proto.Equal the Pd that the mock received (nil after removal).
+  The mock (now fakeDeploymentService) gained UpdateDeployment.
+- TestInferenceDeployment_SetFromDeployment_IncompletePDIsError covers
+  empty pd, missing resources, and missing autoscaling.
+- TestInferenceDeployment_ToUpdateRequest_Fields compares the whole Pd
+  with proto.Equal. The prefill instance type and min differ from the
+  decode values so a field mix-up fails.
+- Mutation checks, each reverted:
+  - pdToProto drops CapacityClasses: TestDeploymentPDLifecycle fails
+    with "Provider produced inconsistent result after apply", and the
+    ToUpdateRequest test fails.
+  - toUpdateRequest sends Pd: nil: both tests fail.
+  - capacityClassesFromProtoPreservingNull never returns null:
+    TestDeploymentHotLoadImportNoop, TestDeploymentPDLifecycle, and the
+    null-preservation test fail.
+- go test ./... passed. go test -race ./coreweave/inference/ passed
+  (about 12 s; it was about 9 s before). golangci-lint: 0 issues.
+  make generate updated docs; git diff --check passed.
+
+## Errors & Mistakes
+- In the very first version, no test covered the null path of prefill
+  capacity_classes. Removing the attribute hid that gap instead of
+  fixing it; the review brought the attribute back with tests.
+- The earlier lifecycle test used PlanOnly steps for change and removal
+  to avoid rolloutStartGracePeriod, so no test applied an update with
+  Pd. The review found this.
+- golangci-lint thelper flagged SetRolloutStartGracePeriod without
+  t.Helper(); fixed.
+
+## Attempts & Outcomes
+- Applying update steps with the 30 s grace period would have raised
+  the package test time from about 9 s to about 70 s. Making the period
+  a test-overridable var was chosen instead.
+- The first version of the lifecycle test had a same-config plan-only
+  step and state checks that repeat what terraform-plugin-testing
+  already checks after every apply step. They stay removed.
+- Moving TestDeploymentPDLifecycle into deployment_hotload_test.go was
+  refuted earlier: test files in coreweave/inference are named for the
+  tests they hold.
+
+## Findings & Constraints
+- The pinned buf.build/gen/go/coreweave/inference module
+  (v1.36.12-20261008185853-22f8f31f8962.2) already has DeploymentPD and
+  DeploymentPDPoolAutoscaling.capacity_classes. It has no autoscaling
+  claims field.
+- The API message cannot tell an empty repeated list from an unset
+  one. A list attribute therefore needs the prior model value to keep
+  a configured null.
+- terraform-plugin-testing v1.16.0 runs a non-refresh plan and a
+  refresh plan after every apply step and fails when either is not
+  empty.
+- proto.Equal treats two nil typed messages as equal, which the removal
+  step relies on.
+
+## Relevant Files & Commits
+- 3c82c5b (#456): hot_load support, the precedent for the shape of this
+  change and its tests. It is not released yet and ships with this
+  change.
+- c6689e5: the 32/64 GPU count change below this commit; its note still
+  says both validators were edited, which gpuCountAttribute now merges.
+- coreweave/inference/deployment_hotload_test.go: fakeDeploymentService,
+  the mock shared by the hot_load and pd lifecycle tests.
+- coreweave/inference/export_test.go: exported request and read helpers
+  and SetRolloutStartGracePeriod.
+
+## Open Questions
+- Adding pd to a running deployment without PD is allowed by the API;
+  the real rollout behavior of that change was not tested.
+- Whether the API defaults prefill concurrency when it is unset. If it
+  does, the attribute needs Computed.
+- Whether autoscaling claims are needed later.
