@@ -1,0 +1,94 @@
+## Intent & Decisions
+Let the provider configure the prefill pool of a prefill/decode (PD)
+deployment, which the inference API already supports. The user grades
+the PR on the smallest diff that adds PD; refactors and anything else
+outside that scope count against it and belong in follow-ups.
+
+Settled choices:
+- An optional pd attribute holds prefill_resources and
+  prefill_autoscaling (min, max, concurrency), mapped to the API
+  DeploymentPD message. The existing resources and autoscaling
+  attributes keep configuring the decode pool.
+- A change to pd updates the deployment in place. hot_load uses
+  RequiresReplace because the API treats it as immutable; pd is not.
+- Create and update both send Pd, because UpdateDeployment replaces the
+  whole specification.
+- prefill_autoscaling leaves out capacity_classes. The attribute
+  description says the prefill pool uses the API default classes and
+  does not inherit autoscaling.capacity_classes. Trade-off: a prefill
+  capacity class set outside Terraform is cleared by the next Terraform
+  update with no visible diff. Adding the optional attribute later is a
+  backward-compatible change.
+- pdFromProto returns an error when the API returns pd without
+  prefill_resources or prefill_autoscaling, instead of writing zero
+  values that fail the schema validators.
+- pdFromProto is a pure mapping: concurrency is null when the API
+  returns 0. AtLeast(1) on the attribute makes 0 always mean unset.
+  This differs on purpose from the decode read, which checks the prior
+  state; matching it would need the prior model passed in.
+- After a style pass, the user chose the older file style over the
+  fewest lines for three spots: multi-line Validators blocks in the pd
+  schema (12 older attributes use them; only hot_load used one line),
+  one if per field in ToUpdateRequest_Fields, and a separate
+  SetFromDeployment_IncompletePD test instead of a check inside the
+  NullPreservation test.
+
+## Actions & Verification
+- gh stack submit opened draft PR #535 (stack #536); alexeldeib was
+  requested as a reviewer.
+- History of this branch on the remote: cf09947 (first version), then
+  57a312f and f54c207 (review fixes, force-pushed with leases), then
+  624b211, which shrank the change back to cf09947 plus three small
+  fixes, then this commit, which applies the older style (+35 lines).
+- TestDeploymentPDLifecycle: create with decode gpu_count 64 and a pd
+  block, import with ImportStateVerify, then plan-only steps that
+  change pd and remove pd; both expect an in-place Update.
+- TestInferenceDeployment_SetFromDeployment_NullPreservation checks
+  null prefill concurrency.
+- TestInferenceDeployment_SetFromDeployment_IncompletePD checks the
+  error for pd without prefill_resources. A mutation that skips the
+  check fails it.
+- TestInferenceDeployment_ToUpdateRequest_Fields checks every prefill
+  field; prefill instance type and min differ from the decode values.
+- go test ./coreweave/inference/, golangci-lint ./... (0 issues),
+  make generate, and git diff --check passed.
+
+## Errors & Mistakes
+- 57a312f and f54c207 grew the PR to +388/-59 by adding prefill
+  capacity_classes, shared helpers that refactored decode code, a
+  test-only var for rolloutStartGracePeriod, applied update steps, and
+  a mock rename. The user rejected that scope. Those changes were
+  reverted here; do not reintroduce them in this PR.
+
+## Attempts & Outcomes
+- Applied update steps need rolloutStartGracePeriod (30 s) per step.
+  Making it a var so a test could zero it worked but changed shared
+  resource code for one test; plan-only steps (the #456 pattern) were
+  restored. ToUpdateRequest_Fields already catches an update that
+  drops Pd.
+
+## Findings & Constraints
+- The pinned buf.build/gen/go/coreweave/inference module
+  (v1.36.12-20261008185853-22f8f31f8962.2) already has DeploymentPD,
+  including DeploymentPDPoolAutoscaling.capacity_classes. It has no
+  autoscaling claims field.
+- terraform-plugin-testing v1.16.0 rejects PreApply plan checks on a
+  PlanOnly step; PostApplyPreRefresh runs on that step's plan.
+- provider.TestProtoV6ProviderFactories is a global map with no
+  options, so tests cannot inject resource fields.
+
+## Relevant Files & Commits
+- 3c82c5b (#456): hot_load support, the precedent for this change and
+  its tests.
+- coreweave/inference/deployment_hotload_test.go: hotLoadImportHandler,
+  the mock that the pd lifecycle test reuses.
+- c6689e5: the 32/64 GPU count change below this commit.
+
+## Open Questions
+Follow-up candidates, deliberately left out of this PR:
+- prefill capacity_classes;
+- one shared GPU-count attribute and capacity-class mapping for both
+  pools;
+- an applied update test without the 30 s wait, and a clearer name for
+  hotLoadImportHandler;
+- a plan-time min <= max check for both pools.
