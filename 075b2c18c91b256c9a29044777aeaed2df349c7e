@@ -1,0 +1,123 @@
+## Intent & Decisions
+Let the provider configure the prefill pool of a prefill/decode (PD)
+deployment, which the inference API already supports. The user grades
+the PR on the smallest diff that adds PD; refactors and anything else
+outside that scope count against it and belong in follow-ups.
+
+Settled choices:
+- An optional pd attribute holds prefill_resources and
+  prefill_autoscaling (min, max, concurrency), mapped to the API
+  DeploymentPD message. The existing resources and autoscaling
+  attributes keep configuring the decode pool.
+- A change to pd updates the deployment in place. hot_load uses
+  RequiresReplace because the API treats it as immutable; pd is not.
+- Create and update both send Pd, because UpdateDeployment replaces the
+  whole specification.
+- prefill_autoscaling leaves out capacity_classes. The attribute
+  description says the prefill pool uses the API default classes and
+  does not inherit autoscaling.capacity_classes. Trade-off: a prefill
+  capacity class set outside Terraform is cleared by the next Terraform
+  update with no visible diff. Adding the optional attribute later is a
+  backward-compatible change.
+- Superseded: an earlier amend made pdFromProto return an error when
+  the API returned pd without prefill_resources or prefill_autoscaling.
+  Copilot review on 093afbd showed that Create returns on any
+  setFromDeployment error before its first resp.State.Set, so a
+  malformed create response would leave the new deployment untracked
+  and impossible for Terraform to destroy. The user chose to remove
+  the check rather than change shared Create code. pdFromProto again
+  maps nil sub-messages to zero values through the proto getters; the
+  deployment stays tracked and Terraform reports an inconsistent
+  result instead.
+- Copilot also noted that prefill min, max, and concurrency only have
+  AtLeast(1), so values above 4294967295 wrap in the uint32 cast. The
+  decode autoscaling attributes have the same gap; an upper bound for
+  both pools is a follow-up, not part of this PR.
+- pdFromProto is a pure mapping: concurrency is null when the API
+  returns 0. AtLeast(1) on the attribute makes 0 always mean unset.
+  This differs on purpose from the decode read, which checks the prior
+  state; matching it would need the prior model passed in.
+- After a style pass, the user chose the older file style over the
+  fewest lines for three spots: multi-line Validators blocks in the pd
+  schema (12 older attributes use them; only hot_load used one line),
+  one if per field in ToUpdateRequest_Fields, and a separate
+  SetFromDeployment_IncompletePD test instead of a check inside the
+  NullPreservation test. That test was later removed with the check.
+- scotchneat review on ffe1ecf (changes requested), addressed in this
+  commit: ValidateConfig rejects pd unless runtime.engine is
+  "dynamo-vllm" (the proto comment on Deployment.pd states that
+  constraint); prefill instance_type gets LengthAtLeast(1); a comment
+  above the prefill autoscaling casts explains the //nolint:gosec and
+  the planned upper-bound follow-up. The engine check is hardcoded on
+  purpose although ModifyPlan avoids a hardcoded engine list: the API
+  advertises no per-engine PD capability to check against. Decode
+  instance_type still has no LengthAtLeast(1); not changed here.
+- scotchneat also left a nit asking for a more descriptive name than
+  pd, without a suggestion. The name was kept because it matches the
+  API field and the proto docs (pd.prefill_*). Renaming is a public
+  schema decision for the user.
+
+## Actions & Verification
+- gh stack submit opened draft PR #535 (stack #536); alexeldeib was
+  requested as a reviewer.
+- History of this branch on the remote: cf09947 (first version), then
+  57a312f and f54c207 (review fixes, force-pushed with leases), then
+  624b211, which shrank the change back to cf09947 plus three small
+  fixes, then 093afbd, which applied the older style (+35 lines),
+  then ffe1ecf, which removed the incomplete-pd error after Copilot
+  review, then this commit, which addresses the scotchneat review.
+- TestDeploymentPDLifecycle: a first plan-only step with engine
+  "vllm" expects the ValidateConfig error. It runs first because the
+  post-test destroy uses the last step config, and an invalid last
+  config failed the destroy. Then create with decode gpu_count 64 and a pd
+  block, import with ImportStateVerify, then plan-only steps that
+  change pd and remove pd; both expect an in-place Update.
+- TestInferenceDeployment_SetFromDeployment_NullPreservation checks
+  null prefill concurrency.
+- TestInferenceDeployment_ToUpdateRequest_Fields checks every prefill
+  field; prefill instance type and min differ from the decode values.
+- go test ./coreweave/inference/, golangci-lint ./... (0 issues),
+  make generate, and git diff --check passed.
+
+## Errors & Mistakes
+- 57a312f and f54c207 grew the PR to +388/-59 by adding prefill
+  capacity_classes, shared helpers that refactored decode code, a
+  test-only var for rolloutStartGracePeriod, applied update steps, and
+  a mock rename. The user rejected that scope. Those changes were
+  reverted here; do not reintroduce them in this PR.
+
+## Attempts & Outcomes
+- Applied update steps need rolloutStartGracePeriod (30 s) per step.
+  Making it a var so a test could zero it worked but changed shared
+  resource code for one test; plan-only steps (the #456 pattern) were
+  restored. ToUpdateRequest_Fields already catches an update that
+  drops Pd.
+
+## Findings & Constraints
+- The pinned buf.build/gen/go/coreweave/inference module
+  (v1.36.12-20261008185853-22f8f31f8962.2) already has DeploymentPD,
+  including DeploymentPDPoolAutoscaling.capacity_classes. It has no
+  autoscaling claims field.
+- terraform-plugin-testing v1.16.0 rejects PreApply plan checks on a
+  PlanOnly step; PostApplyPreRefresh runs on that step's plan.
+- provider.TestProtoV6ProviderFactories is a global map with no
+  options, so tests cannot inject resource fields.
+
+## Relevant Files & Commits
+- 3c82c5b (#456): hot_load support, the precedent for this change and
+  its tests.
+- coreweave/inference/deployment_hotload_test.go: hotLoadImportHandler,
+  the mock that the pd lifecycle test reuses.
+- c6689e5: the 32/64 GPU count change below this commit.
+
+## Open Questions
+Follow-up candidates, deliberately left out of this PR:
+- prefill capacity_classes;
+- one shared GPU-count attribute and capacity-class mapping for both
+  pools;
+- an applied update test without the 30 s wait, and a clearer name for
+  hotLoadImportHandler;
+- a plan-time min <= max check for both pools;
+- uint32 upper bounds on autoscaling values for both pools;
+- a clear error for a malformed pd response that still saves state in
+  Create.
