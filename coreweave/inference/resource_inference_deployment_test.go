@@ -135,6 +135,7 @@ func TestInferenceDeployment_SetFromDeployment_NullPreservation(t *testing.T) {
 				Max: 4,
 			},
 			Traffic: &inferencev1.DeploymentTraffic{},
+			Pd:      &inferencev1.DeploymentPD{PrefillAutoscaling: &inferencev1.DeploymentPDPoolAutoscaling{Min: 1, Max: 1}},
 		},
 		Status: &inferencev1.DeploymentStatus{
 			Status: inferencev1.Status_STATUS_READY,
@@ -178,6 +179,9 @@ func TestInferenceDeployment_SetFromDeployment_NullPreservation(t *testing.T) {
 	}
 	if !m.Autoscaling.CapacityClasses.IsNull() {
 		t.Errorf("Autoscaling.CapacityClasses: expected null when API returns empty, got %v", m.Autoscaling.CapacityClasses)
+	}
+	if !m.PD.PrefillAutoscaling.Concurrency.IsNull() {
+		t.Errorf("PD.PrefillAutoscaling.Concurrency: expected null when API returns 0, got %v", m.PD.PrefillAutoscaling.Concurrency)
 	}
 	m.Runtime.Version = types.StringUnknown()
 	inference.SetFromDeployment(m, d, false)
@@ -441,6 +445,12 @@ func TestInferenceDeployment_ToUpdateRequest_Fields(t *testing.T) {
 		Traffic: &inference.TrafficModel{
 			Weight: types.Int64Value(50),
 		},
+		PD: &inference.DeploymentPDModel{
+			PrefillResources: &inference.ResourcesModel{InstanceType: types.StringValue("H100_80GB_SXM5"), GpuCount: types.Int64Value(1)},
+			PrefillAutoscaling: &inference.PDPoolAutoscalingModel{
+				Min: types.Int64Value(1), Max: types.Int64Value(3), Concurrency: types.Int64Value(16),
+			},
+		},
 	}
 
 	req, diags := inference.ToUpdateRequest(ctx, m)
@@ -483,6 +493,10 @@ func TestInferenceDeployment_ToUpdateRequest_Fields(t *testing.T) {
 	}
 	if req.Traffic.Weight != 50 {
 		t.Errorf("Traffic.Weight: expected 50, got %d", req.Traffic.Weight)
+	}
+	if pool := req.GetPd().GetPrefillAutoscaling(); req.GetPd().GetPrefillResources().GetGpuCount() != 1 ||
+		pool.GetMax() != 3 || pool.GetConcurrency() != 16 {
+		t.Errorf("Pd: unexpected %v", req.GetPd())
 	}
 }
 
