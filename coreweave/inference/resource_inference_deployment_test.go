@@ -135,6 +135,7 @@ func TestInferenceDeployment_SetFromDeployment_NullPreservation(t *testing.T) {
 				Max: 4,
 			},
 			Traffic: &inferencev1.DeploymentTraffic{},
+			Pd:      &inferencev1.DeploymentPD{PrefillAutoscaling: &inferencev1.DeploymentPDPoolAutoscaling{Min: 1, Max: 1}},
 		},
 		Status: &inferencev1.DeploymentStatus{
 			Status: inferencev1.Status_STATUS_READY,
@@ -178,6 +179,9 @@ func TestInferenceDeployment_SetFromDeployment_NullPreservation(t *testing.T) {
 	}
 	if !m.Autoscaling.CapacityClasses.IsNull() {
 		t.Errorf("Autoscaling.CapacityClasses: expected null when API returns empty, got %v", m.Autoscaling.CapacityClasses)
+	}
+	if !m.PD.PrefillAutoscaling.Concurrency.IsNull() {
+		t.Errorf("PD.PrefillAutoscaling.Concurrency: expected null when API returns 0, got %v", m.PD.PrefillAutoscaling.Concurrency)
 	}
 	m.Runtime.Version = types.StringUnknown()
 	inference.SetFromDeployment(m, d, false)
@@ -441,6 +445,12 @@ func TestInferenceDeployment_ToUpdateRequest_Fields(t *testing.T) {
 		Traffic: &inference.TrafficModel{
 			Weight: types.Int64Value(50),
 		},
+		PD: &inference.DeploymentPDModel{
+			PrefillResources: &inference.ResourcesModel{InstanceType: types.StringValue("A100_80GB_SXM4"), GpuCount: types.Int64Value(1)},
+			PrefillAutoscaling: &inference.PDPoolAutoscalingModel{
+				Min: types.Int64Value(3), Max: types.Int64Value(5), Concurrency: types.Int64Value(16),
+			},
+		},
 	}
 
 	req, diags := inference.ToUpdateRequest(ctx, m)
@@ -483,6 +493,21 @@ func TestInferenceDeployment_ToUpdateRequest_Fields(t *testing.T) {
 	}
 	if req.Traffic.Weight != 50 {
 		t.Errorf("Traffic.Weight: expected 50, got %d", req.Traffic.Weight)
+	}
+	if req.Pd.PrefillResources.InstanceType != "A100_80GB_SXM4" {
+		t.Errorf("Pd.PrefillResources.InstanceType: got %q, want 'A100_80GB_SXM4'", req.Pd.PrefillResources.InstanceType)
+	}
+	if req.Pd.PrefillResources.GpuCount != 1 {
+		t.Errorf("Pd.PrefillResources.GpuCount: expected 1, got %d", req.Pd.PrefillResources.GpuCount)
+	}
+	if req.Pd.PrefillAutoscaling.Min != 3 {
+		t.Errorf("Pd.PrefillAutoscaling.Min: expected 3, got %d", req.Pd.PrefillAutoscaling.Min)
+	}
+	if req.Pd.PrefillAutoscaling.Max != 5 {
+		t.Errorf("Pd.PrefillAutoscaling.Max: expected 5, got %d", req.Pd.PrefillAutoscaling.Max)
+	}
+	if req.Pd.PrefillAutoscaling.Concurrency != 16 {
+		t.Errorf("Pd.PrefillAutoscaling.Concurrency: expected 16, got %d", req.Pd.PrefillAutoscaling.Concurrency)
 	}
 }
 
@@ -625,11 +650,8 @@ locals {
   # Only LIFECYCLE_STABLE versions accept new deployments. Restrict to plain
   # MAJOR.MINOR.PATCH for now; pre-release/build-metadata versions are excluded
   # pending #319.
-  vllm_versions              = try(data.coreweave_inference_deployment_parameters.deploy_params.runtime_engine_options["vllm"].versions, {})
-  runtime_version            = try([for v, o in local.vllm_versions : v if o.lifecycle == "LIFECYCLE_STABLE" && can(regex("^[0-9]+[.][0-9]+[.][0-9]+$", v)) && contains(o.env_options, local.engine_env_name)][0], "")
-  available_engine_env_names = try(local.vllm_versions[local.runtime_version].env_options, [])
-  engine_env_name            = %q
-  engine_env_value           = %q
+  dynamo_versions = try(data.coreweave_inference_deployment_parameters.deploy_params.runtime_engine_options["dynamo-vllm"].versions, {})
+  runtime_version = try([for v, o in local.dynamo_versions : v if o.lifecycle == "LIFECYCLE_STABLE" && can(regex("^[0-9]+[.][0-9]+[.][0-9]+$", v))][0], "")
 }
 
 resource "coreweave_inference_gateway" "test" {
@@ -660,16 +682,25 @@ resource "coreweave_inference_deployment" "test" {
   disabled    = true
 
   runtime = {
-    engine  = "vllm"
+    engine  = "dynamo-vllm"
     version = local.runtime_version
-    engine_env = {
-      (local.engine_env_name) = local.engine_env_value
-    }
   }
 
   resources = {
     instance_type = local.instance
     gpu_count     = 1
+  }
+
+  pd = {
+    prefill_resources = {
+      instance_type = local.instance
+      gpu_count     = 1
+    }
+    prefill_autoscaling = {
+      min         = 1
+      max         = 2
+      concurrency = 4
+    }
   }
 
   model = {
@@ -694,15 +725,11 @@ resource "coreweave_inference_deployment" "test" {
     }
     precondition {
       condition     = local.runtime_version != ""
-      error_message = "No stable x.y.z vllm runtime version allowing ${local.engine_env_name} available (pre-release/build-metadata excluded pending #319); available: ${jsonencode({ for v, o in local.vllm_versions : v => { lifecycle = o.lifecycle, env_allowed = contains(o.env_options, local.engine_env_name) } })}"
-    }
-    precondition {
-      condition     = contains(local.available_engine_env_names, local.engine_env_name)
-      error_message = "${local.engine_env_name} is not present in env options for vllm/${local.runtime_version}; available: ${jsonencode(local.available_engine_env_names)}"
+      error_message = "No stable x.y.z dynamo-vllm runtime version available (pre-release/build-metadata excluded pending #319); available: ${jsonencode({ for v, o in local.dynamo_versions : v => o.lifecycle })}"
     }
   }
 }
-`, preferredZone, preferredInstance, acceptanceEngineEnvName, acceptanceEngineEnvValue, name, name, modelName, modelBucket, modelPath)
+`, preferredZone, preferredInstance, name, name, modelName, modelBucket, modelPath)
 }
 
 func TestInferenceDeployment(t *testing.T) {
@@ -742,7 +769,11 @@ func TestInferenceDeployment(t *testing.T) {
 						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("autoscaling").AtMapKey("min"), knownvalue.Int64Exact(2)),
 						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("autoscaling").AtMapKey("max"), knownvalue.Int64Exact(4)),
 						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("disabled"), knownvalue.Bool(true)),
-						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("runtime").AtMapKey("engine_env").AtMapKey(acceptanceEngineEnvName), knownvalue.StringExact(acceptanceEngineEnvValue)),
+						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("runtime").AtMapKey("engine"), knownvalue.StringExact("dynamo-vllm")),
+						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("runtime").AtMapKey("engine_env"), knownvalue.Null()),
+						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("pd").AtMapKey("prefill_resources").AtMapKey("gpu_count"), knownvalue.Int64Exact(1)),
+						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("pd").AtMapKey("prefill_autoscaling").AtMapKey("max"), knownvalue.Int64Exact(2)),
+						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("pd").AtMapKey("prefill_autoscaling").AtMapKey("concurrency"), knownvalue.Int64Exact(4)),
 						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("traffic").AtMapKey("weight"), knownvalue.Int64Exact(50)),
 					},
 				},
