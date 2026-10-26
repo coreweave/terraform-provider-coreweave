@@ -1,0 +1,104 @@
+## Intent & Decisions
+Let the provider configure the prefill pool of a prefill/decode (PD)
+deployment, which the inference API already supports.
+
+Settled choices:
+- An optional pd attribute holds prefill_resources and
+  prefill_autoscaling (min, max, concurrency), mapped to the API
+  DeploymentPD message. The existing resources and autoscaling
+  attributes keep configuring the decode pool.
+- A change to pd updates the deployment in place. hot_load uses
+  RequiresReplace because the API treats it as immutable; pd is not.
+- Create and update both send Pd, because UpdateDeployment replaces the
+  whole specification. Without Pd in the update request, any update
+  from Terraform would remove the prefill pool.
+- prefill_autoscaling leaves out capacity_classes. An empty list gives
+  the API default order, which is what the intended deployments set
+  explicitly. This removed 39 lines (the ElementsAs loop, diagnostics
+  plumbing, and the null-preserving list read). Trade-offs: a prefill
+  capacity class set outside Terraform is cleared by the next Terraform
+  update, and the prefill pool does not inherit the decode pool's
+  capacity_classes. Adding the optional attribute later is a
+  backward-compatible schema change.
+- pdFromProto is a pure mapping from the API message: concurrency is
+  null when the API returns 0. The decode autoscaling read instead
+  keeps the prior model value in place. For valid configurations the
+  result is the same, because concurrency has an AtLeast(1) validator,
+  so 0 always means unset. The pure form needs no prior-state lookup.
+- The lifecycle test reuses the hotLoadImportHandler mock with one added
+  line (Pd: req.Pd). Renaming the mock was rejected to keep the diff
+  small. An example resource change was dropped for the same reason.
+
+## Actions & Verification
+- gh stack submit opened draft PR #535 (stack #536) with the commit
+  body as the PR body. alexeldeib was requested as a reviewer.
+- TestDeploymentPDLifecycle: create with decode gpu_count 64 and a pd
+  block with prefill concurrency 8, import with ImportStateVerify, then
+  plan-only steps that change pd (and remove the prefill concurrency)
+  and that remove pd. Both plans are in-place updates
+  (PostApplyPreRefresh ExpectResourceAction Update).
+- TestInferenceDeployment_SetFromDeployment_NullPreservation checks that
+  prefill concurrency reads as null when the API returns 0.
+- TestInferenceDeployment_ToUpdateRequest_Fields asserts Pd.
+- Mutation checks, each reverted:
+  - Read drops a non-zero concurrency: TestDeploymentPDLifecycle fails
+    with "Provider produced inconsistent result after apply".
+  - Read keeps a zero concurrency: the null-preservation test fails.
+  - Create and update drop concurrency: TestDeploymentPDLifecycle and
+    TestInferenceDeployment_ToUpdateRequest_Fields fail.
+  - Update request without Pd: "Pd: unexpected <nil>".
+  - A plan check that expects Replace: "expected Replace, got
+    action(s): [update]".
+- go test ./..., golangci-lint (0 issues), make generate (no drift), and
+  git diff --check passed after the rebase onto main 589054f.
+- Two review passes ran before the pull request: a shrink and
+  correctness review with adversarial verification of each finding,
+  then a smaller second pass on the final diff.
+
+## Errors & Mistakes
+- In the first version of this commit, no test covered the null path
+  of prefill capacity_classes, so a regression for the default
+  configuration would have passed. Removing the attribute resolved it.
+- The first version of TestDeploymentPDLifecycle had a same-config
+  plan-only step and state checks that repeat what terraform-plugin-
+  testing and Terraform core already check after every apply step.
+  They were removed.
+
+## Attempts & Outcomes
+- Applied update steps in the mock lifecycle wait for
+  rolloutStartGracePeriod (30 s) each. The change and removal steps are
+  therefore plan-only with a PostApplyPreRefresh plan check, the pattern
+  from #456.
+- An earlier prototype was +395 lines with an example and more tests.
+  The first version of this commit was +256/-1; this one is +210/-1.
+- The second review pass proposed moving TestDeploymentPDLifecycle into
+  deployment_hotload_test.go to save the 15-line package clause and
+  import block. This was refuted: every test file in
+  coreweave/inference is named for the tests it holds, #456 gave
+  hot_load its own deployment_hotload_test.go, and #458 kept a small
+  test in its own file next to the file that defines its fake.
+
+## Findings & Constraints
+- The pinned buf.build/gen/go/coreweave/inference module
+  (v1.36.12-20261008185853-22f8f31f8962.2) already has DeploymentPD, so
+  no dependency bump is needed. It has no autoscaling claims field.
+- terraform-plugin-testing v1.16.0 runs a non-refresh plan and a
+  refresh plan after every apply step and fails when either is not
+  empty. It rejects PreApply plan checks on a PlanOnly step;
+  PostApplyPreRefresh runs on that step's plan.
+- The API message cannot tell an empty repeated list from an unset
+  one. This is why a list attribute needs the prior model value to keep
+  a configured empty list.
+
+## Relevant Files & Commits
+- 3c82c5b (#456): hot_load support, the precedent for the shape of this
+  change and its tests. It is not released yet and ships with this
+  change.
+- coreweave/inference/deployment_hotload_test.go: hotLoadImportHandler.
+- coreweave/inference/export_test.go: exported request and read helpers.
+
+## Open Questions
+- Adding pd to a running deployment without PD is allowed by the API;
+  the rollout behavior of that change was not tested here.
+- Whether prefill capacity_classes or autoscaling claims are needed
+  later.
