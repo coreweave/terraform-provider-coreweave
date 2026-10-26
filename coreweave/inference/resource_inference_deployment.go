@@ -419,9 +419,9 @@ func (r *InferenceDeploymentResource) Schema(_ context.Context, _ resource.Schem
 					},
 					"gpu_count": schema.Int64Attribute{
 						Required:            true,
-						MarkdownDescription: "Number of GPUs per instance. Must be one of: 1, 2, 4, 8, 16.",
+						MarkdownDescription: "Number of GPUs per instance. Must be one of: 1, 2, 4, 8, 16, 32, 64. Values above 16 require an enabled organization.",
 						Validators: []validator.Int64{
-							int64validator.OneOf(1, 2, 4, 8, 16),
+							int64validator.OneOf(1, 2, 4, 8, 16, 32, 64),
 						},
 					},
 				},
