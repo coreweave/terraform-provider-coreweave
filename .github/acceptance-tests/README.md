@@ -2,6 +2,10 @@
 
 See [Acceptance testing](../../ACCEPTANCE_TESTING.md) for local commands, naming, sweep safety, and non-blocking acceptance layout.
 
+> **Observability suite failing? Tell the Telemetry Relay team in `#wg-telemetry-relay`.**
+>
+> The `observability` suites exercise a live telecasterd and the Kafka Connect clusters behind it, so a failure is as likely to be a server-side or environment problem as a provider bug — a pipeline stuck in `FORWARDING_PIPELINE_STATE_PENDING`, a connector that never starts, or an API that stops answering are all theirs to diagnose, not yours. Post the failing subtest name, the slug, and the run log before assuming the test is at fault.
+
 The `Tests` workflow runs for every PR when opened, updated, or reopened. Ordinary PRs, including Renovate dependency updates, run compilation, lint, module consistency, unit tests, documentation generation, snapshot builds, and title validation. They skip acceptance tests.
 
 Every release-please PR from this repository's `release-please--branches--main` branch to `main` runs all acceptance suites: caller identity, CKS, networking, object storage, inference, and container registry. This tests the accumulated changes even when the release PR itself only updates the manifest and changelog. Changed paths, labels, titles, and commit scopes do not select QA suites.
