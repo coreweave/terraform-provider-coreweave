@@ -25,11 +25,13 @@ Credentials come from the `QA` environment, with the suite carrying its own secr
 
 That token must belong to an organization whose registered clusters are **lab-only**. This is what makes the pipeline suites safe to run: a pipeline creates one connector per source Kafka cluster holding the stream's topics, so an organization with a production cluster footprint would provision real connectors in a production zone.
 
+The organization that satisfies this is **`q8e412`**, the Telemetry Relay QA testing organization. It exists for this purpose and has only lab-only clusters registered, and `COREWEAVE_OBSERVABILITY_API_TOKEN` is minted for it. A local run should use a token from `q8e412` as well: the suites generate slugs prefixed `test-acc-`, and the sweeper deletes every endpoint and pipeline carrying that prefix in whatever organization the token belongs to, so a token for a shared organization sweeps that organization's test resources too.
+
 Because this shares the `QA` environment with release acceptance, a dispatched branch can read that environment's other secrets. Dispatch requires write access, and that is the control being relied on.
 
 ### Token rotation
 
-`COREWEAVE_OBSERVABILITY_API_TOKEN` expires **2027-10-01**. Rotate it before then: mint a replacement in the QA console for the same organization and overwrite the secret in the `QA` environment. Nothing else changes, and no workflow edit is needed.
+`COREWEAVE_OBSERVABILITY_API_TOKEN` expires **2027-10-01**. Rotate it before then: mint a replacement in the QA console for the same organization (`q8e412`) and overwrite the secret in the `QA` environment. Nothing else changes, and no workflow edit is needed.
 
 An expired token does not fail loudly in a way that points at the cause — the suites fail on `401` responses from the first API call, which reads as a broken test rather than a lapsed credential. If a previously green suite starts failing wholesale on authentication, check the expiry first.
 
