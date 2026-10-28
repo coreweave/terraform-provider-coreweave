@@ -6,6 +6,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
+	"slices"
 	"time"
 
 	networkingv1beta1 "buf.build/gen/go/coreweave/networking/protocolbuffers/go/coreweave/networking/v1beta1"
@@ -15,6 +17,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework-nettypes/cidrtypes"
 	"github.com/hashicorp/terraform-plugin-framework-validators/resourcevalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/setvalidator"
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -38,6 +41,7 @@ var (
 	_ resource.ResourceWithImportState      = &VpcResource{}
 	_ resource.ResourceWithConfigure        = &VpcResource{}
 	_ resource.ResourceWithConfigValidators = &VpcResource{}
+	_ resource.ResourceWithModifyPlan       = &VpcResource{}
 )
 
 var hostPrefixObjectType = types.ObjectType{
@@ -203,15 +207,24 @@ func (hp *HostPrefixResourceModel) Set(prefix *networkingv1beta1.HostPrefix) {
 }
 
 type VpcPrefixResourceModel struct {
+	Type  types.String `tfsdk:"type"`
 	Name  types.String `tfsdk:"name"`
 	Value types.String `tfsdk:"value"`
 }
 
-func (v *VpcPrefixResourceModel) ToProto() *networkingv1beta1.Prefix {
-	return &networkingv1beta1.Prefix{
-		Name:  v.Name.ValueString(),
-		Value: v.Value.ValueString(),
+// ToProto converts a prefix while preserving an omitted type and rejecting unknown enum names.
+func (v *VpcPrefixResourceModel) ToProto() (*networkingv1beta1.Prefix, diag.Diagnostics) {
+	var diagnostics diag.Diagnostics
+	prefix := &networkingv1beta1.Prefix{Name: v.Name.ValueString(), Value: v.Value.ValueString()}
+	if !v.Type.IsNull() && !v.Type.IsUnknown() {
+		value, ok := networkingv1beta1.Prefix_Type_value[v.Type.ValueString()]
+		if !ok {
+			diagnostics.AddError("Invalid VPC prefix type", fmt.Sprintf("Invalid VPC prefix type: %s", v.Type.ValueString()))
+			return nil, diagnostics
+		}
+		prefix.Type = networkingv1beta1.Prefix_Type(value).Enum()
 	}
+	return prefix, diagnostics
 }
 
 func (v *VpcPrefixResourceModel) Set(prefix *networkingv1beta1.Prefix) {
@@ -221,6 +234,10 @@ func (v *VpcPrefixResourceModel) Set(prefix *networkingv1beta1.Prefix) {
 
 	v.Name = types.StringValue(prefix.Name)
 	v.Value = types.StringValue(prefix.Value)
+	v.Type = types.StringNull()
+	if prefix.Type != nil {
+		v.Type = types.StringValue(prefix.GetType().String())
+	}
 }
 
 type VpcIngressResourceModel struct {
@@ -372,16 +389,22 @@ func (v *VpcResourceModel) hostPrefixes(ctx context.Context) ([]*networkingv1bet
 	return hp, diagnostics
 }
 
-func (v *VpcResourceModel) vpcPrefixes() []*networkingv1beta1.Prefix {
+// vpcPrefixes converts all configured prefixes and accumulates enum diagnostics.
+func (v *VpcResourceModel) vpcPrefixes() ([]*networkingv1beta1.Prefix, diag.Diagnostics) {
+	var diagnostics diag.Diagnostics
 	vp := make([]*networkingv1beta1.Prefix, len(v.VpcPrefixes))
 	for i, p := range v.VpcPrefixes {
-		vp[i] = p.ToProto()
+		prefix, diags := p.ToProto()
+		diagnostics.Append(diags...)
+		vp[i] = prefix
 	}
-	return vp
+	return vp, diagnostics
 }
 
 func (v *VpcResourceModel) ToCreateRequest(ctx context.Context) (*networkingv1beta1.CreateVPCRequest, diag.Diagnostics) {
 	var diagnostics diag.Diagnostics
+	vpcPrefixes, prefixDiags := v.vpcPrefixes()
+	diagnostics.Append(prefixDiags...)
 
 	hostPrefixes, diags := v.hostPrefixes(ctx)
 	diagnostics.Append(diags...)
@@ -396,7 +419,7 @@ func (v *VpcResourceModel) ToCreateRequest(ctx context.Context) (*networkingv1be
 	req := &networkingv1beta1.CreateVPCRequest{
 		Name:         v.Name.ValueString(),
 		Zone:         v.Zone.ValueString(),
-		VpcPrefixes:  v.vpcPrefixes(),
+		VpcPrefixes:  vpcPrefixes,
 		HostPrefix:   v.HostPrefix.ValueString(),
 		HostPrefixes: hostPrefixes,
 		Ingress:      v.Ingress.ToProto(),
@@ -409,6 +432,8 @@ func (v *VpcResourceModel) ToCreateRequest(ctx context.Context) (*networkingv1be
 
 func (v *VpcResourceModel) ToUpdateRequest(ctx context.Context) (*networkingv1beta1.UpdateVPCRequest, diag.Diagnostics) {
 	var diagnostics diag.Diagnostics
+	vpcPrefixes, prefixDiags := v.vpcPrefixes()
+	diagnostics.Append(prefixDiags...)
 
 	dhcp, diags := v.GetDhcp(ctx)
 	diagnostics.Append(diags...)
@@ -419,7 +444,7 @@ func (v *VpcResourceModel) ToUpdateRequest(ctx context.Context) (*networkingv1be
 
 	req := networkingv1beta1.UpdateVPCRequest{
 		Id:          v.Id.ValueString(),
-		VpcPrefixes: v.vpcPrefixes(),
+		VpcPrefixes: vpcPrefixes,
 		Ingress:     v.Ingress.ToProto(),
 		Egress:      v.Egress.ToProto(),
 		Dhcp:        dhcp,
@@ -463,6 +488,12 @@ func (r *VpcResource) Schema(ctx context.Context, req resource.SchemaRequest, re
 				MarkdownDescription: "A list of additional prefixes associated with the VPC. For example, CKS clusters use these prefixes for Pod and service CIDR ranges.",
 				NestedObject: schema.NestedAttributeObject{
 					Attributes: map[string]schema.Attribute{
+						"type": schema.StringAttribute{
+							Optional:            true,
+							Computed:            true,
+							MarkdownDescription: fmt.Sprintf("The intended use of the prefix. Must be one of: %s. When omitted on creation, the prefix has no type; when omitted on update, its existing type is preserved. Changing an existing prefix type directly requires VPC replacement. To change its type without replacing the VPC, first remove the prefix from `vpc_prefixes` and apply. After removal completes, re-add the prefix with the new type and apply again. These must be separate applies.", coreweave.EnumMarkdownValues(networkingv1beta1.Prefix_Type_name, false)),
+							Validators:          []validator.String{stringvalidator.OneOf(slices.Sorted(maps.Keys(networkingv1beta1.Prefix_Type_value))...)},
+						},
 						"name": schema.StringAttribute{
 							Required: true,
 						},
@@ -597,6 +628,33 @@ func (r *VpcResource) Configure(_ context.Context, req resource.ConfigureRequest
 	}
 
 	r.client = client
+}
+
+// ModifyPlan requires replacement only when a named existing prefix changes its immutable type.
+// Matching by name avoids treating reordered or newly added set elements as type changes.
+func (r *VpcResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
+	if req.State.Raw.IsNull() || req.Plan.Raw.IsNull() {
+		return
+	}
+	var state, plan VpcResourceModel
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	existing := make(map[string]types.String, len(state.VpcPrefixes))
+	for _, prefix := range state.VpcPrefixes {
+		existing[prefix.Name.ValueString()] = prefix.Type
+	}
+	for _, prefix := range plan.VpcPrefixes {
+		if prefix.Name.IsUnknown() || prefix.Type.IsNull() || prefix.Type.IsUnknown() {
+			continue
+		}
+		if oldType, ok := existing[prefix.Name.ValueString()]; ok && !prefix.Type.Equal(oldType) {
+			resp.RequiresReplace.Append(path.Root("vpc_prefixes"))
+			return
+		}
+	}
 }
 
 func (r *VpcResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
@@ -900,14 +958,18 @@ func MustRenderVpcResource(ctx context.Context, resourceName string, vpc *VpcRes
 
 	vpcPrefixes := make([]cty.Value, len(vpc.VpcPrefixes))
 	for i, p := range vpc.VpcPrefixes {
-		vpcPrefixes[i] = cty.ObjectVal(map[string]cty.Value{
+		prefix := map[string]cty.Value{
 			"name":  cty.StringVal(p.Name.ValueString()),
 			"value": cty.StringVal(p.Value.ValueString()),
-		})
+		}
+		if !p.Type.IsNull() && !p.Type.IsUnknown() {
+			prefix["type"] = cty.StringVal(p.Type.ValueString())
+		}
+		vpcPrefixes[i] = cty.ObjectVal(prefix)
 	}
 
 	if len(vpcPrefixes) > 0 {
-		resourceBody.SetAttributeValue("vpc_prefixes", cty.ListVal(vpcPrefixes))
+		resourceBody.SetAttributeValue("vpc_prefixes", cty.TupleVal(vpcPrefixes))
 	}
 
 	if vpc.Dhcp != nil {

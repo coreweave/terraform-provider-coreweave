@@ -157,6 +157,7 @@ type ClusterResourceModel struct {
 	PodCidrNameV6               types.String              `tfsdk:"pod_cidr_name_v6"`
 	ServiceCidrNameV6           types.String              `tfsdk:"service_cidr_name_v6"`
 	InternalLBCidrNamesV6       types.List                `tfsdk:"internal_lb_cidr_names_v6"`
+	PrivateAccess               types.Object              `tfsdk:"private_access"`
 	NodePortRange               types.Object              `tfsdk:"node_port_range"`
 	AuditPolicy                 types.String              `tfsdk:"audit_policy"`
 	Oidc                        *OidcResourceModel        `tfsdk:"oidc"`
@@ -225,6 +226,8 @@ func (c *ClusterResourceModel) Set(cluster *cksv1beta1.Cluster) {
 	} else {
 		c.AuditPolicy = types.StringValue(cluster.AuditPolicy)
 	}
+
+	c.PrivateAccess = privateAccessFromProto(cluster.GetNetwork().GetPrivateAccess())
 
 	if cluster.Network != nil {
 		c.PodCidrName = types.StringValue(cluster.Network.PodCidrName)
@@ -451,6 +454,7 @@ func (c *ClusterResourceModel) ToCreateRequest(ctx context.Context) *cksv1beta1.
 		KubeApiAccess: kubeAPIAccessToProto(c.KubeAPIAccess),
 		Version:       c.Version.ValueString(),
 		Network: &cksv1beta1.ClusterNetworkConfig{
+			PrivateAccess:       privateAccessToProto(c.PrivateAccess),
 			PodCidrName:         c.PodCidrName.ValueString(),
 			ServiceCidrName:     c.ServiceCidrName.ValueString(),
 			InternalLbCidrNames: c.InternalLbCidrNames(ctx),
@@ -860,6 +864,23 @@ func (r *ClusterResource) Schema(ctx context.Context, req resource.SchemaRequest
 			"version": schema.StringAttribute{
 				Required:            true,
 				MarkdownDescription: "The version of Kubernetes to run on the cluster, in minor version format (e.g. 'v1.35'). Patch versions are automatically applied by CKS as they are released.",
+			},
+			"private_access": schema.SingleNestedAttribute{
+				Optional:            true,
+				MarkdownDescription: "Expose the control plane privately into the cluster's VPC using prefixes of type `PRIVATE_ACCESS`. Contact your CoreWeave Solutions Architect to enable this feature. Specify at least one IP family. Adding, changing, or removing this configuration requires cluster replacement.",
+				PlanModifiers:       []planmodifier.Object{objectplanmodifier.RequiresReplace()},
+				Attributes: map[string]schema.Attribute{
+					privateAccessIPv4Attribute: schema.StringAttribute{
+						Optional:            true,
+						MarkdownDescription: "Name of the IPv4 PRIVATE_ACCESS prefix in the cluster's VPC.",
+						Validators:          []validator.String{stringvalidator.LengthAtLeast(1), stringvalidator.AtLeastOneOf(path.MatchRelative().AtParent().AtName(privateAccessIPv6Attribute))},
+					},
+					privateAccessIPv6Attribute: schema.StringAttribute{
+						Optional:            true,
+						MarkdownDescription: "Name of the IPv6 PRIVATE_ACCESS prefix in the cluster's VPC.",
+						Validators:          []validator.String{stringvalidator.LengthAtLeast(1)},
+					},
+				},
 			},
 			"pod_cidr_name": schema.StringAttribute{
 				Required:            true,
@@ -1368,6 +1389,8 @@ func MustRenderClusterResource(ctx context.Context, resourceName string, cluster
 	resourceBody.SetAttributeValue("pod_cidr_name", cty.StringVal(cluster.PodCidrName.ValueString()))
 	resourceBody.SetAttributeValue("service_cidr_name", cty.StringVal(cluster.ServiceCidrName.ValueString()))
 
+	renderPrivateAccess(resourceBody, cluster.PrivateAccess)
+
 	// internal_lb_cidr_names (required)
 	setStringListAttr(ctx, resourceBody, "internal_lb_cidr_names", cluster.InternalLBCidrNames)
 
@@ -1566,4 +1589,59 @@ func setOIDCAttrIfPresent(ctx context.Context, b *hclwrite.Body, oidc *OidcResou
 		"signing_algs":        signingAlgs,
 		"admin_group_binding": stringOrNull(oidc.AdminGroupBinding),
 	}))
+}
+
+const (
+	privateAccessIPv4Attribute = "prefix_name_ipv4"
+	privateAccessIPv6Attribute = "prefix_name_ipv6"
+)
+
+var privateAccessAttrTypes = map[string]attr.Type{
+	privateAccessIPv4Attribute: types.StringType,
+	privateAccessIPv6Attribute: types.StringType,
+}
+
+// privateAccessToProto preserves absence and converts configured VPC prefix names.
+func privateAccessToProto(value types.Object) *cksv1beta1.PrivateAccess {
+	if value.IsNull() || value.IsUnknown() {
+		return nil
+	}
+	attrs := value.Attributes()
+	return &cksv1beta1.PrivateAccess{
+		PrefixNameIpv4: attrs[privateAccessIPv4Attribute].(types.String).ValueString(),
+		PrefixNameIpv6: attrs[privateAccessIPv6Attribute].(types.String).ValueString(),
+	}
+}
+
+// privateAccessFromProto converts private access into state, keeping absent families null.
+func privateAccessFromProto(access *cksv1beta1.PrivateAccess) types.Object {
+	if access == nil {
+		return types.ObjectNull(privateAccessAttrTypes)
+	}
+	ipv4, ipv6 := types.StringNull(), types.StringNull()
+	if access.PrefixNameIpv4 != "" {
+		ipv4 = types.StringValue(access.PrefixNameIpv4)
+	}
+	if access.PrefixNameIpv6 != "" {
+		ipv6 = types.StringValue(access.PrefixNameIpv6)
+	}
+	return types.ObjectValueMust(privateAccessAttrTypes, map[string]attr.Value{
+		privateAccessIPv4Attribute: ipv4,
+		privateAccessIPv6Attribute: ipv6,
+	})
+}
+
+// renderPrivateAccess emits known prefix names and omits absent or unknown configuration.
+func renderPrivateAccess(body *hclwrite.Body, access types.Object) {
+	if access.IsNull() || access.IsUnknown() {
+		return
+	}
+	prefixes := map[string]cty.Value{}
+	for name, value := range access.Attributes() {
+		prefix := value.(types.String)
+		if !prefix.IsNull() && !prefix.IsUnknown() {
+			prefixes[name] = cty.StringVal(prefix.ValueString())
+		}
+	}
+	body.SetAttributeValue("private_access", cty.ObjectVal(prefixes))
 }

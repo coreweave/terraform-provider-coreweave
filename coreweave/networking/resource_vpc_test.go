@@ -190,7 +190,12 @@ func defaultExpectedValues(t *testing.T, resourceAddress string, m *networking.V
 	} else {
 		setChecks := make([]knownvalue.Check, len(m.VpcPrefixes))
 		for i, vp := range m.VpcPrefixes {
+			var prefixType knownvalue.Check = knownvalue.Null()
+			if !vp.Type.IsNull() && !vp.Type.IsUnknown() {
+				prefixType = knownvalue.StringExact(vp.Type.ValueString())
+			}
 			setChecks[i] = knownvalue.ObjectExact(map[string]knownvalue.Check{
+				"type":  prefixType,
 				"name":  knownvalue.StringExact(vp.Name.ValueString()),
 				"value": knownvalue.StringExact(vp.Value.ValueString()),
 			})
@@ -706,14 +711,17 @@ resource "coreweave_networking_vpc" %q {
 						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("vpc_prefixes"), knownvalue.SetSizeExact(3)),
 						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("vpc_prefixes"), knownvalue.SetPartial([]knownvalue.Check{
 							knownvalue.ObjectExact(map[string]knownvalue.Check{
+								"type":  knownvalue.Null(),
 								"name":  knownvalue.StringExact("pod-cidr"),
 								"value": knownvalue.StringExact("10.244.0.0/16"),
 							}),
 							knownvalue.ObjectExact(map[string]knownvalue.Check{
+								"type":  knownvalue.Null(),
 								"name":  knownvalue.StringExact("service-cidr"),
 								"value": knownvalue.StringExact("10.96.0.0/16"),
 							}),
 							knownvalue.ObjectExact(map[string]knownvalue.Check{
+								"type":  knownvalue.Null(),
 								"name":  knownvalue.StringExact("lb-cidr"),
 								"value": knownvalue.StringExact("10.20.0.0/22"),
 							}),

@@ -51,16 +51,24 @@ resource "coreweave_networking_vpc" "example" {
 
   vpc_prefixes = [
     {
+      type  = "POD"
       name  = "pod cidr"
       value = "10.0.0.0/13"
     },
     {
+      type  = "SERVICE"
       name  = "service cidr"
       value = "10.16.0.0/22"
     },
     {
+      type  = "LOAD_BALANCER"
       name  = "internal lb cidr"
       value = "10.32.4.0/22"
+    },
+    {
+      name  = "private-access"
+      value = "10.48.0.0/24"
+      type  = "PRIVATE_ACCESS"
     },
   ]
 
@@ -166,6 +174,10 @@ Required:
 
 - `name` (String)
 - `value` (String)
+
+Optional:
+
+- `type` (String) The intended use of the prefix. Must be one of: `UNSPECIFIED`, `PRIVATE_ACCESS`, `POD`, `SERVICE`, `LOAD_BALANCER`. When omitted on creation, the prefix has no type; when omitted on update, its existing type is preserved. Changing an existing prefix type directly requires VPC replacement. To change its type without replacing the VPC, first remove the prefix from `vpc_prefixes` and apply. After removal completes, re-add the prefix with the new type and apply again. These must be separate applies.
 
 ## Import
 
