@@ -33,6 +33,8 @@ func TestOIDCConfigSchema(t *testing.T) {
 	assert.True(t, attributes["audience"].IsRequired())
 	assert.True(t, attributes["active"].IsOptional())
 	assert.True(t, attributes["active"].IsComputed())
+	assert.True(t, attributes["tenant_id"].IsOptional())
+	assert.False(t, attributes["tenant_id"].IsComputed())
 
 	organizationID := attributes["organization_id"].(resourceschema.StringAttribute)
 	assert.Len(t, organizationID.PlanModifiers, 1)
@@ -49,6 +51,7 @@ func TestOIDCConfigModelToCreateRequest(t *testing.T) {
 		IssuerURL:   types.StringValue("https://app.terraform.io"),
 		Audience:    types.StringValue("https://coreweave.com/iam"),
 		Active:      types.BoolValue(false),
+		TenantID:    types.StringValue("example.com"),
 	}
 
 	request := model.ToCreateRequest()
@@ -59,6 +62,21 @@ func TestOIDCConfigModelToCreateRequest(t *testing.T) {
 	assert.Equal(t, "https://coreweave.com/iam", request.GetAudience())
 	assert.True(t, request.HasActive())
 	assert.False(t, request.GetActive())
+	assert.True(t, request.HasTenantId())
+	assert.Equal(t, "example.com", request.GetTenantId())
+}
+
+func TestOIDCConfigModelToCreateRequestWithoutTenantID(t *testing.T) {
+	t.Parallel()
+
+	model := OIDCConfigResourceModel{
+		Name:      types.StringValue("hcp-terraform"),
+		IssuerURL: types.StringValue("https://app.terraform.io"),
+		Audience:  types.StringValue("https://coreweave.com/iam"),
+		TenantID:  types.StringNull(),
+	}
+
+	assert.False(t, model.ToCreateRequest().HasTenantId())
 }
 
 func TestOIDCConfigModelSetFromProto(t *testing.T) {
@@ -74,6 +92,7 @@ func TestOIDCConfigModelSetFromProto(t *testing.T) {
 		Description:   proto.String("CI workloads"),
 		IssuerUrl:     "https://token.actions.githubusercontent.com",
 		Audience:      "https://coreweave.com/iam",
+		TenantId:      proto.String("123456789"),
 		DeactivatedAt: timestamppb.New(deactivatedAt),
 		CreatedAt:     timestamppb.New(createdAt),
 		UpdatedAt:     timestamppb.New(updatedAt),
@@ -89,6 +108,7 @@ func TestOIDCConfigModelSetFromProto(t *testing.T) {
 	assert.Equal(t, config.GetIssuerUrl(), model.IssuerURL.ValueString())
 	assert.Equal(t, config.GetAudience(), model.Audience.ValueString())
 	assert.False(t, model.Active.ValueBool())
+	assert.Equal(t, "123456789", model.TenantID.ValueString())
 	assert.Equal(t, deactivatedAt.Format(time.RFC3339), model.DeactivatedAt.ValueString())
 	assert.Equal(t, createdAt.Format(time.RFC3339), model.CreatedAt.ValueString())
 	assert.Equal(t, updatedAt.Format(time.RFC3339), model.UpdatedAt.ValueString())
@@ -101,6 +121,7 @@ func TestOIDCConfigModelSetFromProtoActiveWithoutDescription(t *testing.T) {
 	require.NoError(t, model.SetFromProto(&controlplanev1beta1.OIDCConfig{Uid: "config-id"}))
 
 	assert.True(t, model.Description.IsNull())
+	assert.True(t, model.TenantID.IsNull())
 	assert.True(t, model.Active.ValueBool())
 	assert.True(t, model.DeactivatedAt.IsNull())
 	assert.True(t, model.CreatedAt.IsNull())
@@ -125,6 +146,7 @@ func TestOIDCConfigModelToUpdateRequest(t *testing.T) {
 		IssuerURL:   types.StringValue("https://old.example.com"),
 		Audience:    types.StringValue("old-audience"),
 		Active:      types.BoolValue(true),
+		TenantID:    types.StringValue("old-org"),
 	}
 	plan := state
 	plan.Name = types.StringValue("new-name")
@@ -132,12 +154,13 @@ func TestOIDCConfigModelToUpdateRequest(t *testing.T) {
 	plan.IssuerURL = types.StringValue("https://new.example.com")
 	plan.Audience = types.StringValue("new-audience")
 	plan.Active = types.BoolValue(false)
+	plan.TenantID = types.StringNull()
 
 	request := plan.ToUpdateRequest(&state)
 
 	assert.Equal(t, state.ID.ValueString(), request.GetUid())
 	require.True(t, slices.Equal(
-		[]string{"name", "issuer_url", "audience", "description", "active"},
+		[]string{"name", "issuer_url", "audience", "description", "active", "tenant_id"},
 		request.GetUpdateMask().GetPaths(),
 	))
 	assert.Equal(t, "new-name", request.GetName())
@@ -146,6 +169,43 @@ func TestOIDCConfigModelToUpdateRequest(t *testing.T) {
 	assert.False(t, request.HasDescription(), "a nil optional value clears the description")
 	assert.True(t, request.HasActive())
 	assert.False(t, request.GetActive())
+	assert.False(t, request.HasTenantId(), "a nil optional value clears the tenant ID")
+}
+
+func TestOIDCConfigModelToUpdateRequestSetsTenantID(t *testing.T) {
+	t.Parallel()
+
+	state := OIDCConfigResourceModel{
+		ID:        types.StringValue("42f18b55-f86c-4480-854c-1aaed6ca3961"),
+		Name:      types.StringValue("name"),
+		IssuerURL: types.StringValue("https://accounts.google.com"),
+		Audience:  types.StringValue("audience"),
+		Active:    types.BoolValue(true),
+		TenantID:  types.StringNull(),
+	}
+
+	for _, tc := range []struct {
+		name  string
+		state types.String
+		plan  string
+	}{
+		{name: "set", state: types.StringNull(), plan: "example.com"},
+		{name: "change", state: types.StringValue("old.example.com"), plan: "example.com"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			prior := state
+			prior.TenantID = tc.state
+			plan := prior
+			plan.TenantID = types.StringValue(tc.plan)
+
+			request := plan.ToUpdateRequest(&prior)
+			assert.Equal(t, []string{"tenant_id"}, request.GetUpdateMask().GetPaths())
+			assert.True(t, request.HasTenantId())
+			assert.Equal(t, tc.plan, request.GetTenantId())
+		})
+	}
 }
 
 func TestOIDCConfigModelToUpdateRequestUnchanged(t *testing.T) {
@@ -158,6 +218,7 @@ func TestOIDCConfigModelToUpdateRequestUnchanged(t *testing.T) {
 		IssuerURL:   types.StringValue("https://issuer.example.com"),
 		Audience:    types.StringValue("audience"),
 		Active:      types.BoolValue(true),
+		TenantID:    types.StringValue("example.com"),
 	}
 
 	request := state.ToUpdateRequest(&state)
@@ -167,6 +228,7 @@ func TestOIDCConfigModelToUpdateRequestUnchanged(t *testing.T) {
 	assert.Nil(t, request.Audience)
 	assert.Nil(t, request.Description)
 	assert.Nil(t, request.Active)
+	assert.Nil(t, request.TenantId)
 }
 
 func TestOIDCConfigModelToUpdateRequestSkipsUnknownValues(t *testing.T) {
@@ -186,6 +248,7 @@ func TestOIDCConfigModelToUpdateRequestSkipsUnknownValues(t *testing.T) {
 	plan.IssuerURL = types.StringUnknown()
 	plan.Audience = types.StringUnknown()
 	plan.Active = types.BoolUnknown()
+	plan.TenantID = types.StringUnknown()
 
 	// An unknown value would serialize as the zero value, so no path may enter
 	// the mask: "active" in particular would deactivate the configuration.
@@ -196,6 +259,7 @@ func TestOIDCConfigModelToUpdateRequestSkipsUnknownValues(t *testing.T) {
 	assert.Nil(t, request.Audience)
 	assert.Nil(t, request.Description)
 	assert.Nil(t, request.Active)
+	assert.Nil(t, request.TenantId)
 }
 
 func TestOIDCConfigModelFillUnknownFromProtoPreservesPlannedValues(t *testing.T) {
@@ -210,6 +274,7 @@ func TestOIDCConfigModelFillUnknownFromProtoPreservesPlannedValues(t *testing.T)
 		Description:   proto.String("changed remotely"),
 		IssuerUrl:     "https://renamed.example.com",
 		Audience:      "renamed-audience",
+		TenantId:      proto.String("renamed-org"),
 		DeactivatedAt: timestamppb.New(createdAt.Add(2 * time.Hour)),
 		CreatedAt:     timestamppb.New(createdAt),
 		UpdatedAt:     timestamppb.New(createdAt.Add(time.Hour)),
@@ -223,6 +288,7 @@ func TestOIDCConfigModelFillUnknownFromProtoPreservesPlannedValues(t *testing.T)
 		IssuerURL:      types.StringValue("https://configured.example.com"),
 		Audience:       types.StringValue("configured-audience"),
 		Active:         types.BoolValue(true),
+		TenantID:       types.StringValue("configured-org"),
 		DeactivatedAt:  types.StringUnknown(),
 		CreatedAt:      types.StringValue(createdAt.Format(time.RFC3339)),
 		UpdatedAt:      types.StringUnknown(),
@@ -236,6 +302,7 @@ func TestOIDCConfigModelFillUnknownFromProtoPreservesPlannedValues(t *testing.T)
 	assert.Equal(t, "https://configured.example.com", model.IssuerURL.ValueString())
 	assert.Equal(t, "configured-audience", model.Audience.ValueString())
 	assert.True(t, model.Active.ValueBool())
+	assert.Equal(t, "configured-org", model.TenantID.ValueString())
 
 	// Only the unknowns are resolved from the response.
 	assert.False(t, model.DeactivatedAt.IsUnknown())

@@ -49,4 +49,5 @@ output "workload_federation_oidc_config_id" {
 - `description` (String) The optional human-readable description of the OIDC configuration.
 - `name` (String) The human-readable name of the OIDC configuration.
 - `organization_id` (String) The unique identifier of the CoreWeave organization that owns the OIDC configuration.
+- `tenant_id` (String) The tenant expected in tokens from issuers shared by many tenants, such as a Google Workspace domain or a GitHub organization ID, or null when none is set.
 - `updated_at` (String) The RFC 3339 timestamp at which the OIDC configuration was last updated.

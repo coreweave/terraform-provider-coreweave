@@ -115,6 +115,10 @@ func (d *OIDCConfigDataSource) Schema(_ context.Context, _ datasource.SchemaRequ
 				Computed:            true,
 				MarkdownDescription: "Whether tokens from this OIDC provider are accepted for workload identity federation.",
 			},
+			"tenant_id": schema.StringAttribute{
+				Computed:            true,
+				MarkdownDescription: "The tenant expected in tokens from issuers shared by many tenants, such as a Google Workspace domain or a GitHub organization ID, or null when none is set.",
+			},
 			"deactivated_at": schema.StringAttribute{
 				Computed:            true,
 				MarkdownDescription: "The RFC 3339 timestamp at which the OIDC configuration was deactivated, or null while active.",
