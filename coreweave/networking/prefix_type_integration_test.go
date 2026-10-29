@@ -123,6 +123,7 @@ func TestVpcPrefixTypeTerraformLifecycle(t *testing.T) {
 }
 
 func runPrefixTypeLifecycle(t *testing.T, allowed, deferred bool) {
+	t.Helper()
 	service := &prefixTypeServer{allowTypeChanges: allowed}
 	mux := http.NewServeMux()
 	server := connect.NewServer()
