@@ -165,6 +165,20 @@ resource "terraform_data" "prefix_type" {
 	})
 }
 
+// TestVpcPrefixTypeTerraformRejectUnspecified prevents configuration that the
+// zonal API returns as an absent type, which cannot match the configured string.
+func TestVpcPrefixTypeTerraformRejectUnspecified(t *testing.T) {
+	startPrefixTypeServer(t)
+	tfresource.UnitTest(t, tfresource.TestCase{
+		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+		Steps: []tfresource.TestStep{{
+			Config:      prefixTypeConfig("UNSPECIFIED", ""),
+			PlanOnly:    true,
+			ExpectError: regexp.MustCompile("Invalid Attribute Value"),
+		}},
+	})
+}
+
 func startPrefixTypeServer(t *testing.T) *prefixTypeServer {
 	t.Helper()
 	service := &prefixTypeServer{}

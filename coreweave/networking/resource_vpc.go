@@ -490,8 +490,11 @@ func (r *VpcResource) Schema(ctx context.Context, req resource.SchemaRequest, re
 						"type": schema.StringAttribute{
 							Optional:            true,
 							Computed:            true,
-							MarkdownDescription: fmt.Sprintf("The intended use of the prefix. Must be one of: %s. When omitted on creation, the prefix has no type; when omitted on update, its existing type is preserved. Prefix type changes are submitted as in-place updates and validated by the VPC API. Unsupported changes return an error during apply; they do not automatically replace the VPC.", coreweave.EnumMarkdownValues(networkingv1beta1.Prefix_Type_name, false)),
-							Validators:          []validator.String{stringvalidator.OneOf(slices.Sorted(maps.Keys(networkingv1beta1.Prefix_Type_value))...)},
+							MarkdownDescription: fmt.Sprintf("The intended use of the prefix. Must be one of: %s. Omit this attribute instead of setting `UNSPECIFIED`. When omitted on creation, the prefix has no type; when omitted on update, its existing type is preserved. Prefix type changes are submitted as in-place updates and validated by the VPC API. Unsupported changes return an error during apply; they do not automatically replace the VPC.", coreweave.EnumMarkdownValues(networkingv1beta1.Prefix_Type_name, true)),
+							Validators: []validator.String{
+								stringvalidator.OneOf(slices.Sorted(maps.Keys(networkingv1beta1.Prefix_Type_value))...),
+								stringvalidator.NoneOf(networkingv1beta1.Prefix_UNSPECIFIED.String()),
+							},
 						},
 						"name": schema.StringAttribute{
 							Required: true,
