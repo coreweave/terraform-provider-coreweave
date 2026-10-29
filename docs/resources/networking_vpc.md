@@ -177,7 +177,7 @@ Required:
 
 Optional:
 
-- `type` (String) The intended use of the prefix. Must be one of: `UNSPECIFIED`, `PRIVATE_ACCESS`, `POD`, `SERVICE`, `LOAD_BALANCER`. When omitted on creation, the prefix has no type; when omitted on update, its existing type is preserved. Changing an existing prefix type directly requires VPC replacement. To change its type without replacing the VPC, first remove the prefix from `vpc_prefixes` and apply. After removal completes, re-add the prefix with the new type and apply again. These must be separate applies.
+- `type` (String) The intended use of the prefix. Must be one of: `UNSPECIFIED`, `PRIVATE_ACCESS`, `POD`, `SERVICE`, `LOAD_BALANCER`. When omitted on creation, the prefix has no type; when omitted on update, its existing type is preserved. Prefix type changes are submitted as in-place updates and validated by the VPC API. Unsupported changes return an error during apply; they do not automatically replace the VPC.
 
 ## Import
 

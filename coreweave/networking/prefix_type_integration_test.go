@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"strings"
 	"sync"
 	"testing"
@@ -28,17 +29,20 @@ const (
 	prefixValueAttribute = "value"
 )
 
-// prefixTypeServer models prefix type presence and immutability without contacting CoreWeave.
+// prefixTypeServer models omitted types and API-controlled mutation policy.
 type prefixTypeServer struct {
 	networkingv1beta1connect.UnimplementedVPCServiceHandler
-	mu  sync.Mutex
-	vpc *networkingv1beta1.VPC
+	mu                        sync.Mutex
+	vpc                       *networkingv1beta1.VPC
+	allowTypeChanges          bool
+	creates, deletes, updates int
 }
 
 // CreateVPC returns an immediately ready VPC with the requested prefixes.
 func (s *prefixTypeServer) CreateVPC(_ context.Context, req *networkingv1beta1.CreateVPCRequest) (*networkingv1beta1.CreateVPCResponse, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.creates++
 	s.vpc = &networkingv1beta1.VPC{
 		Id: "00000000-0000-4000-8000-000000000001", Name: req.Name, Zone: req.Zone,
 		HostPrefix: "10.128.0.0/16", HostPrefixes: req.HostPrefixes, VpcPrefixes: req.VpcPrefixes,
@@ -57,10 +61,11 @@ func (s *prefixTypeServer) GetVPC(context.Context, *networkingv1beta1.GetVPCRequ
 	return &networkingv1beta1.GetVPCResponse{Vpc: proto.Clone(s.vpc).(*networkingv1beta1.VPC)}, nil
 }
 
-// UpdateVPC preserves omitted types and rejects changes to an existing prefix type.
+// UpdateVPC preserves omitted types and optionally rejects type changes.
 func (s *prefixTypeServer) UpdateVPC(_ context.Context, req *networkingv1beta1.UpdateVPCRequest) (*networkingv1beta1.UpdateVPCResponse, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.updates++
 	for _, prefix := range req.VpcPrefixes {
 		for _, old := range s.vpc.VpcPrefixes {
 			if prefix.Name != old.Name {
@@ -68,7 +73,7 @@ func (s *prefixTypeServer) UpdateVPC(_ context.Context, req *networkingv1beta1.U
 			}
 			if prefix.Type == nil {
 				prefix.Type = old.Type
-			} else if prefix.GetType() != old.GetType() {
+			} else if prefix.GetType() != old.GetType() && !s.allowTypeChanges {
 				return nil, connect.NewError(connect.CodeInvalidArgument, "prefix type is immutable")
 			}
 		}
@@ -82,6 +87,7 @@ func (s *prefixTypeServer) UpdateVPC(_ context.Context, req *networkingv1beta1.U
 func (s *prefixTypeServer) DeleteVPC(context.Context, *networkingv1beta1.DeleteVPCRequest) (*networkingv1beta1.DeleteVPCResponse, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.deletes++
 	old := s.vpc
 	s.vpc = nil
 	return &networkingv1beta1.DeleteVPCResponse{Vpc: old}, nil
@@ -107,7 +113,17 @@ data "coreweave_networking_vpc" "test" {
 }
 
 func TestVpcPrefixTypeTerraformLifecycle(t *testing.T) {
-	service := &prefixTypeServer{}
+	for _, allowed := range []bool{false, true} {
+		t.Run(fmt.Sprintf("allow_changes_%t", allowed), func(t *testing.T) {
+			for _, deferred := range []bool{false, true} {
+				t.Run(fmt.Sprintf("deferred_%t", deferred), func(t *testing.T) { runPrefixTypeLifecycle(t, allowed, deferred) })
+			}
+		})
+	}
+}
+
+func runPrefixTypeLifecycle(t *testing.T, allowed, deferred bool) {
+	service := &prefixTypeServer{allowTypeChanges: allowed}
 	mux := http.NewServeMux()
 	server := connect.NewServer()
 	networkingv1beta1connect.RegisterVPCServiceHandler(server, service)
@@ -120,6 +136,18 @@ func TestVpcPrefixTypeTerraformLifecycle(t *testing.T) {
 	initial := prefixTypeConfig("PRIVATE_ACCESS", "")
 	added := prefixTypeConfig("PRIVATE_ACCESS", `{ name = "pods", value = "10.2.0.0/24", type = "POD" },`)
 	changed := prefixTypeConfig("SERVICE", `{ name = "pods", value = "10.2.0.0/24", type = "POD" },`)
+	if deferred {
+		changed = strings.Replace(changed, `type = "SERVICE"`, "type = terraform_data.prefix_type.output", 1) + "\nresource \"terraform_data\" \"prefix_type\" { input = \"SERVICE\" }\n"
+	}
+	changeStep := tfresource.TestStep{Config: changed, ConfigPlanChecks: tfresource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{plancheck.ExpectResourceAction(address, plancheck.ResourceActionUpdate)}}}
+	if allowed {
+		changeStep.ConfigStateChecks = []statecheck.StateCheck{statecheck.ExpectKnownValue(address, tfjsonpath.New("vpc_prefixes"), knownvalue.SetPartial([]knownvalue.Check{
+			knownvalue.ObjectPartial(map[string]knownvalue.Check{prefixValueAttribute: knownvalue.StringExact("10.1.0.0/24"), prefixTypeAttribute: knownvalue.StringExact("SERVICE")}),
+		}))}
+	}
+	if !allowed {
+		changeStep.ExpectError = regexp.MustCompile("prefix type is immutable")
+	}
 	tfresource.UnitTest(t, tfresource.TestCase{
 		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
 		Steps: []tfresource.TestStep{
@@ -132,15 +160,17 @@ func TestVpcPrefixTypeTerraformLifecycle(t *testing.T) {
 			}},
 			{Config: initial, PlanOnly: true},
 			{ResourceName: address, ImportState: true, ImportStateVerify: true},
-			{Config: added, ConfigPlanChecks: tfresource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{plancheck.ExpectResourceAction(address, plancheck.ResourceActionUpdate)}}},
+			{Config: strings.Replace(added, `, type = "PRIVATE_ACCESS"`, "", 1), ConfigPlanChecks: tfresource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{plancheck.ExpectResourceAction(address, plancheck.ResourceActionUpdate)}}},
 			{Config: added, PlanOnly: true},
 			// Removing the type from configuration preserves the observed type.
 			{Config: strings.Replace(added, `, type = "PRIVATE_ACCESS"`, "", 1), PlanOnly: true},
-			{Config: changed, ConfigPlanChecks: tfresource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{plancheck.ExpectResourceAction(address, plancheck.ResourceActionDestroyBeforeCreate)}}},
-			{Config: changed, PlanOnly: true},
+			changeStep,
 		},
 	})
 	service.mu.Lock()
 	defer service.mu.Unlock()
 	require.Nil(t, service.vpc)
+	require.Equal(t, 1, service.creates)
+	require.Equal(t, 1, service.deletes)
+	require.GreaterOrEqual(t, service.updates, 2)
 }
