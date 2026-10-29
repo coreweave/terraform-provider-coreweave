@@ -41,7 +41,6 @@ var (
 	_ resource.ResourceWithImportState      = &VpcResource{}
 	_ resource.ResourceWithConfigure        = &VpcResource{}
 	_ resource.ResourceWithConfigValidators = &VpcResource{}
-	_ resource.ResourceWithModifyPlan       = &VpcResource{}
 )
 
 var hostPrefixObjectType = types.ObjectType{
@@ -491,8 +490,11 @@ func (r *VpcResource) Schema(ctx context.Context, req resource.SchemaRequest, re
 						"type": schema.StringAttribute{
 							Optional:            true,
 							Computed:            true,
-							MarkdownDescription: fmt.Sprintf("The intended use of the prefix. Must be one of: %s. When omitted on creation, the prefix has no type; when omitted on update, its existing type is preserved. Changing an existing prefix type directly requires VPC replacement. To change its type without replacing the VPC, first remove the prefix from `vpc_prefixes` and apply. After removal completes, re-add the prefix with the new type and apply again. These must be separate applies.", coreweave.EnumMarkdownValues(networkingv1beta1.Prefix_Type_name, false)),
-							Validators:          []validator.String{stringvalidator.OneOf(slices.Sorted(maps.Keys(networkingv1beta1.Prefix_Type_value))...)},
+							MarkdownDescription: fmt.Sprintf("The intended use of the prefix. Must be one of: %s. Omit this attribute instead of setting `UNSPECIFIED`. When omitted on creation, the prefix has no type; when omitted on update, its existing type is preserved. Prefix type changes are submitted as in-place updates and validated by the VPC API. Unsupported changes return an error during apply; they do not automatically replace the VPC.", coreweave.EnumMarkdownValues(networkingv1beta1.Prefix_Type_name, true)),
+							Validators: []validator.String{
+								stringvalidator.OneOf(slices.Sorted(maps.Keys(networkingv1beta1.Prefix_Type_value))...),
+								stringvalidator.NoneOf(networkingv1beta1.Prefix_UNSPECIFIED.String()),
+							},
 						},
 						"name": schema.StringAttribute{
 							Required: true,
@@ -628,33 +630,6 @@ func (r *VpcResource) Configure(_ context.Context, req resource.ConfigureRequest
 	}
 
 	r.client = client
-}
-
-// ModifyPlan requires replacement only when a named existing prefix changes its immutable type.
-// Matching by name avoids treating reordered or newly added set elements as type changes.
-func (r *VpcResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
-	if req.State.Raw.IsNull() || req.Plan.Raw.IsNull() {
-		return
-	}
-	var state, plan VpcResourceModel
-	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
-	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
-	existing := make(map[string]types.String, len(state.VpcPrefixes))
-	for _, prefix := range state.VpcPrefixes {
-		existing[prefix.Name.ValueString()] = prefix.Type
-	}
-	for _, prefix := range plan.VpcPrefixes {
-		if prefix.Name.IsUnknown() || prefix.Type.IsNull() || prefix.Type.IsUnknown() {
-			continue
-		}
-		if oldType, ok := existing[prefix.Name.ValueString()]; ok && !prefix.Type.Equal(oldType) {
-			resp.RequiresReplace.Append(path.Root("vpc_prefixes"))
-			return
-		}
-	}
 }
 
 func (r *VpcResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {

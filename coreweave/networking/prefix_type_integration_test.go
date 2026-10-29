@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"strings"
 	"sync"
 	"testing"
@@ -107,15 +108,7 @@ data "coreweave_networking_vpc" "test" {
 }
 
 func TestVpcPrefixTypeTerraformLifecycle(t *testing.T) {
-	service := &prefixTypeServer{}
-	mux := http.NewServeMux()
-	server := connect.NewServer()
-	networkingv1beta1connect.RegisterVPCServiceHandler(server, service)
-	connecthttp.Mount(mux, server)
-	httpServer := httptest.NewServer(mux)
-	t.Cleanup(httpServer.Close)
-	t.Setenv(provider.CoreweaveApiEndpointEnvVar, httpServer.URL)
-	t.Setenv(provider.CoreweaveApiTokenEnvVar, "test-token")
+	service := startPrefixTypeServer(t)
 	const address = "coreweave_networking_vpc.test"
 	initial := prefixTypeConfig("PRIVATE_ACCESS", "")
 	added := prefixTypeConfig("PRIVATE_ACCESS", `{ name = "pods", value = "10.2.0.0/24", type = "POD" },`)
@@ -132,15 +125,70 @@ func TestVpcPrefixTypeTerraformLifecycle(t *testing.T) {
 			}},
 			{Config: initial, PlanOnly: true},
 			{ResourceName: address, ImportState: true, ImportStateVerify: true},
-			{Config: added, ConfigPlanChecks: tfresource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{plancheck.ExpectResourceAction(address, plancheck.ResourceActionUpdate)}}},
+			{Config: strings.Replace(added, `, type = "PRIVATE_ACCESS"`, "", 1), ConfigPlanChecks: tfresource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{plancheck.ExpectResourceAction(address, plancheck.ResourceActionUpdate)}}},
 			{Config: added, PlanOnly: true},
 			// Removing the type from configuration preserves the observed type.
 			{Config: strings.Replace(added, `, type = "PRIVATE_ACCESS"`, "", 1), PlanOnly: true},
-			{Config: changed, ConfigPlanChecks: tfresource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{plancheck.ExpectResourceAction(address, plancheck.ResourceActionDestroyBeforeCreate)}}},
-			{Config: changed, PlanOnly: true},
+			{Config: changed, ConfigPlanChecks: tfresource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{plancheck.ExpectResourceAction(address, plancheck.ResourceActionUpdate)}}, ExpectError: regexp.MustCompile("prefix type is immutable")},
 		},
 	})
 	service.mu.Lock()
 	defer service.mu.Unlock()
 	require.Nil(t, service.vpc)
+}
+
+// TestVpcPrefixTypeTerraformDeferredChange verifies that a type resolved during
+// apply still reaches API validation instead of changing the planned action.
+func TestVpcPrefixTypeTerraformDeferredChange(t *testing.T) {
+	startPrefixTypeServer(t)
+	initial := prefixTypeConfig("PRIVATE_ACCESS", "")
+	changed := strings.Replace(prefixTypeConfig("SERVICE", ""),
+		`type = "SERVICE"`, "type = terraform_data.prefix_type.output", 1) + `
+resource "terraform_data" "prefix_type" {
+ input = "SERVICE"
+}
+`
+	tfresource.UnitTest(t, tfresource.TestCase{
+		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+		Steps: []tfresource.TestStep{
+			{Config: initial},
+			{
+				Config: changed,
+				ConfigPlanChecks: tfresource.ConfigPlanChecks{
+					PreApply: []plancheck.PlanCheck{
+						plancheck.ExpectResourceAction("coreweave_networking_vpc.test", plancheck.ResourceActionUpdate),
+					},
+				},
+				ExpectError: regexp.MustCompile("prefix type is immutable"),
+			},
+		},
+	})
+}
+
+// TestVpcPrefixTypeTerraformRejectUnspecified prevents configuration that the
+// zonal API returns as an absent type, which cannot match the configured string.
+func TestVpcPrefixTypeTerraformRejectUnspecified(t *testing.T) {
+	startPrefixTypeServer(t)
+	tfresource.UnitTest(t, tfresource.TestCase{
+		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+		Steps: []tfresource.TestStep{{
+			Config:      prefixTypeConfig("UNSPECIFIED", ""),
+			PlanOnly:    true,
+			ExpectError: regexp.MustCompile("Invalid Attribute Value"),
+		}},
+	})
+}
+
+func startPrefixTypeServer(t *testing.T) *prefixTypeServer {
+	t.Helper()
+	service := &prefixTypeServer{}
+	mux := http.NewServeMux()
+	server := connect.NewServer()
+	networkingv1beta1connect.RegisterVPCServiceHandler(server, service)
+	connecthttp.Mount(mux, server)
+	httpServer := httptest.NewServer(mux)
+	t.Cleanup(httpServer.Close)
+	t.Setenv(provider.CoreweaveApiEndpointEnvVar, httpServer.URL)
+	t.Setenv(provider.CoreweaveApiTokenEnvVar, "test-token")
+	return service
 }
