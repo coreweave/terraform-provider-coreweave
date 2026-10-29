@@ -94,4 +94,5 @@ Read-Only:
 Read-Only:
 
 - `name` (String)
+- `type` (String) The intended use of the prefix; null when no type is assigned.
 - `value` (String)

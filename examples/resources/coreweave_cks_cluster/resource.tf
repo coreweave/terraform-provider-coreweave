@@ -10,6 +10,8 @@ resource "coreweave_networking_vpc" "default" {
     },
   ]
 
+  # Existing untyped prefixes can remain untyped. Type changes require VPC API support.
+  # For a new VPC, these prefixes may use POD, SERVICE, and LOAD_BALANCER types.
   vpc_prefixes = [
     {
       name  = "pod cidr"
@@ -22,6 +24,11 @@ resource "coreweave_networking_vpc" "default" {
     {
       name  = "internal lb cidr"
       value = "10.32.4.0/22"
+    },
+    {
+      name  = "private-access"
+      value = "10.48.0.0/24"
+      type  = "PRIVATE_ACCESS"
     },
   ]
 }
@@ -46,6 +53,12 @@ resource "coreweave_cks_cluster" "default" {
   #     allow_cidrs = ["203.0.113.0/24", "2001:db8::/32"]
   #     deny_cidrs  = ["203.0.113.128/25"]
   #   }
+  # }
+
+  # Contact your CoreWeave Solutions Architect to enable private control plane access.
+  # Configure this at creation; changing it requires cluster replacement.
+  # private_access = {
+  #   prefix_name_ipv4 = "private-access"
   # }
 
   oidc = {

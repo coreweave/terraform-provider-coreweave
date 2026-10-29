@@ -64,6 +64,14 @@ func (d *ClusterDataSource) Schema(ctx context.Context, req datasource.SchemaReq
 			},
 			"kube_api_access":        kubeAPIAccessDataSourceAttribute(),
 			"kube_api_access_status": kubeAPIAccessStatusDataSourceAttribute(),
+			"private_access": schema.SingleNestedAttribute{
+				Computed:            true,
+				MarkdownDescription: "Private control plane access configuration. Null when private access is not configured.",
+				Attributes: map[string]schema.Attribute{
+					privateAccessIPv4Attribute: schema.StringAttribute{Computed: true, MarkdownDescription: "Name of the IPv4 private access prefix."},
+					privateAccessIPv6Attribute: schema.StringAttribute{Computed: true, MarkdownDescription: "Name of the IPv6 private access prefix."},
+				},
+			},
 			"pod_cidr_name": schema.StringAttribute{
 				MarkdownDescription: "The pod CIDR name of the cluster.",
 				Computed:            true,

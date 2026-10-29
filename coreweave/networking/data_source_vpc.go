@@ -54,6 +54,7 @@ func (d *VpcDataSource) Schema(ctx context.Context, req datasource.SchemaRequest
 				Computed:            true,
 				NestedObject: schema.NestedAttributeObject{
 					Attributes: map[string]schema.Attribute{
+						"type": schema.StringAttribute{Computed: true, MarkdownDescription: "The intended use of the prefix; null when no type is assigned."},
 						"name": schema.StringAttribute{
 							Computed: true,
 						},

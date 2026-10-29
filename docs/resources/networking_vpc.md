@@ -49,6 +49,8 @@ resource "coreweave_networking_vpc" "example" {
     },
   ]
 
+  # Existing untyped prefixes can remain untyped. Type changes require VPC API support.
+  # For a new VPC, these prefixes may use POD, SERVICE, and LOAD_BALANCER types.
   vpc_prefixes = [
     {
       name  = "pod cidr"
@@ -61,6 +63,11 @@ resource "coreweave_networking_vpc" "example" {
     {
       name  = "internal lb cidr"
       value = "10.32.4.0/22"
+    },
+    {
+      name  = "private-access"
+      value = "10.48.0.0/24"
+      type  = "PRIVATE_ACCESS"
     },
   ]
 
@@ -166,6 +173,10 @@ Required:
 
 - `name` (String)
 - `value` (String)
+
+Optional:
+
+- `type` (String) The intended use of the prefix. Must be one of: `PRIVATE_ACCESS`, `POD`, `SERVICE`, `LOAD_BALANCER`. Omit this attribute instead of setting `UNSPECIFIED`. When omitted on creation, the prefix has no type; when omitted on update, its existing type is preserved, including an untyped value, so unrelated changes do not invalidate references filtered by type. Prefix type changes are submitted as in-place updates and validated by the VPC API. Unsupported changes return an error during apply; they do not automatically replace the VPC. To change an immutable type, remove the prefix and apply, then re-add it with the new type and apply again. First remove any dependencies that prevent deleting the prefix; this can disrupt workloads using it.
 
 ## Import
 
