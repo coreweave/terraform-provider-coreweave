@@ -29,12 +29,11 @@ const (
 	prefixValueAttribute = "value"
 )
 
-// prefixTypeServer models omitted types and API-controlled mutation policy.
+// prefixTypeServer models omitted types and the API prohibition on type changes.
 type prefixTypeServer struct {
 	networkingv1beta1connect.UnimplementedVPCServiceHandler
 	mu                        sync.Mutex
 	vpc                       *networkingv1beta1.VPC
-	allowTypeChanges          bool
 	creates, deletes, updates int
 }
 
@@ -61,7 +60,7 @@ func (s *prefixTypeServer) GetVPC(context.Context, *networkingv1beta1.GetVPCRequ
 	return &networkingv1beta1.GetVPCResponse{Vpc: proto.Clone(s.vpc).(*networkingv1beta1.VPC)}, nil
 }
 
-// UpdateVPC preserves omitted types and optionally rejects type changes.
+// UpdateVPC preserves omitted types and rejects type changes.
 func (s *prefixTypeServer) UpdateVPC(_ context.Context, req *networkingv1beta1.UpdateVPCRequest) (*networkingv1beta1.UpdateVPCResponse, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -73,7 +72,7 @@ func (s *prefixTypeServer) UpdateVPC(_ context.Context, req *networkingv1beta1.U
 			}
 			if prefix.Type == nil {
 				prefix.Type = old.Type
-			} else if prefix.GetType() != old.GetType() && !s.allowTypeChanges {
+			} else if prefix.GetType() != old.GetType() {
 				return nil, connect.NewError(connect.CodeInvalidArgument, "prefix type is immutable")
 			}
 		}
@@ -113,18 +112,16 @@ data "coreweave_networking_vpc" "test" {
 }
 
 func TestVpcPrefixTypeTerraformLifecycle(t *testing.T) {
-	for _, allowed := range []bool{false, true} {
-		t.Run(fmt.Sprintf("allow_changes_%t", allowed), func(t *testing.T) {
-			for _, deferred := range []bool{false, true} {
-				t.Run(fmt.Sprintf("deferred_%t", deferred), func(t *testing.T) { runPrefixTypeLifecycle(t, allowed, deferred) })
-			}
+	for _, deferred := range []bool{false, true} {
+		t.Run(fmt.Sprintf("deferred_%t", deferred), func(t *testing.T) {
+			runPrefixTypeLifecycle(t, deferred)
 		})
 	}
 }
 
-func runPrefixTypeLifecycle(t *testing.T, allowed, deferred bool) {
+func runPrefixTypeLifecycle(t *testing.T, deferred bool) {
 	t.Helper()
-	service := &prefixTypeServer{allowTypeChanges: allowed}
+	service := &prefixTypeServer{}
 	mux := http.NewServeMux()
 	server := connect.NewServer()
 	networkingv1beta1connect.RegisterVPCServiceHandler(server, service)
@@ -141,14 +138,7 @@ func runPrefixTypeLifecycle(t *testing.T, allowed, deferred bool) {
 		changed = strings.Replace(changed, `type = "SERVICE"`, "type = terraform_data.prefix_type.output", 1) + "\nresource \"terraform_data\" \"prefix_type\" { input = \"SERVICE\" }\n"
 	}
 	changeStep := tfresource.TestStep{Config: changed, ConfigPlanChecks: tfresource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{plancheck.ExpectResourceAction(address, plancheck.ResourceActionUpdate)}}}
-	if allowed {
-		changeStep.ConfigStateChecks = []statecheck.StateCheck{statecheck.ExpectKnownValue(address, tfjsonpath.New("vpc_prefixes"), knownvalue.SetPartial([]knownvalue.Check{
-			knownvalue.ObjectPartial(map[string]knownvalue.Check{prefixValueAttribute: knownvalue.StringExact("10.1.0.0/24"), prefixTypeAttribute: knownvalue.StringExact("SERVICE")}),
-		}))}
-	}
-	if !allowed {
-		changeStep.ExpectError = regexp.MustCompile("prefix type is immutable")
-	}
+	changeStep.ExpectError = regexp.MustCompile("prefix type is immutable")
 	tfresource.UnitTest(t, tfresource.TestCase{
 		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
 		Steps: []tfresource.TestStep{
