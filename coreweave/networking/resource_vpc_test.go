@@ -426,16 +426,11 @@ func TestVpcResource(t *testing.T) {
 				},
 				{
 					PreConfig: func() {
-						t.Log("Beginning coreweave_networking_vpc gateway policy replace test")
+						t.Log("Rejecting an unsupported gateway policy change")
 					},
-					Config: networking.MustRenderVpcResource(ctx, resourceName, &updateWithGatewayPolicyChange),
-					ConfigPlanChecks: resource.ConfigPlanChecks{
-						PostApplyPreRefresh: []plancheck.PlanCheck{
-							plancheck.ExpectResourceAction(fullResourceName, plancheck.ResourceActionDestroyBeforeCreate),
-						},
-					},
-					PlanOnly:           true,
-					ExpectNonEmptyPlan: true,
+					Config:      networking.MustRenderVpcResource(ctx, resourceName, &updateWithGatewayPolicyChange),
+					ExpectError: regexp.MustCompile("Unsupported host prefix change"),
+					PlanOnly:    true,
 				},
 			},
 		})
