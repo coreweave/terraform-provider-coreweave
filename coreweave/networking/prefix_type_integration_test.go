@@ -29,7 +29,7 @@ const (
 	prefixValueAttribute = "value"
 )
 
-// prefixTypeServer models omitted types and the API prohibition on type changes.
+// prefixTypeServer models prefix type presence and immutability without contacting CoreWeave.
 type prefixTypeServer struct {
 	networkingv1beta1connect.UnimplementedVPCServiceHandler
 	mu  sync.Mutex
@@ -58,7 +58,7 @@ func (s *prefixTypeServer) GetVPC(context.Context, *networkingv1beta1.GetVPCRequ
 	return &networkingv1beta1.GetVPCResponse{Vpc: proto.Clone(s.vpc).(*networkingv1beta1.VPC)}, nil
 }
 
-// UpdateVPC preserves omitted types and rejects type changes.
+// UpdateVPC preserves omitted types and rejects changes to an existing prefix type.
 func (s *prefixTypeServer) UpdateVPC(_ context.Context, req *networkingv1beta1.UpdateVPCRequest) (*networkingv1beta1.UpdateVPCResponse, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -107,28 +107,12 @@ data "coreweave_networking_vpc" "test" {
 `, prefixType, extra)
 }
 
-func startPrefixTypeServer(t *testing.T) *prefixTypeServer {
-	t.Helper()
-	service := &prefixTypeServer{}
-	mux := http.NewServeMux()
-	server := connect.NewServer()
-	networkingv1beta1connect.RegisterVPCServiceHandler(server, service)
-	connecthttp.Mount(mux, server)
-	httpServer := httptest.NewServer(mux)
-	t.Cleanup(httpServer.Close)
-	t.Setenv(provider.CoreweaveApiEndpointEnvVar, httpServer.URL)
-	t.Setenv(provider.CoreweaveApiTokenEnvVar, "test-token")
-	return service
-}
-
 func TestVpcPrefixTypeTerraformLifecycle(t *testing.T) {
 	service := startPrefixTypeServer(t)
 	const address = "coreweave_networking_vpc.test"
 	initial := prefixTypeConfig("PRIVATE_ACCESS", "")
 	added := prefixTypeConfig("PRIVATE_ACCESS", `{ name = "pods", value = "10.2.0.0/24", type = "POD" },`)
 	changed := prefixTypeConfig("SERVICE", `{ name = "pods", value = "10.2.0.0/24", type = "POD" },`)
-	changeStep := tfresource.TestStep{Config: changed, ConfigPlanChecks: tfresource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{plancheck.ExpectResourceAction(address, plancheck.ResourceActionUpdate)}}}
-	changeStep.ExpectError = regexp.MustCompile("prefix type is immutable")
 	tfresource.UnitTest(t, tfresource.TestCase{
 		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
 		Steps: []tfresource.TestStep{
@@ -145,7 +129,7 @@ func TestVpcPrefixTypeTerraformLifecycle(t *testing.T) {
 			{Config: added, PlanOnly: true},
 			// Removing the type from configuration preserves the observed type.
 			{Config: strings.Replace(added, `, type = "PRIVATE_ACCESS"`, "", 1), PlanOnly: true},
-			changeStep,
+			{Config: changed, ConfigPlanChecks: tfresource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{plancheck.ExpectResourceAction(address, plancheck.ResourceActionUpdate)}}, ExpectError: regexp.MustCompile("prefix type is immutable")},
 		},
 	})
 	service.mu.Lock()
@@ -179,4 +163,18 @@ resource "terraform_data" "prefix_type" {
 			},
 		},
 	})
+}
+
+func startPrefixTypeServer(t *testing.T) *prefixTypeServer {
+	t.Helper()
+	service := &prefixTypeServer{}
+	mux := http.NewServeMux()
+	server := connect.NewServer()
+	networkingv1beta1connect.RegisterVPCServiceHandler(server, service)
+	connecthttp.Mount(mux, server)
+	httpServer := httptest.NewServer(mux)
+	t.Cleanup(httpServer.Close)
+	t.Setenv(provider.CoreweaveApiEndpointEnvVar, httpServer.URL)
+	t.Setenv(provider.CoreweaveApiTokenEnvVar, "test-token")
+	return service
 }
