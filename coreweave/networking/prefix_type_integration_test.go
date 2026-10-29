@@ -62,6 +62,9 @@ func (s *prefixTypeServer) GetVPC(context.Context, *networkingv1beta1.GetVPCRequ
 func (s *prefixTypeServer) UpdateVPC(_ context.Context, req *networkingv1beta1.UpdateVPCRequest) (*networkingv1beta1.UpdateVPCResponse, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.vpc == nil {
+		return nil, connect.NewError(connect.CodeNotFound, "VPC not found")
+	}
 	for _, prefix := range req.VpcPrefixes {
 		for _, old := range s.vpc.VpcPrefixes {
 			if prefix.Name != old.Name {
@@ -179,6 +182,7 @@ func TestVpcPrefixTypeTerraformRejectUnspecified(t *testing.T) {
 	})
 }
 
+// startPrefixTypeServer configures an isolated mock VPC API for Terraform tests.
 func startPrefixTypeServer(t *testing.T) *prefixTypeServer {
 	t.Helper()
 	service := &prefixTypeServer{}
@@ -191,4 +195,60 @@ func startPrefixTypeServer(t *testing.T) *prefixTypeServer {
 	t.Setenv(provider.CoreweaveApiEndpointEnvVar, httpServer.URL)
 	t.Setenv(provider.CoreweaveApiTokenEnvVar, "test-token")
 	return service
+}
+
+// TestVpcPrefixTypeFilteredDependency keeps immutable downstream references known during unrelated updates.
+func TestVpcPrefixTypeFilteredDependency(t *testing.T) {
+	startPrefixTypeServer(t)
+	const consumer = `
+resource "terraform_data" "consumer" {
+ triggers_replace = [one([for p in coreweave_networking_vpc.test.vpc_prefixes : p.name if p.type == "PRIVATE_ACCESS"])]
+}
+`
+	initial := prefixTypeConfig("PRIVATE_ACCESS", "") + consumer
+	updated := strings.Replace(initial, `zone = "US-LAB-01A"`, "zone = \"US-LAB-01A\"\n ingress = { disable_public_services = true }", 1)
+	tfresource.UnitTest(t, tfresource.TestCase{ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories, Steps: []tfresource.TestStep{
+		{Config: initial}, {Config: updated, ConfigPlanChecks: tfresource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{
+			plancheck.ExpectResourceAction("coreweave_networking_vpc.test", plancheck.ResourceActionUpdate),
+			plancheck.ExpectResourceAction("terraform_data.consumer", plancheck.ResourceActionNoop),
+		}}}, {Config: updated, PlanOnly: true},
+		{Config: prefixTypeConfig("PRIVATE_ACCESS", `{ name = "new", value = "10.2.0.0/24" },`) + consumer, ConfigPlanChecks: tfresource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{plancheck.ExpectResourceAction("terraform_data.consumer", plancheck.ResourceActionNoop)}}},
+	}})
+}
+
+// TestVpcPrefixTypeTerraformDeferredUnchanged permits a deferred type that resolves to the existing type.
+func TestVpcPrefixTypeTerraformDeferredUnchanged(t *testing.T) {
+	startPrefixTypeServer(t)
+	initial := prefixTypeConfig("PRIVATE_ACCESS", "")
+	deferred := strings.Replace(initial, `type = "PRIVATE_ACCESS"`, "type = terraform_data.prefix_type.output", 1) + `
+resource "terraform_data" "prefix_type" {
+ input = "PRIVATE_ACCESS"
+}
+`
+	tfresource.UnitTest(t, tfresource.TestCase{
+		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+		Steps: []tfresource.TestStep{
+			{Config: initial},
+			{Config: deferred, ConfigPlanChecks: tfresource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{
+				plancheck.ExpectResourceAction("coreweave_networking_vpc.test", plancheck.ResourceActionUpdate),
+			}}},
+			{Config: deferred, PlanOnly: true},
+		},
+	})
+}
+
+// TestVpcPrefixTypeTerraformValidation rejects ambiguous names and numeric types in configuration.
+func TestVpcPrefixTypeTerraformValidation(t *testing.T) {
+	for _, tc := range []struct{ name, config, message string }{
+		{"duplicate names", prefixTypeConfig("PRIVATE_ACCESS", `{ name = "private", value = "10.2.0.0/24" },`), "Duplicate VPC prefix name"},
+		{"numeric enum", prefixTypeConfig("2", ""), "Invalid Attribute Value"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			startPrefixTypeServer(t)
+			tfresource.UnitTest(t, tfresource.TestCase{
+				ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+				Steps:                    []tfresource.TestStep{{Config: tc.config, PlanOnly: true, ExpectError: regexp.MustCompile(tc.message)}},
+			})
+		})
+	}
 }

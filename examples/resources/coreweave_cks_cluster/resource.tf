@@ -10,19 +10,18 @@ resource "coreweave_networking_vpc" "default" {
     },
   ]
 
+  # Existing untyped prefixes can remain untyped. Type changes require VPC API support.
+  # For a new VPC, these prefixes may use POD, SERVICE, and LOAD_BALANCER types.
   vpc_prefixes = [
     {
-      type  = "POD"
       name  = "pod cidr"
       value = "10.0.0.0/13"
     },
     {
-      type  = "SERVICE"
       name  = "service cidr"
       value = "10.16.0.0/22"
     },
     {
-      type  = "LOAD_BALANCER"
       name  = "internal lb cidr"
       value = "10.32.4.0/22"
     },

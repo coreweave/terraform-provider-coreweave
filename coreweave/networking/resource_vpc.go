@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"strconv"
 	"time"
 
 	networkingv1beta1 "buf.build/gen/go/coreweave/networking/protocolbuffers/go/coreweave/networking/v1beta1"
@@ -41,6 +42,8 @@ var (
 	_ resource.ResourceWithImportState      = &VpcResource{}
 	_ resource.ResourceWithConfigure        = &VpcResource{}
 	_ resource.ResourceWithConfigValidators = &VpcResource{}
+	_ resource.ResourceWithModifyPlan       = &VpcResource{}
+	_ resource.ResourceWithValidateConfig   = &VpcResource{}
 )
 
 var hostPrefixObjectType = types.ObjectType{
@@ -211,15 +214,19 @@ type VpcPrefixResourceModel struct {
 	Value types.String `tfsdk:"value"`
 }
 
-// ToProto converts a prefix while preserving an omitted type and rejecting unknown enum names.
+// ToProto preserves omitted types and numeric enum values returned by newer APIs.
 func (v *VpcPrefixResourceModel) ToProto() (*networkingv1beta1.Prefix, diag.Diagnostics) {
 	var diagnostics diag.Diagnostics
 	prefix := &networkingv1beta1.Prefix{Name: v.Name.ValueString(), Value: v.Value.ValueString()}
 	if !v.Type.IsNull() && !v.Type.IsUnknown() {
 		value, ok := networkingv1beta1.Prefix_Type_value[v.Type.ValueString()]
 		if !ok {
-			diagnostics.AddError("Invalid VPC prefix type", fmt.Sprintf("Invalid VPC prefix type: %s", v.Type.ValueString()))
-			return nil, diagnostics
+			numeric, err := strconv.ParseInt(v.Type.ValueString(), 10, 32)
+			if err != nil {
+				diagnostics.AddError("Invalid VPC prefix type", fmt.Sprintf("Invalid VPC prefix type: %s", v.Type.ValueString()))
+				return nil, diagnostics
+			}
+			value = int32(numeric)
 		}
 		prefix.Type = networkingv1beta1.Prefix_Type(value).Enum()
 	}
@@ -234,7 +241,7 @@ func (v *VpcPrefixResourceModel) Set(prefix *networkingv1beta1.Prefix) {
 	v.Name = types.StringValue(prefix.Name)
 	v.Value = types.StringValue(prefix.Value)
 	v.Type = types.StringNull()
-	if prefix.Type != nil {
+	if prefix.Type != nil && prefix.GetType() != networkingv1beta1.Prefix_UNSPECIFIED {
 		v.Type = types.StringValue(prefix.GetType().String())
 	}
 }
@@ -490,10 +497,9 @@ func (r *VpcResource) Schema(ctx context.Context, req resource.SchemaRequest, re
 						"type": schema.StringAttribute{
 							Optional:            true,
 							Computed:            true,
-							MarkdownDescription: fmt.Sprintf("The intended use of the prefix. Must be one of: %s. Omit this attribute instead of setting `UNSPECIFIED`. When omitted on creation, the prefix has no type; when omitted on update, its existing type is preserved. Prefix type changes are submitted as in-place updates and validated by the VPC API. Unsupported changes return an error during apply; they do not automatically replace the VPC.", coreweave.EnumMarkdownValues(networkingv1beta1.Prefix_Type_name, true)),
+							MarkdownDescription: fmt.Sprintf("The intended use of the prefix. Must be one of: %s. Omit this attribute instead of setting `UNSPECIFIED`. When omitted on creation, the prefix has no type; when omitted on update, its existing type is preserved, including an untyped value, so unrelated changes do not invalidate references filtered by type. Prefix type changes are submitted as in-place updates and validated by the VPC API. Unsupported changes return an error during apply; they do not automatically replace the VPC. To change an immutable type, remove the prefix and apply, then re-add it with the new type and apply again. First remove any dependencies that prevent deleting the prefix; this can disrupt workloads using it.", coreweave.EnumMarkdownValues(networkingv1beta1.Prefix_Type_name, true)),
 							Validators: []validator.String{
-								stringvalidator.OneOf(slices.Sorted(maps.Keys(networkingv1beta1.Prefix_Type_value))...),
-								stringvalidator.NoneOf(networkingv1beta1.Prefix_UNSPECIFIED.String()),
+								stringvalidator.OneOf(slices.DeleteFunc(slices.Sorted(maps.Keys(networkingv1beta1.Prefix_Type_value)), func(name string) bool { return networkingv1beta1.Prefix_Type_value[name] == 0 })...),
 							},
 						},
 						"name": schema.StringAttribute{
@@ -630,6 +636,88 @@ func (r *VpcResource) Configure(_ context.Context, req resource.ConfigureRequest
 	}
 
 	r.client = client
+}
+
+// validateVpcPrefixNames rejects duplicate known identities before name-based planning.
+func validateVpcPrefixNames(prefixes types.Set) (diagnostics diag.Diagnostics) {
+	names := make(map[string]bool, len(prefixes.Elements()))
+	for _, element := range prefixes.Elements() {
+		if element.IsNull() || element.IsUnknown() {
+			continue
+		}
+		name := element.(types.Object).Attributes()["name"].(types.String)
+		if name.IsNull() || name.IsUnknown() {
+			continue
+		}
+		if names[name.ValueString()] {
+			diagnostics.AddAttributeError(path.Root("vpc_prefixes"), "Duplicate VPC prefix name", fmt.Sprintf("VPC prefix names must be unique: %q is repeated.", name.ValueString()))
+		}
+		names[name.ValueString()] = true
+	}
+	return diagnostics
+}
+
+// ValidateConfig rejects duplicate known prefix names while deferring unresolved names.
+func (r *VpcResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
+	var prefixes types.Set
+	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("vpc_prefixes"), &prefixes)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	resp.Diagnostics.Append(validateVpcPrefixNames(prefixes)...)
+}
+
+// ModifyPlan preserves omitted prefix types by name, including nulls, so unrelated updates keep downstream references known.
+// New prefixes with omitted types are untyped. Explicit types and unresolved identities remain subject to API validation.
+func (r *VpcResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
+	if req.Plan.Raw.IsNull() {
+		return
+	}
+	prefixPath := path.Root("vpc_prefixes")
+	var statePrefixes, planPrefixes, configPrefixes types.Set
+	if !req.State.Raw.IsNull() {
+		resp.Diagnostics.Append(req.State.GetAttribute(ctx, prefixPath, &statePrefixes)...)
+	}
+	resp.Diagnostics.Append(req.Plan.GetAttribute(ctx, prefixPath, &planPrefixes)...)
+	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, prefixPath, &configPrefixes)...)
+	resp.Diagnostics.Append(validateVpcPrefixNames(configPrefixes)...)
+	if resp.Diagnostics.HasError() || planPrefixes.IsNull() || planPrefixes.IsUnknown() {
+		return
+	}
+	existing := make(map[string]types.String, len(statePrefixes.Elements()))
+	for _, element := range statePrefixes.Elements() {
+		attrs := element.(types.Object).Attributes()
+		existing[attrs["name"].(types.String).ValueString()] = attrs["type"].(types.String)
+	}
+	omitted := make(map[string]bool, len(configPrefixes.Elements()))
+	for _, element := range configPrefixes.Elements() {
+		if element.IsNull() || element.IsUnknown() {
+			continue
+		}
+		attrs := element.(types.Object).Attributes()
+		name := attrs["name"].(types.String)
+		if !name.IsNull() && !name.IsUnknown() {
+			omitted[name.ValueString()] = attrs["type"].(types.String).IsNull()
+		}
+	}
+	elements := planPrefixes.Elements()
+	for i, element := range elements {
+		if element.IsNull() || element.IsUnknown() {
+			continue
+		}
+		attrs := element.(types.Object).Attributes()
+		name := attrs["name"].(types.String)
+		if name.IsNull() || name.IsUnknown() || !omitted[name.ValueString()] {
+			continue
+		}
+		oldType, found := existing[name.ValueString()]
+		if !found {
+			oldType = types.StringNull()
+		}
+		attrs["type"] = oldType
+		elements[i] = types.ObjectValueMust(element.(types.Object).AttributeTypes(ctx), attrs)
+	}
+	resp.Diagnostics.Append(resp.Plan.SetAttribute(ctx, prefixPath, types.SetValueMust(planPrefixes.ElementType(ctx), elements))...)
 }
 
 func (r *VpcResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {

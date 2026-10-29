@@ -25,19 +25,18 @@ resource "coreweave_networking_vpc" "default" {
     },
   ]
 
+  # Existing untyped prefixes can remain untyped. Type changes require VPC API support.
+  # For a new VPC, these prefixes may use POD, SERVICE, and LOAD_BALANCER types.
   vpc_prefixes = [
     {
-      type  = "POD"
       name  = "pod cidr"
       value = "10.0.0.0/13"
     },
     {
-      type  = "SERVICE"
       name  = "service cidr"
       value = "10.16.0.0/22"
     },
     {
-      type  = "LOAD_BALANCER"
       name  = "internal lb cidr"
       value = "10.32.4.0/22"
     },
@@ -134,7 +133,7 @@ The prefixes must exist in the cluster's VPC. This field is append-only.
 - `node_port_range` (Attributes) Kubernetes Service NodePort range. NodePort range can be expanded in existing clusters but not shrunk. Updating the NodePort range to a smaller range will require a replacement of the cluster. (see [below for nested schema](#nestedatt--node_port_range))
 - `oidc` (Attributes) OpenID Connect (OIDC) configuration for authentication to the api-server. (see [below for nested schema](#nestedatt--oidc))
 - `pod_cidr_name_v6` (String) IPv6 Pod CIDR name. If any IPv6 field is set, then ALL IPv6 fields must be set.
-- `private_access` (Attributes) Expose the control plane privately into the cluster's VPC using prefixes of type `PRIVATE_ACCESS`. Contact your CoreWeave Solutions Architect to enable this feature. Specify at least one IP family. Adding, changing, or removing this configuration requires cluster replacement. (see [below for nested schema](#nestedatt--private_access))
+- `private_access` (Attributes) Expose the control plane privately into the cluster's VPC using prefixes of type `PRIVATE_ACCESS`. Contact your CoreWeave Solutions Architect to enable this feature. Specify at least one IP family. When omitted, existing private access is preserved. Adding or changing an explicitly configured value requires cluster replacement. (see [below for nested schema](#nestedatt--private_access))
 - `public` (Boolean) Whether the cluster's Kubernetes API server is reachable through CoreWeave's public ingress, which supports CoreWeave-managed authentication. This setting is independent of `kube_api_access`.
 - `service_cidr_name_v6` (String) IPv6 Service CIDR name. If any IPv6 field is set, then ALL IPv6 fields must be set.
 - `shared_storage_cluster_id` (String) The `cluster_id` of the cluster to share storage with. Must be enabled by CoreWeave support. Contact CoreWeave support if you are interested in this feature.

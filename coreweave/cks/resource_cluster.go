@@ -43,6 +43,7 @@ const (
 var (
 	_                        resource.Resource                = &ClusterResource{}
 	_                        resource.ResourceWithImportState = &ClusterResource{}
+	_                        resource.ResourceWithModifyPlan  = &ClusterResource{}
 	errClusterCreationFailed error                            = errors.New("cluster creation failed")
 	nonWhitespace                                             = regexp.MustCompile(`\S`)
 )
@@ -227,9 +228,11 @@ func (c *ClusterResourceModel) Set(cluster *cksv1beta1.Cluster) {
 		c.AuditPolicy = types.StringValue(cluster.AuditPolicy)
 	}
 
-	c.PrivateAccess = privateAccessFromProto(cluster.GetNetwork().GetPrivateAccess())
-
+	if c.PrivateAccess.IsNull() || c.PrivateAccess.IsUnknown() {
+		c.PrivateAccess = types.ObjectNull(privateAccessAttrTypes)
+	}
 	if cluster.Network != nil {
+		c.PrivateAccess = privateAccessFromProto(cluster.Network.PrivateAccess)
 		c.PodCidrName = types.StringValue(cluster.Network.PodCidrName)
 		c.ServiceCidrName = types.StringValue(cluster.Network.ServiceCidrName)
 
@@ -820,6 +823,29 @@ func requireReplaceIfStatusFailed(ctx context.Context, req planmodifier.StringRe
 	}
 }
 
+// ModifyPlan preserves refreshed API status when it is the only remaining unknown change.
+// Adopting omitted private access must not trigger an update solely to recompute observed status.
+func (r *ClusterResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
+	if req.State.Raw.IsNull() || req.Plan.Raw.IsNull() {
+		return
+	}
+	statusPath := path.Root("kube_api_access_status")
+	var planned, observed types.Object
+	resp.Diagnostics.Append(req.Plan.GetAttribute(ctx, statusPath, &planned)...)
+	if resp.Diagnostics.HasError() || !planned.IsUnknown() {
+		return
+	}
+	resp.Diagnostics.Append(req.State.GetAttribute(ctx, statusPath, &observed)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	candidate := req.Plan
+	resp.Diagnostics.Append(candidate.SetAttribute(ctx, statusPath, observed)...)
+	if !resp.Diagnostics.HasError() && candidate.Raw.Equal(req.State.Raw) {
+		resp.Plan = candidate
+	}
+}
+
 func (r *ClusterResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		MarkdownDescription: "Create and manage clusters on [CoreWeave Kubernetes Service (CKS)](https://docs.coreweave.com/products/cks/clusters/introduction).",
@@ -867,18 +893,19 @@ func (r *ClusterResource) Schema(ctx context.Context, req resource.SchemaRequest
 			},
 			"private_access": schema.SingleNestedAttribute{
 				Optional:            true,
-				MarkdownDescription: "Expose the control plane privately into the cluster's VPC using prefixes of type `PRIVATE_ACCESS`. Contact your CoreWeave Solutions Architect to enable this feature. Specify at least one IP family. Adding, changing, or removing this configuration requires cluster replacement.",
-				PlanModifiers:       []planmodifier.Object{objectplanmodifier.RequiresReplace()},
+				Computed:            true,
+				MarkdownDescription: "Expose the control plane privately into the cluster's VPC using prefixes of type `PRIVATE_ACCESS`. Contact your CoreWeave Solutions Architect to enable this feature. Specify at least one IP family. When omitted, existing private access is preserved. Adding or changing an explicitly configured value requires cluster replacement.",
+				PlanModifiers:       []planmodifier.Object{objectplanmodifier.UseStateForUnknown(), objectplanmodifier.RequiresReplaceIfConfigured()},
 				Attributes: map[string]schema.Attribute{
 					privateAccessIPv4Attribute: schema.StringAttribute{
 						Optional:            true,
 						MarkdownDescription: "Name of the IPv4 PRIVATE_ACCESS prefix in the cluster's VPC.",
-						Validators:          []validator.String{stringvalidator.LengthAtLeast(1), stringvalidator.AtLeastOneOf(path.MatchRelative().AtParent().AtName(privateAccessIPv6Attribute))},
+						Validators:          []validator.String{stringvalidator.RegexMatches(nonWhitespace, "must not be empty"), stringvalidator.AtLeastOneOf(path.MatchRelative().AtParent().AtName(privateAccessIPv6Attribute))},
 					},
 					privateAccessIPv6Attribute: schema.StringAttribute{
 						Optional:            true,
 						MarkdownDescription: "Name of the IPv6 PRIVATE_ACCESS prefix in the cluster's VPC.",
-						Validators:          []validator.String{stringvalidator.LengthAtLeast(1)},
+						Validators:          []validator.String{stringvalidator.RegexMatches(nonWhitespace, "must not be empty")},
 					},
 				},
 			},
@@ -1613,9 +1640,9 @@ func privateAccessToProto(value types.Object) *cksv1beta1.PrivateAccess {
 	}
 }
 
-// privateAccessFromProto converts private access into state, keeping absent families null.
+// privateAccessFromProto normalizes absent or empty access to null and keeps absent families null.
 func privateAccessFromProto(access *cksv1beta1.PrivateAccess) types.Object {
-	if access == nil {
+	if access == nil || (access.PrefixNameIpv4 == "" && access.PrefixNameIpv6 == "") {
 		return types.ObjectNull(privateAccessAttrTypes)
 	}
 	ipv4, ipv6 := types.StringNull(), types.StringNull()

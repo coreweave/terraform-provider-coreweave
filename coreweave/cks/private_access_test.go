@@ -16,6 +16,7 @@ func TestPrivateAccessRoundTrip(t *testing.T) {
 		access *cksv1beta1.PrivateAccess
 	}{
 		{name: "absent"},
+		{name: "empty", access: &cksv1beta1.PrivateAccess{}},
 		{name: "ipv4", access: &cksv1beta1.PrivateAccess{PrefixNameIpv4: "private-v4"}},
 		{name: "ipv6", access: &cksv1beta1.PrivateAccess{PrefixNameIpv6: "private-v6"}},
 		{name: "dual stack", access: &cksv1beta1.PrivateAccess{PrefixNameIpv4: "private-v4", PrefixNameIpv6: "private-v6"}},
@@ -25,10 +26,11 @@ func TestPrivateAccessRoundTrip(t *testing.T) {
 			state := ClusterResourceModel{}
 			state.Set(&cksv1beta1.Cluster{Network: &cksv1beta1.ClusterNetworkConfig{PrivateAccess: tc.access}})
 			request := state.ToCreateRequest(t.Context())
-			require.True(t, proto.Equal(tc.access, request.Network.PrivateAccess))
-			if tc.access == nil {
+			if tc.access == nil || tc.name == "empty" {
+				require.Nil(t, request.Network.PrivateAccess)
 				require.True(t, state.PrivateAccess.IsNull())
 			} else {
+				require.True(t, proto.Equal(tc.access, request.Network.PrivateAccess))
 				require.False(t, state.PrivateAccess.IsNull())
 				require.Contains(t, MustRenderClusterResource(t.Context(), "test", &state), "private_access")
 			}
@@ -37,10 +39,22 @@ func TestPrivateAccessRoundTrip(t *testing.T) {
 			plan.Version = types.StringValue("v1.35")
 			update := buildUpdateRequest(t.Context(), &plan, &state)
 			require.Nil(t, update.Network)
-			// Refresh must clear a previously populated value when the API omits network.
+			// An omitted network is incomplete data, so retain the previous observation.
+			priorAccess := state.PrivateAccess
 			state.Set(&cksv1beta1.Cluster{})
+			require.True(t, state.PrivateAccess.Equal(priorAccess))
+			// A present network without private access explicitly clears the observation.
+			state.Set(&cksv1beta1.Cluster{Network: &cksv1beta1.ClusterNetworkConfig{}})
 			require.True(t, state.PrivateAccess.IsNull())
 		})
 	}
 	require.Nil(t, privateAccessToProto(types.ObjectUnknown(privateAccessAttrTypes)))
+}
+
+// TestPrivateAccessUnknownWithoutNetwork resolves an omitted computed value before saving state.
+func TestPrivateAccessUnknownWithoutNetwork(t *testing.T) {
+	t.Parallel()
+	model := ClusterResourceModel{PrivateAccess: types.ObjectUnknown(privateAccessAttrTypes)}
+	model.Set(&cksv1beta1.Cluster{})
+	require.True(t, model.PrivateAccess.IsNull())
 }
