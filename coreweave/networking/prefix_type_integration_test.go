@@ -107,15 +107,7 @@ data "coreweave_networking_vpc" "test" {
 `, prefixType, extra)
 }
 
-func TestVpcPrefixTypeTerraformLifecycle(t *testing.T) {
-	for _, deferred := range []bool{false, true} {
-		t.Run(fmt.Sprintf("deferred_%t", deferred), func(t *testing.T) {
-			runPrefixTypeLifecycle(t, deferred)
-		})
-	}
-}
-
-func runPrefixTypeLifecycle(t *testing.T, deferred bool) {
+func startPrefixTypeServer(t *testing.T) *prefixTypeServer {
 	t.Helper()
 	service := &prefixTypeServer{}
 	mux := http.NewServeMux()
@@ -126,13 +118,15 @@ func runPrefixTypeLifecycle(t *testing.T, deferred bool) {
 	t.Cleanup(httpServer.Close)
 	t.Setenv(provider.CoreweaveApiEndpointEnvVar, httpServer.URL)
 	t.Setenv(provider.CoreweaveApiTokenEnvVar, "test-token")
+	return service
+}
+
+func TestVpcPrefixTypeTerraformLifecycle(t *testing.T) {
+	service := startPrefixTypeServer(t)
 	const address = "coreweave_networking_vpc.test"
 	initial := prefixTypeConfig("PRIVATE_ACCESS", "")
 	added := prefixTypeConfig("PRIVATE_ACCESS", `{ name = "pods", value = "10.2.0.0/24", type = "POD" },`)
 	changed := prefixTypeConfig("SERVICE", `{ name = "pods", value = "10.2.0.0/24", type = "POD" },`)
-	if deferred {
-		changed = strings.Replace(changed, `type = "SERVICE"`, "type = terraform_data.prefix_type.output", 1) + "\nresource \"terraform_data\" \"prefix_type\" { input = \"SERVICE\" }\n"
-	}
 	changeStep := tfresource.TestStep{Config: changed, ConfigPlanChecks: tfresource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{plancheck.ExpectResourceAction(address, plancheck.ResourceActionUpdate)}}}
 	changeStep.ExpectError = regexp.MustCompile("prefix type is immutable")
 	tfresource.UnitTest(t, tfresource.TestCase{
@@ -157,4 +151,32 @@ func runPrefixTypeLifecycle(t *testing.T, deferred bool) {
 	service.mu.Lock()
 	defer service.mu.Unlock()
 	require.Nil(t, service.vpc)
+}
+
+// TestVpcPrefixTypeTerraformDeferredChange verifies that a type resolved during
+// apply still reaches API validation instead of changing the planned action.
+func TestVpcPrefixTypeTerraformDeferredChange(t *testing.T) {
+	startPrefixTypeServer(t)
+	initial := prefixTypeConfig("PRIVATE_ACCESS", "")
+	changed := strings.Replace(prefixTypeConfig("SERVICE", ""),
+		`type = "SERVICE"`, "type = terraform_data.prefix_type.output", 1) + `
+resource "terraform_data" "prefix_type" {
+ input = "SERVICE"
+}
+`
+	tfresource.UnitTest(t, tfresource.TestCase{
+		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+		Steps: []tfresource.TestStep{
+			{Config: initial},
+			{
+				Config: changed,
+				ConfigPlanChecks: tfresource.ConfigPlanChecks{
+					PreApply: []plancheck.PlanCheck{
+						plancheck.ExpectResourceAction("coreweave_networking_vpc.test", plancheck.ResourceActionUpdate),
+					},
+				},
+				ExpectError: regexp.MustCompile("prefix type is immutable"),
+			},
+		},
+	})
 }
