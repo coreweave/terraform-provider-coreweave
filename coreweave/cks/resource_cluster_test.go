@@ -538,6 +538,24 @@ func TestClusterResource(t *testing.T) {
 			vpc:       *vpc,
 			cluster:   *update,
 		}),
+		{
+			PreConfig: func() {
+				t.Log("Beginning coreweave_cks_cluster data source OIDC test")
+			},
+			Config: strings.Join([]string{
+				networking.MustRenderVpcResource(ctx, config.ResourceName, vpc),
+				cks.MustRenderClusterResource(ctx, config.ResourceName, update),
+				cks.MustRenderClusterDataSource(ctx, config.ResourceName, dataSource),
+			}, "\n"),
+			ConfigPlanChecks: resource.ConfigPlanChecks{
+				PreApply: []plancheck.PlanCheck{
+					plancheck.ExpectResourceAction(config.FullResourceName, plancheck.ResourceActionNoop),
+				},
+			},
+			ConfigStateChecks: []statecheck.StateCheck{
+				statecheck.CompareValuePairs(config.FullDataSourceName, tfjsonpath.New("oidc"), config.FullResourceName, tfjsonpath.New("oidc"), compare.ValuesSame()),
+			},
+		},
 		createClusterTestStep(ctx, t, testStepConfig{
 			TestName: "requires replace on internal_lb_cidr_names removal and audit policy removal",
 			ConfigPlanChecks: resource.ConfigPlanChecks{
