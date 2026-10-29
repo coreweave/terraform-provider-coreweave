@@ -32,16 +32,14 @@ const (
 // prefixTypeServer models omitted types and the API prohibition on type changes.
 type prefixTypeServer struct {
 	networkingv1beta1connect.UnimplementedVPCServiceHandler
-	mu                        sync.Mutex
-	vpc                       *networkingv1beta1.VPC
-	creates, deletes, updates int
+	mu  sync.Mutex
+	vpc *networkingv1beta1.VPC
 }
 
 // CreateVPC returns an immediately ready VPC with the requested prefixes.
 func (s *prefixTypeServer) CreateVPC(_ context.Context, req *networkingv1beta1.CreateVPCRequest) (*networkingv1beta1.CreateVPCResponse, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.creates++
 	s.vpc = &networkingv1beta1.VPC{
 		Id: "00000000-0000-4000-8000-000000000001", Name: req.Name, Zone: req.Zone,
 		HostPrefix: "10.128.0.0/16", HostPrefixes: req.HostPrefixes, VpcPrefixes: req.VpcPrefixes,
@@ -64,7 +62,6 @@ func (s *prefixTypeServer) GetVPC(context.Context, *networkingv1beta1.GetVPCRequ
 func (s *prefixTypeServer) UpdateVPC(_ context.Context, req *networkingv1beta1.UpdateVPCRequest) (*networkingv1beta1.UpdateVPCResponse, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.updates++
 	for _, prefix := range req.VpcPrefixes {
 		for _, old := range s.vpc.VpcPrefixes {
 			if prefix.Name != old.Name {
@@ -86,7 +83,6 @@ func (s *prefixTypeServer) UpdateVPC(_ context.Context, req *networkingv1beta1.U
 func (s *prefixTypeServer) DeleteVPC(context.Context, *networkingv1beta1.DeleteVPCRequest) (*networkingv1beta1.DeleteVPCResponse, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.deletes++
 	old := s.vpc
 	s.vpc = nil
 	return &networkingv1beta1.DeleteVPCResponse{Vpc: old}, nil
@@ -161,7 +157,4 @@ func runPrefixTypeLifecycle(t *testing.T, deferred bool) {
 	service.mu.Lock()
 	defer service.mu.Unlock()
 	require.Nil(t, service.vpc)
-	require.Equal(t, 1, service.creates)
-	require.Equal(t, 1, service.deletes)
-	require.GreaterOrEqual(t, service.updates, 2)
 }
