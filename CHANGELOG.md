@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.27.0](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.26.0...v0.27.0) (2026-10-29)
+
+
+### Features
+
+* **cks:** add private access support ([#539](https://github.com/coreweave/terraform-provider-coreweave/issues/539)) ([9b2b44a](https://github.com/coreweave/terraform-provider-coreweave/commit/9b2b44ad7f472593847017386c24215945dfeaa6))
+* **inference:** support HotLoad operations and deployment Terraform configuration ([#456](https://github.com/coreweave/terraform-provider-coreweave/issues/456)) ([3c82c5b](https://github.com/coreweave/terraform-provider-coreweave/commit/3c82c5bb5494a9ef16fbfa88a920e868a6532440))
+* **sandbox:** support managed runner affinity overrides ([#511](https://github.com/coreweave/terraform-provider-coreweave/issues/511)) ([10088b7](https://github.com/coreweave/terraform-provider-coreweave/commit/10088b7ea6300135efc905d26944f809198b010a))
+
+
+### Dependency Updates
+
+* **cks:** update module buf.build/gen/go/coreweave/cks/connectrpc/go/v2 ( v2.0.0-20261014193236-69d4f39faca7.1 → v2.0.1-20261014193236-69d4f39faca7.1 ) ([#516](https://github.com/coreweave/terraform-provider-coreweave/issues/516)) ([30fa298](https://github.com/coreweave/terraform-provider-coreweave/commit/30fa298583a7042151e095a7da508dad4d7207d0))
+* **container_registry:** update module buf.build/gen/go/coreweave/container-registry-api/connectrpc/go/v2 ( v2.0.0-20261009031350-4d1490e50ed8.1 → v2.0.1-20261009031350-4d1490e50ed8.1 ) ([#517](https://github.com/coreweave/terraform-provider-coreweave/issues/517)) ([e205c0f](https://github.com/coreweave/terraform-provider-coreweave/commit/e205c0f10fa38da0095e984f9998700b5706ebd6))
+* **sandbox:** update module buf.build/gen/go/coreweave/sandbox/connectrpc/go/v2 ( v2.0.0-20261015202918-7074ae5be483.1 → v2.0.1-20261015202918-7074ae5be483.1 ) ([#508](https://github.com/coreweave/terraform-provider-coreweave/issues/508)) ([783037f](https://github.com/coreweave/terraform-provider-coreweave/commit/783037f1639e1374672aa630caedaf61201e7c16))
+* update aws sdk ([#515](https://github.com/coreweave/terraform-provider-coreweave/issues/515)) ([33bbb38](https://github.com/coreweave/terraform-provider-coreweave/commit/33bbb38ed3b10364f036187662b5d9d7f27b8af9))
+* update aws sdk ([#520](https://github.com/coreweave/terraform-provider-coreweave/issues/520)) ([db8880d](https://github.com/coreweave/terraform-provider-coreweave/commit/db8880d4e7cd24df0506a049e39d58ab6b3265a5))
+
 ## [0.26.0](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.25.0...v0.26.0) (2026-10-15)
 
 
