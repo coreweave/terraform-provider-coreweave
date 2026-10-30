@@ -94,3 +94,11 @@ test('CKS regressions run one at a time while normal acceptance keeps its parall
   assert.match(job('test'), /inputs\.suite == 'cks' && 'TEST_ACC_PARALLEL=3 TEST_ACC_TIMEOUT=60m'/);
   assert.match(job('regressions'), /inputs\.suite == 'cks' && 'TEST_ACC_PARALLEL=1 TEST_ACC_TIMEOUT=60m'/);
 });
+
+test('regressions install Node before the command that may fail', () => {
+  const regression = job('regressions');
+  const setup = regression.indexOf('uses: actions/setup-node@');
+  const command = regression.indexOf('name: Run known regressions for');
+  assert.ok(setup >= 0 && setup < command, 'Node setup must finish before the intentional failure so the summary can run');
+  assert.match(regression, /node-version: '24\.21\.0'/);
+});
