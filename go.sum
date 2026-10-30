@@ -24,10 +24,10 @@ buf.build/gen/go/coreweave/sandbox/connectrpc/go/v2 v2.0.1-20261015202918-7074ae
 buf.build/gen/go/coreweave/sandbox/connectrpc/go/v2 v2.0.1-20261015202918-7074ae5be483.1/go.mod h1:2x8Y1VWdZlNeum03qs34agSe+IonuRmhXlPneLS9amQ=
 buf.build/gen/go/coreweave/sandbox/protocolbuffers/go v1.36.12-20261015202918-7074ae5be483.2 h1:NCWI5J3WhzEWJ/By5QtR7Uyq63nopSu7tyJznahJuN4=
 buf.build/gen/go/coreweave/sandbox/protocolbuffers/go v1.36.12-20261015202918-7074ae5be483.2/go.mod h1:0FQ2NQQ6Ab7XQ2QEEU0yzQXMHTej8rwlafLER6uehw4=
-buf.build/gen/go/coreweave/workload-federation/connectrpc/go/v2 v2.0.0-20261013191007-c36df30df3ed.1 h1:2VHEz+K1RjSPVX0c7wZ/MJWdu6qXZSaLHiN1L8CsBt8=
-buf.build/gen/go/coreweave/workload-federation/connectrpc/go/v2 v2.0.0-20261013191007-c36df30df3ed.1/go.mod h1:qQLuftwl1vZhQJASJmFHvHvXsu3e+CSoQq+uOdJOhd8=
-buf.build/gen/go/coreweave/workload-federation/protocolbuffers/go v1.36.12-20261013191007-c36df30df3ed.2 h1:9yIHtVJG6N7qyFvP36WsqMZO3rvpBancK7InJdvy9VI=
-buf.build/gen/go/coreweave/workload-federation/protocolbuffers/go v1.36.12-20261013191007-c36df30df3ed.2/go.mod h1:ERWOwbhSbVzsNRKlFcPZ5phYvU69aSoNFlWZoxmCI/w=
+buf.build/gen/go/coreweave/workload-federation/connectrpc/go/v2 v2.0.2-20261023200315-3fff4c20fdb6.1 h1:YGCp2wTWOpzgkpKzRx/XsL7cNRFv5ec4TOV1myC/qe8=
+buf.build/gen/go/coreweave/workload-federation/connectrpc/go/v2 v2.0.2-20261023200315-3fff4c20fdb6.1/go.mod h1:h+FfVVFrZPQo3OcEG2Ir4XIBSy2VpIkj1altJEVhfxk=
+buf.build/gen/go/coreweave/workload-federation/protocolbuffers/go v1.36.12-20261023200315-3fff4c20fdb6.2 h1:MhZIyI+qncg/Hu2LTsroY7chJsacXebKe18diIf7yUw=
+buf.build/gen/go/coreweave/workload-federation/protocolbuffers/go v1.36.12-20261023200315-3fff4c20fdb6.2/go.mod h1:ERWOwbhSbVzsNRKlFcPZ5phYvU69aSoNFlWZoxmCI/w=
 buf.build/gen/go/gnostic/gnostic/protocolbuffers/go v1.36.12-20230414000709-087bc8072ce4.2 h1:ZXEI+qE54FRhRcNAJOpvwU6CLLTgF4Etr87l3qECkcI=
 buf.build/gen/go/gnostic/gnostic/protocolbuffers/go v1.36.12-20230414000709-087bc8072ce4.2/go.mod h1:Y6uGzulgNTMSJafTYzhV2xKPPiUnSoE1AStyVM9mBbI=
 buf.build/gen/go/grpc-ecosystem/grpc-gateway/protocolbuffers/go v1.36.12-20260928204428-da388df5b314.2 h1:qpaCbuXIdUIsXCqVyugFaBzZQhRF2g8ki2X/mqEOu+Q=

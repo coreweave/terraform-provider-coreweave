@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -34,6 +35,7 @@ type oidcConfigTestServer struct {
 	emptyCreateResponseUID   bool
 	emptyUpdateResponse      bool
 	notFoundOnNextUpdateCall bool
+	lastUpdatePaths          []string
 }
 
 func newOIDCConfigTestServer() *oidcConfigTestServer {
@@ -82,6 +84,7 @@ func (s *oidcConfigTestServer) CreateOIDCConfig(_ context.Context, req *controlp
 		Description: req.Description,
 		IssuerUrl:   req.GetIssuerUrl(),
 		Audience:    req.GetAudience(),
+		TenantId:    req.TenantId,
 		CreatedAt:   now,
 		UpdatedAt:   now,
 	}
@@ -117,6 +120,7 @@ func (s *oidcConfigTestServer) UpdateOIDCConfig(_ context.Context, req *controlp
 	if !ok {
 		return nil, connect.Errorf(connect.CodeNotFound, "OIDC config not found")
 	}
+	s.lastUpdatePaths = append([]string(nil), req.GetUpdateMask().GetPaths()...)
 	now := timestamppb.Now()
 	for _, field := range req.GetUpdateMask().GetPaths() {
 		switch field {
@@ -128,6 +132,8 @@ func (s *oidcConfigTestServer) UpdateOIDCConfig(_ context.Context, req *controlp
 			config.IssuerUrl = req.GetIssuerUrl()
 		case "audience":
 			config.Audience = req.GetAudience()
+		case "tenant_id":
+			config.TenantId = req.TenantId
 		case "active":
 			if req.GetActive() {
 				config.DeactivatedAt = nil
@@ -201,6 +207,24 @@ func (s *oidcConfigTestServer) deactivateAll() {
 	for _, config := range s.configs {
 		config.DeactivatedAt = now
 		config.UpdatedAt = now
+	}
+}
+
+// checkLastUpdate asserts the most recent update sent exactly the given mask
+// paths and left the stored tenant_id as wantTenantID, where nil means unset.
+func (s *oidcConfigTestServer) checkLastUpdate(wantPaths []string, wantTenantID *string) tfresource.TestCheckFunc {
+	return func(*terraform.State) error {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		if !slices.Equal(s.lastUpdatePaths, wantPaths) {
+			return fmt.Errorf("expected update mask paths %v, got %v", wantPaths, s.lastUpdatePaths)
+		}
+		for _, config := range s.configs {
+			if config.HasTenantId() != (wantTenantID != nil) || (wantTenantID != nil && config.GetTenantId() != *wantTenantID) {
+				return fmt.Errorf("expected stored tenant_id %v, got %v", wantTenantID, config.TenantId)
+			}
+		}
+		return nil
 	}
 }
 
@@ -339,6 +363,101 @@ func TestOIDCConfigResourceLifecycle(t *testing.T) {
 					tfresource.TestCheckResourceAttr(oidcConfigResourceAddress, "active", "true"),
 					tfresource.TestCheckNoResourceAttr(oidcConfigResourceAddress, "deactivated_at"),
 				),
+			},
+		},
+	})
+}
+
+func oidcConfigTestConfigWithTenantID(endpoint, tenantID string) string {
+	tenantIDAttribute := ""
+	if tenantID != "" {
+		tenantIDAttribute = fmt.Sprintf("  tenant_id  = %q\n", tenantID)
+	}
+	return fmt.Sprintf(`
+provider "coreweave" {
+  endpoint = %q
+  token    = "test-token"
+}
+
+resource "coreweave_workload_federation_oidc_config" "test" {
+  name       = "google-workspace"
+  issuer_url = "https://accounts.google.com"
+  audience   = "coreweave"
+%s}
+`, endpoint, tenantIDAttribute)
+}
+
+func TestOIDCConfigResourceTenantIDLifecycle(t *testing.T) {
+	service, server := startOIDCConfigTestServer(t)
+
+	tfresource.UnitTest(t, tfresource.TestCase{
+		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+		CheckDestroy:             service.checkEmpty,
+		Steps: []tfresource.TestStep{
+			{
+				Config: oidcConfigTestConfigWithTenantID(server.URL, ""),
+				Check:  tfresource.TestCheckNoResourceAttr(oidcConfigResourceAddress, "tenant_id"),
+			},
+			{
+				Config: oidcConfigTestConfigWithTenantID(server.URL, "example.com"),
+				Check: tfresource.ComposeAggregateTestCheckFunc(
+					tfresource.TestCheckResourceAttr(oidcConfigResourceAddress, "tenant_id", "example.com"),
+					service.checkLastUpdate([]string{"tenant_id"}, proto.String("example.com")),
+				),
+			},
+			{
+				ResourceName:      oidcConfigResourceAddress,
+				ImportState:       true,
+				ImportStateVerify: true,
+			},
+			{
+				Config: oidcConfigTestConfigWithTenantID(server.URL, "other.example.com"),
+				Check: tfresource.ComposeAggregateTestCheckFunc(
+					tfresource.TestCheckResourceAttr(oidcConfigResourceAddress, "tenant_id", "other.example.com"),
+					service.checkLastUpdate([]string{"tenant_id"}, proto.String("other.example.com")),
+				),
+			},
+			{
+				// Removing the attribute names tenant_id in the mask without a value, clearing it.
+				Config: oidcConfigTestConfigWithTenantID(server.URL, ""),
+				Check: tfresource.ComposeAggregateTestCheckFunc(
+					tfresource.TestCheckNoResourceAttr(oidcConfigResourceAddress, "tenant_id"),
+					service.checkLastUpdate([]string{"tenant_id"}, nil),
+				),
+			},
+		},
+	})
+}
+
+func TestOIDCConfigResourceCreatesWithTenantID(t *testing.T) {
+	service, server := startOIDCConfigTestServer(t)
+
+	tfresource.UnitTest(t, tfresource.TestCase{
+		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+		CheckDestroy:             service.checkEmpty,
+		Steps: []tfresource.TestStep{
+			{
+				Config: oidcConfigTestConfigWithTenantID(server.URL, "coreweave.com"),
+				Check:  tfresource.TestCheckResourceAttr(oidcConfigResourceAddress, "tenant_id", "coreweave.com"),
+			},
+			{
+				ResourceName:      oidcConfigResourceAddress,
+				ImportState:       true,
+				ImportStateVerify: true,
+			},
+		},
+	})
+}
+
+func TestOIDCConfigResourceRejectsEmptyTenantID(t *testing.T) {
+	_, server := startOIDCConfigTestServer(t)
+
+	tfresource.UnitTest(t, tfresource.TestCase{
+		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+		Steps: []tfresource.TestStep{
+			{
+				Config:      strings.Replace(oidcConfigTestConfigWithTenantID(server.URL, "placeholder"), `"placeholder"`, `""`, 1),
+				ExpectError: regexp.MustCompile(`(?s)Invalid Attribute Value Length.*tenant_id`),
 			},
 		},
 	})
