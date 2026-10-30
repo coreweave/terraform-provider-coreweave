@@ -19,6 +19,7 @@ TEST_ACC_SWEEP_TIMEOUT?=45m
 SWEEP_DRY_RUN?=false
 TEST_ACC_PARALLEL?=
 TEST_ACC_TIMEOUT?=45m
+REGRESSION_RESULTS_DIR?=$(CURDIR)/.test-results/known-regressions
 
 export CGO_ENABLED?=0
 
@@ -56,7 +57,7 @@ fmt:
 	gofmt -s -w -e .
 
 test:
-	go test -v -cover -timeout=120s -parallel=10 ./...
+	go test -v -cover -skip "^TestKnownRegressions$$" -timeout=120s -parallel=10 ./...
 
 SUITES?=caller_identity cks networking object_storage inference container_registry
 
@@ -67,7 +68,13 @@ testacc-sweep:
 
 testacc:
 	@set -e; for suite in $(SUITES); do \
-		TF_ACC=1 go test -v -cover -timeout=$(TEST_ACC_TIMEOUT) $(if $(TEST_ACC_PARALLEL),-parallel=$(TEST_ACC_PARALLEL)) ./coreweave/$$suite; \
+		TF_ACC=1 go test -v -cover -skip "^TestKnownRegressions$$" -timeout=$(TEST_ACC_TIMEOUT) $(if $(TEST_ACC_PARALLEL),-parallel=$(TEST_ACC_PARALLEL)) ./coreweave/$$suite; \
 	done
 
-.PHONY: debug fmt lint test testacc testacc-sweep build install generate clean
+testacc-regressions:
+	@set -e; mkdir -p '$(REGRESSION_RESULTS_DIR)'; status=0; for suite in $(SUITES); do \
+		TF_ACC=1 go test -count=1 -run "^TestKnownRegressions$$" -json -timeout=$(TEST_ACC_TIMEOUT) $(if $(TEST_ACC_PARALLEL),-parallel=$(TEST_ACC_PARALLEL)) ./coreweave/$$suite > '$(REGRESSION_RESULTS_DIR)'/$$suite.json || status=1; \
+		cat '$(REGRESSION_RESULTS_DIR)'/$$suite.json; \
+	done; exit $$status
+
+.PHONY: debug fmt lint test testacc testacc-regressions testacc-sweep build install generate clean
