@@ -76,6 +76,7 @@ func newClusterSweepConfig(client clusterSweepClient, zone string, options clust
 
 	return testutil.SweepConfig[*cksv1beta1.Cluster]{
 		ResourceType: cksClusterSweeperName,
+		CreatedAt:    (*cksv1beta1.Cluster).GetCreatedAt,
 		List: func(ctx context.Context) ([]*cksv1beta1.Cluster, error) {
 			response, err := client.ListClusters(ctx, &cksv1beta1.ListClustersRequest{})
 			if err != nil {

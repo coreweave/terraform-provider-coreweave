@@ -9,13 +9,20 @@ import (
 	"sort"
 	"strconv"
 	"sync"
+	"time"
+
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-const defaultSweepParallelism = 4
+const (
+	defaultSweepParallelism = 4
+	defaultSweepMinAge      = 2 * time.Hour
+)
 
 type SweepRuntime struct {
 	DryRun      bool
 	Parallelism int
+	MinAge      time.Duration
 }
 
 type SweepConfig[T any] struct {
@@ -23,11 +30,13 @@ type SweepConfig[T any] struct {
 	List         func(context.Context) ([]T, error)
 	Name         func(T) string
 	Match        func(T) bool
-	Delete       func(context.Context, T) error
+	// CreatedAt is nil only when the resource API has no creation timestamp.
+	CreatedAt func(T) *timestamppb.Timestamp
+	Delete    func(context.Context, T) error
 }
 
 func SweepRuntimeFromEnv() (SweepRuntime, error) {
-	runtime := SweepRuntime{Parallelism: defaultSweepParallelism}
+	runtime := SweepRuntime{Parallelism: defaultSweepParallelism, MinAge: defaultSweepMinAge}
 
 	if value, ok := os.LookupEnv("SWEEP_DRY_RUN"); ok && value != "" {
 		dryRun, err := strconv.ParseBool(value)
@@ -48,7 +57,35 @@ func SweepRuntimeFromEnv() (SweepRuntime, error) {
 		runtime.Parallelism = parallelism
 	}
 
+	if value := os.Getenv("TEST_ACC_SWEEP_MIN_AGE"); value != "" {
+		minAge, err := time.ParseDuration(value)
+		if err != nil {
+			return SweepRuntime{}, fmt.Errorf("parse TEST_ACC_SWEEP_MIN_AGE as duration: %w", err)
+		}
+		if minAge <= 0 {
+			return SweepRuntime{}, fmt.Errorf("TEST_ACC_SWEEP_MIN_AGE must be greater than zero, got %s", minAge)
+		}
+		runtime.MinAge = minAge
+	}
 	return runtime, nil
+}
+
+// SkipYoungResource protects resources that may belong to an active acceptance run.
+func (runtime SweepRuntime) SkipYoungResource(ctx context.Context, resourceType, name string, createdAt *timestamppb.Timestamp) bool {
+	if createdAt == nil || createdAt.CheckValid() != nil {
+		slog.InfoContext(ctx, "skipping resource with missing or invalid creation timestamp", "resource_type", resourceType, "name", name)
+		return true
+	}
+	minAge := runtime.MinAge
+	if minAge <= 0 {
+		minAge = defaultSweepMinAge
+	}
+	age := time.Since(createdAt.AsTime())
+	if age < minAge {
+		slog.InfoContext(ctx, "skipping young resource", "resource_type", resourceType, "name", name, "age", age, "minimum_age", minAge)
+		return true
+	}
+	return false
 }
 
 func SweepDryRun() bool {
@@ -79,9 +116,14 @@ func Sweep[T any](ctx context.Context, runtime SweepRuntime, config SweepConfig[
 	}
 	selected := make([]namedResource, 0, len(resources))
 	for _, resource := range resources {
-		if config.Match(resource) {
-			selected = append(selected, namedResource{name: config.Name(resource), resource: resource})
+		if !config.Match(resource) {
+			continue
 		}
+		name := config.Name(resource)
+		if config.CreatedAt != nil && runtime.SkipYoungResource(ctx, config.ResourceType, name, config.CreatedAt(resource)) {
+			continue
+		}
+		selected = append(selected, namedResource{name: name, resource: resource})
 	}
 	sort.SliceStable(selected, func(i, j int) bool {
 		return selected[i].name < selected[j].name

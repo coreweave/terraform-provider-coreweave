@@ -37,6 +37,7 @@ func New(client Client, config Config) (testutil.SweepConfig[*networkingv1beta1.
 
 	return testutil.SweepConfig[*networkingv1beta1.VPC]{
 		ResourceType: resourceType,
+		CreatedAt:    (*networkingv1beta1.VPC).GetCreatedAt,
 		List: func(ctx context.Context) ([]*networkingv1beta1.VPC, error) {
 			response, err := client.ListVPCs(ctx, &networkingv1beta1.ListVPCsRequest{})
 			if err != nil {
