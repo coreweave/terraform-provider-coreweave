@@ -9,6 +9,8 @@ require (
 	buf.build/gen/go/coreweave/container-registry-api/protocolbuffers/go v1.36.12-20261009031350-4d1490e50ed8.2
 	buf.build/gen/go/coreweave/cwobject/connectrpc/go/v2 v2.0.0-20260831154917-08064e55742b.1
 	buf.build/gen/go/coreweave/cwobject/protocolbuffers/go v1.36.12-20260831154917-08064e55742b.2
+	buf.build/gen/go/coreweave/directory/connectrpc/go/v2 v2.0.1-20261022011331-2af0c9345d0d.1
+	buf.build/gen/go/coreweave/directory/protocolbuffers/go v1.36.12-20261022011331-2af0c9345d0d.2
 	buf.build/gen/go/coreweave/inference/connectrpc/go/v2 v2.0.0-20261008185853-22f8f31f8962.1
 	buf.build/gen/go/coreweave/inference/protocolbuffers/go v1.36.12-20261008185853-22f8f31f8962.2
 	buf.build/gen/go/coreweave/networking/connectrpc/go/v2 v2.0.2-20261021202238-84a5f410acc9.1
