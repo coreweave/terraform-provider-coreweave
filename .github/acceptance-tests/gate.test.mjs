@@ -26,7 +26,10 @@ test('the gate jobs execute the required commands without ignoring failures', ()
   assert.match(build, /run: go build -v \.\/\.\.\./);
   assert.match(job('lint'), /run: make lint/);
   assert.match(job('test'), /run: go mod tidy -diff/);
-  assert.match(job('test'), /run: go test -v -cover \.\/\.\.\./);
+  assert.match(job('test'), /^      - run: go test -v -cover \.\/\.\.\.$/m);
+  assert.match(job('test'), /^        run: env -u TF_ACC go test -tags=nonblocking -run '\^\$' \.\/\.\.\.$/m);
+  assert.doesNotMatch(job('test'), /-skip/);
+  assert.doesNotMatch(job('test'), /make test|-timeout=|-parallel=/);
   for (const id of ['build', 'select-acceptance', 'lint', 'test']) {
     assert.doesNotMatch(job(id), /continue-on-error:|always\(/);
   }
@@ -55,4 +58,9 @@ test('release-please uses native PR workflow approval for the workflow containin
   assert.match(workflow, /^  pull_request:\n    types: \[opened, synchronize, reopened\]$/m);
   assert.match(job('acceptance-tests'), /^    uses: \.\/\.github\/workflows\/acceptance-test\.yaml$/m);
   assert.doesNotMatch(workflow, /approve-acceptance:|name: release-acceptance\n|environment:/);
+});
+
+test('release acceptance has no direct non-blocking dependency', () => {
+  assert.doesNotMatch(job('release-acceptance'), /nonblocking/);
+  assert.doesNotMatch(job('validation'), /needs:.*nonblocking/);
 });
