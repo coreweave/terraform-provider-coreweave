@@ -55,6 +55,8 @@ jobs:
       - run: go mod download
       - name: Check go mod tidy
         run: go mod tidy -diff
+      - name: Compile non-blocking acceptance tests without running them
+        run: env -u TF_ACC go test -tags=nonblocking -run '^$' ./...
       - run: go test -v -cover ./...
         timeout-minutes: 10
 
@@ -160,6 +162,7 @@ jobs:
       contents: read
       pull-requests: read
       packages: read
+      checks: write
     needs: [select-acceptance, build, lint, test]
     if: needs.select-acceptance.outputs.suites != '[]'
     strategy:
