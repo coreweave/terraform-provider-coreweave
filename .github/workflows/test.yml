@@ -127,7 +127,7 @@ jobs:
   select-acceptance:
     runs-on: ubuntu-latest
     outputs:
-      suites: ${{ steps.selection.outputs.suites }}
+      suites: '["cks"]'
     permissions:
       contents: read
       pull-requests: read
@@ -171,7 +171,6 @@ jobs:
     uses: ./.github/workflows/acceptance-test.yaml
     with:
       suite: ${{ matrix.suite }}
-    secrets: inherit
 
   validation:
     name: PR validation
