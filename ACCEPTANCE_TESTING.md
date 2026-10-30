@@ -129,6 +129,8 @@ The target sets `TF_ACC=1`, adds `-tags=nonblocking`, selects `^TestNonBlockingA
 
 The CI summary identifies each marked case by package and subtest name and shows its result. A pass says: `Passing: review for inclusion in required acceptance tests.` After reviewing the results, restore the body's uppercase `Test` prefix and remove its runner registration and temporary comment. Use a normal test name without `NonBlocking`. The body stays in its original file with its assertions intact. Missing terminal results are `UNKNOWN`, not a pass.
 
+The CKS cluster lifecycle case runs in this suite as `TestNonBlockingAcceptance/cluster_lifecycle`. Its body stays in `resource_cluster_test.go` as `testClusterResource`, including its create, update, and replacement assertions.
+
 ## CI behavior
 
 The reusable workflow holds one `acceptance-test-<suite>` lock for the whole run, with `queue: max` and `cancel-in-progress: false`:
@@ -163,4 +165,4 @@ Choose plan-check hooks carefully. The test harness affects when checks run.
 
 ### Plan-only steps skip pre-apply checks
 
-The Terraform testing harness skips `ConfigPlanChecks.PreApply` for `PlanOnly` steps. Use `PostApplyPreRefresh` for a plan-only assertion. Despite its name, that hook checks the plan in a plan-only step. See the node-port shrink case in `TestClusterResource`.
+The Terraform testing harness skips `ConfigPlanChecks.PreApply` for `PlanOnly` steps. Use `PostApplyPreRefresh` for a plan-only assertion. Despite its name, that hook checks the plan in a plan-only step. See the node-port shrink case in `testClusterResource`.
