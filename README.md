@@ -11,6 +11,8 @@ Copyright (c) 2024-2025 CoreWeave, Inc.
 
 ## Development
 
+See [Acceptance testing](ACCEPTANCE_TESTING.md) for QA setup, cleanup, and known regressions.
+
 ### Mise
 
 It is recommended to use [mise](https://mise.jdx.dev/) to manage tool versions 

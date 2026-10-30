@@ -1,5 +1,7 @@
 # Release acceptance
 
+See [Acceptance testing](../../ACCEPTANCE_TESTING.md) for local commands, naming, sweep safety, and regression layout.
+
 The `Tests` workflow runs for every PR when opened, updated, or reopened. Ordinary PRs, including Renovate dependency updates, run compilation, lint, module consistency, unit tests, documentation generation, snapshot builds, and title validation. They skip acceptance tests.
 
 Every release-please PR from this repository's `release-please--branches--main` branch to `main` runs all acceptance suites: caller identity, CKS, networking, object storage, inference, and container registry. This tests the accumulated changes even when the release PR itself only updates the manifest and changelog. Changed paths, labels, titles, and commit scopes do not select QA suites.
@@ -8,9 +10,21 @@ Selection fetches current PR metadata and requires an open PR at the requested h
 
 Release Please creates and updates PRs with the repository's `GITHUB_TOKEN`. GitHub holds the resulting `pull_request` workflows for human approval. On the release PR, click **Approve workflows to run** in the checks/merge area to start `Tests`, including its full six-suite acceptance matrix. No separate environment approval or navigation to workflow runs is needed. Each automation-triggered PR revision requires approval. Human pushes, **Update branch**, or reopening the release PR can start workflows without that prompt; use those actions only when you intend to start QA. See [GitHub's workflow triggering documentation](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow).
 
-After approval, acceptance waits for compilation, lint, module consistency, and unit tests. Snapshot builds and documentation generation remain parallel. Each suite holds its shared `acceptance-test-<suite>` lock; queued arrivals do not cancel running sweeps or tests. Before checkout and each resource command, QA verifies that the PR is still open at the requested revision. Started commands finish their cleanup; outdated queued commands fail before using resources.
+After approval, acceptance waits for compilation, lint, module consistency, and unit tests. Snapshot builds and documentation generation remain parallel.
+
+Each suite holds its shared `acceptance-test-<suite>` lock; queued arrivals do not cancel running sweeps or tests. The `sweep` job runs first. The normal `test` job and the `regressions` job then run in parallel, each depending only on `sweep`. No other job runs a sweep. The lock stays held until both test jobs finish.
+
+Before checkout and each resource command, QA verifies that the PR is still open at the requested revision. Started commands finish their cleanup; outdated queued commands fail before using resources.
 
 The stable `PR validation` check uses `alls-green` to aggregate hosted checks and the acceptance matrix. It permits the acceptance skip only for ordinary PRs. The separate `Release acceptance` check runs only for a release candidate and requires successful full acceptance and `PR validation`, with no permitted skips.
+
+## Known regressions
+
+`make testacc-regressions` runs the ticket-marked group and saves Go JSON for a step summary. The summary lists each ticket and result. A passing case gets a graduation reminder. A suite with no group passes with no tests to run.
+
+The regression job uses job-level `continue-on-error: true`. It posts its real outcome as a separate `Known regressions (<suite>)` check through the Checks API. Keep that check informational in branch protection. Normal tests and sweeps remain blocking. `Release acceptance` doesn't directly depend on the regression job.
+
+This is intended to keep regression failures out of `acceptance-tests`, `PR validation`, and `Release acceptance`. Reusable-workflow result propagation is still unverified. Follow the [throwaway-PR verification steps](../../ACCEPTANCE_TESTING.md#confirm-behavior-on-a-throwaway-pr) before relying on it. Also verify the overall `Tests` workflow succeeds, because publication waits on that workflow with `gh run watch --exit-status`.
 
 ## Publication
 
