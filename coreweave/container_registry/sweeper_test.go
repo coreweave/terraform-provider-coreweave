@@ -18,6 +18,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/types/known/emptypb"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 const (
@@ -69,6 +70,7 @@ func sweepRegistryNamespaces(zone string) error {
 	registry := c.ContainerRegistry
 	return testutil.Sweep(ctx, runtime, testutil.SweepConfig[*api.RegistryNamespace]{
 		ResourceType: namespaceResourceType,
+		CreatedAt:    (*api.RegistryNamespace).GetCreateTime,
 		// Collect every page before deleting so offset-based pagination cannot skip shifted rows.
 		List: func(ctx context.Context) ([]*api.RegistryNamespace, error) {
 			return containerregistry.ListNamespaces(ctx, registry)
@@ -125,11 +127,20 @@ func TestSweeperDeletesOnlySelectedNamespace(t *testing.T) {
 	h := newHarness(t, "namespace")
 	t.Setenv("COREWEAVE_CONTAINER_REGISTRY_TEST_ZONE", testutil.AcceptanceTestZone)
 	t.Setenv("COREWEAVE_CONTAINER_REGISTRY_TEST_PREFIX", "q-tfacc-cr-")
+	t.Setenv("TEST_ACC_SWEEP_MIN_AGE", "2h")
 	t.Setenv("SWEEP_DRY_RUN", "true")
 	h.fake.namespace.Name = testSweepNamespaceName
+	h.fake.namespace.CreateTime = timestamppb.New(time.Now().Add(-24 * time.Hour))
 	require.NoError(t, sweepRegistryNamespaces(testutil.AcceptanceTestZone))
 	require.Empty(t, h.fake.deletes)
 	t.Setenv("SWEEP_DRY_RUN", "false")
+	h.fake.namespace.CreateTime = timestamppb.Now()
+	require.NoError(t, sweepRegistryNamespaces(testutil.AcceptanceTestZone))
+	require.Empty(t, h.fake.deletes)
+	h.fake.namespace.CreateTime = nil
+	require.NoError(t, sweepRegistryNamespaces(testutil.AcceptanceTestZone))
+	require.Empty(t, h.fake.deletes)
+	h.fake.namespace.CreateTime = timestamppb.New(time.Now().Add(-24 * time.Hour))
 	require.NoError(t, sweepRegistryNamespaces(testutil.AcceptanceTestZone))
 	require.Len(t, h.fake.deletes, 1)
 	require.True(t, h.fake.deletes[0].Force)

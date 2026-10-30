@@ -18,6 +18,7 @@ import (
 	"github.com/coreweave/terraform-provider-coreweave/internal/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 type sweepResource struct {
@@ -26,8 +27,9 @@ type sweepResource struct {
 }
 
 const (
-	testResourceType        = "widgets"
-	testIgnoredResourceName = "ignored"
+	testResourceType         = "widgets"
+	testIgnoredResourceName  = "ignored"
+	testYoungResourceMessage = "skipping young resource"
 )
 
 func TestSweepRuntimeFromEnv(t *testing.T) {
@@ -35,12 +37,16 @@ func TestSweepRuntimeFromEnv(t *testing.T) {
 		name        string
 		dryRun      *string
 		parallelism *string
+		minAge      *string
 		want        testutil.SweepRuntime
 		wantError   string
 	}{
-		{name: "defaults", want: testutil.SweepRuntime{Parallelism: 4}},
-		{name: "empty values use defaults", dryRun: pointer(""), parallelism: pointer(""), want: testutil.SweepRuntime{Parallelism: 4}},
-		{name: "valid overrides", dryRun: pointer("true"), parallelism: pointer("7"), want: testutil.SweepRuntime{DryRun: true, Parallelism: 7}},
+		{name: "defaults", want: testutil.SweepRuntime{Parallelism: 4, MinAge: 2 * time.Hour}},
+		{name: "empty values use defaults", dryRun: pointer(""), parallelism: pointer(""), minAge: pointer(""), want: testutil.SweepRuntime{Parallelism: 4, MinAge: 2 * time.Hour}},
+		{name: "valid overrides", dryRun: pointer("true"), parallelism: pointer("7"), minAge: pointer("3h"), want: testutil.SweepRuntime{DryRun: true, Parallelism: 7, MinAge: 3 * time.Hour}},
+		{name: "malformed age", minAge: pointer("yesterday"), wantError: "parse TEST_ACC_SWEEP_MIN_AGE as duration"},
+		{name: "zero age", minAge: pointer("0s"), wantError: "TEST_ACC_SWEEP_MIN_AGE must be greater than zero"},
+		{name: "negative age", minAge: pointer("-1h"), wantError: "TEST_ACC_SWEEP_MIN_AGE must be greater than zero"},
 		{name: "malformed bool", dryRun: pointer("sometimes"), wantError: "parse SWEEP_DRY_RUN as bool"},
 		{name: "malformed integer", parallelism: pointer("many"), wantError: "parse TEST_ACC_SWEEP_PARALLEL as integer"},
 		{name: "zero parallelism", parallelism: pointer("0"), wantError: "must be greater than zero"},
@@ -50,6 +56,7 @@ func TestSweepRuntimeFromEnv(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			setOptionalEnv(t, "SWEEP_DRY_RUN", tt.dryRun)
 			setOptionalEnv(t, "TEST_ACC_SWEEP_PARALLEL", tt.parallelism)
+			setOptionalEnv(t, "TEST_ACC_SWEEP_MIN_AGE", tt.minAge)
 
 			got, err := testutil.SweepRuntimeFromEnv()
 			if tt.wantError != "" {
@@ -447,4 +454,56 @@ func decodeSweepLogs(t *testing.T, logs *bytes.Buffer) []sweepLogRecord {
 		records = append(records, record)
 	}
 	return records
+}
+
+func TestSweepMinimumAge(t *testing.T) {
+	now := time.Now()
+	for _, tt := range []struct {
+		name        string
+		minAge      time.Duration
+		createdAt   *timestamppb.Timestamp
+		wantSkip    bool
+		wantMessage string
+	}{
+		{name: "less than default age", createdAt: timestamppb.New(now.Add(-time.Hour)), wantSkip: true, wantMessage: testYoungResourceMessage},
+		{name: "old", createdAt: timestamppb.New(now.Add(-3 * time.Hour))},
+		{name: "at threshold", createdAt: timestamppb.New(now.Add(-2 * time.Hour))},
+		{name: "override", minAge: 4 * time.Hour, createdAt: timestamppb.New(now.Add(-3 * time.Hour)), wantSkip: true, wantMessage: testYoungResourceMessage},
+		{name: "future", createdAt: timestamppb.New(now.Add(time.Hour)), wantSkip: true, wantMessage: testYoungResourceMessage},
+		{name: "missing", wantSkip: true, wantMessage: "skipping resource with missing or invalid creation timestamp"},
+		{name: "invalid", createdAt: &timestamppb.Timestamp{Nanos: -1}, wantSkip: true, wantMessage: "skipping resource with missing or invalid creation timestamp"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			logs := captureDefaultLogs(t)
+			runtime := testutil.SweepRuntime{Parallelism: 1, MinAge: tt.minAge}
+			deleted := false
+			err := testutil.Sweep(t.Context(), runtime, testutil.SweepConfig[string]{
+				ResourceType: testResourceType,
+				List:         func(context.Context) ([]string, error) { return []string{tt.name}, nil },
+				Name:         func(name string) string { return name },
+				Match:        func(string) bool { return true },
+				CreatedAt:    func(string) *timestamppb.Timestamp { return tt.createdAt },
+				Delete:       func(context.Context, string) error { deleted = true; return nil },
+			})
+			require.NoError(t, err)
+			assert.Equal(t, !tt.wantSkip, deleted)
+			if tt.wantSkip {
+				assert.Equal(t, []sweepLogRecord{{Message: tt.wantMessage, ResourceType: testResourceType, Name: tt.name}}, decodeSweepLogs(t, logs))
+			}
+		})
+	}
+}
+
+func TestSweepAgeGuardAlsoAppliesToDryRun(t *testing.T) {
+	logs := captureDefaultLogs(t)
+	err := testutil.Sweep(t.Context(), testutil.SweepRuntime{Parallelism: 1, DryRun: true}, testutil.SweepConfig[string]{
+		ResourceType: testResourceType,
+		List:         func(context.Context) ([]string, error) { return []string{"recent"}, nil },
+		Name:         func(name string) string { return name },
+		Match:        func(string) bool { return true },
+		CreatedAt:    func(string) *timestamppb.Timestamp { return timestamppb.Now() },
+		Delete:       func(context.Context, string) error { t.Fatal("dry run deleted a resource"); return nil },
+	})
+	require.NoError(t, err)
+	assert.Equal(t, []sweepLogRecord{{Message: testYoungResourceMessage, ResourceType: testResourceType, Name: "recent"}}, decodeSweepLogs(t, logs))
 }
