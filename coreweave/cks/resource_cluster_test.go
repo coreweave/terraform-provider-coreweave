@@ -355,7 +355,11 @@ func createClusterTestStep(ctx context.Context, t *testing.T, config testStepCon
 	return step
 }
 
-func TestClusterResource(t *testing.T) {
+// Runs in the non-blocking acceptance suite.
+// To restore required coverage, see ACCEPTANCE_TESTING.md#non-blocking-acceptance.
+func testClusterResource(t *testing.T) {
+	t.Helper()
+
 	config := generateResourceNames(t, "cks-cluster")
 	zone := testutil.AcceptanceTestZone
 	kubeVersion := testutil.AcceptanceTestKubeVersion

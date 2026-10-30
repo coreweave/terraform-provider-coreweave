@@ -43,3 +43,6 @@ test/
 __debug*
 
 .env
+
+# Acceptance test JSON results
+.test-results/

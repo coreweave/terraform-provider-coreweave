@@ -30,6 +30,10 @@ func init() {
 		Name:         "coreweave_object_storage_bucket",
 		Dependencies: []string{},
 		F: func(zone string) error {
+			runtime, err := testutil.SweepRuntimeFromEnv()
+			if err != nil {
+				return err
+			}
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 			defer cancel()
 
@@ -57,8 +61,11 @@ func init() {
 					continue
 				}
 
+				if runtime.SkipYoungResource(ctx, "coreweave_object_storage_bucket", name, info.GetCreationTime()) {
+					continue
+				}
 				log.Printf("sweeping bucket %s (zone %s)", name, location)
-				if testutil.SweepDryRun() {
+				if runtime.DryRun {
 					log.Printf("skipping bucket %s because of dry-run mode", name)
 					continue
 				}

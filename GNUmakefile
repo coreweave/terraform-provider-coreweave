@@ -19,6 +19,7 @@ TEST_ACC_SWEEP_TIMEOUT?=45m
 SWEEP_DRY_RUN?=false
 TEST_ACC_PARALLEL?=
 TEST_ACC_TIMEOUT?=45m
+NONBLOCKING_RESULTS_DIR?=$(CURDIR)/.test-results/nonblocking-acceptance
 
 export CGO_ENABLED?=0
 
@@ -70,4 +71,10 @@ testacc:
 		TF_ACC=1 go test -v -cover -timeout=$(TEST_ACC_TIMEOUT) $(if $(TEST_ACC_PARALLEL),-parallel=$(TEST_ACC_PARALLEL)) ./coreweave/$$suite; \
 	done
 
-.PHONY: debug fmt lint test testacc testacc-sweep build install generate clean
+testacc-nonblocking:
+	@set -e; mkdir -p '$(NONBLOCKING_RESULTS_DIR)'; status=0; for suite in $(SUITES); do \
+		TF_ACC=1 go test -tags=nonblocking -count=1 -run "^TestNonBlockingAcceptance$$" -json -timeout=$(TEST_ACC_TIMEOUT) $(if $(TEST_ACC_PARALLEL),-parallel=$(TEST_ACC_PARALLEL)) ./coreweave/$$suite > '$(NONBLOCKING_RESULTS_DIR)'/$$suite.json || status=1; \
+		cat '$(NONBLOCKING_RESULTS_DIR)'/$$suite.json; \
+	done; exit $$status
+
+.PHONY: debug fmt lint test testacc testacc-nonblocking testacc-sweep build install generate clean
