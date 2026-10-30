@@ -13,26 +13,26 @@ const newerHead = 'b'.repeat(40);
 const context = (overrides = {}) => ({ eventName: 'pull_request', repo: { owner: 'public', repo: 'fixture' },
   payload: { pull_request: { number: 7, head: { sha: head } } }, ...overrides });
 
-test('the caller explicitly grants the reusable QA jobs their read permissions', () => {
+test('the caller explicitly grants the reusable QA jobs their required permissions', () => {
   const caller = readFileSync(new URL('../workflows/test.yml', import.meta.url), 'utf8');
   const job = caller.split('\n  acceptance-tests:\n')[1];
   assert.ok(job, 'the acceptance caller job exists');
   const permissions = /^    permissions:\n((?:      .*\n)+)/m.exec(job);
   assert.ok(permissions, 'the caller must set its permission ceiling explicitly');
   const actual = Object.fromEntries(permissions[1].trim().split('\n').map(line => line.trim().split(': ')));
-  assert.deepEqual(actual, { contents: 'read', 'pull-requests': 'read', packages: 'read' });
+  assert.deepEqual(actual, { contents: 'read', 'pull-requests': 'read', packages: 'read', checks: 'write' });
 });
 
-test('both QA jobs guard checkout and the resource command', () => {
+test('all QA jobs guard checkout and the resource command', () => {
   const sections = workflow.split(/^  (?=[a-z][a-z-]*:\n)/m);
   const isGuard = step => /^(?:&current-pr\n|\*current-pr\n)/.test(step);
-  for (const id of ['sweep', 'test']) {
+  for (const id of ['sweep', 'test', 'regressions']) {
     const section = sections.find(part => part.startsWith(`${id}:\n`));
     assert.ok(section, `${id} job exists`);
     const steps = section.split('    steps:\n')[1].split(/^      - /m).slice(1);
     assert.ok(isGuard(steps[0]), `${id}: guard before checkout`);
     assert.match(steps[1], /^uses: actions\/checkout@/);
-    const command = steps.findIndex(step => step.includes(id === 'sweep' ? 'make testacc-sweep' : 'make testacc SUITES='));
+    const command = steps.findIndex(step => step.includes(id === 'sweep' ? 'make testacc-sweep' : id === 'regressions' ? 'make testacc-regressions' : 'make testacc SUITES='));
     assert.ok(command > 0 && isGuard(steps[command - 1]), `${id}: guard immediately before QA command`);
   }
 });

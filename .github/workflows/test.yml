@@ -55,7 +55,7 @@ jobs:
       - run: go mod download
       - name: Check go mod tidy
         run: go mod tidy -diff
-      - run: go test -v -cover ./...
+      - run: go test -v -cover -skip '^TestKnownRegressions$' ./...
         timeout-minutes: 10
 
   pr-title-format:
@@ -160,6 +160,7 @@ jobs:
       contents: read
       pull-requests: read
       packages: read
+      checks: write
     needs: [select-acceptance, build, lint, test]
     if: needs.select-acceptance.outputs.suites != '[]'
     strategy:
