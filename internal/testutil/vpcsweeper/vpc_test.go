@@ -4,16 +4,20 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"connectrpc.com/connect/v2"
 
 	networkingv1beta1 "buf.build/gen/go/coreweave/networking/protocolbuffers/go/coreweave/networking/v1beta1"
+	"github.com/coreweave/terraform-provider-coreweave/internal/testutil"
 	"github.com/coreweave/terraform-provider-coreweave/internal/testutil/vpcsweeper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 type fakeClient struct {
+	resources      []*networkingv1beta1.VPC
 	listError      error
 	deleteError    error
 	getError       error
@@ -32,7 +36,7 @@ func (client *fakeClient) ListVPCs(context.Context, *networkingv1beta1.ListVPCsR
 	if client.listError != nil {
 		return nil, client.listError
 	}
-	return &networkingv1beta1.ListVPCsResponse{}, nil
+	return &networkingv1beta1.ListVPCsResponse{Items: client.resources}, nil
 }
 
 func (client *fakeClient) DeleteVPC(_ context.Context, request *networkingv1beta1.DeleteVPCRequest) (*networkingv1beta1.DeleteVPCResponse, error) {
@@ -128,4 +132,19 @@ func TestConfigDeletesListedID(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestConfigSweepProtectsRecentVPCs(t *testing.T) {
+	client := &fakeClient{
+		getError: connect.NewError(connect.CodeNotFound, "gone"),
+		resources: []*networkingv1beta1.VPC{
+			{Id: "recent", Name: testVPC, Zone: testZone, CreatedAt: timestamppb.Now()},
+			{Id: "missing", Name: testVPC, Zone: testZone},
+			{Id: "old", Name: testVPC, Zone: testZone, CreatedAt: timestamppb.New(time.Now().Add(-3 * time.Hour))},
+		},
+	}
+	config, err := vpcsweeper.New(client, vpcsweeper.Config{Prefix: testPrefix, Zone: testZone})
+	require.NoError(t, err)
+	require.NoError(t, testutil.Sweep(t.Context(), testutil.SweepRuntime{Parallelism: 1}, config))
+	assert.Equal(t, []string{"old"}, client.deletedIDs)
 }
