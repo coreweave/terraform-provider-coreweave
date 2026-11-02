@@ -47,12 +47,12 @@ func (s stubDeploymentServiceClient) GetDeployment(
 }
 
 func paramsWithEngines(engines ...string) *inferencev1.GetDeploymentParametersResponse {
-	versions := make(map[string]*inferencev1.DeploymentRuntimeParameters_RuntimeVersions, len(engines))
+	opts := make(map[string]*inferencev1.DeploymentRuntimeParameters_RuntimeEngineOptions, len(engines))
 	for _, e := range engines {
-		versions[e] = &inferencev1.DeploymentRuntimeParameters_RuntimeVersions{}
+		opts[e] = &inferencev1.DeploymentRuntimeParameters_RuntimeEngineOptions{}
 	}
 	return &inferencev1.GetDeploymentParametersResponse{
-		RuntimeParameters: &inferencev1.DeploymentRuntimeParameters{RuntimeVersions: versions},
+		RuntimeParameters: &inferencev1.DeploymentRuntimeParameters{RuntimeEngineOptions: opts},
 	}
 }
 

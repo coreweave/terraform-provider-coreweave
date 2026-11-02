@@ -8,6 +8,10 @@ output "instance_types" {
   value = data.coreweave_inference_deployment_parameters.deploy_params.instance_types
 }
 
-output "vllm_versions" {
-  value = data.coreweave_inference_deployment_parameters.deploy_params.runtime_versions["vllm"].versions
+# Versions that can be used for new deployments.
+output "vllm_stable_versions" {
+  value = [
+    for version, opts in data.coreweave_inference_deployment_parameters.deploy_params.runtime_engine_options["vllm"].versions :
+    version if opts.lifecycle == "LIFECYCLE_STABLE"
+  ]
 }
