@@ -405,7 +405,7 @@ func (r *InferenceDeploymentResource) Schema(_ context.Context, _ resource.Schem
 					"engine_env": schema.MapAttribute{
 						ElementType:         types.StringType,
 						Optional:            true,
-						MarkdownDescription: "Engine-specific environment variables to inject into the model runtime container. Variable names must come from the selected engine's server-side allow list, exposed by `data.coreweave_inference_deployment_parameters.<name>.engine_env_options[<engine>].allowed_names`; unsupported names are rejected by the API.",
+						MarkdownDescription: "Engine-specific environment variables to inject into the model runtime container. Variable names must come from the selected engine version's server-side allow list, exposed by `data.coreweave_inference_deployment_parameters.<name>.runtime_engine_options[<engine>].versions[<version>].env_options`; unsupported names are rejected by the API.",
 					},
 				},
 			},
