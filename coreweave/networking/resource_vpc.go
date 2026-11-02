@@ -780,7 +780,7 @@ func (r *VpcResource) Schema(ctx context.Context, req resource.SchemaRequest, re
 							},
 							"search_domains": schema.ListAttribute{
 								Optional:            true,
-								MarkdownDescription: "The DNS search domains to be used by DHCP clients within the VPC, in order of resolution precedence. Each entry must be a valid DNS name (RFC 1123) of at most 253 characters, and at most 100 may be specified.",
+								MarkdownDescription: "The DNS search domains to be used by DHCP clients within the VPC, in order of resolution precedence. Each entry must be a unique, valid DNS name (RFC 1123) of at most 253 characters with no trailing dot, and at most 100 may be specified.",
 								ElementType:         types.StringType,
 							},
 						},
