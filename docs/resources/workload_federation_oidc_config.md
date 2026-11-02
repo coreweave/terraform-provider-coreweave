@@ -20,15 +20,6 @@ resource "coreweave_workload_federation_oidc_config" "example" {
   audience    = "https://coreweave.com/iam"
 }
 
-# Google is an issuer shared by every Google account, so pin tokens to a
-# Google Workspace domain (the `hd` claim) with tenant_id.
-resource "coreweave_workload_federation_oidc_config" "google_workspace" {
-  name       = "google-workspace"
-  issuer_url = "https://accounts.google.com"
-  audience   = "https://coreweave.com/iam"
-  tenant_id  = "example.com"
-}
-
 # GitHub Actions tokens are issued for every repository on GitHub, so pin them
 # to a GitHub organization by its numeric ID (the `repository_owner_id` claim)
 # with tenant_id.
@@ -53,7 +44,7 @@ resource "coreweave_workload_federation_oidc_config" "github_actions" {
 
 - `active` (Boolean) Whether tokens issued by this OIDC provider are accepted for workload identity federation. Defaults to `true` when omitted on creation. Once a value has been applied it is retained: removing the attribute from configuration keeps the last applied value rather than reverting to `true`, so a configuration that was deactivated stays deactivated. Set `active = true` explicitly to reactivate one.
 - `description` (String) An optional human-readable description of the OIDC configuration.
-- `tenant_id` (String) The tenant expected in tokens from issuers shared by many tenants, such as the Google Workspace domain (the `hd` claim) for Google, or the numeric organization ID (the `repository_owner_id` claim) for GitHub Actions. Leave unset for issuers dedicated to a single tenant. Removing the attribute clears the tenant.
+- `tenant_id` (String) The tenant expected in tokens from issuers shared by many tenants. Only GitHub Actions is supported, where this is the numeric organization ID (the `repository_owner_id` claim); leave it unset for every other issuer. Removing the attribute clears the tenant.
 
 ### Read-Only
 

@@ -51,7 +51,7 @@ func TestOIDCConfigModelToCreateRequest(t *testing.T) {
 		IssuerURL:   types.StringValue("https://app.terraform.io"),
 		Audience:    types.StringValue("https://coreweave.com/iam"),
 		Active:      types.BoolValue(false),
-		TenantID:    types.StringValue("example.com"),
+		TenantID:    types.StringValue("1001"),
 	}
 
 	request := model.ToCreateRequest()
@@ -63,7 +63,7 @@ func TestOIDCConfigModelToCreateRequest(t *testing.T) {
 	assert.True(t, request.HasActive())
 	assert.False(t, request.GetActive())
 	assert.True(t, request.HasTenantId())
-	assert.Equal(t, "example.com", request.GetTenantId())
+	assert.Equal(t, "1001", request.GetTenantId())
 }
 
 func TestOIDCConfigModelToCreateRequestWithoutTenantID(t *testing.T) {
@@ -178,7 +178,7 @@ func TestOIDCConfigModelToUpdateRequestSetsTenantID(t *testing.T) {
 	state := OIDCConfigResourceModel{
 		ID:        types.StringValue("42f18b55-f86c-4480-854c-1aaed6ca3961"),
 		Name:      types.StringValue("name"),
-		IssuerURL: types.StringValue("https://accounts.google.com"),
+		IssuerURL: types.StringValue("https://token.actions.githubusercontent.com"),
 		Audience:  types.StringValue("audience"),
 		Active:    types.BoolValue(true),
 		TenantID:  types.StringNull(),
@@ -189,8 +189,8 @@ func TestOIDCConfigModelToUpdateRequestSetsTenantID(t *testing.T) {
 		state types.String
 		plan  string
 	}{
-		{name: "set", state: types.StringNull(), plan: "example.com"},
-		{name: "change", state: types.StringValue("old.example.com"), plan: "example.com"},
+		{name: "set", state: types.StringNull(), plan: "1001"},
+		{name: "change", state: types.StringValue("1000"), plan: "1001"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -218,7 +218,7 @@ func TestOIDCConfigModelToUpdateRequestUnchanged(t *testing.T) {
 		IssuerURL:   types.StringValue("https://issuer.example.com"),
 		Audience:    types.StringValue("audience"),
 		Active:      types.BoolValue(true),
-		TenantID:    types.StringValue("example.com"),
+		TenantID:    types.StringValue("1001"),
 	}
 
 	request := state.ToUpdateRequest(&state)

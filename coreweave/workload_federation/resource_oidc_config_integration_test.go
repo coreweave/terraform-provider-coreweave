@@ -380,8 +380,8 @@ provider "coreweave" {
 }
 
 resource "coreweave_workload_federation_oidc_config" "test" {
-  name       = "google-workspace"
-  issuer_url = "https://accounts.google.com"
+  name       = "github-actions"
+  issuer_url = "https://token.actions.githubusercontent.com"
   audience   = "coreweave"
 %s}
 `, endpoint, tenantIDAttribute)
@@ -399,10 +399,10 @@ func TestOIDCConfigResourceTenantIDLifecycle(t *testing.T) {
 				Check:  tfresource.TestCheckNoResourceAttr(oidcConfigResourceAddress, "tenant_id"),
 			},
 			{
-				Config: oidcConfigTestConfigWithTenantID(server.URL, "example.com"),
+				Config: oidcConfigTestConfigWithTenantID(server.URL, "1001"),
 				Check: tfresource.ComposeAggregateTestCheckFunc(
-					tfresource.TestCheckResourceAttr(oidcConfigResourceAddress, "tenant_id", "example.com"),
-					service.checkLastUpdate([]string{"tenant_id"}, proto.String("example.com")),
+					tfresource.TestCheckResourceAttr(oidcConfigResourceAddress, "tenant_id", "1001"),
+					service.checkLastUpdate([]string{"tenant_id"}, proto.String("1001")),
 				),
 			},
 			{
@@ -411,10 +411,10 @@ func TestOIDCConfigResourceTenantIDLifecycle(t *testing.T) {
 				ImportStateVerify: true,
 			},
 			{
-				Config: oidcConfigTestConfigWithTenantID(server.URL, "other.example.com"),
+				Config: oidcConfigTestConfigWithTenantID(server.URL, "1002"),
 				Check: tfresource.ComposeAggregateTestCheckFunc(
-					tfresource.TestCheckResourceAttr(oidcConfigResourceAddress, "tenant_id", "other.example.com"),
-					service.checkLastUpdate([]string{"tenant_id"}, proto.String("other.example.com")),
+					tfresource.TestCheckResourceAttr(oidcConfigResourceAddress, "tenant_id", "1002"),
+					service.checkLastUpdate([]string{"tenant_id"}, proto.String("1002")),
 				),
 			},
 			{
@@ -437,8 +437,8 @@ func TestOIDCConfigResourceCreatesWithTenantID(t *testing.T) {
 		CheckDestroy:             service.checkEmpty,
 		Steps: []tfresource.TestStep{
 			{
-				Config: oidcConfigTestConfigWithTenantID(server.URL, "coreweave.com"),
-				Check:  tfresource.TestCheckResourceAttr(oidcConfigResourceAddress, "tenant_id", "coreweave.com"),
+				Config: oidcConfigTestConfigWithTenantID(server.URL, "1003"),
+				Check:  tfresource.TestCheckResourceAttr(oidcConfigResourceAddress, "tenant_id", "1003"),
 			},
 			{
 				ResourceName:      oidcConfigResourceAddress,

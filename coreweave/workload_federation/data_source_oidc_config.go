@@ -117,7 +117,7 @@ func (d *OIDCConfigDataSource) Schema(_ context.Context, _ datasource.SchemaRequ
 			},
 			"tenant_id": schema.StringAttribute{
 				Computed:            true,
-				MarkdownDescription: "The tenant expected in tokens from issuers shared by many tenants, such as a Google Workspace domain or a GitHub organization ID, or null when none is set.",
+				MarkdownDescription: "The tenant expected in tokens from issuers shared by many tenants, such as the numeric GitHub organization ID for GitHub Actions, or null when none is set.",
 			},
 			"deactivated_at": schema.StringAttribute{
 				Computed:            true,

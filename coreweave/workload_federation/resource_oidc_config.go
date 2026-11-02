@@ -142,7 +142,7 @@ func (r *OIDCConfigResource) Schema(_ context.Context, _ resource.SchemaRequest,
 			},
 			"tenant_id": schema.StringAttribute{
 				Optional:            true,
-				MarkdownDescription: "The tenant expected in tokens from issuers shared by many tenants, such as the Google Workspace domain (the `hd` claim) for Google, or the numeric organization ID (the `repository_owner_id` claim) for GitHub Actions. Leave unset for issuers dedicated to a single tenant. Removing the attribute clears the tenant.",
+				MarkdownDescription: "The tenant expected in tokens from issuers shared by many tenants. Only GitHub Actions is supported, where this is the numeric organization ID (the `repository_owner_id` claim); leave it unset for every other issuer. Removing the attribute clears the tenant.",
 				Validators: []validator.String{
 					stringvalidator.UTF8LengthBetween(1, 1024),
 				},
