@@ -1193,8 +1193,12 @@ func TestVpcResourceModelSetPreservesEmptyDhcp(t *testing.T) {
 			require.NotNil(t, m.Dhcp, "configured dhcp block collapsed to null")
 			require.NotNil(t, m.Dhcp.Dns, "configured dns block collapsed to null")
 			assert.True(t, m.Dhcp.Dns.Servers.IsNull(), "omitted servers should decode to null")
-			assert.False(t, m.Dhcp.Dns.SearchDomains.IsNull(), "configured empty search_domains should stay empty, not null")
-			assert.Equal(t, 0, len(m.Dhcp.Dns.SearchDomains.Elements()), "configured empty search_domains should have no elements")
+			// Assert exact equality against a known empty list, not just
+			// non-null with zero elements: an unknown list would also satisfy
+			// those, but it would trip Terraform's inconsistent-result-after-apply
+			// check, which is exactly what this test guards against.
+			assert.Equal(t, types.ListValueMust(types.StringType, []attr.Value{}), m.Dhcp.Dns.SearchDomains,
+				"configured empty search_domains should decode to a known empty list")
 		})
 	}
 }
