@@ -37,29 +37,14 @@ import (
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 )
 
-// vpcUpdatePaths lists every VPC field that this provider manages so that
-// we can send it as an explicit field mask on every update.
-//
-// The field mask is optional, but we always send one because of how the server
-// treats an empty mask. An earlier version of the VPC service managed a fixed
-// set of fields, and an empty mask replaces all of them. Later versions added
-// more fields, and the server treats those newer fields differently. With an
-// empty mask it only updates a newer field when the request populates it, so
-// that clients unaware of the field do not clear it by accident. As a result,
-// without a mask Terraform can set such a field but cannot clear it, because an
-// empty value with no mask is preserved rather than removed.
-//
-// Sending an explicit mask that names every managed path makes the server
-// replace each field with its planned value, including clearing a field whose
-// planned value is empty. Any new field added to this resource must therefore
-// be added here too.
-var vpcUpdatePaths = []string{
-	"vpc_prefixes",
-	"ingress.disable_public_services",
-	"egress.disable_public_access",
-	"dhcp.dns.servers",
-	"dhcp.dns.search_domains",
-}
+// VPC update field mask paths
+const (
+	fieldPathVPCPrefixes      = "vpc_prefixes"
+	fieldPathIngress          = "ingress.disable_public_services"
+	fieldPathEgress           = "egress.disable_public_access"
+	fieldPathDNSServers       = "dhcp.dns.servers"
+	fieldPathDNSSearchDomains = "dhcp.dns.search_domains"
+)
 
 // Ensure provider defined types fully satisfy framework interfaces.
 var (
@@ -531,7 +516,93 @@ func (v *VpcResourceModel) ToCreateRequest(ctx context.Context) (*networkingv1be
 	return req, diagnostics
 }
 
-func (v *VpcResourceModel) ToUpdateRequest(ctx context.Context) (*networkingv1beta1.UpdateVPCRequest, diag.Diagnostics) {
+// The following accessors return a managed field's value in a null-safe way, so
+// that a missing parent block (a nil Ingress/Egress/Dhcp/Dns) compares equal to
+// an explicitly-null value when diffing plan against prior state.
+
+func (v *VpcResourceModel) ingressDisablePublicServices() types.Bool {
+	if v.Ingress == nil {
+		return types.BoolNull()
+	}
+	return v.Ingress.DisablePublicServices
+}
+
+func (v *VpcResourceModel) egressDisablePublicAccess() types.Bool {
+	if v.Egress == nil {
+		return types.BoolNull()
+	}
+	return v.Egress.DisablePublicAccess
+}
+
+func (v *VpcResourceModel) dnsServers() types.Set {
+	if v.Dhcp == nil || v.Dhcp.Dns == nil {
+		return types.SetNull(types.StringType)
+	}
+	return v.Dhcp.Dns.Servers
+}
+
+func (v *VpcResourceModel) dnsSearchDomains() types.List {
+	if v.Dhcp == nil || v.Dhcp.Dns == nil {
+		return types.ListNull(types.StringType)
+	}
+	return v.Dhcp.Dns.SearchDomains
+}
+
+// vpcPrefixesChanged reports whether the ordered VPC-prefix list differs between
+// plan and prior state. The server replaces the whole list on update, so any
+// difference in length, order, or an element's name/value/type is a change.
+func vpcPrefixesChanged(plan, state []VpcPrefixResourceModel) bool {
+	if len(plan) != len(state) {
+		return true
+	}
+
+	for i := range plan {
+		if !plan[i].Name.Equal(state[i].Name) {
+			return true
+		}
+
+		if !plan[i].Value.Equal(state[i].Value) {
+			return true
+		}
+
+		if !plan[i].Type.Equal(state[i].Type) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// buildUpdateMask returns a field mask naming the managed fields whose planned
+// value differs from the prior state, so UpdateVPC touches only what changed.
+// Equality errs toward including a field (e.g. a null value versus an absent
+// parent block), which is a harmless no-op for every path except
+// search_domains — and that path can only differ for a zonal-backend VPC, where
+// masking it is supported.
+func buildUpdateMask(plan, state *VpcResourceModel) *fieldmaskpb.FieldMask {
+	var paths []string
+	if vpcPrefixesChanged(plan.VpcPrefixes, state.VpcPrefixes) {
+		paths = append(paths, fieldPathVPCPrefixes)
+	}
+	if !plan.ingressDisablePublicServices().Equal(state.ingressDisablePublicServices()) {
+		paths = append(paths, fieldPathIngress)
+	}
+	if !plan.egressDisablePublicAccess().Equal(state.egressDisablePublicAccess()) {
+		paths = append(paths, fieldPathEgress)
+	}
+	if !plan.dnsServers().Equal(state.dnsServers()) {
+		paths = append(paths, fieldPathDNSServers)
+	}
+	if !plan.dnsSearchDomains().Equal(state.dnsSearchDomains()) {
+		paths = append(paths, fieldPathDNSSearchDomains)
+	}
+	return &fieldmaskpb.FieldMask{Paths: paths}
+}
+
+// ToUpdateRequest builds the UpdateVPC request body and attaches the supplied
+// field mask. The caller computes the mask from the plan/state diff so the
+// request names only the fields that changed.
+func (v *VpcResourceModel) ToUpdateRequest(ctx context.Context, mask *fieldmaskpb.FieldMask) (*networkingv1beta1.UpdateVPCRequest, diag.Diagnostics) {
 	var diagnostics diag.Diagnostics
 	vpcPrefixes, prefixDiags := v.vpcPrefixes()
 	diagnostics.Append(prefixDiags...)
@@ -544,7 +615,7 @@ func (v *VpcResourceModel) ToUpdateRequest(ctx context.Context) (*networkingv1be
 	}
 
 	req := networkingv1beta1.UpdateVPCRequest{
-		UpdateMask:  &fieldmaskpb.FieldMask{Paths: vpcUpdatePaths},
+		UpdateMask:  mask,
 		Id:          v.Id.ValueString(),
 		VpcPrefixes: vpcPrefixes,
 		Ingress:     v.Ingress.ToProto(),
@@ -920,16 +991,18 @@ func (r *VpcResource) Read(ctx context.Context, req resource.ReadRequest, resp *
 }
 
 func (r *VpcResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	var data VpcResourceModel
+	var plan, state VpcResourceModel
 
-	// Read Terraform plan data into the model
-	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
-
+	// Read both the plan (desired) and the prior state so the field mask can
+	// name only the fields that actually changed.
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	updateReq, diags := data.ToUpdateRequest(ctx)
+	fieldMask := buildUpdateMask(&plan, &state)
+	updateReq, diags := plan.ToUpdateRequest(ctx, fieldMask)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -983,8 +1056,8 @@ func (r *VpcResource) Update(ctx context.Context, req resource.UpdateRequest, re
 		return
 	}
 
-	data.Set(vpc)
-	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+	plan.Set(vpc)
+	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
 func (r *VpcResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
