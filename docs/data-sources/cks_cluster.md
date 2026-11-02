@@ -55,6 +55,7 @@ output "kube_api_ca_pem" {
 - `oidc` (Attributes) The OIDC configuration of the cluster. (see [below for nested schema](#nestedatt--oidc))
 - `pod_cidr_name` (String) The pod CIDR name of the cluster.
 - `pod_cidr_name_v6` (String) The IPv6 pod CIDR name of the cluster.
+- `private_access` (Attributes) Private control plane access configuration. Null when private access is not configured. (see [below for nested schema](#nestedatt--private_access))
 - `public` (Boolean) Whether the cluster's Kubernetes API server is reachable through CoreWeave's public ingress, which supports CoreWeave-managed authentication. This setting is independent of `kube_api_access`.
 - `service_account_oidc_issuer_url` (String) The URL of the OIDC issuer for the cluster's service account tokens. This value corresponds to the `--service-account-issuer` flag on the kube-apiserver.
 - `service_cidr_name` (String) The service CIDR name of the cluster.
@@ -135,6 +136,15 @@ Read-Only:
 
 - `client_id` (String) The client ID of the OIDC configuration.
 - `issuer_url` (String) The issuer URL of the OIDC configuration.
+
+
+<a id="nestedatt--private_access"></a>
+### Nested Schema for `private_access`
+
+Read-Only:
+
+- `prefix_name_ipv4` (String) Name of the IPv4 private access prefix.
+- `prefix_name_ipv6` (String) Name of the IPv6 private access prefix.
 
 
 <a id="nestedatt--tailscale"></a>

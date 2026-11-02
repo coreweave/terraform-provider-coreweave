@@ -34,6 +34,8 @@ resource "coreweave_networking_vpc" "example" {
     },
   ]
 
+  # Existing untyped prefixes can remain untyped. Type changes require VPC API support.
+  # For a new VPC, these prefixes may use POD, SERVICE, and LOAD_BALANCER types.
   vpc_prefixes = [
     {
       name  = "pod cidr"
@@ -46,6 +48,11 @@ resource "coreweave_networking_vpc" "example" {
     {
       name  = "internal lb cidr"
       value = "10.32.4.0/22"
+    },
+    {
+      name  = "private-access"
+      value = "10.48.0.0/24"
+      type  = "PRIVATE_ACCESS"
     },
   ]
 
