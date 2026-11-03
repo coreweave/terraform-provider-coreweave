@@ -405,7 +405,7 @@ func (r *InferenceDeploymentResource) Schema(_ context.Context, _ resource.Schem
 					"engine_env": schema.MapAttribute{
 						ElementType:         types.StringType,
 						Optional:            true,
-						MarkdownDescription: "Engine-specific environment variables to inject into the model runtime container. Variable names must come from the selected engine's server-side allow list, exposed by `data.coreweave_inference_deployment_parameters.<name>.engine_env_options[<engine>].allowed_names`; unsupported names are rejected by the API.",
+						MarkdownDescription: "Engine-specific environment variables to inject into the model runtime container. Variable names must come from the selected engine version's server-side allow list, exposed by `data.coreweave_inference_deployment_parameters.<name>.runtime_engine_options[<engine>].versions[<version>].env_options`; unsupported names are rejected by the API.",
 					},
 				},
 			},
@@ -539,7 +539,7 @@ func (r *InferenceDeploymentResource) Configure(_ context.Context, req resource.
 // ModifyPlan validates runtime.engine against the engines the API server
 // currently advertises, instead of a hardcoded list that can drift from the
 // platform's runtime-engines source of truth. The available engines are the
-// keys of RuntimeParameters.RuntimeVersions returned by GetDeploymentParameters
+// keys of RuntimeParameters.RuntimeEngineOptions returned by GetDeploymentParameters
 // — the same data the coreweave_inference_deployment_parameters data source
 // exposes. Adding an engine server-side thus makes it usable here with no
 // provider release.
@@ -569,7 +569,7 @@ func (r *InferenceDeploymentResource) ModifyPlan(ctx context.Context, req resour
 }
 
 // validateEngineAvailable checks engine against the engines the API server
-// advertises (the keys of DeploymentRuntimeParameters.RuntimeVersions). It
+// advertises (the keys of DeploymentRuntimeParameters.RuntimeEngineOptions). It
 // returns no diagnostics when the engine is advertised, or when the server
 // advertises no engines at all — an unexpected empty response bypasses the
 // check and lets the server be the authority on apply. An unadvertised engine
@@ -585,13 +585,13 @@ func (r *InferenceDeploymentResource) validateEngineAvailable(ctx context.Contex
 		return diags
 	}
 
-	runtimeVersions := paramsResp.GetRuntimeParameters().GetRuntimeVersions()
-	if len(runtimeVersions) == 0 {
+	engineOptions := paramsResp.GetRuntimeParameters().GetRuntimeEngineOptions()
+	if len(engineOptions) == 0 {
 		return diags
 	}
 
-	engines := make([]string, 0, len(runtimeVersions))
-	for e := range runtimeVersions {
+	engines := make([]string, 0, len(engineOptions))
+	for e := range engineOptions {
 		if e == engine {
 			return diags
 		}

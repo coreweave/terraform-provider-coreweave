@@ -3,12 +3,15 @@ package inference
 import (
 	"context"
 	"fmt"
+	"maps"
+	"slices"
 
 	inferencev1 "buf.build/gen/go/coreweave/inference/protocolbuffers/go/coreweave/inference/v1alpha1"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
@@ -28,6 +31,7 @@ type InferenceDeploymentParametersDataSourceModel struct {
 	RuntimeVersions      types.Map `tfsdk:"runtime_versions"`
 	RuntimeConfigOptions types.Map `tfsdk:"runtime_config_options"`
 	EngineEnvOptions     types.Map `tfsdk:"engine_env_options"`
+	RuntimeEngineOptions types.Map `tfsdk:"runtime_engine_options"`
 	InstanceTypes        types.Set `tfsdk:"instance_types"`
 }
 
@@ -43,7 +47,19 @@ var (
 	engineEnvOptionsAttrTypes = map[string]attr.Type{
 		"allowed_names": types.ListType{ElemType: types.StringType},
 	}
+
+	runtimeVersionOptionsAttrTypes = map[string]attr.Type{
+		"lifecycle":      types.StringType,
+		"config_options": types.ListType{ElemType: types.StringType},
+		"env_options":    types.ListType{ElemType: types.StringType},
+	}
+
+	runtimeEngineOptionsAttrTypes = map[string]attr.Type{
+		"versions": types.MapType{ElemType: types.ObjectType{AttrTypes: runtimeVersionOptionsAttrTypes}},
+	}
 )
+
+const deprecatedByRuntimeEngineOptions = "Use `runtime_engine_options`, which reports options and lifecycle per runtime version. This attribute will be removed in a future release."
 
 func (d *InferenceDeploymentParametersDataSource) Metadata(_ context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + "_inference_deployment_parameters"
@@ -60,7 +76,8 @@ func (d *InferenceDeploymentParametersDataSource) Schema(_ context.Context, _ da
 			},
 			"runtime_versions": schema.MapNestedAttribute{
 				Computed:            true,
-				MarkdownDescription: "Available runtime versions per engine (keyed by engine name).",
+				DeprecationMessage:  deprecatedByRuntimeEngineOptions,
+				MarkdownDescription: "Available runtime versions per engine (keyed by engine name). Includes deprecated versions, which cannot be used for new deployments.",
 				NestedObject: schema.NestedAttributeObject{
 					Attributes: map[string]schema.Attribute{
 						"versions": schema.ListAttribute{
@@ -73,6 +90,7 @@ func (d *InferenceDeploymentParametersDataSource) Schema(_ context.Context, _ da
 			},
 			"runtime_config_options": schema.MapNestedAttribute{
 				Computed:            true,
+				DeprecationMessage:  deprecatedByRuntimeEngineOptions,
 				MarkdownDescription: "Available runtime config options per engine (keyed by engine name).",
 				NestedObject: schema.NestedAttributeObject{
 					Attributes: map[string]schema.Attribute{
@@ -86,6 +104,7 @@ func (d *InferenceDeploymentParametersDataSource) Schema(_ context.Context, _ da
 			},
 			"engine_env_options": schema.MapNestedAttribute{
 				Computed:            true,
+				DeprecationMessage:  deprecatedByRuntimeEngineOptions,
 				MarkdownDescription: "Available engine environment variable options per engine (keyed by engine name).",
 				NestedObject: schema.NestedAttributeObject{
 					Attributes: map[string]schema.Attribute{
@@ -93,6 +112,38 @@ func (d *InferenceDeploymentParametersDataSource) Schema(_ context.Context, _ da
 							Computed:            true,
 							ElementType:         types.StringType,
 							MarkdownDescription: "Environment variable names accepted by the engine's `engine_env` field.",
+						},
+					},
+				},
+			},
+			"runtime_engine_options": schema.MapNestedAttribute{
+				Computed:            true,
+				MarkdownDescription: "Available runtime versions and their options per engine (keyed by engine name).",
+				NestedObject: schema.NestedAttributeObject{
+					Attributes: map[string]schema.Attribute{
+						"versions": schema.MapNestedAttribute{
+							Computed:            true,
+							MarkdownDescription: "Options per runtime version (keyed by semver version).",
+							NestedObject: schema.NestedAttributeObject{
+								Attributes: map[string]schema.Attribute{
+									"lifecycle": schema.StringAttribute{
+										Computed: true,
+										MarkdownDescription: "Lifecycle state of the version: `LIFECYCLE_STABLE`, `LIFECYCLE_UNSTABLE`, or `LIFECYCLE_DEPRECATED`. " +
+											"Deprecated versions remain available only to existing deployments already using them; " +
+											"new deployments must use another version.",
+									},
+									"config_options": schema.ListAttribute{
+										Computed:            true,
+										ElementType:         types.StringType,
+										MarkdownDescription: "Configuration keys accepted by the `engine_config` field for this version, sorted.",
+									},
+									"env_options": schema.ListAttribute{
+										Computed:            true,
+										ElementType:         types.StringType,
+										MarkdownDescription: "Environment variable names accepted by the `engine_env` field for this version, sorted.",
+									},
+								},
+							},
 						},
 					},
 				},
@@ -141,10 +192,17 @@ func (d *InferenceDeploymentParametersDataSource) Read(ctx context.Context, _ da
 	}
 	data.GatewayIds = types.SetValueMust(types.StringType, gwVals)
 
+	// The deprecated per-engine fields are still populated server-side during the
+	// runtime_engine_options migration window, so keep surfacing them unchanged
+	// rather than deriving them from the per-version options (which would change
+	// their meaning from a per-engine set to a union across versions). They are
+	// removed once the server stops populating them.
+	rp := msg.GetRuntimeParameters()
+
 	// runtime_versions: map[string]object{versions: list[string]}
 	rvMap := make(map[string]attr.Value)
-	if rp := msg.GetRuntimeParameters(); rp != nil {
-		for engine, rv := range rp.GetRuntimeVersions() {
+	if rp != nil {
+		for engine, rv := range rp.GetRuntimeVersions() { //nolint:staticcheck // SA1019: deprecated, still populated during migration.
 			versionVals := make([]attr.Value, len(rv.GetVersions()))
 			for i, v := range rv.GetVersions() {
 				versionVals[i] = types.StringValue(v)
@@ -163,8 +221,8 @@ func (d *InferenceDeploymentParametersDataSource) Read(ctx context.Context, _ da
 
 	// runtime_config_options: map[string]object{allowed_keys: list[string]}
 	rcoMap := make(map[string]attr.Value)
-	if rp := msg.GetRuntimeParameters(); rp != nil {
-		for engine, rco := range rp.GetRuntimeConfigOptions() {
+	if rp != nil {
+		for engine, rco := range rp.GetRuntimeConfigOptions() { //nolint:staticcheck // SA1019: deprecated, still populated during migration.
 			keyVals := make([]attr.Value, len(rco.GetAllowedKeys()))
 			for i, k := range rco.GetAllowedKeys() {
 				keyVals[i] = types.StringValue(k)
@@ -183,8 +241,8 @@ func (d *InferenceDeploymentParametersDataSource) Read(ctx context.Context, _ da
 
 	// engine_env_options: map[string]object{allowed_names: list[string]}
 	eeoMap := make(map[string]attr.Value)
-	if rp := msg.GetRuntimeParameters(); rp != nil {
-		for engine, eeo := range rp.GetEngineEnvOptions() {
+	if rp != nil {
+		for engine, eeo := range rp.GetEngineEnvOptions() { //nolint:staticcheck // SA1019: deprecated, still populated during migration.
 			nameVals := make([]attr.Value, len(eeo.GetAllowedNames()))
 			for i, name := range eeo.GetAllowedNames() {
 				nameVals[i] = types.StringValue(name)
@@ -201,6 +259,13 @@ func (d *InferenceDeploymentParametersDataSource) Read(ctx context.Context, _ da
 	}
 	data.EngineEnvOptions = types.MapValueMust(types.ObjectType{AttrTypes: engineEnvOptionsAttrTypes}, eeoMap)
 
+	engineOptions, diags := runtimeEngineOptionsValue(rp.GetRuntimeEngineOptions())
+	resp.Diagnostics.Append(diags...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	data.RuntimeEngineOptions = engineOptions
+
 	// instance_types
 	var instanceTypeVals []attr.Value
 	if resourceParams := msg.GetResourceParameters(); resourceParams != nil {
@@ -213,4 +278,57 @@ func (d *InferenceDeploymentParametersDataSource) Read(ctx context.Context, _ da
 	data.InstanceTypes = types.SetValueMust(types.StringType, instanceTypeVals)
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+}
+
+// runtimeEngineOptionsValue converts the per-engine, per-version runtime options
+// into the runtime_engine_options attribute value. Option names arrive as proto
+// map keys, so they are sorted to keep the lists stable across reads.
+func runtimeEngineOptionsValue(
+	in map[string]*inferencev1.DeploymentRuntimeParameters_RuntimeEngineOptions,
+) (types.Map, diag.Diagnostics) {
+	var diagnostics diag.Diagnostics
+	versionObjType := types.ObjectType{AttrTypes: runtimeVersionOptionsAttrTypes}
+	engineObjType := types.ObjectType{AttrTypes: runtimeEngineOptionsAttrTypes}
+
+	engines := make(map[string]attr.Value, len(in))
+	for engine, eo := range in {
+		versions := make(map[string]attr.Value, len(eo.GetVersions()))
+		for version, vo := range eo.GetVersions() {
+			obj, diags := types.ObjectValue(runtimeVersionOptionsAttrTypes, map[string]attr.Value{
+				"lifecycle":      types.StringValue(vo.GetLifecycle().String()),
+				"config_options": sortedKeysList(vo.GetConfigOptions()),
+				"env_options":    sortedKeysList(vo.GetEnvOptions()),
+			})
+			diagnostics.Append(diags...)
+			if diagnostics.HasError() {
+				return types.MapNull(engineObjType), diagnostics
+			}
+			versions[version] = obj
+		}
+
+		versionsMap, diags := types.MapValue(versionObjType, versions)
+		diagnostics.Append(diags...)
+		if diagnostics.HasError() {
+			return types.MapNull(engineObjType), diagnostics
+		}
+		obj, diags := types.ObjectValue(runtimeEngineOptionsAttrTypes, map[string]attr.Value{"versions": versionsMap})
+		diagnostics.Append(diags...)
+		if diagnostics.HasError() {
+			return types.MapNull(engineObjType), diagnostics
+		}
+		engines[engine] = obj
+	}
+
+	out, diags := types.MapValue(engineObjType, engines)
+	diagnostics.Append(diags...)
+	return out, diagnostics
+}
+
+func sortedKeysList[V any](m map[string]V) types.List {
+	keys := slices.Sorted(maps.Keys(m))
+	vals := make([]attr.Value, len(keys))
+	for i, k := range keys {
+		vals[i] = types.StringValue(k)
+	}
+	return types.ListValueMust(types.StringType, vals)
 }

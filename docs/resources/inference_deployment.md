@@ -135,7 +135,7 @@ Required:
 Optional:
 
 - `engine_config` (Map of String) Engine-specific configuration key/value pairs.
-- `engine_env` (Map of String) Engine-specific environment variables to inject into the model runtime container. Variable names must come from the selected engine's server-side allow list, exposed by `data.coreweave_inference_deployment_parameters.<name>.engine_env_options[<engine>].allowed_names`; unsupported names are rejected by the API.
+- `engine_env` (Map of String) Engine-specific environment variables to inject into the model runtime container. Variable names must come from the selected engine version's server-side allow list, exposed by `data.coreweave_inference_deployment_parameters.<name>.runtime_engine_options[<engine>].versions[<version>].env_options`; unsupported names are rejected by the API.
 - `version` (String) The version of the engine. If not set, defaults to the latest available version. Must follow semver format (e.g. `1.2.3`).
 
 

@@ -12,10 +12,10 @@ buf.build/gen/go/coreweave/cwobject/connectrpc/go/v2 v2.0.0-20260831154917-08064
 buf.build/gen/go/coreweave/cwobject/connectrpc/go/v2 v2.0.0-20260831154917-08064e55742b.1/go.mod h1:VGsgiwR5jsMVeQuUtHmGg0ujX0AAat00AsDlc0bpcW4=
 buf.build/gen/go/coreweave/cwobject/protocolbuffers/go v1.36.12-20260831154917-08064e55742b.2 h1:H4aGnMhVx0uldc68oFWvgicOLVrZVcnd71ggM1LsmBI=
 buf.build/gen/go/coreweave/cwobject/protocolbuffers/go v1.36.12-20260831154917-08064e55742b.2/go.mod h1:JbpoSIgxpcOE0i1S2f36tdO5w10CsLMpZI7f/0zSyrM=
-buf.build/gen/go/coreweave/inference/connectrpc/go/v2 v2.0.0-20261008185853-22f8f31f8962.1 h1:JUDwf0U1cvnVBLQXOntmn0WLgIh6jW9lrbRhVkjaQ6c=
-buf.build/gen/go/coreweave/inference/connectrpc/go/v2 v2.0.0-20261008185853-22f8f31f8962.1/go.mod h1:bAG83CQ+xl3d41X3P152kako7rxVVUGCK+pOv66bRTM=
-buf.build/gen/go/coreweave/inference/protocolbuffers/go v1.36.12-20261008185853-22f8f31f8962.2 h1:haBD6Mnv1Hx9xiqpDrIlDq0uDnfmQEgizA6/WPJtlAQ=
-buf.build/gen/go/coreweave/inference/protocolbuffers/go v1.36.12-20261008185853-22f8f31f8962.2/go.mod h1:bs1E8vQPLh2l9lT5qRDvsoLlQaBPPFpb//YBoYfQlCE=
+buf.build/gen/go/coreweave/inference/connectrpc/go/v2 v2.0.2-20261016211223-a1f4fb425137.1 h1:PltRevEk50najxLiejhHiIwNDgeK+gBZIpbZT4UbWeQ=
+buf.build/gen/go/coreweave/inference/connectrpc/go/v2 v2.0.2-20261016211223-a1f4fb425137.1/go.mod h1:EwswnjeU6IxiUciu4eNWoVmeDZDr0nTyzjg+22tk2I0=
+buf.build/gen/go/coreweave/inference/protocolbuffers/go v1.36.12-20261016211223-a1f4fb425137.2 h1:OP2fkCBtQd//JcBBbmrJnPeTxy2jpckemOJyVuI6cIo=
+buf.build/gen/go/coreweave/inference/protocolbuffers/go v1.36.12-20261016211223-a1f4fb425137.2/go.mod h1:bs1E8vQPLh2l9lT5qRDvsoLlQaBPPFpb//YBoYfQlCE=
 buf.build/gen/go/coreweave/networking/connectrpc/go/v2 v2.0.2-20261021202238-84a5f410acc9.1 h1:7GkEtXN1Xjm7o9D2av+HhHjh868WAXHYPd2VfWL+9Bg=
 buf.build/gen/go/coreweave/networking/connectrpc/go/v2 v2.0.2-20261021202238-84a5f410acc9.1/go.mod h1:ovwDHAsEjd1rhcTt/HKcCgiTP7/zKDaCc7u3pQcIIwg=
 buf.build/gen/go/coreweave/networking/protocolbuffers/go v1.36.12-20261021202238-84a5f410acc9.2 h1:DmJXoMRS2L+NkdLdDU7PJt7uS/6wPmgl0gZcSU5rGBU=

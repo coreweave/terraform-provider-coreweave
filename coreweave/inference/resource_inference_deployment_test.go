@@ -515,11 +515,12 @@ locals {
   instance            = local.preferred_instance != "" ? local.preferred_instance : sort(tolist(local.available_instances))[0]
 
   # Runtime version is required on create; source it from deployment parameters.
-  # Restrict to plain MAJOR.MINOR.PATCH for now — pre-release/build-metadata
-  # versions are excluded pending #319. Revert this commit once #319 lands.
-  available_runtime_versions = try(data.coreweave_inference_deployment_parameters.deploy_params.runtime_versions["vllm"].versions, [])
-  runtime_version            = try([for v in local.available_runtime_versions : v if can(regex("^[0-9]+[.][0-9]+[.][0-9]+$", v))][0], "")
-  available_engine_env_names = try(data.coreweave_inference_deployment_parameters.deploy_params.engine_env_options["vllm"].allowed_names, [])
+  # Only LIFECYCLE_STABLE versions accept new deployments. Restrict to plain
+  # MAJOR.MINOR.PATCH for now; pre-release/build-metadata versions are excluded
+  # pending #319.
+  vllm_versions              = try(data.coreweave_inference_deployment_parameters.deploy_params.runtime_engine_options["vllm"].versions, {})
+  runtime_version            = try([for v, o in local.vllm_versions : v if o.lifecycle == "LIFECYCLE_STABLE" && can(regex("^[0-9]+[.][0-9]+[.][0-9]+$", v))][0], "")
+  available_engine_env_names = try(local.vllm_versions[local.runtime_version].env_options, [])
   engine_env_name            = %q
   engine_env_value           = %q
 }
@@ -583,11 +584,11 @@ resource "coreweave_inference_deployment" "test" {
     }
     precondition {
       condition     = local.runtime_version != ""
-      error_message = "No x.y.z vllm runtime version available (pre-release/build-metadata excluded pending #319); available: ${jsonencode(local.available_runtime_versions)}"
+      error_message = "No stable x.y.z vllm runtime version available (pre-release/build-metadata excluded pending #319); available: ${jsonencode({ for v, o in local.vllm_versions : v => o.lifecycle })}"
     }
     precondition {
       condition     = contains(local.available_engine_env_names, local.engine_env_name)
-      error_message = "${local.engine_env_name} is not present in vllm engine env options; available: ${jsonencode(local.available_engine_env_names)}"
+      error_message = "${local.engine_env_name} is not present in env options for vllm/${local.runtime_version}; available: ${jsonencode(local.available_engine_env_names)}"
     }
   }
 }
@@ -621,11 +622,12 @@ locals {
   instance            = local.preferred_instance != "" ? local.preferred_instance : sort(tolist(local.available_instances))[0]
 
   # Runtime version is required on create; source it from deployment parameters.
-  # Restrict to plain MAJOR.MINOR.PATCH for now — pre-release/build-metadata
-  # versions are excluded pending #319. Revert this commit once #319 lands.
-  available_runtime_versions = try(data.coreweave_inference_deployment_parameters.deploy_params.runtime_versions["vllm"].versions, [])
-  runtime_version            = try([for v in local.available_runtime_versions : v if can(regex("^[0-9]+[.][0-9]+[.][0-9]+$", v))][0], "")
-  available_engine_env_names = try(data.coreweave_inference_deployment_parameters.deploy_params.engine_env_options["vllm"].allowed_names, [])
+  # Only LIFECYCLE_STABLE versions accept new deployments. Restrict to plain
+  # MAJOR.MINOR.PATCH for now; pre-release/build-metadata versions are excluded
+  # pending #319.
+  vllm_versions              = try(data.coreweave_inference_deployment_parameters.deploy_params.runtime_engine_options["vllm"].versions, {})
+  runtime_version            = try([for v, o in local.vllm_versions : v if o.lifecycle == "LIFECYCLE_STABLE" && can(regex("^[0-9]+[.][0-9]+[.][0-9]+$", v))][0], "")
+  available_engine_env_names = try(local.vllm_versions[local.runtime_version].env_options, [])
   engine_env_name            = %q
   engine_env_value           = %q
 }
@@ -692,11 +694,11 @@ resource "coreweave_inference_deployment" "test" {
     }
     precondition {
       condition     = local.runtime_version != ""
-      error_message = "No x.y.z vllm runtime version available (pre-release/build-metadata excluded pending #319); available: ${jsonencode(local.available_runtime_versions)}"
+      error_message = "No stable x.y.z vllm runtime version available (pre-release/build-metadata excluded pending #319); available: ${jsonencode({ for v, o in local.vllm_versions : v => o.lifecycle })}"
     }
     precondition {
       condition     = contains(local.available_engine_env_names, local.engine_env_name)
-      error_message = "${local.engine_env_name} is not present in vllm engine env options; available: ${jsonencode(local.available_engine_env_names)}"
+      error_message = "${local.engine_env_name} is not present in env options for vllm/${local.runtime_version}; available: ${jsonencode(local.available_engine_env_names)}"
     }
   }
 }

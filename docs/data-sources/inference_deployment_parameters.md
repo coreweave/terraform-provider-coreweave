@@ -23,8 +23,12 @@ output "instance_types" {
   value = data.coreweave_inference_deployment_parameters.deploy_params.instance_types
 }
 
-output "vllm_versions" {
-  value = data.coreweave_inference_deployment_parameters.deploy_params.runtime_versions["vllm"].versions
+# Versions that can be used for new deployments.
+output "vllm_stable_versions" {
+  value = [
+    for version, opts in data.coreweave_inference_deployment_parameters.deploy_params.runtime_engine_options["vllm"].versions :
+    version if opts.lifecycle == "LIFECYCLE_STABLE"
+  ]
 }
 ```
 
@@ -33,11 +37,12 @@ output "vllm_versions" {
 
 ### Read-Only
 
-- `engine_env_options` (Attributes Map) Available engine environment variable options per engine (keyed by engine name). (see [below for nested schema](#nestedatt--engine_env_options))
+- `engine_env_options` (Attributes Map, Deprecated) Available engine environment variable options per engine (keyed by engine name). (see [below for nested schema](#nestedatt--engine_env_options))
 - `gateway_ids` (Set of String) Gateway IDs available for the current organization.
 - `instance_types` (Set of String) Available instance types for deployments.
-- `runtime_config_options` (Attributes Map) Available runtime config options per engine (keyed by engine name). (see [below for nested schema](#nestedatt--runtime_config_options))
-- `runtime_versions` (Attributes Map) Available runtime versions per engine (keyed by engine name). (see [below for nested schema](#nestedatt--runtime_versions))
+- `runtime_config_options` (Attributes Map, Deprecated) Available runtime config options per engine (keyed by engine name). (see [below for nested schema](#nestedatt--runtime_config_options))
+- `runtime_engine_options` (Attributes Map) Available runtime versions and their options per engine (keyed by engine name). (see [below for nested schema](#nestedatt--runtime_engine_options))
+- `runtime_versions` (Attributes Map, Deprecated) Available runtime versions per engine (keyed by engine name). Includes deprecated versions, which cannot be used for new deployments. (see [below for nested schema](#nestedatt--runtime_versions))
 
 <a id="nestedatt--engine_env_options"></a>
 ### Nested Schema for `engine_env_options`
@@ -53,6 +58,24 @@ Read-Only:
 Read-Only:
 
 - `allowed_keys` (List of String) Configuration keys accepted by the engine's `engine_config` field.
+
+
+<a id="nestedatt--runtime_engine_options"></a>
+### Nested Schema for `runtime_engine_options`
+
+Read-Only:
+
+- `versions` (Attributes Map) Options per runtime version (keyed by semver version). (see [below for nested schema](#nestedatt--runtime_engine_options--versions))
+
+<a id="nestedatt--runtime_engine_options--versions"></a>
+### Nested Schema for `runtime_engine_options.versions`
+
+Read-Only:
+
+- `config_options` (List of String) Configuration keys accepted by the `engine_config` field for this version, sorted.
+- `env_options` (List of String) Environment variable names accepted by the `engine_env` field for this version, sorted.
+- `lifecycle` (String) Lifecycle state of the version: `LIFECYCLE_STABLE`, `LIFECYCLE_UNSTABLE`, or `LIFECYCLE_DEPRECATED`. Deprecated versions remain available only to existing deployments already using them; new deployments must use another version.
+
 
 
 <a id="nestedatt--runtime_versions"></a>

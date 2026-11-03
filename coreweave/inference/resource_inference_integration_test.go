@@ -31,10 +31,11 @@ locals {
   instance            = local.preferred_instance != "" ? local.preferred_instance : sort(tolist(local.available_instances))[0]
 
   # Runtime version is required on create; source it from deployment parameters.
-  # Restrict to plain MAJOR.MINOR.PATCH for now — pre-release/build-metadata
-  # versions are excluded pending #319. Revert this commit once #319 lands.
-  available_runtime_versions = try(data.coreweave_inference_deployment_parameters.deploy_params.runtime_versions["vllm"].versions, [])
-  runtime_version            = try([for v in local.available_runtime_versions : v if can(regex("^[0-9]+[.][0-9]+[.][0-9]+$", v))][0], "")
+  # Only LIFECYCLE_STABLE versions accept new deployments. Restrict to plain
+  # MAJOR.MINOR.PATCH for now; pre-release/build-metadata versions are excluded
+  # pending #319.
+  vllm_versions   = try(data.coreweave_inference_deployment_parameters.deploy_params.runtime_engine_options["vllm"].versions, {})
+  runtime_version = try([for v, o in local.vllm_versions : v if o.lifecycle == "LIFECYCLE_STABLE" && can(regex("^[0-9]+[.][0-9]+[.][0-9]+$", v))][0], "")
 }
 
 resource "coreweave_inference_capacity_claim" "test" {
@@ -108,7 +109,7 @@ resource "coreweave_inference_deployment" "test" {
   lifecycle {
     precondition {
       condition     = local.runtime_version != ""
-      error_message = "No x.y.z vllm runtime version available (pre-release/build-metadata excluded pending #319); available: ${jsonencode(local.available_runtime_versions)}"
+      error_message = "No stable x.y.z vllm runtime version available (pre-release/build-metadata excluded pending #319); available: ${jsonencode({ for v, o in local.vllm_versions : v => o.lifecycle })}"
     }
   }
 
