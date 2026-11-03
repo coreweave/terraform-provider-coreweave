@@ -69,7 +69,7 @@ testacc-sweep:
 
 testacc:
 	@set -e; for suite in $(SUITES); do \
-		TF_ACC=1 go test -v -cover -timeout=$(TEST_ACC_TIMEOUT) $(if $(TEST_ACC_PARALLEL),-parallel=$(TEST_ACC_PARALLEL)) $(if $(TEST_ACC_RUN),-run='$(TEST_ACC_RUN)') ./coreweave/$$suite; \
+		TF_ACC=1 go test -v -cover -count=1 -timeout=$(TEST_ACC_TIMEOUT) $(if $(TEST_ACC_PARALLEL),-parallel=$(TEST_ACC_PARALLEL)) $(if $(TEST_ACC_RUN),-run='$(TEST_ACC_RUN)') ./coreweave/$$suite; \
 	done
 
 testacc-nonblocking:
