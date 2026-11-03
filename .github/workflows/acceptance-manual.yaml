@@ -46,6 +46,7 @@ name: Acceptance (manual)
 # operate on the same suite's resources at once.
 concurrency:
   group: acceptance-test-${{ inputs.suite }}
+  queue: max
   cancel-in-progress: false
 
 jobs:
