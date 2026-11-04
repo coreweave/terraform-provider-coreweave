@@ -24,20 +24,30 @@ Settled choices:
   values that fail the schema validators.
 - pdFromProto is a pure mapping: concurrency is null when the API
   returns 0. AtLeast(1) on the attribute makes 0 always mean unset.
+  This differs on purpose from the decode read, which checks the prior
+  state; matching it would need the prior model passed in.
+- After a style pass, the user chose the older file style over the
+  fewest lines for three spots: multi-line Validators blocks in the pd
+  schema (12 older attributes use them; only hot_load used one line),
+  one if per field in ToUpdateRequest_Fields, and a separate
+  SetFromDeployment_IncompletePD test instead of a check inside the
+  NullPreservation test.
 
 ## Actions & Verification
 - gh stack submit opened draft PR #535 (stack #536); alexeldeib was
   requested as a reviewer.
 - History of this branch on the remote: cf09947 (first version), then
   57a312f and f54c207 (review fixes, force-pushed with leases), then
-  this commit, which shrinks the change back to cf09947 plus three
-  small fixes.
+  624b211, which shrank the change back to cf09947 plus three small
+  fixes, then this commit, which applies the older style (+35 lines).
 - TestDeploymentPDLifecycle: create with decode gpu_count 64 and a pd
   block, import with ImportStateVerify, then plan-only steps that
   change pd and remove pd; both expect an in-place Update.
 - TestInferenceDeployment_SetFromDeployment_NullPreservation checks
-  null prefill concurrency and the error for pd without
-  prefill_resources. A mutation that skips the check fails it.
+  null prefill concurrency.
+- TestInferenceDeployment_SetFromDeployment_IncompletePD checks the
+  error for pd without prefill_resources. A mutation that skips the
+  check fails it.
 - TestInferenceDeployment_ToUpdateRequest_Fields checks every prefill
   field; prefill instance type and min differ from the decode values.
 - go test ./coreweave/inference/, golangci-lint ./... (0 issues),
