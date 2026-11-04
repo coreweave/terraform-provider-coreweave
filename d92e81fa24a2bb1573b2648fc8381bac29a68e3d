@@ -1,0 +1,41 @@
+## Intent & Decisions
+Allow gpu_count 32 and 64 so that one pool can span several nodes of one
+NVLink domain for rack-scale expert parallelism. The inference API
+decides which organizations can use more than 16 GPUs. The provider does
+not copy that rule; the attribute description states the restriction.
+
+This commit is the bottom layer of the stack, because the pd commit
+above it uses the same seven values for the prefill pool.
+
+## Actions & Verification
+- gh stack submit opened draft PR #534 (stack #536) with the commit
+  body as the PR body. alexeldeib was requested as a reviewer.
+- A temporary test (not committed) showed that plan rejected
+  gpu_count = 32 and 64 before this change and accepted them after it.
+- Docs were regenerated with mise exec -- make generate. A second run
+  left no drift.
+- mise exec -- go test ./coreweave/inference/ passed at this commit.
+  go test ./..., golangci-lint (0 issues), make generate (no drift),
+  and git diff --check passed at the top of the stack, rebased onto
+  main 589054f.
+
+## Errors & Mistakes
+None.
+
+## Attempts & Outcomes
+None.
+
+## Findings & Constraints
+- The provider client has no protovalidate interceptor for inference
+  (only container_registry uses protovalidate), so this schema validator
+  is the only client-side gpu_count check. The older gpu_count rule in
+  the pinned API module descriptor does not block 32 or 64.
+- The values are useful only after the API accepts them; until then the
+  API rejects 32 and 64 at create and update.
+
+## Relevant Files & Commits
+- coreweave/inference/resource_inference_deployment.go: the resources
+  and pd.prefill_resources gpu_count validators.
+
+## Open Questions
+None.
