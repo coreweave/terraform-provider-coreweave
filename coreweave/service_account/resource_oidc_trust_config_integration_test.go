@@ -33,6 +33,7 @@ type oidcTrustConfigTestServer struct {
 
 	emptyCreateResponse      bool
 	emptyCreateResponseUID   bool
+	emptyNextGetResponse     bool
 	omitCreateDescription    bool
 	emptyUpdateResponse      bool
 	notFoundOnNextUpdateCall bool
@@ -81,6 +82,10 @@ func (s *oidcTrustConfigTestServer) CreateServiceAccountOidcTrustConfig(_ contex
 func (s *oidcTrustConfigTestServer) GetServiceAccountOidcTrustConfig(_ context.Context, request *directoryv1alpha.GetServiceAccountOidcTrustConfigRequest) (*directoryv1alpha.ServiceAccountOidcTrustConfig, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.emptyNextGetResponse {
+		s.emptyNextGetResponse = false
+		return nil, nil
+	}
 
 	config, exists := s.configs[request.GetName()]
 	if !exists {
@@ -156,6 +161,12 @@ func (s *oidcTrustConfigTestServer) returnEmptyCreateResponseUID() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.emptyCreateResponseUID = true
+}
+
+func (s *oidcTrustConfigTestServer) returnEmptyNextGetResponse() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.emptyNextGetResponse = true
 }
 
 func (s *oidcTrustConfigTestServer) returnCreateResponseWithoutDescription() {
@@ -404,6 +415,34 @@ func TestOIDCTrustConfigResourceRecoversCreateResponseWithoutUID(t *testing.T) {
 			Config: oidcTrustConfigTestConfig(server.URL, "missing UID", "true", "8d39f431-715c-4c6c-916a-849292f97920"),
 			Check:  tfresource.TestCheckResourceAttrSet(oidcTrustConfigResourceAddress, "uid"),
 		}},
+	})
+}
+
+func TestOIDCTrustConfigResourcePreservesIdentityWhenCreateReadBackIsInvalid(t *testing.T) {
+	service, server := startOIDCTrustConfigTestServer(t)
+	service.returnEmptyCreateResponse()
+	service.returnEmptyNextGetResponse()
+	config := oidcTrustConfigTestConfig(server.URL, "create recovery", "true", "8d39f431-715c-4c6c-916a-849292f97920")
+
+	tfresource.UnitTest(t, tfresource.TestCase{
+		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+		CheckDestroy:             service.checkEmpty,
+		Steps: []tfresource.TestStep{
+			{
+				Config:      config,
+				ExpectError: regexp.MustCompile("Unable to Recover OIDC Trust Configuration After Creation"),
+			},
+			{
+				Config: config,
+				Check: tfresource.ComposeAggregateTestCheckFunc(
+					tfresource.TestCheckResourceAttr(oidcTrustConfigResourceAddress, "name", "organizations/a1b2c3/serviceAccounts/ci-agent/oidcTrustConfigs/main-repo"),
+					tfresource.TestCheckResourceAttrSet(oidcTrustConfigResourceAddress, "uid"),
+					tfresource.TestCheckResourceAttr(oidcTrustConfigResourceAddress, "description", "create recovery"),
+					tfresource.TestCheckResourceAttr(oidcTrustConfigResourceAddress, "cel", "true"),
+					tfresource.TestCheckResourceAttr(oidcTrustConfigResourceAddress, "workload_federation_oidc_config_id", "8d39f431-715c-4c6c-916a-849292f97920"),
+				),
+			},
+		},
 	})
 }
 

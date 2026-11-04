@@ -187,13 +187,28 @@ func (r *OIDCTrustConfigResource) Create(ctx context.Context, req resource.Creat
 		// deterministic, so read the object back instead of leaving an orphan
 		// that Terraform cannot update or destroy.
 		name := serviceAccountName(data.OrganizationID.ValueString(), data.ServiceAccountID.ValueString()) + "/oidcTrustConfigs/" + data.ID.ValueString()
+		data.Name = types.StringValue(name)
+		data.UID = types.StringNull()
+		data.CreatedAt = types.StringNull()
+		data.UpdatedAt = types.StringNull()
+		resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+
 		readBack, readErr := r.client.Directory.GetServiceAccountOidcTrustConfig(ctx, &directoryv1alpha.GetServiceAccountOidcTrustConfigRequest{Name: &name})
 		if readErr != nil {
-			resp.Diagnostics.AddError("Unable to Recover OIDC Trust Configuration After Creation", fmt.Sprintf("The Directory API created the OIDC trust configuration but returned an invalid response (%s), and reading %q back failed: %s.", err, name, readErr))
+			resp.Diagnostics.AddError(
+				"Unable to Recover OIDC Trust Configuration After Creation",
+				fmt.Sprintf("The Directory API created %q but returned an invalid response (%s), and reading it back failed: %s. Terraform preserved its canonical name and planned inputs in state. If the next refresh cannot recover the configuration, import it with `terraform import <resource-address> %s` before applying again.", name, err, readErr, name),
+			)
 			return
 		}
 		if readBackErr := data.setFromProto(readBack); readBackErr != nil {
-			resp.Diagnostics.AddError("Unable to Recover OIDC Trust Configuration After Creation", fmt.Sprintf("The Directory API created the OIDC trust configuration but both the create response and the subsequent read were invalid: %s.", readBackErr))
+			resp.Diagnostics.AddError(
+				"Unable to Recover OIDC Trust Configuration After Creation",
+				fmt.Sprintf("The Directory API created %q but both the create response and the subsequent read were invalid: %s. Terraform preserved its canonical name and planned inputs in state. If the next refresh cannot recover the configuration, import it with `terraform import <resource-address> %s` before applying again.", name, readBackErr, name),
+			)
 			return
 		}
 	}
