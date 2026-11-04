@@ -43,18 +43,34 @@ Settled choices:
   min <= max. ModifyPlan deliberately takes the engine list from the
   API instead of hardcoding it, and decode has no min <= max check
   either; the API rejects both at apply.
+- After a /cs-review pass, the shared mock hotLoadImportHandler was
+  renamed fakeDeploymentService, because it now records Create and
+  Update for both the hot_load and pd tests. It stays in
+  deployment_hotload_test.go, following the convention that test files
+  are named for the tests they hold. The earlier rejection of a rename
+  (to keep the diff small) predates the mock gaining UpdateDeployment.
+- The rolloutStartGracePeriod declaration now says that it is a var
+  only for SetRolloutStartGracePeriod. Moving it into a resource field
+  was rejected: provider.TestProtoV6ProviderFactories is a global map
+  with no options, so a field would need a new provider-level test
+  hook.
+- Deferred: setFromDeployment still mutates its model argument, a
+  pattern that predates this change. The new helpers return values.
 
 ## Actions & Verification
 - gh stack submit opened draft PR #535 (stack #536) for the first
-  version. alexeldeib was requested as a reviewer. The amended commit
-  is not pushed yet.
+  version. alexeldeib was requested as a reviewer.
+- 57a312f (the review-fix amend) was force-pushed to
+  pd-wide-ep/deployment-pd with a lease on cf09947, and the PR body was
+  replaced with its commit message. The /cs-review amend after it is
+  not pushed yet.
 - TestDeploymentPDLifecycle now applies all steps: create with decode
   gpu_count 64 and prefill concurrency 8, import with
   ImportStateVerify, apply a pd change (gpu_count 8, min 2, max 6,
   capacity_classes RESERVED, no concurrency), then apply pd removal.
   Each update step checks PreApply that the action is Update and checks
   with proto.Equal the Pd that the mock received (nil after removal).
-  The mock hotLoadImportHandler gained UpdateDeployment.
+  The mock (now fakeDeploymentService) gained UpdateDeployment.
 - TestInferenceDeployment_SetFromDeployment_IncompletePDIsError covers
   empty pd, missing resources, and missing autoscaling.
 - TestInferenceDeployment_ToUpdateRequest_Fields compares the whole Pd
@@ -113,7 +129,7 @@ Settled choices:
   change.
 - c6689e5: the 32/64 GPU count change below this commit; its note still
   says both validators were edited, which gpuCountAttribute now merges.
-- coreweave/inference/deployment_hotload_test.go: hotLoadImportHandler,
+- coreweave/inference/deployment_hotload_test.go: fakeDeploymentService,
   the mock shared by the hot_load and pd lifecycle tests.
 - coreweave/inference/export_test.go: exported request and read helpers
   and SetRolloutStartGracePeriod.
