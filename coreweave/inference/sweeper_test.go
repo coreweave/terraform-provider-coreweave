@@ -76,6 +76,10 @@ func init() {
 		Name:         inferenceDeploymentResourceType,
 		Dependencies: []string{},
 		F: func(r string) error {
+			runtime, err := testutil.SweepRuntimeFromEnv()
+			if err != nil {
+				return err
+			}
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 			defer cancel()
 
@@ -99,7 +103,10 @@ func init() {
 				if !strings.HasPrefix(name, AcceptanceTestPrefix) {
 					continue
 				}
-				if testutil.SweepDryRun() {
+				if runtime.SkipYoungResource(ctx, inferenceDeploymentResourceType, name, d.GetStatus().GetCreatedAt()) {
+					continue
+				}
+				if runtime.DryRun {
 					fmt.Printf("[DRY RUN] would delete inference deployment: %s\n", name)
 					continue
 				}
@@ -128,6 +135,10 @@ func init() {
 		Name:         "coreweave_inference_capacity_claim",
 		Dependencies: []string{inferenceDeploymentResourceType},
 		F: func(r string) error {
+			runtime, err := testutil.SweepRuntimeFromEnv()
+			if err != nil {
+				return err
+			}
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 			defer cancel()
 
@@ -151,7 +162,10 @@ func init() {
 				if !strings.HasPrefix(name, AcceptanceTestPrefix) {
 					continue
 				}
-				if testutil.SweepDryRun() {
+				if runtime.SkipYoungResource(ctx, "coreweave_inference_capacity_claim", name, d.GetStatus().GetCreatedAt()) {
+					continue
+				}
+				if runtime.DryRun {
 					fmt.Printf("[DRY RUN] would delete inference capacity claim: %s\n", name)
 					continue
 				}
@@ -180,6 +194,10 @@ func init() {
 		Name:         "coreweave_inference_gateway",
 		Dependencies: []string{inferenceDeploymentResourceType},
 		F: func(r string) error {
+			runtime, err := testutil.SweepRuntimeFromEnv()
+			if err != nil {
+				return err
+			}
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 			defer cancel()
 
@@ -203,7 +221,10 @@ func init() {
 				if !strings.HasPrefix(name, AcceptanceTestPrefix) {
 					continue
 				}
-				if testutil.SweepDryRun() {
+				if runtime.SkipYoungResource(ctx, "coreweave_inference_gateway", name, d.GetStatus().GetCreatedAt()) {
+					continue
+				}
+				if runtime.DryRun {
 					fmt.Printf("[DRY RUN] would delete inference gateway: %s\n", name)
 					continue
 				}

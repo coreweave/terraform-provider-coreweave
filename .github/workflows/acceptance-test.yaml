@@ -81,3 +81,70 @@ jobs:
       - name: Validate ${{ inputs.suite }} acceptance tests
         run: |
           make testacc SUITES='${{ inputs.suite }}' ${{ inputs.suite == 'cks' && 'TEST_ACC_PARALLEL=3 TEST_ACC_TIMEOUT=60m' || '' }}
+
+  nonblocking:
+    name: Non-blocking acceptance runner (${{ inputs.suite }})
+    continue-on-error: true
+    runs-on: cw
+    permissions:
+      contents: read
+      pull-requests: read
+      packages: read
+      checks: write
+    container: ghcr.io/coreweave/github-actions-images/github-base-runner:1.21.0
+    environment: QA
+    needs: [sweep]
+    env:
+      COREWEAVE_API_ENDPOINT: ${{ inputs.suite == 'object_storage' && secrets.COREWEAVE_OBJS_API_ENDPOINT || vars.COREWEAVE_API_ENDPOINT }}
+      COREWEAVE_API_TOKEN: ${{ inputs.suite == 'object_storage' && secrets.COREWEAVE_OBJS_API_TOKEN || secrets.COREWEAVE_API_TOKEN }}
+      TEST_ACC_SWEEP_ZONE: ${{ inputs.suite == 'object_storage' && 'US-EAST-04A' || inputs.suite == 'inference' && 'RNO2A' || 'US-LAB-01A' }}
+      COREWEAVE_CONTAINER_REGISTRY_TEST_ZONE: ${{ inputs.suite == 'container_registry' && 'US-LAB-01A' || '' }}
+      COREWEAVE_CONTAINER_REGISTRY_TEST_PREFIX: ${{ inputs.suite == 'container_registry' && (vars.COREWEAVE_CONTAINER_REGISTRY_TEST_PREFIX || 'q-tfacc-cr-') || '' }}
+      INFR_ZONE: 'RNO2A'
+      INFR_INSTANCE_ID: 'gd-1xgh200'
+      TF_IN_AUTOMATION: '1'
+    steps:
+      - *current-pr
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24.21.0'
+      - run: go mod download
+      - *current-pr
+
+      - name: Run non-blocking acceptance for ${{ inputs.suite }}
+        id: nonblocking
+        run: |
+          make testacc-nonblocking SUITES='${{ inputs.suite }}' ${{ inputs.suite == 'cks' && 'TEST_ACC_PARALLEL=1 TEST_ACC_TIMEOUT=60m' || '' }}
+
+      - name: Summarize non-blocking acceptance
+        if: ${{ always() }}
+        env:
+          SUITE: ${{ inputs.suite }}
+        run: node .github/acceptance-tests/nonblocking.mjs ".test-results/nonblocking-acceptance/$SUITE.json"
+
+      - name: Publish non-blocking acceptance check
+        if: ${{ always() }}
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          SUITE: ${{ inputs.suite }}
+          TEST_OUTCOME: ${{ steps.nonblocking.outcome }}
+          JOB_STATUS: ${{ job.status }}
+        with:
+          script: |
+            const outcome = process.env.TEST_OUTCOME;
+            const conclusion = outcome === 'cancelled' || process.env.JOB_STATUS === 'cancelled' ? 'cancelled' :
+              outcome === 'success' && process.env.JOB_STATUS === 'success' ? 'success' : 'failure';
+            await github.rest.checks.create({
+              ...context.repo,
+              name: `Non-blocking acceptance (${process.env.SUITE})`,
+              head_sha: context.payload.pull_request.head.sha,
+              status: 'completed',
+              conclusion,
+              details_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+              output: {
+                title: `Non-blocking acceptance: ${conclusion}`,
+                summary: `Test command outcome: ${outcome || 'not run'}. See the job summary for test results. This check is informational and must not be required for merging.`,
+              },
+            });
