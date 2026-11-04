@@ -50,6 +50,10 @@ Optional:
 
 - `servers` (Set of String) The DNS servers advertised to DHCP clients within the VPC.
 
+Read-Only:
+
+- `search_domains` (List of String) The DNS search domains advertised to DHCP clients within the VPC, in order of resolution precedence.
+
 
 
 <a id="nestedatt--egress"></a>

@@ -34,6 +34,16 @@ import (
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/retry"
 	"github.com/zclconf/go-cty/cty"
+	"google.golang.org/protobuf/types/known/fieldmaskpb"
+)
+
+// VPC update field mask paths
+const (
+	fieldPathVPCPrefixes      = "vpc_prefixes"
+	fieldPathIngress          = "ingress.disable_public_services"
+	fieldPathEgress           = "egress.disable_public_access"
+	fieldPathDNSServers       = "dhcp.dns.servers"
+	fieldPathDNSSearchDomains = "dhcp.dns.search_domains"
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
@@ -79,10 +89,16 @@ func (r *VpcResource) ConfigValidators(context.Context) []resource.ConfigValidat
 
 type VpcDhcpDnsResourceModel struct {
 	Servers types.Set `tfsdk:"servers"`
+	// SearchDomains is an ordered list: DNS resolution tries search domains in
+	// the order they are listed, so the order is semantically significant and
+	// must be preserved (unlike Servers, which is modeled as an unordered set).
+	SearchDomains types.List `tfsdk:"search_domains"`
 }
 
 func (v *VpcDhcpDnsResourceModel) IsEmpty() bool {
-	return v.Servers.IsNull() || len(v.Servers.Elements()) == 0
+	serversEmpty := v.Servers.IsNull() || len(v.Servers.Elements()) == 0
+	searchDomainsEmpty := v.SearchDomains.IsNull() || len(v.SearchDomains.Elements()) == 0
+	return serversEmpty && searchDomainsEmpty
 }
 
 type VpcDhcpResourceModel struct {
@@ -97,23 +113,77 @@ func (v *VpcDhcpResourceModel) IsEmpty() bool {
 	return v.Dns.IsEmpty()
 }
 
+// Set populates the model from the API response. The receiver is expected to
+// already hold the prior (planned or state) value so that, when the API returns
+// an empty collection, the null-versus-empty representation the practitioner
+// configured can be preserved. The API cannot distinguish a null collection
+// from an empty one, so blindly decoding its response would flip null to empty
+// (or vice versa) and trip Terraform's inconsistent-result-after-apply check.
 func (v *VpcDhcpResourceModel) Set(dhcp *networkingv1beta1.DHCP) {
-	if dhcp == nil {
+	prior := v.Dns
+
+	var apiDns *networkingv1beta1.DHCP_DNS
+	if dhcp != nil {
+		apiDns = dhcp.Dns
+	}
+
+	// Keep an explicitly configured DNS block even when the API omits the empty
+	// submessage; only drop it when it was neither configured nor returned.
+	// Otherwise a configured empty object would collapse to null and trip
+	// Terraform's inconsistent-result-after-apply check.
+	if prior == nil && apiDns == nil {
+		v.Dns = nil
 		return
 	}
 
-	if dhcp.Dns != nil {
-		v.Dns = &VpcDhcpDnsResourceModel{}
+	var servers, searchDomains []string
+	if apiDns != nil {
+		servers = apiDns.Servers
+		searchDomains = apiDns.SearchDomains
+	}
 
-		servers := make([]attr.Value, len(dhcp.Dns.Servers))
-		for i, s := range dhcp.Dns.Servers {
-			servers[i] = types.StringValue(s)
+	v.Dns = &VpcDhcpDnsResourceModel{
+		Servers:       serversFromAPI(prior, servers),
+		SearchDomains: searchDomainsFromAPI(prior, searchDomains),
+	}
+}
+
+// serversFromAPI builds the servers set from the API response. When the API
+// returns no servers it mirrors the prior value's null-versus-empty
+// representation, defaulting to null when there is no prior value (e.g. during
+// import) so the result matches what create/update stores for omitted servers.
+func serversFromAPI(prior *VpcDhcpDnsResourceModel, values []string) types.Set {
+	if len(values) == 0 {
+		if prior == nil || prior.Servers.IsNull() {
+			return types.SetNull(types.StringType)
 		}
-		ds := types.SetValueMust(types.StringType, servers)
-		v.Dns.Servers = ds
-
-		return
+		return types.SetValueMust(types.StringType, []attr.Value{})
 	}
+
+	elems := make([]attr.Value, len(values))
+	for i, s := range values {
+		elems[i] = types.StringValue(s)
+	}
+	return types.SetValueMust(types.StringType, elems)
+}
+
+// searchDomainsFromAPI builds the ordered search-domain list from the API
+// response. When the API returns no entries it mirrors the prior value's
+// null-versus-empty representation, defaulting to null when there is no prior
+// value.
+func searchDomainsFromAPI(prior *VpcDhcpDnsResourceModel, values []string) types.List {
+	if len(values) == 0 {
+		if prior == nil || prior.SearchDomains.IsNull() {
+			return types.ListNull(types.StringType)
+		}
+		return types.ListValueMust(types.StringType, []attr.Value{})
+	}
+
+	elems := make([]attr.Value, len(values))
+	for i, sd := range values {
+		elems[i] = types.StringValue(sd)
+	}
+	return types.ListValueMust(types.StringType, elems)
 }
 
 type HostPrefixResourceModel struct {
@@ -337,35 +407,45 @@ func (v *VpcResourceModel) Set(vpc *networkingv1beta1.VPC) (diagnostics diag.Dia
 		v.VpcPrefixes = vpcPrefixes
 	}
 
-	dhcp := VpcDhcpResourceModel{}
-	dhcp.Set(vpc.Dhcp)
-	// if there is any dhcp config returned from the API, set it
-	if !dhcp.IsEmpty() {
-		v.Dhcp = &dhcp
-	} else { // otherwise, remove it
+	// Decode DHCP in place so Set can read the prior value and preserve each
+	// collection's null-versus-empty representation when the API returns empty.
+	priorDhcp := v.Dhcp
+	if v.Dhcp == nil {
+		v.Dhcp = &VpcDhcpResourceModel{}
+	}
+	v.Dhcp.Set(vpc.Dhcp)
+	// Collapse to nil only when DHCP was neither explicitly configured nor
+	// returned by the API. An explicitly configured (possibly empty) block must
+	// survive, since dhcp is optional-not-computed and Terraform would reject a
+	// configured object collapsing to null as an inconsistent result.
+	if priorDhcp == nil && v.Dhcp.IsEmpty() {
 		v.Dhcp = nil
 	}
 	return diagnostics
 }
 
 func (v *VpcResourceModel) GetDhcp(ctx context.Context) (*networkingv1beta1.DHCP, diag.Diagnostics) {
-	if v.Dhcp == nil {
+	if v.Dhcp == nil || v.Dhcp.Dns == nil {
 		return nil, nil
 	}
 
 	var diagnostics diag.Diagnostics
 
-	ds := make([]string, 0)
-	diagnostics.Append(v.Dhcp.Dns.Servers.ElementsAs(ctx, &ds, false)...)
+	servers := make([]string, 0)
+	diagnostics.Append(v.Dhcp.Dns.Servers.ElementsAs(ctx, &servers, false)...)
 
-	dhcp := &networkingv1beta1.DHCP{
-		Dns: &networkingv1beta1.DHCP_DNS{
-			Servers: ds,
-		},
-	}
+	searchDomains := make([]string, 0)
+	diagnostics.Append(v.Dhcp.Dns.SearchDomains.ElementsAs(ctx, &searchDomains, false)...)
 
 	if diagnostics.HasError() {
 		return nil, diagnostics
+	}
+
+	dhcp := &networkingv1beta1.DHCP{
+		Dns: &networkingv1beta1.DHCP_DNS{
+			Servers:       servers,
+			SearchDomains: searchDomains,
+		},
 	}
 
 	return dhcp, diagnostics
@@ -436,7 +516,93 @@ func (v *VpcResourceModel) ToCreateRequest(ctx context.Context) (*networkingv1be
 	return req, diagnostics
 }
 
-func (v *VpcResourceModel) ToUpdateRequest(ctx context.Context) (*networkingv1beta1.UpdateVPCRequest, diag.Diagnostics) {
+// The following accessors return a managed field's value in a null-safe way, so
+// that a missing parent block (a nil Ingress/Egress/Dhcp/Dns) compares equal to
+// an explicitly-null value when diffing plan against prior state.
+
+func (v *VpcResourceModel) ingressDisablePublicServices() types.Bool {
+	if v.Ingress == nil {
+		return types.BoolNull()
+	}
+	return v.Ingress.DisablePublicServices
+}
+
+func (v *VpcResourceModel) egressDisablePublicAccess() types.Bool {
+	if v.Egress == nil {
+		return types.BoolNull()
+	}
+	return v.Egress.DisablePublicAccess
+}
+
+func (v *VpcResourceModel) dnsServers() types.Set {
+	if v.Dhcp == nil || v.Dhcp.Dns == nil {
+		return types.SetNull(types.StringType)
+	}
+	return v.Dhcp.Dns.Servers
+}
+
+func (v *VpcResourceModel) dnsSearchDomains() types.List {
+	if v.Dhcp == nil || v.Dhcp.Dns == nil {
+		return types.ListNull(types.StringType)
+	}
+	return v.Dhcp.Dns.SearchDomains
+}
+
+// vpcPrefixesChanged reports whether the ordered VPC-prefix list differs between
+// plan and prior state. The server replaces the whole list on update, so any
+// difference in length, order, or an element's name/value/type is a change.
+func vpcPrefixesChanged(plan, state []VpcPrefixResourceModel) bool {
+	if len(plan) != len(state) {
+		return true
+	}
+
+	for i := range plan {
+		if !plan[i].Name.Equal(state[i].Name) {
+			return true
+		}
+
+		if !plan[i].Value.Equal(state[i].Value) {
+			return true
+		}
+
+		if !plan[i].Type.Equal(state[i].Type) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// buildUpdateMask returns a field mask naming the managed fields whose planned
+// value differs from the prior state, so UpdateVPC touches only what changed.
+// Equality errs toward including a field (e.g. a null value versus an absent
+// parent block), which is a harmless no-op for every path except
+// search_domains — and that path can only differ for a zonal-backend VPC, where
+// masking it is supported.
+func buildUpdateMask(plan, state *VpcResourceModel) *fieldmaskpb.FieldMask {
+	var paths []string
+	if vpcPrefixesChanged(plan.VpcPrefixes, state.VpcPrefixes) {
+		paths = append(paths, fieldPathVPCPrefixes)
+	}
+	if !plan.ingressDisablePublicServices().Equal(state.ingressDisablePublicServices()) {
+		paths = append(paths, fieldPathIngress)
+	}
+	if !plan.egressDisablePublicAccess().Equal(state.egressDisablePublicAccess()) {
+		paths = append(paths, fieldPathEgress)
+	}
+	if !plan.dnsServers().Equal(state.dnsServers()) {
+		paths = append(paths, fieldPathDNSServers)
+	}
+	if !plan.dnsSearchDomains().Equal(state.dnsSearchDomains()) {
+		paths = append(paths, fieldPathDNSSearchDomains)
+	}
+	return &fieldmaskpb.FieldMask{Paths: paths}
+}
+
+// ToUpdateRequest builds the UpdateVPC request body and attaches the supplied
+// field mask. The caller computes the mask from the plan/state diff so the
+// request names only the fields that changed.
+func (v *VpcResourceModel) ToUpdateRequest(ctx context.Context, mask *fieldmaskpb.FieldMask) (*networkingv1beta1.UpdateVPCRequest, diag.Diagnostics) {
 	var diagnostics diag.Diagnostics
 	vpcPrefixes, prefixDiags := v.vpcPrefixes()
 	diagnostics.Append(prefixDiags...)
@@ -449,6 +615,7 @@ func (v *VpcResourceModel) ToUpdateRequest(ctx context.Context) (*networkingv1be
 	}
 
 	req := networkingv1beta1.UpdateVPCRequest{
+		UpdateMask:  mask,
 		Id:          v.Id.ValueString(),
 		VpcPrefixes: vpcPrefixes,
 		Ingress:     v.Ingress.ToProto(),
@@ -609,6 +776,11 @@ func (r *VpcResource) Schema(ctx context.Context, req resource.SchemaRequest, re
 							"servers": schema.SetAttribute{
 								Optional:            true,
 								MarkdownDescription: "The DNS servers to be used by DHCP clients within the VPC.",
+								ElementType:         types.StringType,
+							},
+							"search_domains": schema.ListAttribute{
+								Optional:            true,
+								MarkdownDescription: "The DNS search domains to be used by DHCP clients within the VPC, in order of resolution precedence. Each entry must be a unique, valid DNS name (RFC 1123) of at most 253 characters with no trailing dot, and at most 100 may be specified.",
 								ElementType:         types.StringType,
 							},
 						},
@@ -819,16 +991,18 @@ func (r *VpcResource) Read(ctx context.Context, req resource.ReadRequest, resp *
 }
 
 func (r *VpcResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	var data VpcResourceModel
+	var plan, state VpcResourceModel
 
-	// Read Terraform plan data into the model
-	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
-
+	// Read both the plan (desired) and the prior state so the field mask can
+	// name only the fields that actually changed.
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	updateReq, diags := data.ToUpdateRequest(ctx)
+	fieldMask := buildUpdateMask(&plan, &state)
+	updateReq, diags := plan.ToUpdateRequest(ctx, fieldMask)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -882,8 +1056,8 @@ func (r *VpcResource) Update(ctx context.Context, req resource.UpdateRequest, re
 		return
 	}
 
-	data.Set(vpc)
-	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+	plan.Set(vpc)
+	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
 func (r *VpcResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
@@ -972,6 +1146,48 @@ func hostPrefixToCtyValue(hp HostPrefixResourceModel) cty.Value {
 	return cty.ObjectVal(hpObj)
 }
 
+// stringSetToCtyValues converts a Terraform string set into a slice of cty
+// string values, panicking (with what describing the field) if the set cannot
+// be marshaled. A null set yields a nil slice.
+func stringSetToCtyValues(ctx context.Context, set types.Set, what string) []cty.Value {
+	if set.IsNull() {
+		return nil
+	}
+
+	var elems []types.String
+	if diags := set.ElementsAs(ctx, &elems, false); diags.HasError() {
+		panic(fmt.Sprintf("failed to marshal %s: %+v", what, diags))
+	}
+
+	vals := make([]cty.Value, len(elems))
+	for i, s := range elems {
+		vals[i] = cty.StringVal(s.ValueString())
+	}
+
+	return vals
+}
+
+// stringListToCtyValues converts a Terraform string list into a slice of cty
+// string values, preserving element order and panicking (with what describing
+// the field) if the list cannot be marshaled. A null list yields a nil slice.
+func stringListToCtyValues(ctx context.Context, list types.List, what string) []cty.Value {
+	if list.IsNull() {
+		return nil
+	}
+
+	var elems []types.String
+	if diags := list.ElementsAs(ctx, &elems, false); diags.HasError() {
+		panic(fmt.Sprintf("failed to marshal %s: %+v", what, diags))
+	}
+
+	vals := make([]cty.Value, len(elems))
+	for i, s := range elems {
+		vals[i] = cty.StringVal(s.ValueString())
+	}
+
+	return vals
+}
+
 // MustRenderVpcResource is a helper to render HCL for use in acceptance testing.
 // It should not be used by clients of this library.
 func MustRenderVpcResource(ctx context.Context, resourceName string, vpc *VpcResourceModel) string {
@@ -1039,19 +1255,11 @@ func MustRenderVpcResource(ctx context.Context, resourceName string, vpc *VpcRes
 		dhcp := map[string]cty.Value{}
 		if vpc.Dhcp.Dns != nil {
 			dns := map[string]cty.Value{}
-			if !vpc.Dhcp.Dns.Servers.IsNull() {
-				servers := []types.String{}
-				if diags := vpc.Dhcp.Dns.Servers.ElementsAs(ctx, &servers, false); diags.HasError() {
-					panic(fmt.Sprintf("failed to marshal DHCP servers: %+v", diags))
-				}
-				serverVals := make([]cty.Value, len(servers))
-				for i, s := range servers {
-					serverVals[i] = cty.StringVal(s.ValueString())
-				}
-
-				if len(serverVals) > 0 {
-					dns["servers"] = cty.SetVal(serverVals)
-				}
+			if servers := stringSetToCtyValues(ctx, vpc.Dhcp.Dns.Servers, "DHCP servers"); len(servers) > 0 {
+				dns["servers"] = cty.SetVal(servers)
+			}
+			if searchDomains := stringListToCtyValues(ctx, vpc.Dhcp.Dns.SearchDomains, "DHCP search domains"); len(searchDomains) > 0 {
+				dns["search_domains"] = cty.ListVal(searchDomains)
 			}
 			if len(dns) > 0 {
 				dhcp["dns"] = cty.ObjectVal(dns)

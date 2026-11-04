@@ -34,7 +34,7 @@ func TestVpcPrefixTypeRoundTrip(t *testing.T) {
 			create, diags := vpc.ToCreateRequest(t.Context())
 			require.False(t, diags.HasError(), "%v", diags)
 			require.Equal(t, prefix, create.VpcPrefixes[0])
-			update, diags := vpc.ToUpdateRequest(t.Context())
+			update, diags := vpc.ToUpdateRequest(t.Context(), nil)
 			require.False(t, diags.HasError(), "%v", diags)
 			require.Equal(t, prefix, update.VpcPrefixes[0])
 			require.Contains(t, MustRenderVpcResource(t.Context(), "test", &vpc), `type`)
@@ -202,7 +202,7 @@ func TestVpcPrefixTypePresence(t *testing.T) {
 	model := VpcResourceModel{VpcPrefixes: []VpcPrefixResourceModel{{Type: types.StringValue("invalid")}}}
 	_, createDiags := model.ToCreateRequest(t.Context())
 	require.True(t, createDiags.HasError())
-	_, updateDiags := model.ToUpdateRequest(t.Context())
+	_, updateDiags := model.ToUpdateRequest(t.Context(), nil)
 	require.True(t, updateDiags.HasError())
 }
 
@@ -215,7 +215,7 @@ func TestVpcPrefixTypeAPIEvolution(t *testing.T) {
 		if value == 0 {
 			require.True(t, prefix.Type.IsNull())
 		}
-		request, diags := (&VpcResourceModel{VpcPrefixes: []VpcPrefixResourceModel{prefix}}).ToUpdateRequest(t.Context())
+		request, diags := (&VpcResourceModel{VpcPrefixes: []VpcPrefixResourceModel{prefix}}).ToUpdateRequest(t.Context(), nil)
 		require.False(t, diags.HasError(), "%v", diags)
 		require.Equal(t, value, int32(request.VpcPrefixes[0].GetType()))
 	}
