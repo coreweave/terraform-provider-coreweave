@@ -105,6 +105,9 @@ func TestOIDCTrustConfigCanonicalNameParsing(t *testing.T) {
 	assert.Equal(t, "a1b2c3", organizationID)
 	assert.Equal(t, "ci-agent", serviceAccountID)
 	assert.Equal(t, "main-repo", configID)
-	_, _, _, err = parseOIDCTrustConfigName("main-repo")
+	invalidOrganizationID, invalidServiceAccountID, invalidConfigID, err := parseOIDCTrustConfigName("main-repo")
 	require.Error(t, err)
+	assert.Empty(t, invalidOrganizationID)
+	assert.Empty(t, invalidServiceAccountID)
+	assert.Empty(t, invalidConfigID)
 }
