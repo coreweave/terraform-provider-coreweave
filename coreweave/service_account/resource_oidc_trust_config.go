@@ -44,7 +44,7 @@ type OIDCTrustConfigResourceModel struct {
 func NewOIDCTrustConfigResource() resource.Resource { return &OIDCTrustConfigResource{} }
 
 func (r *OIDCTrustConfigResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
-	resp.TypeName = req.ProviderTypeName + "_service_account_oidc_trust_config"
+	resp.TypeName = req.ProviderTypeName + "_iam_service_account_oidc_trust_config"
 }
 
 func (r *OIDCTrustConfigResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {

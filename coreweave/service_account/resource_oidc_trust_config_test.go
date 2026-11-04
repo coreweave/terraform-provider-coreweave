@@ -28,6 +28,13 @@ func TestOIDCTrustConfigSchema(t *testing.T) {
 	assert.True(t, response.Schema.Attributes["description"].IsOptional())
 }
 
+func TestOIDCTrustConfigMetadataUsesIAMNamespace(t *testing.T) {
+	t.Parallel()
+	response := &frameworkresource.MetadataResponse{}
+	NewOIDCTrustConfigResource().Metadata(t.Context(), frameworkresource.MetadataRequest{ProviderTypeName: "coreweave"}, response)
+	assert.Equal(t, "coreweave_iam_service_account_oidc_trust_config", response.TypeName)
+}
+
 func TestOIDCTrustConfigCreateRequest(t *testing.T) {
 	t.Parallel()
 	model := OIDCTrustConfigResourceModel{

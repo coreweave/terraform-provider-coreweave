@@ -22,7 +22,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-const oidcTrustConfigResourceAddress = "coreweave_service_account_oidc_trust_config.test"
+const oidcTrustConfigResourceAddress = "coreweave_iam_service_account_oidc_trust_config.test"
 
 type oidcTrustConfigTestServer struct {
 	directoryv1alphaconnect.UnimplementedDirectoryServiceHandler
@@ -192,7 +192,7 @@ provider "coreweave" {
   token    = "test-token"
 }
 
-resource "coreweave_service_account_oidc_trust_config" "test" {
+resource "coreweave_iam_service_account_oidc_trust_config" "test" {
   id                                 = "main-repo"
   organization_id                    = "a1b2c3"
   service_account_id                 = "ci-agent"
@@ -209,7 +209,7 @@ provider "coreweave" {
   token    = "test-token"
 }
 
-resource "coreweave_service_account_oidc_trust_config" "test" {
+resource "coreweave_iam_service_account_oidc_trust_config" "test" {
   id                                 = "main-repo"
   organization_id                    = "a1b2c3"
   service_account_id                 = "ci-agent"
@@ -232,7 +232,7 @@ resource "terraform_data" "description" {
   triggers_replace = %q
 }
 
-resource "coreweave_service_account_oidc_trust_config" "test" {
+resource "coreweave_iam_service_account_oidc_trust_config" "test" {
   id                                 = "main-repo"
   organization_id                    = "a1b2c3"
   service_account_id                 = "ci-agent"
@@ -250,7 +250,7 @@ provider "coreweave" {
   token    = "test-token"
 }
 
-resource "coreweave_service_account_oidc_trust_config" "test" {
+resource "coreweave_iam_service_account_oidc_trust_config" "test" {
   id                                 = %q
   organization_id                    = %q
   service_account_id                 = %q

@@ -4,7 +4,7 @@ resource "coreweave_workload_federation_oidc_config" "github" {
   audience   = "https://api.coreweave.com"
 }
 
-resource "coreweave_service_account_oidc_trust_config" "main" {
+resource "coreweave_iam_service_account_oidc_trust_config" "main" {
   id                                 = "main-repository"
   organization_id                    = "a1b2c3"
   service_account_id                 = "github-actions"
