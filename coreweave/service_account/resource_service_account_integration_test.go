@@ -33,8 +33,15 @@ type serviceAccountTestServer struct {
 
 	emptyCreateResponse      bool
 	emptyCreateResponseUID   bool
+	emptyNextGetResponse     bool
 	emptyUpdateResponse      bool
 	notFoundOnNextUpdateCall bool
+}
+
+type serviceAccountPlanCheck func()
+
+func (check serviceAccountPlanCheck) CheckPlan(_ context.Context, _ plancheck.CheckPlanRequest, _ *plancheck.CheckPlanResponse) {
+	check()
 }
 
 func newServiceAccountTestServer() *serviceAccountTestServer {
@@ -74,6 +81,10 @@ func (s *serviceAccountTestServer) CreateServiceAccount(_ context.Context, reque
 func (s *serviceAccountTestServer) GetServiceAccount(_ context.Context, request *directoryv1alpha.GetServiceAccountRequest) (*directoryv1alpha.ServiceAccount, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.emptyNextGetResponse {
+		s.emptyNextGetResponse = false
+		return nil, nil
+	}
 
 	account, exists := s.accounts[request.GetName()]
 	if !exists {
@@ -150,6 +161,12 @@ func (s *serviceAccountTestServer) returnEmptyCreateResponseUID() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.emptyCreateResponseUID = true
+}
+
+func (s *serviceAccountTestServer) returnEmptyNextGetResponse() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.emptyNextGetResponse = true
 }
 
 func (s *serviceAccountTestServer) returnEmptyUpdateResponse() {
@@ -330,31 +347,86 @@ func TestServiceAccountResourceResolvedNoOpUpdate(t *testing.T) {
 	})
 }
 
-func TestServiceAccountResourceRejectsEmptyCreateResponse(t *testing.T) {
+func TestServiceAccountResourceRecoversEmptyCreateResponse(t *testing.T) {
 	service, server := startServiceAccountTestServer(t)
 	service.returnEmptyCreateResponse()
-	t.Cleanup(service.removeAll)
 
 	tfresource.UnitTest(t, tfresource.TestCase{
 		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+		CheckDestroy:             service.checkEmpty,
 		Steps: []tfresource.TestStep{{
-			Config:      serviceAccountTestConfig(server.URL, "Empty create response"),
-			ExpectError: regexp.MustCompile("service account name is missing"),
+			Config: serviceAccountTestConfig(server.URL, "Empty create response"),
+			Check: tfresource.ComposeAggregateTestCheckFunc(
+				tfresource.TestCheckResourceAttr(serviceAccountResourceAddress, "name", "organizations/a1b2c3/serviceAccounts/ci-agent"),
+				tfresource.TestCheckResourceAttrSet(serviceAccountResourceAddress, "uid"),
+			),
 		}},
 	})
 }
 
-func TestServiceAccountResourceRejectsCreateResponseWithoutUID(t *testing.T) {
+func TestServiceAccountResourceRecoversCreateResponseWithoutUID(t *testing.T) {
 	service, server := startServiceAccountTestServer(t)
 	service.returnEmptyCreateResponseUID()
-	t.Cleanup(service.removeAll)
 
 	tfresource.UnitTest(t, tfresource.TestCase{
 		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+		CheckDestroy:             service.checkEmpty,
 		Steps: []tfresource.TestStep{{
-			Config:      serviceAccountTestConfig(server.URL, "Missing UID"),
-			ExpectError: regexp.MustCompile("service account UID is missing"),
+			Config: serviceAccountTestConfig(server.URL, "Missing UID"),
+			Check: tfresource.ComposeAggregateTestCheckFunc(
+				tfresource.TestCheckResourceAttr(serviceAccountResourceAddress, "name", "organizations/a1b2c3/serviceAccounts/ci-agent"),
+				tfresource.TestCheckResourceAttrSet(serviceAccountResourceAddress, "uid"),
+			),
 		}},
+	})
+}
+
+func TestServiceAccountResourcePreservesIdentityWhenCreateReadBackIsInvalid(t *testing.T) {
+	service, server := startServiceAccountTestServer(t)
+	service.returnEmptyCreateResponse()
+	service.returnEmptyNextGetResponse()
+	config := serviceAccountTestConfig(server.URL, "Create recovery")
+
+	tfresource.UnitTest(t, tfresource.TestCase{
+		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+		CheckDestroy:             service.checkEmpty,
+		Steps: []tfresource.TestStep{
+			{
+				Config:      config,
+				ExpectError: regexp.MustCompile("Unable to Read Service Account After Creation"),
+			},
+			{
+				Config: config,
+				Check: tfresource.ComposeAggregateTestCheckFunc(
+					tfresource.TestCheckResourceAttr(serviceAccountResourceAddress, "name", "organizations/a1b2c3/serviceAccounts/ci-agent"),
+					tfresource.TestCheckResourceAttrSet(serviceAccountResourceAddress, "uid"),
+				),
+			},
+		},
+	})
+}
+
+func TestServiceAccountResourceAcceptsActivationDriftDuringUpdate(t *testing.T) {
+	service, server := startServiceAccountTestServer(t)
+	initial := serviceAccountTestConfig(server.URL, "Initial")
+	updated := serviceAccountTestConfig(server.URL, "Updated")
+
+	tfresource.UnitTest(t, tfresource.TestCase{
+		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+		CheckDestroy:             service.checkEmpty,
+		Steps: []tfresource.TestStep{
+			{Config: initial},
+			{
+				Config: updated,
+				ConfigPlanChecks: tfresource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{
+					serviceAccountPlanCheck(service.deactivateAll),
+				}},
+				Check: tfresource.ComposeAggregateTestCheckFunc(
+					tfresource.TestCheckResourceAttr(serviceAccountResourceAddress, "display_name", "Updated"),
+					tfresource.TestCheckResourceAttr(serviceAccountResourceAddress, "active", "false"),
+				),
+			},
+		},
 	})
 }
 

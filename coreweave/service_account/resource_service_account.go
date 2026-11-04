@@ -78,7 +78,6 @@ func (r *ServiceAccountResource) Schema(_ context.Context, _ resource.SchemaRequ
 			"active": schema.BoolAttribute{
 				Computed:            true,
 				MarkdownDescription: "Whether the service account may authenticate.",
-				PlanModifiers:       []planmodifier.Bool{boolplanmodifier.UseStateForUnknown()},
 			},
 			"created_at": schema.StringAttribute{Computed: true, MarkdownDescription: "The RFC 3339 creation timestamp.", PlanModifiers: computed},
 			"updated_at": schema.StringAttribute{Computed: true, MarkdownDescription: "The RFC 3339 last-update timestamp."},
@@ -133,6 +132,64 @@ func (m *ServiceAccountResourceModel) setFromProto(account *directoryv1alpha.Ser
 	return nil
 }
 
+// fillUnknownFromProto resolves only attributes that remain unknown in the
+// plan. It is used when an update request resolves to a no-op so that remote
+// drift cannot overwrite values Terraform already planned to preserve.
+func (m *ServiceAccountResourceModel) fillUnknownFromProto(account *directoryv1alpha.ServiceAccount) error {
+	if account == nil {
+		return fmt.Errorf("service account is missing")
+	}
+	if account.GetName() == "" {
+		return fmt.Errorf("service account name is missing")
+	}
+	organizationID, id, err := parseServiceAccountName(account.GetName())
+	if err != nil {
+		return err
+	}
+	if account.GetUid() == "" {
+		return fmt.Errorf("service account UID is missing")
+	}
+	if m.ID.IsUnknown() {
+		m.ID = types.StringValue(id)
+	}
+	if m.OrganizationID.IsUnknown() {
+		m.OrganizationID = types.StringValue(organizationID)
+	}
+	if m.Name.IsUnknown() {
+		m.Name = types.StringValue(account.GetName())
+	}
+	if m.UID.IsUnknown() {
+		m.UID = types.StringValue(account.GetUid())
+	}
+	if m.Creator.IsUnknown() {
+		if account.HasCreator() {
+			m.Creator = types.StringValue(account.GetCreator())
+		} else {
+			m.Creator = types.StringNull()
+		}
+	}
+	if m.DisplayName.IsUnknown() {
+		if account.HasDisplayName() {
+			m.DisplayName = types.StringValue(account.GetDisplayName())
+		} else {
+			m.DisplayName = types.StringNull()
+		}
+	}
+	if m.SystemManaged.IsUnknown() {
+		m.SystemManaged = types.BoolValue(account.GetSystemManaged())
+	}
+	if m.Active.IsUnknown() {
+		m.Active = types.BoolValue(account.GetActive())
+	}
+	if m.CreatedAt.IsUnknown() {
+		m.CreatedAt = timestampValue(account.GetCreateTime())
+	}
+	if m.UpdatedAt.IsUnknown() {
+		m.UpdatedAt = timestampValue(account.GetUpdateTime())
+	}
+	return nil
+}
+
 func (m *ServiceAccountResourceModel) createRequest() *directoryv1alpha.CreateServiceAccountRequest {
 	account := &directoryv1alpha.ServiceAccount{}
 	if !m.DisplayName.IsNull() && !m.DisplayName.IsUnknown() {
@@ -155,8 +212,34 @@ func (r *ServiceAccountResource) Create(ctx context.Context, req resource.Create
 		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
 		return
 	}
-	if err := data.setFromProto(account); err != nil {
-		resp.Diagnostics.AddError("Unexpected API Response", err.Error())
+	if responseErr := data.setFromProto(account); responseErr != nil {
+		name := fmt.Sprintf("organizations/%s/serviceAccounts/%s", data.OrganizationID.ValueString(), data.ID.ValueString())
+		readBack, readErr := r.client.Directory.GetServiceAccount(ctx, &directoryv1alpha.GetServiceAccountRequest{Name: &name})
+		if readErr == nil {
+			if recoveryErr := data.setFromProto(readBack); recoveryErr == nil {
+				resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+				return
+			} else {
+				responseErr = fmt.Errorf("create response was invalid (%w) and the subsequent read returned an invalid service account (%w)", responseErr, recoveryErr)
+			}
+		} else {
+			responseErr = fmt.Errorf("create response was invalid (%w) and the subsequent read failed (%w)", responseErr, readErr)
+		}
+
+		// Preserve the deterministic identity so Terraform can refresh or destroy
+		// the successfully created account even when both API responses are invalid.
+		data.Name = types.StringValue(name)
+		data.UID = types.StringNull()
+		data.Creator = types.StringNull()
+		data.SystemManaged = types.BoolNull()
+		data.Active = types.BoolNull()
+		data.CreatedAt = types.StringNull()
+		data.UpdatedAt = types.StringNull()
+		resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+		resp.Diagnostics.AddError(
+			"Unable to Read Service Account After Creation",
+			fmt.Sprintf("The Directory API created %q but did not return a usable representation: %s. Terraform preserved its canonical name in state. If the next refresh cannot recover the account, import it with `terraform import <resource-address> %s` before applying again.", name, responseErr, name),
+		)
 		return
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
@@ -193,24 +276,28 @@ func (r *ServiceAccountResource) Update(ctx context.Context, req resource.Update
 		return
 	}
 	name := state.Name.ValueString()
-	var account *directoryv1alpha.ServiceAccount
-	var err error
-	if !plan.DisplayName.Equal(state.DisplayName) && !plan.DisplayName.IsUnknown() {
-		updated := &directoryv1alpha.ServiceAccount{Name: name}
-		if !plan.DisplayName.IsNull() {
-			updated.SetDisplayName(plan.DisplayName.ValueString())
-		}
-		account, err = r.client.Directory.UpdateServiceAccount(ctx, &directoryv1alpha.UpdateServiceAccountRequest{
-			ServiceAccount: updated, UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"display_name"}},
-		})
+	updateDisplayName := !plan.DisplayName.Equal(state.DisplayName) && !plan.DisplayName.IsUnknown()
+	if !updateDisplayName {
+		account, err := r.client.Directory.GetServiceAccount(ctx, &directoryv1alpha.GetServiceAccountRequest{Name: &name})
 		if err != nil {
 			coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
 			return
 		}
+		if err := plan.fillUnknownFromProto(account); err != nil {
+			resp.Diagnostics.AddError("Unexpected API Response", fmt.Sprintf("The Directory API returned an invalid service account after a no-op update: %s.", err))
+			return
+		}
+		resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
+		return
 	}
-	if account == nil {
-		account, err = r.client.Directory.GetServiceAccount(ctx, &directoryv1alpha.GetServiceAccountRequest{Name: &name})
+
+	updated := &directoryv1alpha.ServiceAccount{Name: name}
+	if !plan.DisplayName.IsNull() {
+		updated.SetDisplayName(plan.DisplayName.ValueString())
 	}
+	account, err := r.client.Directory.UpdateServiceAccount(ctx, &directoryv1alpha.UpdateServiceAccountRequest{
+		ServiceAccount: updated, UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"display_name"}},
+	})
 	if err != nil {
 		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
 		return

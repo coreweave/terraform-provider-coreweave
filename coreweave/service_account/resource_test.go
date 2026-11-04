@@ -57,7 +57,7 @@ func TestResourceSchemas(t *testing.T) {
 	systemManaged := response.Schema.Attributes["system_managed"].(resourceschema.BoolAttribute)
 	assert.Len(t, systemManaged.PlanModifiers, 1)
 	active := response.Schema.Attributes["active"].(resourceschema.BoolAttribute)
-	assert.Len(t, active.PlanModifiers, 1)
+	assert.Empty(t, active.PlanModifiers)
 }
 
 func TestServiceAccountMetadataUsesIAMNamespace(t *testing.T) {
@@ -117,6 +117,28 @@ func TestServiceAccountSetFromProtoPreservesAbsentUpdateTime(t *testing.T) {
 	var model ServiceAccountResourceModel
 	require.NoError(t, model.setFromProto(account))
 	assert.True(t, model.UpdatedAt.IsNull())
+}
+
+func TestServiceAccountFillUnknownFromProtoPreservesKnownValues(t *testing.T) {
+	t.Parallel()
+	model := ServiceAccountResourceModel{
+		ID:             types.StringValue("ci-agent"),
+		OrganizationID: types.StringValue("a1b2c3"),
+		Name:           types.StringValue("organizations/a1b2c3/serviceAccounts/ci-agent"),
+		UID:            types.StringValue("8d39f431-715c-4c6c-916a-849292f97920"),
+		DisplayName:    types.StringValue("planned display name"),
+		Active:         types.BoolUnknown(),
+	}
+	account := &directoryv1alpha.ServiceAccount{
+		Name:        "organizations/a1b2c3/serviceAccounts/ci-agent",
+		Uid:         proto.String("8d39f431-715c-4c6c-916a-849292f97920"),
+		DisplayName: proto.String("remote display name"),
+		Active:      proto.Bool(false),
+	}
+
+	require.NoError(t, model.fillUnknownFromProto(account))
+	assert.Equal(t, "planned display name", model.DisplayName.ValueString())
+	assert.False(t, model.Active.ValueBool())
 }
 
 func TestCanonicalNameParsing(t *testing.T) {
