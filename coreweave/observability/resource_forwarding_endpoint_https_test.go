@@ -918,6 +918,88 @@ func TestForwardingEndpointHTTPS(t *testing.T) {
 		})
 	})
 
+	t.Run("header_credentials", func(t *testing.T) {
+		randomInt := rand.IntN(100)
+		resourceName := fmt.Sprintf("test_acc_https_hdrcreds_%d", randomInt)
+		fullResourceName := fmt.Sprintf("%s.%s", httpsEndpointResourceName, resourceName)
+
+		// The credentials subtest above reaches header auth only through
+		// basic_auth -> CLEAR -> REPLACE, and only ever with one header. This
+		// one creates with header auth outright and with several headers, since
+		// the connector serialises the map to "name:value,name:value" and a
+		// single pair never exercises the separator.
+		baseModel := &model.ForwardingEndpointHTTPS{
+			ForwardingEndpointCore: model.ForwardingEndpointCore{
+				Slug:               types.StringValue(slugify("https-hdrcreds", randomInt)),
+				DisplayName:        types.StringValue("Test HTTPS Endpoint Header Credentials"),
+				CredentialsVersion: types.Int64Value(1),
+			},
+			Endpoint: types.StringValue(testHTTPSEndpointURL),
+			Credentials: &model.HTTPSCredentials{
+				AuthHeaders: &model.AuthHeadersCredentials{
+					Headers: map[string]string{
+						"X-API-Key":     "first-key",
+						"X-Tenant-Id":   "acc-tenant",
+						"Authorization": "Bearer first-token",
+					},
+				},
+			},
+		}
+
+		var afterCreate, afterRotation string
+
+		resource.ParallelTest(t, resource.TestCase{
+			ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+			PreCheck:                 func() { setAccEnvDefaults() },
+			CheckDestroy:             checkDestroyed(t),
+			Steps: []resource.TestStep{
+				createHTTPSEndpointTestStep(t, httpsEndpointTestStep{
+					TestName:     "create with header auth credentials",
+					ResourceName: resourceName,
+					Model:        baseModel,
+					ConfigPlanChecks: resource.ConfigPlanChecks{
+						PreApply: []plancheck.PlanCheck{
+							plancheck.ExpectResourceAction(fullResourceName, plancheck.ResourceActionCreate),
+						},
+					},
+					ExtraChecks: []statecheck.StateCheck{
+						// headers is WriteOnly, so the whole map stays out of state.
+						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("credentials").AtMapKey("auth_headers").AtMapKey("headers"), knownvalue.Null()),
+						extractCredentialsUpdatedAt(fullResourceName, &afterCreate),
+					},
+				}),
+				createHTTPSEndpointTestStep(t, httpsEndpointTestStep{
+					// Rotation is only proven for basic_auth above. The version
+					// counter is credential-type agnostic, so this asserts the
+					// header path reaches the same REPLACE.
+					TestName:     "bumping credentials_version rotates the headers (REPLACE)",
+					ResourceName: resourceName,
+					Model: with(baseModel, func(m *model.ForwardingEndpointHTTPS) {
+						m.CredentialsVersion = types.Int64Value(2)
+						m.Credentials = &model.HTTPSCredentials{
+							AuthHeaders: &model.AuthHeadersCredentials{
+								Headers: map[string]string{
+									"X-API-Key":     "second-key",
+									"X-Tenant-Id":   "acc-tenant",
+									"Authorization": "Bearer second-token",
+								},
+							},
+						}
+					}),
+					ConfigPlanChecks: resource.ConfigPlanChecks{
+						PreApply: []plancheck.PlanCheck{
+							plancheck.ExpectResourceAction(fullResourceName, plancheck.ResourceActionUpdate),
+						},
+					},
+					ExtraChecks: []statecheck.StateCheck{
+						extractCredentialsUpdatedAt(fullResourceName, &afterRotation),
+						expectChanged(credentialsUpdatedAtAttribute, &afterCreate, &afterRotation),
+					},
+				}),
+			},
+		})
+	})
+
 	t.Run("invalid_credentials", func(t *testing.T) {
 		randomInt := rand.IntN(100)
 		resourceName := fmt.Sprintf("test_acc_https_badcreds_%d", randomInt)
