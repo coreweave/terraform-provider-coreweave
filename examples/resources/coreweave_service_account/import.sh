@@ -1,1 +1,0 @@
-terraform import coreweave_service_account.automation organizations/a1b2c3/serviceAccounts/deployment-automation
