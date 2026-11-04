@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"buf.build/gen/go/coreweave/directory/connectrpc/go/v2/coreweave/directory/v1alpha/directoryv1alphaconnect"
 	directoryv1alpha "buf.build/gen/go/coreweave/directory/protocolbuffers/go/coreweave/directory/v1alpha"
@@ -32,6 +33,7 @@ type oidcTrustConfigTestServer struct {
 
 	emptyCreateResponse      bool
 	emptyCreateResponseUID   bool
+	omitCreateDescription    bool
 	emptyUpdateResponse      bool
 	notFoundOnNextUpdateCall bool
 }
@@ -68,6 +70,10 @@ func (s *oidcTrustConfigTestServer) CreateServiceAccountOidcTrustConfig(_ contex
 	if s.emptyCreateResponseUID {
 		s.emptyCreateResponseUID = false
 		response.Uid = nil
+	}
+	if s.omitCreateDescription {
+		s.omitCreateDescription = false
+		response.Description = nil
 	}
 	return response, nil
 }
@@ -106,7 +112,7 @@ func (s *oidcTrustConfigTestServer) UpdateServiceAccountOidcTrustConfig(_ contex
 			config.WorkloadFederationOidcConfigUid = input.WorkloadFederationOidcConfigUid
 		}
 	}
-	config.UpdateTime = timestamppb.Now()
+	config.UpdateTime = timestamppb.New(config.GetUpdateTime().AsTime().Add(time.Minute))
 	if s.emptyUpdateResponse {
 		s.emptyUpdateResponse = false
 		return nil, nil
@@ -152,6 +158,12 @@ func (s *oidcTrustConfigTestServer) returnEmptyCreateResponseUID() {
 	s.emptyCreateResponseUID = true
 }
 
+func (s *oidcTrustConfigTestServer) returnCreateResponseWithoutDescription() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.omitCreateDescription = true
+}
+
 func (s *oidcTrustConfigTestServer) returnEmptyUpdateResponse() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -162,6 +174,27 @@ func (s *oidcTrustConfigTestServer) returnNotFoundOnNextUpdate() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.notFoundOnNextUpdateCall = true
+}
+
+func (s *oidcTrustConfigTestServer) checkUpdatedAtMatchesRemote(state *terraform.State) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	resourceState, ok := state.RootModule().Resources[oidcTrustConfigResourceAddress]
+	if !ok {
+		return fmt.Errorf("resource %s is missing from Terraform state", oidcTrustConfigResourceAddress)
+	}
+	if len(s.configs) != 1 {
+		return fmt.Errorf("expected one remote OIDC trust config, found %d", len(s.configs))
+	}
+	var remote *directoryv1alpha.ServiceAccountOidcTrustConfig
+	for _, config := range s.configs {
+		remote = config
+	}
+	expected := remote.GetUpdateTime().AsTime().Format(time.RFC3339)
+	if actual := resourceState.Primary.Attributes["updated_at"]; actual != expected {
+		return fmt.Errorf("Terraform updated_at %q does not match API updated_at %q", actual, expected)
+	}
+	return nil
 }
 
 func startOIDCTrustConfigTestServer(t *testing.T) (*oidcTrustConfigTestServer, *httptest.Server) {
@@ -296,6 +329,7 @@ func TestOIDCTrustConfigResourceLifecycle(t *testing.T) {
 					tfresource.TestCheckResourceAttr(oidcTrustConfigResourceAddress, "description", ""),
 					tfresource.TestCheckResourceAttr(oidcTrustConfigResourceAddress, "cel", `token.repository == "example/repo"`),
 					tfresource.TestCheckResourceAttr(oidcTrustConfigResourceAddress, "workload_federation_oidc_config_id", "e3bb1892-f89e-4258-9495-427ed5ace8c7"),
+					service.checkUpdatedAtMatchesRemote,
 				),
 			},
 		},
@@ -336,6 +370,7 @@ func TestOIDCTrustConfigResourceResolvedNoOpUpdate(t *testing.T) {
 				Config: oidcTrustConfigTestConfigWithReplacedDescription(server.URL, "replacement"),
 				Check: tfresource.ComposeAggregateTestCheckFunc(
 					tfresource.TestCheckResourceAttr(oidcTrustConfigResourceAddress, "description", "stable description"),
+					tfresource.TestCheckResourceAttr(oidcTrustConfigResourceAddress, "cel", "token.repository == 'example/repo'"),
 					tfresource.TestCheckResourceAttrSet(oidcTrustConfigResourceAddress, "uid"),
 					tfresource.TestCheckResourceAttrSet(oidcTrustConfigResourceAddress, "created_at"),
 				),
@@ -344,30 +379,44 @@ func TestOIDCTrustConfigResourceResolvedNoOpUpdate(t *testing.T) {
 	})
 }
 
-func TestOIDCTrustConfigResourceRejectsEmptyCreateResponse(t *testing.T) {
+func TestOIDCTrustConfigResourceRecoversEmptyCreateResponse(t *testing.T) {
 	service, server := startOIDCTrustConfigTestServer(t)
 	service.returnEmptyCreateResponse()
-	t.Cleanup(service.removeAll)
 
 	tfresource.UnitTest(t, tfresource.TestCase{
 		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+		CheckDestroy:             service.checkEmpty,
 		Steps: []tfresource.TestStep{{
-			Config:      oidcTrustConfigTestConfig(server.URL, "empty response", "true", "8d39f431-715c-4c6c-916a-849292f97920"),
-			ExpectError: regexp.MustCompile("expected"),
+			Config: oidcTrustConfigTestConfig(server.URL, "empty response", "true", "8d39f431-715c-4c6c-916a-849292f97920"),
+			Check:  tfresource.TestCheckResourceAttrSet(oidcTrustConfigResourceAddress, "uid"),
 		}},
 	})
 }
 
-func TestOIDCTrustConfigResourceRejectsCreateResponseWithoutUID(t *testing.T) {
+func TestOIDCTrustConfigResourceRecoversCreateResponseWithoutUID(t *testing.T) {
 	service, server := startOIDCTrustConfigTestServer(t)
 	service.returnEmptyCreateResponseUID()
-	t.Cleanup(service.removeAll)
 
 	tfresource.UnitTest(t, tfresource.TestCase{
 		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+		CheckDestroy:             service.checkEmpty,
 		Steps: []tfresource.TestStep{{
-			Config:      oidcTrustConfigTestConfig(server.URL, "missing UID", "true", "8d39f431-715c-4c6c-916a-849292f97920"),
-			ExpectError: regexp.MustCompile("OIDC trust configuration UID is missing"),
+			Config: oidcTrustConfigTestConfig(server.URL, "missing UID", "true", "8d39f431-715c-4c6c-916a-849292f97920"),
+			Check:  tfresource.TestCheckResourceAttrSet(oidcTrustConfigResourceAddress, "uid"),
+		}},
+	})
+}
+
+func TestOIDCTrustConfigResourceNormalizesOmittedCreateDescription(t *testing.T) {
+	service, server := startOIDCTrustConfigTestServer(t)
+	service.returnCreateResponseWithoutDescription()
+
+	tfresource.UnitTest(t, tfresource.TestCase{
+		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+		CheckDestroy:             service.checkEmpty,
+		Steps: []tfresource.TestStep{{
+			Config: oidcTrustConfigTestConfig(server.URL, "", "true", "8d39f431-715c-4c6c-916a-849292f97920"),
+			Check:  tfresource.TestCheckResourceAttr(oidcTrustConfigResourceAddress, "description", ""),
 		}},
 	})
 }

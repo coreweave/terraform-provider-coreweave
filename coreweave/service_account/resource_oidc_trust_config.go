@@ -67,7 +67,7 @@ func (r *OIDCTrustConfigResource) Schema(_ context.Context, _ resource.SchemaReq
 			"cel":                                schema.StringAttribute{Required: true, Validators: []validator.String{stringvalidator.UTF8LengthBetween(1, 4096)}, MarkdownDescription: "The CEL expression evaluated against verified OIDC token claims exposed through the `token` namespace."},
 			"workload_federation_oidc_config_id": schema.StringAttribute{Required: true, Validators: []validator.String{stringvalidator.RegexMatches(uuidPattern, "must be a UUID")}, MarkdownDescription: "The UID of the workload federation OIDC configuration used to verify tokens."},
 			"created_at":                         schema.StringAttribute{Computed: true, PlanModifiers: computed, MarkdownDescription: "The RFC 3339 creation timestamp."},
-			"updated_at":                         schema.StringAttribute{Computed: true, PlanModifiers: computed, MarkdownDescription: "The RFC 3339 last-update timestamp."},
+			"updated_at":                         schema.StringAttribute{Computed: true, MarkdownDescription: "The RFC 3339 last-update timestamp."},
 		},
 	}
 }
@@ -100,15 +100,61 @@ func (m *OIDCTrustConfigResourceModel) setFromProto(config *directoryv1alpha.Ser
 	m.ServiceAccountID = types.StringValue(serviceAccountID)
 	m.Name = types.StringValue(config.GetName())
 	m.UID = types.StringValue(config.GetUid())
-	if config.HasDescription() {
-		m.Description = types.StringValue(config.GetDescription())
-	} else {
-		m.Description = types.StringNull()
-	}
+	// The schema defaults an omitted description to the empty string, and the
+	// API stores the field as a non-null string. Keep that canonical value even
+	// if an older or malformed response omits the optional proto field.
+	m.Description = types.StringValue(config.GetDescription())
 	m.CEL = types.StringValue(config.GetCel())
 	m.WorkloadFederationOIDCConfigID = types.StringValue(config.GetWorkloadFederationOidcConfigUid())
 	m.CreatedAt = timestampValue(config.GetCreateTime())
 	m.UpdatedAt = timestampValue(config.GetUpdateTime())
+	return nil
+}
+
+// fillUnknownFromProto resolves only values that remain unknown in the plan.
+// It is used after a resolved no-op update, where replacing known planned
+// values with a concurrent remote change would contradict the applied plan.
+func (m *OIDCTrustConfigResourceModel) fillUnknownFromProto(config *directoryv1alpha.ServiceAccountOidcTrustConfig) error {
+	if config == nil {
+		return fmt.Errorf("service account OIDC trust configuration is missing")
+	}
+	organizationID, serviceAccountID, id, err := parseOIDCTrustConfigName(config.GetName())
+	if err != nil {
+		return err
+	}
+	if config.GetUid() == "" {
+		return fmt.Errorf("service account OIDC trust configuration UID is missing")
+	}
+	if m.ID.IsUnknown() {
+		m.ID = types.StringValue(id)
+	}
+	if m.OrganizationID.IsUnknown() {
+		m.OrganizationID = types.StringValue(organizationID)
+	}
+	if m.ServiceAccountID.IsUnknown() {
+		m.ServiceAccountID = types.StringValue(serviceAccountID)
+	}
+	if m.Name.IsUnknown() {
+		m.Name = types.StringValue(config.GetName())
+	}
+	if m.UID.IsUnknown() {
+		m.UID = types.StringValue(config.GetUid())
+	}
+	if m.Description.IsUnknown() {
+		m.Description = types.StringValue(config.GetDescription())
+	}
+	if m.CEL.IsUnknown() {
+		m.CEL = types.StringValue(config.GetCel())
+	}
+	if m.WorkloadFederationOIDCConfigID.IsUnknown() {
+		m.WorkloadFederationOIDCConfigID = types.StringValue(config.GetWorkloadFederationOidcConfigUid())
+	}
+	if m.CreatedAt.IsUnknown() {
+		m.CreatedAt = timestampValue(config.GetCreateTime())
+	}
+	if m.UpdatedAt.IsUnknown() {
+		m.UpdatedAt = timestampValue(config.GetUpdateTime())
+	}
 	return nil
 }
 
@@ -137,8 +183,19 @@ func (r *OIDCTrustConfigResource) Create(ctx context.Context, req resource.Creat
 		return
 	}
 	if err := data.setFromProto(config); err != nil {
-		resp.Diagnostics.AddError("Unexpected API Response", err.Error())
-		return
+		// Creation has already succeeded remotely. The canonical name is
+		// deterministic, so read the object back instead of leaving an orphan
+		// that Terraform cannot update or destroy.
+		name := serviceAccountName(data.OrganizationID.ValueString(), data.ServiceAccountID.ValueString()) + "/oidcTrustConfigs/" + data.ID.ValueString()
+		readBack, readErr := r.client.Directory.GetServiceAccountOidcTrustConfig(ctx, &directoryv1alpha.GetServiceAccountOidcTrustConfigRequest{Name: &name})
+		if readErr != nil {
+			resp.Diagnostics.AddError("Unable to Recover OIDC Trust Configuration After Creation", fmt.Sprintf("The Directory API created the OIDC trust configuration but returned an invalid response (%s), and reading %q back failed: %s.", err, name, readErr))
+			return
+		}
+		if readBackErr := data.setFromProto(readBack); readBackErr != nil {
+			resp.Diagnostics.AddError("Unable to Recover OIDC Trust Configuration After Creation", fmt.Sprintf("The Directory API created the OIDC trust configuration but both the create response and the subsequent read were invalid: %s.", readBackErr))
+			return
+		}
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
@@ -173,7 +230,6 @@ func (r *OIDCTrustConfigResource) Update(ctx context.Context, req resource.Updat
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	plannedUpdatedAt := plan.UpdatedAt
 	config := &directoryv1alpha.ServiceAccountOidcTrustConfig{Name: state.Name.ValueString()}
 	paths := make([]string, 0, 3)
 	if !plan.Description.Equal(state.Description) && !plan.Description.IsUnknown() {
@@ -190,16 +246,24 @@ func (r *OIDCTrustConfigResource) Update(ctx context.Context, req resource.Updat
 		config.SetWorkloadFederationOidcConfigUid(plan.WorkloadFederationOIDCConfigID.ValueString())
 		paths = append(paths, "workload_federation_oidc_config_uid")
 	}
-	var remote *directoryv1alpha.ServiceAccountOidcTrustConfig
-	var err error
 	if len(paths) == 0 {
 		name := state.Name.ValueString()
-		remote, err = r.client.Directory.GetServiceAccountOidcTrustConfig(ctx, &directoryv1alpha.GetServiceAccountOidcTrustConfigRequest{Name: &name})
-	} else {
-		remote, err = r.client.Directory.UpdateServiceAccountOidcTrustConfig(ctx, &directoryv1alpha.UpdateServiceAccountOidcTrustConfigRequest{
-			ServiceAccountOidcTrustConfig: config, UpdateMask: &fieldmaskpb.FieldMask{Paths: paths},
-		})
+		remote, err := r.client.Directory.GetServiceAccountOidcTrustConfig(ctx, &directoryv1alpha.GetServiceAccountOidcTrustConfigRequest{Name: &name})
+		if err != nil {
+			coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
+			return
+		}
+		if err := plan.fillUnknownFromProto(remote); err != nil {
+			resp.Diagnostics.AddError("Unexpected API Response", fmt.Sprintf("The Directory API returned an invalid OIDC trust configuration after a no-op update: %s.", err))
+			return
+		}
+		resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
+		return
 	}
+
+	remote, err := r.client.Directory.UpdateServiceAccountOidcTrustConfig(ctx, &directoryv1alpha.UpdateServiceAccountOidcTrustConfigRequest{
+		ServiceAccountOidcTrustConfig: config, UpdateMask: &fieldmaskpb.FieldMask{Paths: paths},
+	})
 	if err != nil {
 		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
 		return
@@ -216,9 +280,6 @@ func (r *OIDCTrustConfigResource) Update(ctx context.Context, req resource.Updat
 			return
 		}
 	}
-	// updated_at uses UseStateForUnknown so no-op plans remain empty. Preserve
-	// that planned value during apply; the next refresh reads the new timestamp.
-	plan.UpdatedAt = plannedUpdatedAt
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 

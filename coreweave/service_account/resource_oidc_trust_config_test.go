@@ -64,8 +64,38 @@ func TestOIDCTrustConfigSetFromProto(t *testing.T) {
 	assert.Equal(t, "a1b2c3", model.OrganizationID.ValueString())
 	assert.Equal(t, "ci-agent", model.ServiceAccountID.ValueString())
 	assert.Equal(t, "main-repo", model.ID.ValueString())
-	assert.True(t, model.Description.IsNull())
+	assert.Equal(t, "", model.Description.ValueString())
 	assert.Equal(t, "true", model.CEL.ValueString())
+}
+
+func TestOIDCTrustConfigFillUnknownFromProtoPreservesPlannedValues(t *testing.T) {
+	t.Parallel()
+	model := OIDCTrustConfigResourceModel{
+		ID:                             types.StringValue("main-repo"),
+		OrganizationID:                 types.StringValue("a1b2c3"),
+		ServiceAccountID:               types.StringValue("ci-agent"),
+		Name:                           types.StringValue("organizations/a1b2c3/serviceAccounts/ci-agent/oidcTrustConfigs/main-repo"),
+		UID:                            types.StringValue("e3bb1892-f89e-4258-9495-427ed5ace8c7"),
+		Description:                    types.StringValue("planned description"),
+		CEL:                            types.StringValue("token.repository == 'planned/repo'"),
+		WorkloadFederationOIDCConfigID: types.StringValue("8d39f431-715c-4c6c-916a-849292f97920"),
+		CreatedAt:                      types.StringUnknown(),
+		UpdatedAt:                      types.StringUnknown(),
+	}
+	remote := &directoryv1alpha.ServiceAccountOidcTrustConfig{
+		Name:                            "organizations/a1b2c3/serviceAccounts/ci-agent/oidcTrustConfigs/main-repo",
+		Uid:                             proto.String("e3bb1892-f89e-4258-9495-427ed5ace8c7"),
+		Description:                     proto.String("remote drift"),
+		Cel:                             proto.String("token.repository == 'remote/repo'"),
+		WorkloadFederationOidcConfigUid: proto.String("74931f1b-b5cc-48d4-9a97-24073d43fd82"),
+	}
+
+	require.NoError(t, model.fillUnknownFromProto(remote))
+	assert.Equal(t, "planned description", model.Description.ValueString())
+	assert.Equal(t, "token.repository == 'planned/repo'", model.CEL.ValueString())
+	assert.Equal(t, "8d39f431-715c-4c6c-916a-849292f97920", model.WorkloadFederationOIDCConfigID.ValueString())
+	assert.True(t, model.CreatedAt.IsNull())
+	assert.True(t, model.UpdatedAt.IsNull())
 }
 
 func TestOIDCTrustConfigCanonicalNameParsing(t *testing.T) {
