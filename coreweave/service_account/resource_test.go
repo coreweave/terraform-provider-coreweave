@@ -60,6 +60,13 @@ func TestResourceSchemas(t *testing.T) {
 	assert.Len(t, active.PlanModifiers, 1)
 }
 
+func TestServiceAccountMetadataUsesIAMNamespace(t *testing.T) {
+	t.Parallel()
+	response := &frameworkresource.MetadataResponse{}
+	NewServiceAccountResource().Metadata(t.Context(), frameworkresource.MetadataRequest{ProviderTypeName: "coreweave"}, response)
+	assert.Equal(t, "coreweave_iam_service_account", response.TypeName)
+}
+
 func TestServiceAccountCreateRequest(t *testing.T) {
 	t.Parallel()
 	model := ServiceAccountResourceModel{

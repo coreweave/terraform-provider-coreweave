@@ -23,7 +23,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-const serviceAccountResourceAddress = "coreweave_service_account.test"
+const serviceAccountResourceAddress = "coreweave_iam_service_account.test"
 
 type serviceAccountTestServer struct {
 	directoryv1alphaconnect.UnimplementedDirectoryServiceHandler
@@ -192,7 +192,7 @@ provider "coreweave" {
   token    = "test-token"
 }
 
-resource "coreweave_service_account" "test" {
+resource "coreweave_iam_service_account" "test" {
   id              = "ci-agent"
   organization_id = "a1b2c3"
 %s
@@ -207,7 +207,7 @@ provider "coreweave" {
   token    = "test-token"
 }
 
-resource "coreweave_service_account" "test" {
+resource "coreweave_iam_service_account" "test" {
   id              = "ci-agent"
   organization_id = "a1b2c3"
   display_name    = %q
@@ -227,7 +227,7 @@ resource "terraform_data" "display_name" {
   triggers_replace = %q
 }
 
-resource "coreweave_service_account" "test" {
+resource "coreweave_iam_service_account" "test" {
   id              = "ci-agent"
   organization_id = "a1b2c3"
   display_name    = terraform_data.display_name.output
@@ -242,7 +242,7 @@ provider "coreweave" {
   token    = "test-token"
 }
 
-resource "coreweave_service_account" "test" {
+resource "coreweave_iam_service_account" "test" {
   id              = %q
   organization_id = %q
   display_name    = %q
