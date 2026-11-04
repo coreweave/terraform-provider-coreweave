@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.28.0](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.27.0...v0.28.0) (2026-11-04)
+
+
+### Features
+
+* **networking:** add support for VPC dhcp.dns.search_domains field ([#527](https://github.com/coreweave/terraform-provider-coreweave/issues/527)) ([1797da5](https://github.com/coreweave/terraform-provider-coreweave/commit/1797da5e042b6efd3d29bb1ad265822387819a05))
+
 ## [0.27.0](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.26.0...v0.27.0) (2026-11-03)
 
 
