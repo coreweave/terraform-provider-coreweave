@@ -44,7 +44,7 @@ type ServiceAccountResourceModel struct {
 func NewServiceAccountResource() resource.Resource { return &ServiceAccountResource{} }
 
 func (r *ServiceAccountResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
-	resp.TypeName = req.ProviderTypeName + "_service_account"
+	resp.TypeName = req.ProviderTypeName + "_iam_service_account"
 }
 
 func (r *ServiceAccountResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
