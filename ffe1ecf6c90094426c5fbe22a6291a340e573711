@@ -19,9 +19,20 @@ Settled choices:
   capacity class set outside Terraform is cleared by the next Terraform
   update with no visible diff. Adding the optional attribute later is a
   backward-compatible change.
-- pdFromProto returns an error when the API returns pd without
-  prefill_resources or prefill_autoscaling, instead of writing zero
-  values that fail the schema validators.
+- Superseded: an earlier amend made pdFromProto return an error when
+  the API returned pd without prefill_resources or prefill_autoscaling.
+  Copilot review on 093afbd showed that Create returns on any
+  setFromDeployment error before its first resp.State.Set, so a
+  malformed create response would leave the new deployment untracked
+  and impossible for Terraform to destroy. The user chose to remove
+  the check rather than change shared Create code. pdFromProto again
+  maps nil sub-messages to zero values through the proto getters; the
+  deployment stays tracked and Terraform reports an inconsistent
+  result instead.
+- Copilot also noted that prefill min, max, and concurrency only have
+  AtLeast(1), so values above 4294967295 wrap in the uint32 cast. The
+  decode autoscaling attributes have the same gap; an upper bound for
+  both pools is a follow-up, not part of this PR.
 - pdFromProto is a pure mapping: concurrency is null when the API
   returns 0. AtLeast(1) on the attribute makes 0 always mean unset.
   This differs on purpose from the decode read, which checks the prior
@@ -31,7 +42,7 @@ Settled choices:
   schema (12 older attributes use them; only hot_load used one line),
   one if per field in ToUpdateRequest_Fields, and a separate
   SetFromDeployment_IncompletePD test instead of a check inside the
-  NullPreservation test.
+  NullPreservation test. That test was later removed with the check.
 
 ## Actions & Verification
 - gh stack submit opened draft PR #535 (stack #536); alexeldeib was
@@ -39,15 +50,14 @@ Settled choices:
 - History of this branch on the remote: cf09947 (first version), then
   57a312f and f54c207 (review fixes, force-pushed with leases), then
   624b211, which shrank the change back to cf09947 plus three small
-  fixes, then this commit, which applies the older style (+35 lines).
+  fixes, then 093afbd, which applied the older style (+35 lines),
+  then this commit, which removes the incomplete-pd error after
+  Copilot review.
 - TestDeploymentPDLifecycle: create with decode gpu_count 64 and a pd
   block, import with ImportStateVerify, then plan-only steps that
   change pd and remove pd; both expect an in-place Update.
 - TestInferenceDeployment_SetFromDeployment_NullPreservation checks
   null prefill concurrency.
-- TestInferenceDeployment_SetFromDeployment_IncompletePD checks the
-  error for pd without prefill_resources. A mutation that skips the
-  check fails it.
 - TestInferenceDeployment_ToUpdateRequest_Fields checks every prefill
   field; prefill instance type and min differ from the decode values.
 - go test ./coreweave/inference/, golangci-lint ./... (0 issues),
@@ -91,4 +101,7 @@ Follow-up candidates, deliberately left out of this PR:
   pools;
 - an applied update test without the 30 s wait, and a clearer name for
   hotLoadImportHandler;
-- a plan-time min <= max check for both pools.
+- a plan-time min <= max check for both pools;
+- uint32 upper bounds on autoscaling values for both pools;
+- a clear error for a malformed pd response that still saves state in
+  Create.
