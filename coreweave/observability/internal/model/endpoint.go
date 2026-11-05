@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	typesv1beta1 "buf.build/gen/go/coreweave/telemetry-relay/protocolbuffers/go/coreweave/telemetryrelay/types/v1beta1"
+	"github.com/coreweave/terraform-provider-coreweave/coreweave"
 	"github.com/hashicorp/terraform-plugin-framework-timeouts/resource/timeouts"
 	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -228,10 +229,7 @@ func compressionFromName(compression types.String) (typesv1beta1.HTTPSConfig_Com
 			"Invalid compression type",
 			fmt.Sprintf("Invalid compression type %q. Must be one of: %s.",
 				name,
-				strings.Join([]string{
-					typesv1beta1.HTTPSConfig_COMPRESSION_TYPE_NONE.String(),
-					typesv1beta1.HTTPSConfig_COMPRESSION_TYPE_GZIP.String(),
-				}, ", "),
+				strings.Join(coreweave.EnumValues(typesv1beta1.HTTPSConfig_CompressionType_name, true), ", "),
 			),
 		)
 		return typesv1beta1.HTTPSConfig_COMPRESSION_TYPE_UNSPECIFIED, diagnostics
