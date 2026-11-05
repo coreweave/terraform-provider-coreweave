@@ -261,7 +261,7 @@ func TestForwardingEndpointS3(t *testing.T) {
 			t.Parallel()
 
 			var credentials model.S3Credentials
-			credentials.Set(t.Context(), &typesv1beta1.S3Credentials{
+			credentials.Set(&typesv1beta1.S3Credentials{
 				AccessKeyId:     "AKIAIOSFODNN7EXAMPLE",
 				SecretAccessKey: "secret",
 			})
@@ -274,7 +274,7 @@ func TestForwardingEndpointS3(t *testing.T) {
 			t.Parallel()
 
 			var credentials model.S3Credentials
-			credentials.Set(t.Context(), &typesv1beta1.S3Credentials{
+			credentials.Set(&typesv1beta1.S3Credentials{
 				AccessKeyId:     "AKIAIOSFODNN7EXAMPLE",
 				SecretAccessKey: "secret",
 				SessionToken:    "token",
