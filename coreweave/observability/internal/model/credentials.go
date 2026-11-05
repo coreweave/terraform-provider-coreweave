@@ -3,7 +3,6 @@ package model
 import (
 	"fmt"
 	"maps"
-	"strings"
 
 	typesv1beta1 "buf.build/gen/go/coreweave/telemetry-relay/protocolbuffers/go/coreweave/telemetryrelay/types/v1beta1"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -90,27 +89,21 @@ func (h *HTTPSCredentials) ToMsg() (msg *typesv1beta1.HTTPSCredentials, diagnost
 		return nil, nil
 	}
 
+	// Decide before writing: basic_auth and auth_headers are one oneof, so
+	// setting both would leave whichever was written second.
 	msg = &typesv1beta1.HTTPSCredentials{}
-	implementations := make([]string, 0)
-
-	if h.BasicAuth != nil {
-		implementations = append(implementations, "basic_auth")
-		basicAuth := h.BasicAuth.ToMsg()
-		msg.SetBasicAuth(basicAuth)
-	}
-	if h.AuthHeaders != nil {
-		implementations = append(implementations, "auth_headers")
-		headersModel := h.AuthHeaders.ToMsg()
-		msg.SetAuthHeaders(headersModel)
-	}
-
-	if len(implementations) != 1 {
-		diagnostics.AddError(
-			"Invalid HTTPSCredentials",
-			fmt.Sprintf("Exactly one of basic_auth or auth_headers must be set, got %d: %s", len(implementations), strings.Join(implementations, ", ")),
-		)
-	}
-	if diagnostics.HasError() {
+	switch {
+	case h.BasicAuth != nil && h.AuthHeaders != nil:
+		// ConfigValidators rejects this at plan time; reaching it means a
+		// caller built the model directly.
+		diagnostics.AddError("Invalid HTTPS credentials", "Set basic_auth or auth_headers, not both.")
+		return nil, diagnostics
+	case h.BasicAuth != nil:
+		msg.SetBasicAuth(h.BasicAuth.ToMsg())
+	case h.AuthHeaders != nil:
+		msg.SetAuthHeaders(h.AuthHeaders.ToMsg())
+	default:
+		diagnostics.AddError("Invalid HTTPS credentials", "One of basic_auth or auth_headers is required.")
 		return nil, diagnostics
 	}
 
