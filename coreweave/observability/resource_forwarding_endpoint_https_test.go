@@ -925,11 +925,10 @@ func TestForwardingEndpointHTTPS(t *testing.T) {
 
 		// The credentials subtest above reaches header auth only through
 		// basic_auth -> CLEAR -> REPLACE, and only ever with one header. This
-		// one creates with header auth outright and with several headers, since
-		// the connector serializes the map to "name:value,name:value" and a
-		// single pair never exercises the separator. One value carries colons,
-		// a semicolon and internal spaces, all legal where ',' is not, so a
-		// parser splitting on every ':' rather than the first fails here.
+		// one creates with header auth outright and with several. One value
+		// carries colons, a semicolon and internal spaces — legal where ',' is
+		// not — so HCL rendering or the write-only path mangling a realistic
+		// value shows up here rather than at a customer's endpoint.
 		baseModel := &model.ForwardingEndpointHTTPS{
 			ForwardingEndpointCore: model.ForwardingEndpointCore{
 				Slug:               types.StringValue(slugify("https-hdrcreds", randomInt)),
