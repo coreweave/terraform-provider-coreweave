@@ -2,7 +2,6 @@ package observability_test
 
 import (
 	"fmt"
-	"math/rand/v2"
 	"regexp"
 	"testing"
 
@@ -32,13 +31,13 @@ func TestForwardingEndpointHTTPSAcceptance(t *testing.T) {
 	t.Run("invalid_config", func(t *testing.T) {
 		t.Parallel()
 
-		randomInt := rand.IntN(100)
-		resourceName := fmt.Sprintf("test_acc_https_invalid_%d", randomInt)
+		token := testToken(t)
+		resourceName := fmt.Sprintf("test_acc_https_invalid_%s", token)
 
 		valid := func() *model.ForwardingEndpointHTTPS {
 			return &model.ForwardingEndpointHTTPS{
 				ForwardingEndpointCore: model.ForwardingEndpointCore{
-					Slug:        types.StringValue(slugify("https-invalid", randomInt)),
+					Slug:        types.StringValue(slugify("https-invalid", token)),
 					DisplayName: types.StringValue("Invalid Config Probe"),
 				},
 				Endpoint: types.StringValue(testHTTPSEndpointURL),
@@ -116,13 +115,13 @@ func TestForwardingEndpointHTTPSAcceptance(t *testing.T) {
 	})
 
 	t.Run("lifecycle", func(t *testing.T) {
-		randomInt := rand.IntN(100)
-		resourceName := fmt.Sprintf("test_acc_https_%d", randomInt)
+		token := testToken(t)
+		resourceName := fmt.Sprintf("test_acc_https_%s", token)
 		fullResourceName := fmt.Sprintf("%s.%s", httpsEndpointResourceName, resourceName)
 
 		baseModel := &model.ForwardingEndpointHTTPS{
 			ForwardingEndpointCore: model.ForwardingEndpointCore{
-				Slug:        types.StringValue(slugify("https-fe", randomInt)),
+				Slug:        types.StringValue(slugify("https-fe", token)),
 				DisplayName: types.StringValue("Test HTTPS Endpoint"),
 			},
 			Endpoint: types.StringValue(testHTTPSEndpointURL),
@@ -201,7 +200,7 @@ func TestForwardingEndpointHTTPSAcceptance(t *testing.T) {
 					TestName:     "update slug (requires replacement, plan only)",
 					ResourceName: resourceName,
 					Model: with(baseModel, func(m *model.ForwardingEndpointHTTPS) {
-						m.Slug = types.StringValue(slugify("https-fe2", randomInt))
+						m.Slug = types.StringValue(slugify("https-fe2", token))
 					}),
 					ConfigPlanChecks: resource.ConfigPlanChecks{
 						PostApplyPreRefresh: []plancheck.PlanCheck{
@@ -218,13 +217,13 @@ func TestForwardingEndpointHTTPSAcceptance(t *testing.T) {
 	})
 
 	t.Run("tls", func(t *testing.T) {
-		randomInt := rand.IntN(100)
-		resourceName := fmt.Sprintf("test_acc_https_tls_%d", randomInt)
+		token := testToken(t)
+		resourceName := fmt.Sprintf("test_acc_https_tls_%s", token)
 		fullResourceName := fmt.Sprintf("%s.%s", httpsEndpointResourceName, resourceName)
 
 		baseModel := &model.ForwardingEndpointHTTPS{
 			ForwardingEndpointCore: model.ForwardingEndpointCore{
-				Slug:        types.StringValue(slugify("https-tls", randomInt)),
+				Slug:        types.StringValue(slugify("https-tls", token)),
 				DisplayName: types.StringValue("Test HTTPS Endpoint with TLS"),
 			},
 			Endpoint: types.StringValue(testHTTPSEndpointURL),
@@ -291,13 +290,13 @@ func TestForwardingEndpointHTTPSAcceptance(t *testing.T) {
 	// removal clear the value instead of silently preserving it. The third step
 	// is the one that proves it.
 	t.Run("compression", func(t *testing.T) {
-		randomInt := rand.IntN(100)
-		resourceName := fmt.Sprintf("test_acc_https_compression_%d", randomInt)
+		token := testToken(t)
+		resourceName := fmt.Sprintf("test_acc_https_compression_%s", token)
 		fullResourceName := fmt.Sprintf("%s.%s", httpsEndpointResourceName, resourceName)
 
 		baseModel := &model.ForwardingEndpointHTTPS{
 			ForwardingEndpointCore: model.ForwardingEndpointCore{
-				Slug:        types.StringValue(slugify("https-compress", randomInt)),
+				Slug:        types.StringValue(slugify("https-compress", token)),
 				DisplayName: types.StringValue("Test HTTPS Endpoint Compression"),
 			},
 			Endpoint:    types.StringValue(testHTTPSEndpointURL),
@@ -367,13 +366,13 @@ func TestForwardingEndpointHTTPSAcceptance(t *testing.T) {
 	// plan's write-only values are null, so the request carried
 	// {username: "", password: ""} and the API's min_len rule rejected it.
 	t.Run("credentials", func(t *testing.T) {
-		randomInt := rand.IntN(100)
-		resourceName := fmt.Sprintf("test_acc_https_creds_%d", randomInt)
+		token := testToken(t)
+		resourceName := fmt.Sprintf("test_acc_https_creds_%s", token)
 		fullResourceName := fmt.Sprintf("%s.%s", httpsEndpointResourceName, resourceName)
 
 		baseModel := &model.ForwardingEndpointHTTPS{
 			ForwardingEndpointCore: model.ForwardingEndpointCore{
-				Slug:               types.StringValue(slugify("https-creds", randomInt)),
+				Slug:               types.StringValue(slugify("https-creds", token)),
 				DisplayName:        types.StringValue("Test HTTPS Endpoint Credentials"),
 				CredentialsVersion: types.Int64Value(1),
 			},
@@ -526,8 +525,8 @@ func TestForwardingEndpointHTTPSAcceptance(t *testing.T) {
 	})
 
 	t.Run("header_credentials", func(t *testing.T) {
-		randomInt := rand.IntN(100)
-		resourceName := fmt.Sprintf("test_acc_https_hdrcreds_%d", randomInt)
+		token := testToken(t)
+		resourceName := fmt.Sprintf("test_acc_https_hdrcreds_%s", token)
 		fullResourceName := fmt.Sprintf("%s.%s", httpsEndpointResourceName, resourceName)
 
 		// The credentials subtest above reaches header auth only through
@@ -538,7 +537,7 @@ func TestForwardingEndpointHTTPSAcceptance(t *testing.T) {
 		// value shows up here rather than at a customer's endpoint.
 		baseModel := &model.ForwardingEndpointHTTPS{
 			ForwardingEndpointCore: model.ForwardingEndpointCore{
-				Slug:               types.StringValue(slugify("https-hdrcreds", randomInt)),
+				Slug:               types.StringValue(slugify("https-hdrcreds", token)),
 				DisplayName:        types.StringValue("Test HTTPS Endpoint Header Credentials"),
 				CredentialsVersion: types.Int64Value(1),
 			},
@@ -611,13 +610,13 @@ func TestForwardingEndpointHTTPSAcceptance(t *testing.T) {
 	})
 
 	t.Run("invalid_credentials", func(t *testing.T) {
-		randomInt := rand.IntN(100)
-		resourceName := fmt.Sprintf("test_acc_https_badcreds_%d", randomInt)
+		token := testToken(t)
+		resourceName := fmt.Sprintf("test_acc_https_badcreds_%s", token)
 
 		valid := func() *model.ForwardingEndpointHTTPS {
 			return &model.ForwardingEndpointHTTPS{
 				ForwardingEndpointCore: model.ForwardingEndpointCore{
-					Slug:        types.StringValue(slugify("https-badcreds", randomInt)),
+					Slug:        types.StringValue(slugify("https-badcreds", token)),
 					DisplayName: types.StringValue("Bad Credentials Probe"),
 				},
 				Endpoint: types.StringValue(testHTTPSEndpointURL),
@@ -715,13 +714,13 @@ func TestForwardingEndpointHTTPSAcceptance(t *testing.T) {
 	// Terraform's back, then plan. Before RemoveResource was added, refresh
 	// dereferenced a nil endpoint and the provider panicked.
 	t.Run("disappears", func(t *testing.T) {
-		randomInt := rand.IntN(100)
-		resourceName := fmt.Sprintf("test_acc_https_disappears_%d", randomInt)
+		token := testToken(t)
+		resourceName := fmt.Sprintf("test_acc_https_disappears_%s", token)
 		fullResourceName := fmt.Sprintf("%s.%s", httpsEndpointResourceName, resourceName)
 
 		baseModel := &model.ForwardingEndpointHTTPS{
 			ForwardingEndpointCore: model.ForwardingEndpointCore{
-				Slug:        types.StringValue(slugify("https-gone", randomInt)),
+				Slug:        types.StringValue(slugify("https-gone", token)),
 				DisplayName: types.StringValue("Test HTTPS Endpoint Disappears"),
 			},
 			Endpoint: types.StringValue(testHTTPSEndpointURL),

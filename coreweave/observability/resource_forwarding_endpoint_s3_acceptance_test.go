@@ -2,7 +2,6 @@ package observability_test
 
 import (
 	"fmt"
-	"math/rand/v2"
 	"regexp"
 	"testing"
 
@@ -28,13 +27,13 @@ func TestForwardingEndpointS3Acceptance(t *testing.T) {
 	t.Run("invalid_config", func(t *testing.T) {
 		t.Parallel()
 
-		randomInt := rand.IntN(100)
-		resourceName := fmt.Sprintf("test_acc_s3_invalid_%d", randomInt)
+		token := testToken(t)
+		resourceName := fmt.Sprintf("test_acc_s3_invalid_%s", token)
 
 		valid := func() *model.ForwardingEndpointS3 {
 			return &model.ForwardingEndpointS3{
 				ForwardingEndpointCore: model.ForwardingEndpointCore{
-					Slug:        types.StringValue(slugify("s3-invalid", randomInt)),
+					Slug:        types.StringValue(slugify("s3-invalid", token)),
 					DisplayName: types.StringValue("Invalid Config Probe"),
 				},
 				URI:         types.StringValue("s3://tf-acc-telemetry/prefix/"),
@@ -99,13 +98,13 @@ func TestForwardingEndpointS3Acceptance(t *testing.T) {
 	})
 
 	t.Run("lifecycle", func(t *testing.T) {
-		randomInt := rand.IntN(100)
-		resourceName := fmt.Sprintf("test_acc_s3_%d", randomInt)
+		token := testToken(t)
+		resourceName := fmt.Sprintf("test_acc_s3_%s", token)
 		fullResourceName := fmt.Sprintf("%s.%s", s3EndpointResourceName, resourceName)
 
 		baseModel := &model.ForwardingEndpointS3{
 			ForwardingEndpointCore: model.ForwardingEndpointCore{
-				Slug:        types.StringValue(slugify("s3-fe", randomInt)),
+				Slug:        types.StringValue(slugify("s3-fe", token)),
 				DisplayName: types.StringValue("Test S3 Endpoint"),
 			},
 			URI:         types.StringValue("s3://tf-acc-telemetry-bucket"),
@@ -185,7 +184,7 @@ func TestForwardingEndpointS3Acceptance(t *testing.T) {
 					TestName:     "update slug (requires replacement, plan only)",
 					ResourceName: resourceName,
 					Model: with(baseModel, func(m *model.ForwardingEndpointS3) {
-						m.Slug = types.StringValue(slugify("s3-fe2", randomInt))
+						m.Slug = types.StringValue(slugify("s3-fe2", token))
 					}),
 					ConfigPlanChecks: resource.ConfigPlanChecks{
 						PostApplyPreRefresh: []plancheck.PlanCheck{
@@ -205,13 +204,13 @@ func TestForwardingEndpointS3Acceptance(t *testing.T) {
 	// credentials and UpdateEndpointRequest carries
 	// "credentials cannot be cleared for S3 endpoints". Rotation still works.
 	t.Run("credentials", func(t *testing.T) {
-		randomInt := rand.IntN(100)
-		resourceName := fmt.Sprintf("test_acc_s3_creds_%d", randomInt)
+		token := testToken(t)
+		resourceName := fmt.Sprintf("test_acc_s3_creds_%s", token)
 		fullResourceName := fmt.Sprintf("%s.%s", s3EndpointResourceName, resourceName)
 
 		baseModel := &model.ForwardingEndpointS3{
 			ForwardingEndpointCore: model.ForwardingEndpointCore{
-				Slug:               types.StringValue(slugify("s3-creds", randomInt)),
+				Slug:               types.StringValue(slugify("s3-creds", token)),
 				DisplayName:        types.StringValue("Test S3 Endpoint Credentials"),
 				CredentialsVersion: types.Int64Value(1),
 			},
@@ -306,13 +305,13 @@ func TestForwardingEndpointS3Acceptance(t *testing.T) {
 	})
 
 	t.Run("session_token", func(t *testing.T) {
-		randomInt := rand.IntN(100)
-		resourceName := fmt.Sprintf("test_acc_s3_session_token_%d", randomInt)
+		token := testToken(t)
+		resourceName := fmt.Sprintf("test_acc_s3_session_token_%s", token)
 		fullResourceName := fmt.Sprintf("%s.%s", s3EndpointResourceName, resourceName)
 
 		baseModel := &model.ForwardingEndpointS3{
 			ForwardingEndpointCore: model.ForwardingEndpointCore{
-				Slug:        types.StringValue(slugify("s3-session-token", randomInt)),
+				Slug:        types.StringValue(slugify("s3-session", token)),
 				DisplayName: types.StringValue("Test S3 Endpoint with Session Token"),
 			},
 			URI:    types.StringValue("s3://tf-acc-telemetry-token"),
@@ -342,13 +341,13 @@ func TestForwardingEndpointS3Acceptance(t *testing.T) {
 	})
 
 	t.Run("disappears", func(t *testing.T) {
-		randomInt := rand.IntN(100)
-		resourceName := fmt.Sprintf("test_acc_s3_disappears_%d", randomInt)
+		token := testToken(t)
+		resourceName := fmt.Sprintf("test_acc_s3_disappears_%s", token)
 		fullResourceName := fmt.Sprintf("%s.%s", s3EndpointResourceName, resourceName)
 
 		baseModel := &model.ForwardingEndpointS3{
 			ForwardingEndpointCore: model.ForwardingEndpointCore{
-				Slug:        types.StringValue(slugify("s3-gone", randomInt)),
+				Slug:        types.StringValue(slugify("s3-gone", token)),
 				DisplayName: types.StringValue("Test S3 Endpoint Disappears"),
 			},
 			URI:         types.StringValue("s3://tf-acc-telemetry-gone"),
