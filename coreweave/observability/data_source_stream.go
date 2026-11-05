@@ -31,9 +31,8 @@ type TelemetryStreamDataSource struct {
 }
 
 func (s *TelemetryStreamDataSource) ValidateConfig(ctx context.Context, req datasource.ValidateConfigRequest, resp *datasource.ValidateConfigResponse) {
-	// A slug from a module input or resource output is unknown at validate time.
-	// ToRef turns that into an empty string, which protovalidate then rejects
-	// instead of letting Terraform defer the read until the slug resolves.
+	// An unknown slug becomes "" in ToRef, which protovalidate rejects instead
+	// of letting Terraform defer the read.
 	if !req.Config.Raw.IsFullyKnown() {
 		return
 	}
