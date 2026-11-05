@@ -78,7 +78,7 @@ resource "coreweave_observability_telemetry_relay_pipeline" "all_active_zones" {
 ### Read-Only
 
 - `created_at` (String) The time the forwarding pipeline was created.
-- `state` (String) The current state of the forwarding pipeline. One of: `FORWARDING_PIPELINE_STATE_PENDING`, `FORWARDING_PIPELINE_STATE_ACTIVE`, `FORWARDING_PIPELINE_STATE_ERROR`, `FORWARDING_PIPELINE_STATE_STOPPED`.
+- `state` (String) The current state of the forwarding pipeline. One of: `FORWARDING_PIPELINE_STATE_PENDING`, `FORWARDING_PIPELINE_STATE_ACTIVE`, `FORWARDING_PIPELINE_STATE_ERROR`, `FORWARDING_PIPELINE_STATE_STOPPED`. `FORWARDING_PIPELINE_STATE_STOPPED` is defined but never returned today, for the same reason `enabled` is not enforced.
 - `state_message` (String) Additional context about the current state, most useful when `state` is `FORWARDING_PIPELINE_STATE_ERROR`.
 - `updated_at` (String) The time the forwarding pipeline was last updated.
 

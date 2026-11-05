@@ -169,7 +169,8 @@ func (r *ResourceForwardingPipeline) Schema(ctx context.Context, req resource.Sc
 			// a connector can fail at any time — so pinning them to state would
 			// make the plan assert something it cannot know.
 			"state": schema.StringAttribute{
-				MarkdownDescription: fmt.Sprintf("The current state of the forwarding pipeline. One of: %s.",
+				MarkdownDescription: fmt.Sprintf("The current state of the forwarding pipeline. One of: %s. "+
+					"`FORWARDING_PIPELINE_STATE_STOPPED` is defined but never returned today, for the same reason `enabled` is not enforced.",
 					coreweave.EnumMarkdownValues(typesv1beta1.ForwardingPipelineState_name, true)),
 				Computed: true,
 			},
