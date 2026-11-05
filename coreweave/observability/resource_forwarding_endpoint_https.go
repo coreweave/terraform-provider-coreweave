@@ -127,16 +127,19 @@ func buildHTTPSCreateRequest(data model.ForwardingEndpointHTTPS) (*clusterv1beta
 }
 
 func (r *HTTPSForwardingEndpointResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
-	var data model.ForwardingEndpointHTTPS
-	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
-	if resp.Diagnostics.HasError() {
+	// Skip validation while anything in the config is unknown (e.g. during plan
+	// when the URL, slug or a credential comes from another resource).
+	// protovalidate would reject the zero-value placeholder and make the
+	// resource unusable inside a module. This has to run before Config.Get:
+	// an unknown auth_headers value cannot be decoded into map[string]string
+	// at all, so a per-attribute check afterwards would already be too late.
+	if !req.Config.Raw.IsFullyKnown() {
 		return
 	}
 
-	// Skip validation if any values are unknown (e.g., during plan when the URL
-	// or slug comes from another resource). protovalidate would reject the
-	// zero-value placeholder and make the resource unusable inside a module.
-	if data.Slug.IsUnknown() || data.DisplayName.IsUnknown() || data.Endpoint.IsUnknown() || data.Compression.IsUnknown() {
+	var data model.ForwardingEndpointHTTPS
+	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
 		return
 	}
 
