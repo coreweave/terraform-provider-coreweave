@@ -2,7 +2,6 @@ package observability_test
 
 import (
 	"fmt"
-	"math/rand/v2"
 	"regexp"
 	"testing"
 
@@ -40,14 +39,14 @@ func runForwardingPipelineAcceptanceTest(t *testing.T, testCase resource.TestCas
 
 // these are safe against any organization.
 func testForwardingPipelineInvalidConfig(t *testing.T) {
-	randomInt := rand.IntN(100)
+	token := testToken(t)
 	resourceName := "invalid_config"
 
 	valid := func() *model.ForwardingPipeline {
 		return &model.ForwardingPipeline{
-			Slug:            types.StringValue(slugify("pipe-invalid", randomInt)),
+			Slug:            types.StringValue(slugify("pipe-invalid", token)),
 			SourceSlug:      types.StringValue(logsStreams[0]),
-			DestinationSlug: types.StringValue(slugify("pipe-invalid-ep", randomInt)),
+			DestinationSlug: types.StringValue(slugify("pipe-invalid-ep", token)),
 			Enabled:         types.BoolValue(true),
 			ZoneSlugs:       types.SetNull(types.StringType),
 		}
@@ -105,7 +104,7 @@ func testForwardingPipelineInvalidConfig(t *testing.T) {
 }
 
 func testForwardingPipelineLifecycle(t *testing.T) {
-	randomInt := rand.IntN(100)
+	token := testToken(t)
 
 	t.Run("stream_to_endpoint_matrix", func(t *testing.T) {
 		streamsByStreamType := map[StreamType][]string{
@@ -131,12 +130,12 @@ func testForwardingPipelineLifecycle(t *testing.T) {
 						fullResourceName := fmt.Sprintf("%s.%s", pipelineResourceName, resourceName)
 
 						// We end up creating many endpoint slugs that are illegally long, so we need to shorten them
-						endpointSlug := slugify(fmt.Sprintf("p-%s-%s", streamSlug, endpointType), randomInt)
+						endpointSlug := slugify(fmt.Sprintf("p-%s-%s", streamSlug, endpointType), token)
 						if len(endpointSlug) > endpointSlugMaxTestLength {
-							endpointSlug = slugify(fmt.Sprintf("p-%s-%s", shorten(streamSlug), string(endpointType)), randomInt)
+							endpointSlug = slugify(fmt.Sprintf("p-%s-%s", shorten(streamSlug), string(endpointType)), token)
 						}
 						if len(endpointSlug) > endpointSlugMaxTestLength {
-							endpointSlug = slugify(fmt.Sprintf("p-%s-%s", shorten(streamSlug), shorten(string(endpointType))), randomInt)
+							endpointSlug = slugify(fmt.Sprintf("p-%s-%s", shorten(streamSlug), shorten(string(endpointType))), token)
 						}
 
 						var endpoint any
@@ -147,7 +146,7 @@ func testForwardingPipelineLifecycle(t *testing.T) {
 							endpoint = createS3Endpoint(t, endpointSlug)
 						}
 
-						pipelineSlug := slugify(fmt.Sprintf("pipe-%s-%s", streamSlug, endpointType), randomInt)
+						pipelineSlug := slugify(fmt.Sprintf("pipe-%s-%s", streamSlug, endpointType), token)
 
 						// Always scope to the lab zone. A pipeline fans out one connector
 						// per Kafka cluster holding the stream's topics, so an unscoped
@@ -205,12 +204,12 @@ func testForwardingPipelineLifecycle(t *testing.T) {
 
 		streamSlug := lifecycleCrudStream
 
-		endpointSlug := slugify("lifecycle-ep", randomInt)
+		endpointSlug := slugify("lifecycle-ep", token)
 		endpoint := createHTTPSEndpoint(t, endpointSlug)
 
-		secondEndpointSlug := slugify("lifecycle-ep2", randomInt)
+		secondEndpointSlug := slugify("lifecycle-ep2", token)
 
-		pipelineSlug := slugify("lifecycle-pipeline", randomInt)
+		pipelineSlug := slugify("lifecycle-pipeline", token)
 		pipeline := &model.ForwardingPipeline{
 			Slug:            types.StringValue(pipelineSlug),
 			SourceSlug:      types.StringValue(streamSlug),
@@ -344,11 +343,11 @@ func testForwardingPipelineLifecycle(t *testing.T) {
 		resourceName := "zone_slugs"
 		fullResourceName := fmt.Sprintf("%s.%s", pipelineResourceName, resourceName)
 
-		endpointSlug := slugify("zones-ep", randomInt)
+		endpointSlug := slugify("zones-ep", token)
 		endpoint := createHTTPSEndpoint(t, endpointSlug)
 
 		pipeline := &model.ForwardingPipeline{
-			Slug:            types.StringValue(slugify("zones-pipeline", randomInt)),
+			Slug:            types.StringValue(slugify("zones-pipeline", token)),
 			SourceSlug:      types.StringValue(lifecycleZoneReplaceStream),
 			DestinationSlug: types.StringValue(endpointSlug),
 			Enabled:         types.BoolValue(true),
@@ -392,11 +391,11 @@ func testForwardingPipelineLifecycle(t *testing.T) {
 		resourceName := "slug_replace"
 		fullResourceName := fmt.Sprintf("%s.%s", pipelineResourceName, resourceName)
 
-		endpointSlug := slugify("slugrep-ep", randomInt)
+		endpointSlug := slugify("slugrep-ep", token)
 		endpoint := createHTTPSEndpoint(t, endpointSlug)
 
 		pipeline := &model.ForwardingPipeline{
-			Slug:            types.StringValue(slugify("slugrep-pipeline", randomInt)),
+			Slug:            types.StringValue(slugify("slugrep-pipeline", token)),
 			SourceSlug:      types.StringValue(lifecycleSlugReplaceStream),
 			DestinationSlug: types.StringValue(endpointSlug),
 			Enabled:         types.BoolValue(true),
@@ -415,7 +414,7 @@ func testForwardingPipelineLifecycle(t *testing.T) {
 				{
 					PreConfig: func() { t.Log("changing slug plans a replacement") },
 					Config: renderForwardingPipelineResource(t, resourceName, with(pipeline, func(p *model.ForwardingPipeline) {
-						p.Slug = types.StringValue(slugify("slugrep-pipeline-2", randomInt))
+						p.Slug = types.StringValue(slugify("slugrep-pipeline-2", token))
 					}), endpoint),
 					PlanOnly:           true,
 					ExpectNonEmptyPlan: true,
@@ -439,10 +438,10 @@ func testForwardingPipelineLifecycle(t *testing.T) {
 		resourceName := "disappears"
 		fullResourceName := fmt.Sprintf("%s.%s", pipelineResourceName, resourceName)
 
-		endpointSlug := slugify("gone-ep", randomInt)
+		endpointSlug := slugify("gone-ep", token)
 		endpoint := createHTTPSEndpoint(t, endpointSlug)
 
-		pipelineSlug := slugify("gone-pipeline", randomInt)
+		pipelineSlug := slugify("gone-pipeline", token)
 		pipeline := &model.ForwardingPipeline{
 			Slug:            types.StringValue(pipelineSlug),
 			SourceSlug:      types.StringValue(lifecycleDisappearsStream),
@@ -483,11 +482,11 @@ func testForwardingPipelineLifecycle(t *testing.T) {
 	t.Run("invalid_stream", func(t *testing.T) {
 		resourceName := "invalid_stream"
 
-		endpointSlug := slugify("badstream-ep", randomInt)
+		endpointSlug := slugify("badstream-ep", token)
 		endpoint := createHTTPSEndpoint(t, endpointSlug)
 
 		pipeline := &model.ForwardingPipeline{
-			Slug:            types.StringValue(slugify("pipe-badstream", randomInt)),
+			Slug:            types.StringValue(slugify("pipe-badstream", token)),
 			SourceSlug:      types.StringValue("nonexistent-stream"),
 			DestinationSlug: types.StringValue(endpointSlug),
 			Enabled:         types.BoolValue(true),
