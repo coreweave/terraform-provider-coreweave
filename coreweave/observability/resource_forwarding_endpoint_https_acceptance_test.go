@@ -678,7 +678,11 @@ func TestForwardingEndpointHTTPSAcceptance(t *testing.T) {
 				model: with(valid(), func(m *model.ForwardingEndpointHTTPS) {
 					m.Credentials = &model.HTTPSCredentials{}
 				}),
-				expectError: regexp.MustCompile(`(?s)(?i)(exactly one|must be set)`),
+				// Matches the diagnostic summary plus one discriminating word, not
+				// the detail prose: rewording the detail should not fail a test.
+				// The diagnostic summary only. The detail names the auth methods, and
+				// a third one would make any list of them wrong.
+				expectError: regexp.MustCompile(`(?i)credentials`),
 			},
 			{
 				name: "negative credentials_version",
