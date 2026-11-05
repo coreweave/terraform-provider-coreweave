@@ -89,15 +89,19 @@ func buildS3CreateRequest(data model.ForwardingEndpointS3) (*clusterv1beta1.Crea
 }
 
 func (r *S3ForwardingEndpointResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
-	var data model.ForwardingEndpointS3
-	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
-	if resp.Diagnostics.HasError() {
+	// Skip validation while anything in the config is unknown (e.g. during plan
+	// when the URI, slug or an access key comes from another resource).
+	// S3Credentials.ToMsg turns unresolved keys into empty strings, which
+	// protovalidate then rejects, and an entirely unknown credentials object
+	// cannot be decoded into the pointer model at all — so this has to run
+	// before Config.Get.
+	if !req.Config.Raw.IsFullyKnown() {
 		return
 	}
 
-	// Skip validation if any values are unknown (e.g., during plan when the URI
-	// or slug comes from another resource).
-	if data.Slug.IsUnknown() || data.DisplayName.IsUnknown() || data.URI.IsUnknown() || data.Region.IsUnknown() {
+	var data model.ForwardingEndpointS3
+	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
 		return
 	}
 
