@@ -166,7 +166,7 @@ func TestTelemetryStream(t *testing.T) {
 		})
 
 		var m model.TelemetryStreamDataSource
-		require.False(t, m.Set(stream).HasError())
+		require.False(t, m.Set(t.Context(), stream).HasError())
 
 		// The StringList wrapper must not reach HCL: users write
 		// filter.include["namespace"], not filter.include["namespace"].values.
@@ -202,7 +202,7 @@ func TestTelemetryStream(t *testing.T) {
 		stream.Spec.SetKind(typesv1beta1.StreamKind_STREAM_KIND_LOGS)
 
 		var m model.TelemetryStreamDataSource
-		require.False(t, m.Set(stream).HasError())
+		require.False(t, m.Set(t.Context(), stream).HasError())
 		assert.Nil(t, m.Filter, "an absent LabelSelector must read as null, not as an empty filter")
 
 		state := tfsdk.State{

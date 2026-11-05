@@ -167,7 +167,7 @@ func (s *TelemetryStreamDataSource) Read(ctx context.Context, req datasource.Rea
 		return
 	}
 
-	resp.Diagnostics.Append(data.Set(getResp.Stream)...)
+	resp.Diagnostics.Append(data.Set(ctx, getResp.Stream)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}

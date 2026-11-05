@@ -99,14 +99,14 @@ type ActiveZone struct {
 	Clusters types.List `tfsdk:"clusters"`
 }
 
-func (a *ActiveZone) Set(zone *typesv1beta1.TelemetryStreamStatus_ZoneClusterStatus) (diagnostics diag.Diagnostics) {
+func (a *ActiveZone) Set(ctx context.Context, zone *typesv1beta1.TelemetryStreamStatus_ZoneClusterStatus) (diagnostics diag.Diagnostics) {
 	clustersRaw := make([]ActiveCluster, len(zone.Clusters))
 	for i, cluster := range zone.Clusters {
 		clustersRaw[i] = ActiveCluster{
 			ID: types.StringValue(cluster.Id),
 		}
 	}
-	a.Clusters, diagnostics = types.ListValueFrom(context.Background(), types.ObjectType{
+	a.Clusters, diagnostics = types.ListValueFrom(ctx, types.ObjectType{
 		AttrTypes: map[string]attr.Type{
 			"id": types.StringType,
 		},
@@ -150,7 +150,7 @@ type TelemetryStreamDataSource struct {
 	ZonesActive  map[string]*ActiveZone `tfsdk:"zones_active"`
 }
 
-func (m *TelemetryStreamDataSource) Set(stream *typesv1beta1.TelemetryStream) (diagnostics diag.Diagnostics) {
+func (m *TelemetryStreamDataSource) Set(ctx context.Context, stream *typesv1beta1.TelemetryStream) (diagnostics diag.Diagnostics) {
 	if stream == nil {
 		return diagnostics
 	}
@@ -176,7 +176,7 @@ func (m *TelemetryStreamDataSource) Set(stream *typesv1beta1.TelemetryStream) (d
 	m.ZonesActive = make(map[string]*ActiveZone, len(status.GetZonesActive()))
 	for _, zone := range status.GetZonesActive() {
 		az := new(ActiveZone)
-		diagnostics.Append(az.Set(zone)...)
+		diagnostics.Append(az.Set(ctx, zone)...)
 		m.ZonesActive[zone.GetZoneSlug()] = az
 	}
 
