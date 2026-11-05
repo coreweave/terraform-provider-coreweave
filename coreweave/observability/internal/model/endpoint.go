@@ -12,6 +12,10 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
+// ForwardingEndpointRef identifies an endpoint by slug. The slug is the only
+// identity in the Terraform surface — there is no UUID — and it is unique per
+// organization, which comes from the API token. Immutable server-side, hence
+// RequiresReplace, and it is what ImportState takes.
 type ForwardingEndpointRef struct {
 	Slug types.String `tfsdk:"slug"`
 }
