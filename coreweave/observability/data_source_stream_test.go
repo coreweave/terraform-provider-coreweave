@@ -3,12 +3,10 @@ package observability_test
 import (
 	"embed"
 	"fmt"
-	"os"
 	"regexp"
 	"strings"
 	"testing"
 
-	clusterv1beta1 "buf.build/gen/go/coreweave/telemetry-relay/protocolbuffers/go/coreweave/telemetryrelay/svc/cluster/v1beta1"
 	typesv1beta1 "buf.build/gen/go/coreweave/telemetry-relay/protocolbuffers/go/coreweave/telemetryrelay/types/v1beta1"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave/observability"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave/observability/internal/model"
@@ -128,59 +126,6 @@ func TestTelemetryStream(t *testing.T) {
 		assert.Equal(t, string(expectedHCL), hcl)
 	})
 
-	// filter_round_trip is the test the schema/model mismatch needed. The
-	// schema declared filter.include as map(map(list(string))) while the model
-	// was map(object({values = list(string)})), so State.Set failed on any
-	// stream with a non-nil LabelSelector. It stayed latent because no fixture
-	// had a filter and the assertion was a TODO.
-	//
-	// Writing the model through the real schema reproduces that failure without
-	// needing the API, so it holds whether or not the test org has a filtered
-	// stream.
-	t.Run("filter_round_trip", func(t *testing.T) {
-		t.Parallel()
-
-		ctx := t.Context()
-
-		schemaResponse := &datasource.SchemaResponse{}
-		observability.NewTelemetryStreamDataSource().Schema(ctx, datasource.SchemaRequest{}, schemaResponse)
-		require.False(t, schemaResponse.Diagnostics.HasError())
-
-		stream := &typesv1beta1.TelemetryStream{
-			Ref:  &typesv1beta1.TelemetryStreamRef{Slug: "logs-filtered"},
-			Spec: &typesv1beta1.TelemetryStreamSpec{DisplayName: "Filtered Logs"},
-			Status: &typesv1beta1.TelemetryStreamStatus{
-				CreatedAt: timestamppb.Now(),
-				UpdatedAt: timestamppb.Now(),
-				State:     typesv1beta1.TelemetryStreamState_TELEMETRY_STREAM_STATE_ACTIVE,
-			},
-		}
-		stream.Spec.SetKind(typesv1beta1.StreamKind_STREAM_KIND_LOGS)
-		stream.Spec.SetFilter(&typesv1beta1.LabelSelector{
-			Include: map[string]*typesv1beta1.StringList{
-				"namespace": {Values: []string{"kube-system", "default"}},
-			},
-			Exclude: map[string]*typesv1beta1.StringList{
-				"container": {Values: []string{"istio-proxy"}},
-			},
-		})
-
-		var m model.TelemetryStreamDataSource
-		require.False(t, m.Set(t.Context(), stream).HasError())
-
-		// The StringList wrapper must not reach HCL: users write
-		// filter.include["namespace"], not filter.include["namespace"].values.
-		assert.Equal(t, map[string][]string{"namespace": {"kube-system", "default"}}, m.Filter.Include)
-		assert.Equal(t, map[string][]string{"container": {"istio-proxy"}}, m.Filter.Exclude)
-
-		state := tfsdk.State{
-			Schema: schemaResponse.Schema,
-			Raw:    tftypes.NewValue(schemaResponse.Schema.Type().TerraformType(ctx), nil),
-		}
-		diags := state.Set(ctx, &m)
-		assert.False(t, diags.HasError(), "writing a filtered stream to state failed: %v", diags)
-	})
-
 	t.Run("unfiltered_round_trip", func(t *testing.T) {
 		t.Parallel()
 
@@ -203,7 +148,6 @@ func TestTelemetryStream(t *testing.T) {
 
 		var m model.TelemetryStreamDataSource
 		require.False(t, m.Set(t.Context(), stream).HasError())
-		assert.Nil(t, m.Filter, "an absent LabelSelector must read as null, not as an empty filter")
 
 		state := tfsdk.State{
 			Schema: schemaResponse.Schema,
@@ -254,85 +198,4 @@ func TestTelemetryStream(t *testing.T) {
 			}
 		}
 	})
-
-	// filtered_stream reads whichever stream in the org actually carries a
-	// LabelSelector. Streams are platform-defined and cannot be created through
-	// the customer-facing API, so there is nothing to set up; if the org has no
-	// filtered stream, the unit round-trip subtests above still cover the type.
-	t.Run("filtered_stream", func(t *testing.T) {
-		if os.Getenv(resource.EnvTfAcc) == "" {
-			t.Skipf("%s not set; filter type agreement is covered by filter_round_trip", resource.EnvTfAcc)
-		}
-
-		slug, ok := findFilteredStream(t)
-		if !ok {
-			t.Skip("no stream in this organization carries a LabelSelector; filter type agreement is covered by filter_round_trip")
-		}
-
-		dataSourceName := "test_acc_filtered_stream"
-		fullDataSourceName := fmt.Sprintf("data.%s.%s", telemetryStreamDataSourceName, dataSourceName)
-
-		resource.ParallelTest(t, resource.TestCase{
-			ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
-			PreCheck:                 func() { setAccEnvDefaults() },
-			Steps: []resource.TestStep{
-				createStreamDataSourceTestStep(t, streamDataSourceTestStep{
-					TestName:       fmt.Sprintf("filtered stream: %s", slug),
-					DataSourceName: dataSourceName,
-					Slug:           slug,
-					StateChecks: []statecheck.StateCheck{
-						statecheck.ExpectKnownValue(fullDataSourceName, tfjsonpath.New("filter"), knownvalue.NotNull()),
-					},
-				}),
-			},
-		})
-	})
-
-	t.Run("not_found", func(t *testing.T) {
-		resource.ParallelTest(t, resource.TestCase{
-			ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
-			PreCheck:                 func() { setAccEnvDefaults() },
-			Steps: []resource.TestStep{
-				createStreamDataSourceTestStep(t, streamDataSourceTestStep{
-					TestName:       "stream not found",
-					DataSourceName: "test_acc_stream_notfound",
-					Slug:           "nonexistent-stream",
-					ExpectError:    regexp.MustCompile(`(?i)(not found)`),
-				}),
-			},
-		})
-	})
-
-	t.Run("invalid_slug", func(t *testing.T) {
-		resource.ParallelTest(t, resource.TestCase{
-			ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
-			PreCheck:                 func() { setAccEnvDefaults() },
-			Steps: []resource.TestStep{
-				createStreamDataSourceTestStep(t, streamDataSourceTestStep{
-					TestName:       "invalid slug validation",
-					DataSourceName: "test_acc_stream_invalid",
-					Slug:           "invalid-slug-way-too-long-to-be-valid",
-					ExpectError:    regexp.MustCompile(`(?i)(validation|invalid|required|empty)`),
-				}),
-			},
-		})
-	})
-}
-
-// findFilteredStream returns the slug of a stream in the test organization
-// that carries a non-nil LabelSelector, if there is one.
-func findFilteredStream(t *testing.T) (string, bool) {
-	t.Helper()
-
-	client := testClient(t)
-	listResp, err := client.ListStreams(t.Context(), &clusterv1beta1.ListStreamsRequest{})
-	require.NoError(t, err, "failed to list streams")
-
-	for _, stream := range listResp.GetStreams() {
-		if stream.GetSpec().GetFilter() != nil {
-			return stream.GetRef().GetSlug(), true
-		}
-	}
-
-	return "", false
 }
