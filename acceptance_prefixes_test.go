@@ -79,6 +79,11 @@ func acceptanceSweeperPrefixes(t *testing.T) map[string]map[string]string {
 		"object_storage/AcceptanceTestPrefix": {
 			"coreweave_object_storage_bucket", "coreweave_object_storage_organization_access_policy",
 		},
+		"observability/AcceptanceTestPrefix": {
+			"coreweave_observability_telemetry_relay_endpoint_https",
+			"coreweave_observability_telemetry_relay_endpoint_s3",
+			"coreweave_observability_telemetry_relay_pipeline",
+		},
 		"container_registry/CI default": {"coreweave_container_registry_namespace"},
 	}
 	require.Equal(t, slices.Sorted(maps.Keys(resourceTypes)), slices.Sorted(maps.Keys(prefixes)), "update the resource type inventory when adding a suite prefix")
