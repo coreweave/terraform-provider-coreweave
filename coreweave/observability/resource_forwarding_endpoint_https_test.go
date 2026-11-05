@@ -926,7 +926,7 @@ func TestForwardingEndpointHTTPS(t *testing.T) {
 		// The credentials subtest above reaches header auth only through
 		// basic_auth -> CLEAR -> REPLACE, and only ever with one header. This
 		// one creates with header auth outright and with several headers, since
-		// the connector serialises the map to "name:value,name:value" and a
+		// the connector serializes the map to "name:value,name:value" and a
 		// single pair never exercises the separator.
 		baseModel := &model.ForwardingEndpointHTTPS{
 			ForwardingEndpointCore: model.ForwardingEndpointCore{
