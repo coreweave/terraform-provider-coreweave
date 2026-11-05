@@ -10,9 +10,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
-// TelemetryStreamRef names a platform-defined stream, such as
-// logs-customer-cluster or metrics-platform. Customers select from the catalog
-// rather than creating these, which is why streams are a data source.
 type TelemetryStreamRef struct {
 	Slug types.String `tfsdk:"slug"`
 }
