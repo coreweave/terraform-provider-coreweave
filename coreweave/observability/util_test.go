@@ -2,6 +2,8 @@ package observability_test
 
 import (
 	"context"
+	cryptorand "crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"testing"
@@ -79,8 +81,21 @@ func with[T any](value *T, fn func(*T)) *T {
 }
 
 // slugify creates a test resource slug with the acceptance test prefix and random suffix
-func slugify(name string, randomInt int) string {
-	return fmt.Sprintf("%s%s-%d", AcceptanceTestPrefix, name, randomInt)
+// testToken returns a crypto-random token for test resource names. The suites
+// create many resources concurrently in one shared organization, where the
+// previous rand.IntN(100) suffix collided often enough to see.
+func testToken(t *testing.T) string {
+	t.Helper()
+
+	var b [3]byte
+	_, err := cryptorand.Read(b[:])
+	require.NoError(t, err, "reading entropy for a test token")
+
+	return hex.EncodeToString(b[:])
+}
+
+func slugify(name, token string) string {
+	return fmt.Sprintf("%s%s-%s", AcceptanceTestPrefix, name, token)
 }
 
 // testClient builds an API client for the out-of-band operations a few
