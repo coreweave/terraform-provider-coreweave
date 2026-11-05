@@ -7,9 +7,10 @@ if [[ ! "$expected" =~ [^[:space:]] ]]; then
   exit 1
 fi
 
-release=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG")
+# Use gh release view to find drafts; the release-by-tag API returns 404 for them.
+release=$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json tagName,isDraft,body)
 jq -e --arg tag "$RELEASE_TAG" '
-  .tag_name == $tag and .draft == true and (.body | type) == "string"
+  .tagName == $tag and .isDraft == true and (.body | type) == "string"
 ' <<< "$release" >/dev/null
 actual=$(jq -r .body <<< "$release")
 # GoReleaser may append newlines; command substitution trims them on both sides.
