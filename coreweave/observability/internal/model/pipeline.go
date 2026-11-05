@@ -11,10 +11,6 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-// ForwardingPipelineRef identifies a pipeline by slug, unique per organization
-// like an endpoint's, but up to 65 characters rather than 32. kafkaclusterd
-// names the connector <org>-<slug> and hashes it past 64, so a long slug gets
-// an opaque conn-<hex> connector name.
 type ForwardingPipelineRef struct {
 	Slug types.String `tfsdk:"slug"`
 }

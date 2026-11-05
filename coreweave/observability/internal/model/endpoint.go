@@ -12,10 +12,18 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-// ForwardingEndpointRef identifies an endpoint by slug. The slug is the only
-// identity in the Terraform surface — there is no UUID — and it is unique per
-// organization, which comes from the API token. Immutable server-side, hence
-// RequiresReplace, and it is what ImportState takes.
+// Endpoint is a forwarding endpoint model of any config variant.
+type Endpoint interface {
+	ToMsg() (*typesv1beta1.ForwardingEndpoint, diag.Diagnostics)
+}
+
+var (
+	_ Endpoint = (*ForwardingEndpointHTTPS)(nil)
+	_ Endpoint = (*ForwardingEndpointS3)(nil)
+)
+
+// ForwardingEndpointRef holds the endpoint's only identity: a slug unique per
+// organization, immutable, and the value ImportState takes.
 type ForwardingEndpointRef struct {
 	Slug types.String `tfsdk:"slug"`
 }

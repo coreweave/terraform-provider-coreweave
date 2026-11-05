@@ -9,6 +9,7 @@ import (
 	typesv1beta1 "buf.build/gen/go/coreweave/telemetry-relay/protocolbuffers/go/coreweave/telemetryrelay/types/v1beta1"
 	"connectrpc.com/connect/v2"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
+	"github.com/coreweave/terraform-provider-coreweave/coreweave/observability/internal/model"
 	"github.com/hashicorp/terraform-plugin-framework-timeouts/resource/timeouts"
 	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
@@ -252,10 +253,7 @@ func awaitEndpointReady(ctx context.Context, client *coreweave.Client, ref *type
 }
 
 // deleteEndpoint is the common Delete implementation for all forwarding endpoint resources.
-// The data parameter should be a struct that has a ToMsg() method returning (*typesv1beta1.ForwardingEndpoint, diag.Diagnostics).
-func deleteEndpoint(ctx context.Context, client *coreweave.Client, data interface {
-	ToMsg() (*typesv1beta1.ForwardingEndpoint, diag.Diagnostics)
-}) (diagnostics diag.Diagnostics) {
+func deleteEndpoint(ctx context.Context, client *coreweave.Client, data model.Endpoint) (diagnostics diag.Diagnostics) {
 	endpointMsg, diags := data.ToMsg()
 	diagnostics.Append(diags...)
 	if diagnostics.HasError() {
