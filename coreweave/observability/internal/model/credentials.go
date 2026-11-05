@@ -1,7 +1,6 @@
 package model
 
 import (
-	"context"
 	"fmt"
 	"maps"
 	"strings"
@@ -17,7 +16,7 @@ type BasicAuthCredentials struct {
 	Password types.String `tfsdk:"password"`
 }
 
-func (b *BasicAuthCredentials) Set(_ context.Context, msg *typesv1beta1.BasicAuthCredentials) {
+func (b *BasicAuthCredentials) Set(msg *typesv1beta1.BasicAuthCredentials) {
 	b.Username = types.StringValue(msg.Username)
 	b.Password = types.StringValue(msg.Password)
 }
@@ -40,7 +39,7 @@ type AuthHeadersCredentials struct {
 	Headers map[string]string `tfsdk:"headers"`
 }
 
-func (h *AuthHeadersCredentials) Set(_ context.Context, msg *typesv1beta1.AuthHeadersCredentials) {
+func (h *AuthHeadersCredentials) Set(msg *typesv1beta1.AuthHeadersCredentials) {
 	h.Headers = maps.Clone(msg.Headers)
 }
 
@@ -62,7 +61,7 @@ type HTTPSCredentials struct {
 	AuthHeaders *AuthHeadersCredentials `tfsdk:"auth_headers"`
 }
 
-func (h *HTTPSCredentials) Set(ctx context.Context, msg *typesv1beta1.HTTPSCredentials) (diagnostics diag.Diagnostics) {
+func (h *HTTPSCredentials) Set(msg *typesv1beta1.HTTPSCredentials) (diagnostics diag.Diagnostics) {
 	if msg == nil {
 		return nil
 	}
@@ -75,10 +74,10 @@ func (h *HTTPSCredentials) Set(ctx context.Context, msg *typesv1beta1.HTTPSCrede
 		diagnostics.AddError("no auth set for https credentials", "Auth must be set when using https credentials")
 	case typesv1beta1.HTTPSCredentials_BasicAuth_case:
 		h.BasicAuth = new(BasicAuthCredentials)
-		h.BasicAuth.Set(ctx, msg.GetBasicAuth())
+		h.BasicAuth.Set(msg.GetBasicAuth())
 	case typesv1beta1.HTTPSCredentials_AuthHeaders_case:
 		h.AuthHeaders = new(AuthHeadersCredentials)
-		h.AuthHeaders.Set(ctx, msg.GetAuthHeaders())
+		h.AuthHeaders.Set(msg.GetAuthHeaders())
 	default:
 		diagnostics.AddError("Unsupported HTTPS auth type", fmt.Sprintf("unsupported https auth type: %s (%d)", kind.String(), kind))
 	}
@@ -125,7 +124,7 @@ type S3Credentials struct {
 	SessionToken    types.String `tfsdk:"session_token"`
 }
 
-func (s *S3Credentials) Set(_ context.Context, msg *typesv1beta1.S3Credentials) {
+func (s *S3Credentials) Set(msg *typesv1beta1.S3Credentials) {
 	s.AccessKeyID = types.StringValue(msg.AccessKeyId)
 	s.SecretAccessKey = types.StringValue(msg.SecretAccessKey)
 	if msg.SessionToken == "" {
