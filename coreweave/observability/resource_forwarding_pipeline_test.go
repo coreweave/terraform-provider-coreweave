@@ -56,7 +56,7 @@ func init() {
 			copy(streamPrefixes, metricsStreams)
 			copy(streamPrefixes[len(metricsStreams):], logsStreams)
 
-			prefixPattern := fmt.Sprintf(`^(%s-)?%s`, strings.Join(streamPrefixes, "|"), AcceptanceTestPrefix)
+			prefixPattern := fmt.Sprintf(`^((%s)-)?%s`, strings.Join(streamPrefixes, "|"), AcceptanceTestPrefix)
 			prefixMatcher := regexp.MustCompile(prefixPattern)
 
 			for _, pipeline := range listResp.GetPipelines() {
@@ -65,11 +65,12 @@ func init() {
 					continue
 				}
 
-				log.Printf("sweeping forwarding pipeline %q", pipeline.Ref.Slug)
 				if testutil.SweepDryRun() {
 					log.Printf("skipping forwarding pipeline %q because of dry-run mode", pipeline.Ref.Slug)
 					continue
 				}
+
+				log.Printf("sweeping forwarding pipeline %q", pipeline.Ref.Slug)
 
 				deleteCtx, deleteCancel := context.WithTimeout(ctx, 5*time.Minute)
 				defer deleteCancel()
