@@ -12,9 +12,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-testing/tfjsonpath"
 )
 
-// Reads the real stream catalog, so the whole function is skipped without
-// TF_ACC. The offline schema, render and round_trip coverage lives in
-// data_source_stream_test.go.
 func TestTelemetryStreamAcceptance(t *testing.T) {
 	t.Parallel()
 
