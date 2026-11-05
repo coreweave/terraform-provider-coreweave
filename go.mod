@@ -3,6 +3,7 @@ module github.com/coreweave/terraform-provider-coreweave
 go 1.27.2
 
 require (
+	buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.36.12-20260825204119-511051f7f437.2
 	buf.build/gen/go/coreweave/cks/connectrpc/go/v2 v2.0.2-20261014193236-69d4f39faca7.1
 	buf.build/gen/go/coreweave/cks/protocolbuffers/go v1.36.12-20261014193236-69d4f39faca7.2
 	buf.build/gen/go/coreweave/container-registry-api/connectrpc/go/v2 v2.0.1-20261009031350-4d1490e50ed8.1
@@ -50,7 +51,6 @@ require (
 )
 
 require (
-	buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.36.12-20260825204119-511051f7f437.2 // indirect
 	buf.build/gen/go/gnostic/gnostic/protocolbuffers/go v1.36.12-20230414000709-087bc8072ce4.2 // indirect
 	buf.build/gen/go/grpc-ecosystem/grpc-gateway/protocolbuffers/go v1.36.12-20260928204428-da388df5b314.2 // indirect
 	cel.dev/cel-go v0.32.0 // indirect
