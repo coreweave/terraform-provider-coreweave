@@ -10,7 +10,7 @@ const workflow = readFileSync(new URL('../workflows/release.yml', import.meta.ur
 const command = workflow.match(/- name: Publish completed release[\s\S]*?\n        run: (.+)/)[1];
 const cwd = fileURLToPath(new URL('../../', import.meta.url));
 const notes = '## [1.2.3]\n\n### Features\n\n* Current change\n';
-const release = { tag_name: 'v1.2.3', draft: true, body: `${notes}\n` };
+const release = { tagName: 'v1.2.3', isDraft: true, body: `${notes}\n` };
 
 function run(t, overrides = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'release-publish-'));
@@ -24,6 +24,8 @@ function run(t, overrides = {}) {
     const args = process.argv.slice(2);
     appendFileSync(process.env.CALLS, JSON.stringify(args) + '\\n');
     if (args[0] === 'api' && args[1] === 'repos/public/fixture/releases/tags/v1.2.3') {
+      console.error('gh: Not Found (HTTP 404)'); process.exit(1);
+    } else if (JSON.stringify(args) === JSON.stringify(['release', 'view', 'v1.2.3', '--repo', 'public/fixture', '--json', 'tagName,isDraft,body'])) {
       if (process.env.LOOKUP_EXIT !== '0') process.exit(Number(process.env.LOOKUP_EXIT));
       console.log(readFileSync(process.env.RESPONSE, 'utf8'));
     } else if (JSON.stringify(args) === JSON.stringify(['release', 'edit', 'v1.2.3', '--repo', 'public/fixture', '--draft=false'])) {
@@ -41,11 +43,11 @@ function run(t, overrides = {}) {
   return { ...result, calls: readFileSync(calls, 'utf8').trim().split('\n').filter(Boolean).map(line => JSON.parse(line)) };
 }
 
-test('the workflow publishes a matching draft after reading its notes, allowing trailing newlines', t => {
+test('the workflow uses draft-aware lookup to publish matching notes, allowing trailing newlines', t => {
   const result = run(t);
   assert.equal(result.status, 0, result.stderr);
   assert.deepEqual(result.calls, [
-    ['api', 'repos/public/fixture/releases/tags/v1.2.3'],
+    ['release', 'view', 'v1.2.3', '--repo', 'public/fixture', '--json', 'tagName,isDraft,body'],
     ['release', 'edit', 'v1.2.3', '--repo', 'public/fixture', '--draft=false'],
   ]);
 });
@@ -53,16 +55,16 @@ test('the workflow publishes a matching draft after reading its notes, allowing 
 test('a blank draft description cannot be published', t => {
   const result = run(t, { release: { ...release, body: '\n' } });
   assert.notEqual(result.status, 0);
-  assert.ok(result.calls.every(args => args[0] !== 'release'));
+  assert.ok(result.calls.every(args => args[1] !== 'edit'));
 });
 
 test('mismatched, malformed, unrelated and published releases cannot be published', t => {
   for (const metadata of [{ ...release, body: 'Other notes' }, { ...release, body: null },
-    { ...release, body: 123 }, { ...release, draft: false }, { ...release, draft: 'true' },
-    { ...release, tag_name: 'v1.2.2' }, {}]) {
+    { ...release, body: 123 }, { ...release, isDraft: false }, { ...release, isDraft: 'true' },
+    { ...release, tagName: 'v1.2.2' }, {}]) {
     const result = run(t, { release: metadata });
     assert.notEqual(result.status, 0, JSON.stringify(metadata));
-    assert.ok(result.calls.every(args => args[0] !== 'release'), JSON.stringify(metadata));
+    assert.ok(result.calls.every(args => args[1] !== 'edit'), JSON.stringify(metadata));
   }
 });
 
@@ -70,12 +72,12 @@ test('empty expected notes and lookup failures cannot authorize publication', t 
   for (const overrides of [{ notes: '' }, { notes: ' \n\t\n' }, { lookupExit: 1 }]) {
     const result = run(t, overrides);
     assert.notEqual(result.status, 0, JSON.stringify(overrides));
-    assert.ok(result.calls.every(args => args[0] !== 'release'));
+    assert.ok(result.calls.every(args => args[1] !== 'edit'));
   }
 });
 
 test('publication errors fail the workflow step', t => {
   const result = run(t, { publishExit: 1 });
   assert.notEqual(result.status, 0);
-  assert.equal(result.calls.at(-1)[0], 'release');
+  assert.equal(result.calls.at(-1)[1], 'edit');
 });
