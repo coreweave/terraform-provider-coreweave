@@ -10,6 +10,7 @@ import (
 	"connectrpc.com/connect/v2"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave/observability/internal/model"
+	"github.com/coreweave/terraform-provider-coreweave/internal/coretf"
 	"github.com/hashicorp/terraform-plugin-framework-timeouts/resource/timeouts"
 	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
@@ -29,16 +30,6 @@ const (
 	// per resource through the `timeouts` attribute.
 	endpointTimeout = 5 * time.Minute
 )
-
-// pollTimeout returns how long a poll may run: the remaining time on ctx when
-// the caller has already applied the operator's `timeouts` value, otherwise
-// fallback.
-func pollTimeout(ctx context.Context, fallback time.Duration) time.Duration {
-	if deadline, ok := ctx.Deadline(); ok {
-		return time.Until(deadline)
-	}
-	return fallback
-}
 
 func commonEndpointSchema() map[string]schema.Attribute {
 	return map[string]schema.Attribute{
@@ -172,7 +163,7 @@ func pollForEndpointReady(ctx context.Context, client *coreweave.Client, ref *ty
 
 			return endpoint, status.GetState().String(), nil
 		},
-		Timeout: pollTimeout(ctx, endpointTimeout),
+		Timeout: coretf.PollTimeout(ctx, endpointTimeout),
 	}
 
 	rawEndpoint, err := pollConf.WaitForStateContext(ctx)
@@ -307,7 +298,7 @@ func deleteEndpointAndWait(ctx context.Context, client *coreweave.Client, ref *t
 			endpoint := result.GetEndpoint()
 			return endpoint, endpoint.GetStatus().GetState().String(), nil
 		},
-		Timeout: pollTimeout(ctx, endpointTimeout),
+		Timeout: coretf.PollTimeout(ctx, endpointTimeout),
 	}
 
 	if _, err := pollConf.WaitForStateContext(ctx); err != nil {
