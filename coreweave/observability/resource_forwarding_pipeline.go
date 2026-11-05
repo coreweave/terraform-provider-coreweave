@@ -49,11 +49,8 @@ type ResourceForwardingPipeline struct {
 
 // ValidateConfig implements resource.ResourceWithValidateConfig.
 func (r *ResourceForwardingPipeline) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
-	// Skip validation while anything in the config is unknown (e.g. during plan
-	// with resource references). ZoneSlugs.IsUnknown only caught a wholly
-	// unknown set, not a known set holding unknown elements such as
-	// zone_slugs = [var.zone], whose ElementsAs(..., false) then failed to
-	// convert. Checking the raw config covers every attribute at any depth.
+	// Covers unknown elements too: zone_slugs = [var.zone] is a known set that
+	// ElementsAs cannot convert.
 	if !req.Config.Raw.IsFullyKnown() {
 		return
 	}

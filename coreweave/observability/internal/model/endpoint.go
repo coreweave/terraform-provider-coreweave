@@ -163,9 +163,7 @@ func (m *ForwardingEndpointHTTPS) Set(endpoint *typesv1beta1.ForwardingEndpoint)
 	} else {
 		m.Compression = types.StringValue(compression.String())
 	}
-	// Clear on absence as well as set on presence: Read passes a model loaded
-	// from prior state, so leaving a stale m.TLS in place would report the old
-	// CA as still configured and hide the drift Terraform exists to repair.
+	// Read starts from prior state, so absence has to clear or drift is hidden.
 	if httpsConfig.Tls != nil {
 		m.TLS = new(TLSConfig)
 		m.TLS.Set(httpsConfig.Tls)

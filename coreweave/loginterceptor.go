@@ -23,11 +23,9 @@ const (
 	fieldSecretAccessKey protoreflect.Name = "secret_access_key"
 )
 
-// redactedFields names the fields cleared before a message is logged, keyed by
-// full proto name. Anything unlisted is logged verbatim, because prototext
-// serializes everything and Sensitive/WriteOnly never reach tflog fields.
-// Registered by name rather than detected, so coverage is never implied where
-// it is absent.
+// redactedFields names the fields cleared before a message is logged. Anything
+// unlisted is logged verbatim: prototext serializes everything, and Sensitive
+// and WriteOnly never reach tflog fields. Registered, not detected.
 var redactedFields = map[protoreflect.FullName][]protoreflect.Name{
 	"coreweave.telemetryrelay.svc.cluster.v1beta1.CreateEndpointRequest": {"kafka", "prometheus", "s3", "https"},
 	"coreweave.telemetryrelay.svc.cluster.v1beta1.UpdateEndpointRequest": {"kafka", "prometheus", "s3", "https"},
@@ -39,8 +37,7 @@ var redactedFields = map[protoreflect.FullName][]protoreflect.Name{
 	"coreweave.cwobject.v1.CreateAccessKeyFromOIDCResponse":           {fieldSecretKey},
 }
 
-// redactCredentials copies message with its registered fields cleared and names
-// what it cleared. It copies because the message is on its way to the wire.
+// redactCredentials copies because the message is on its way to the wire.
 func redactCredentials(message proto.Message) (proto.Message, []string) {
 	descriptor := message.ProtoReflect().Descriptor()
 	names, registered := redactedFields[descriptor.FullName()]
@@ -68,7 +65,6 @@ func redactCredentials(message proto.Message) (proto.Message, []string) {
 	return clone, cleared
 }
 
-// logMessageFields records the formatted message, redacted, on a log line.
 func logMessageFields(fields map[string]any, msg any) {
 	message, ok := msg.(proto.Message)
 	if !ok {

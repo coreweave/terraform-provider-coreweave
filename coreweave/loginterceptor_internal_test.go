@@ -24,8 +24,7 @@ const (
 	publicHeaderName = "Authorization"
 )
 
-// Registration is by string, so a renamed field would stop being redacted
-// silently.
+// Registration is by string, so a rename would silently stop redacting.
 func TestRedactedFieldsResolve(t *testing.T) {
 	t.Parallel()
 
@@ -142,7 +141,6 @@ func TestRedactCredentialsLeavesOtherMessagesAlone(t *testing.T) {
 	assert.Same(t, req, redacted, "nothing to clear should not copy")
 	assert.Contains(t, logFormatMessage(redacted), publicSlug)
 
-	// A redacted message still has to be loggable.
 	withSecret, cleared := redactCredentials(httpsBasicAuthRequest())
 	assert.NotEmpty(t, cleared)
 	assert.Contains(t, logFormatMessage(withSecret), publicSlug)
@@ -162,7 +160,6 @@ func TestRedactCredentialsDoesNotMutateTheMessage(t *testing.T) {
 		"redaction must not clear credentials on the outgoing message")
 }
 
-// Pins the reason the registry exists.
 func TestLogFormatMessageWithoutRedactionStillCarriesSecrets(t *testing.T) {
 	t.Parallel()
 
