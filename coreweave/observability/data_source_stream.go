@@ -14,7 +14,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
-	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
 var (
@@ -78,22 +77,6 @@ func (s *TelemetryStreamDataSource) Schema(ctx context.Context, req datasource.S
 				MarkdownDescription: fmt.Sprintf("The kind of telemetry the stream carries. One of: %s.",
 					coreweave.EnumMarkdownValues(typesv1beta1.StreamKind_name, true)),
 				Computed: true,
-			},
-			"filter": schema.SingleNestedAttribute{
-				MarkdownDescription: "The label selector that decides which telemetry the stream carries. Null when the stream is unfiltered.",
-				Computed:            true,
-				Attributes: map[string]schema.Attribute{
-					"include": schema.MapAttribute{
-						MarkdownDescription: "Label names mapped to the set of values that must match for telemetry to be included.",
-						Computed:            true,
-						ElementType:         types.SetType{ElemType: types.StringType},
-					},
-					"exclude": schema.MapAttribute{
-						MarkdownDescription: "Label names mapped to the set of values that cause telemetry to be excluded.",
-						Computed:            true,
-						ElementType:         types.SetType{ElemType: types.StringType},
-					},
-				},
 			},
 			// Status fields
 			"created_at": schema.StringAttribute{
