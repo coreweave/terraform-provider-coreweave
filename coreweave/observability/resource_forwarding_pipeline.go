@@ -314,7 +314,7 @@ func (r *ResourceForwardingPipeline) Delete(ctx context.Context, req resource.De
 			pipeline := result.Pipeline
 			return pipeline, pipeline.Status.State.String(), nil
 		},
-		Timeout: pollTimeout(ctx, pipelineTimeout),
+		Timeout: coretf.PollTimeout(ctx, pipelineTimeout),
 	}
 
 	if _, err := pollConf.WaitForStateContext(ctx); err != nil {
@@ -436,7 +436,7 @@ func awaitPipelineActive(ctx context.Context, client *coreweave.Client, ref *typ
 
 			return pipeline, status.GetState().String(), nil
 		},
-		Timeout: pollTimeout(ctx, pipelineTimeout),
+		Timeout: coretf.PollTimeout(ctx, pipelineTimeout),
 	}
 
 	rawPipeline, err := pollConf.WaitForStateContext(ctx)
