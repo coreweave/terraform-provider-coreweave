@@ -18,10 +18,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Every subtest here drives a real API through resource.ParallelTest, so the
-// whole function is skipped without TF_ACC. The offline schema, render and
-// round_trip coverage lives in resource_forwarding_endpoint_https_test.go.
-
 func TestForwardingEndpointHTTPSAcceptance(t *testing.T) {
 	t.Parallel()
 

@@ -19,9 +19,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Both subtests here drive a real API, so the whole function is skipped
-// without TF_ACC. The offline conversion and render coverage lives in
-// resource_forwarding_pipeline_test.go.
 func TestForwardingPipelineAcceptance(t *testing.T) {
 	t.Parallel()
 
