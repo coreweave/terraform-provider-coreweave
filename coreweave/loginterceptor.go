@@ -4,47 +4,68 @@ import (
 	"context"
 	"errors"
 	"io"
+	"strings"
 
-	clusterv1beta1 "buf.build/gen/go/coreweave/telemetry-relay/protocolbuffers/go/coreweave/telemetryrelay/svc/cluster/v1beta1"
 	"connectrpc.com/connect/v2"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"google.golang.org/protobuf/encoding/prototext"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/reflect/protoreflect"
 )
 
 const (
-	logMessageKey     = "message"
-	logCredentialsKey = "credentials"
+	logMessageKey  = "message"
+	logRedactedKey = "redacted"
 )
 
-// redactCredentials copies message with its credentials cleared, and reports
-// whether any were set. prototext has no notion of sensitivity and Terraform's
-// Sensitive and WriteOnly flags do not reach tflog fields, so without this the
-// endpoint password, auth-header values and S3 keys land in TF_LOG output.
-//
-// It copies because the caller is logging a request that is about to go on the
-// wire. These two requests are the only messages in the Telemetry Relay API
-// carrying a credentials oneof; cwobject's CreateAccessKeyFrom*Response secret
-// keys are a separate, pre-existing leak and are not covered here.
-func redactCredentials(message proto.Message) (proto.Message, bool) {
-	switch m := message.(type) {
-	case *clusterv1beta1.CreateEndpointRequest:
-		if m.WhichCredentials() == clusterv1beta1.CreateEndpointRequest_Credentials_not_set_case {
-			return message, false
-		}
-		clone, _ := proto.Clone(m).(*clusterv1beta1.CreateEndpointRequest)
-		clone.ClearCredentials()
-		return clone, true
-	case *clusterv1beta1.UpdateEndpointRequest:
-		if m.WhichCredentials() == clusterv1beta1.UpdateEndpointRequest_Credentials_not_set_case {
-			return message, false
-		}
-		clone, _ := proto.Clone(m).(*clusterv1beta1.UpdateEndpointRequest)
-		clone.ClearCredentials()
-		return clone, true
-	default:
-		return message, false
+const (
+	fieldSecretKey       protoreflect.Name = "secret_key"
+	fieldSecretAccessKey protoreflect.Name = "secret_access_key"
+)
+
+// redactedFields names the fields cleared before a message is logged, keyed by
+// full proto name. Anything unlisted is logged verbatim, because prototext
+// serializes everything and Sensitive/WriteOnly never reach tflog fields.
+// Registered by name rather than detected, so coverage is never implied where
+// it is absent.
+var redactedFields = map[protoreflect.FullName][]protoreflect.Name{
+	"coreweave.telemetryrelay.svc.cluster.v1beta1.CreateEndpointRequest": {"kafka", "prometheus", "s3", "https"},
+	"coreweave.telemetryrelay.svc.cluster.v1beta1.UpdateEndpointRequest": {"kafka", "prometheus", "s3", "https"},
+
+	"coreweave.cwobject.v1.CreateAccessKeyFromJWTResponse":            {fieldSecretKey},
+	"coreweave.cwobject.v1.CreateAccessKeyFromApiTokenResponse":       {fieldSecretAccessKey},
+	"coreweave.cwobject.v1.CreateAccessKeyFromSAMLResponse":           {fieldSecretKey},
+	"coreweave.cwobject.v1.CreateAccessKeyFromContainerCredsResponse": {fieldSecretAccessKey},
+	"coreweave.cwobject.v1.CreateAccessKeyFromOIDCResponse":           {fieldSecretKey},
+}
+
+// redactCredentials copies message with its registered fields cleared and names
+// what it cleared. It copies because the message is on its way to the wire.
+func redactCredentials(message proto.Message) (proto.Message, []string) {
+	descriptor := message.ProtoReflect().Descriptor()
+	names, registered := redactedFields[descriptor.FullName()]
+	if !registered {
+		return message, nil
 	}
+
+	clone := proto.Clone(message)
+	reflected := clone.ProtoReflect()
+	fields := descriptor.Fields()
+
+	var cleared []string
+	for _, name := range names {
+		field := fields.ByName(name)
+		if field == nil || !reflected.Has(field) {
+			continue
+		}
+		reflected.Clear(field)
+		cleared = append(cleared, string(name))
+	}
+	if len(cleared) == 0 {
+		return message, nil
+	}
+
+	return clone, cleared
 }
 
 // logMessageFields records the formatted message, redacted, on a log line.
@@ -54,10 +75,10 @@ func logMessageFields(fields map[string]any, msg any) {
 		return
 	}
 
-	redacted, hadCredentials := redactCredentials(message)
+	redacted, cleared := redactCredentials(message)
 	fields[logMessageKey] = logFormatMessage(redacted)
-	if hadCredentials {
-		fields[logCredentialsKey] = "redacted"
+	if len(cleared) > 0 {
+		fields[logRedactedKey] = strings.Join(cleared, ",")
 	}
 }
 
