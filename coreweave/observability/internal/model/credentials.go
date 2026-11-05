@@ -89,13 +89,9 @@ func (h *HTTPSCredentials) ToMsg() (msg *typesv1beta1.HTTPSCredentials, diagnost
 		return nil, nil
 	}
 
-	// Decide before writing: basic_auth and auth_headers are one oneof, so
-	// setting both would leave whichever was written second.
 	msg = &typesv1beta1.HTTPSCredentials{}
 	switch {
 	case h.BasicAuth != nil && h.AuthHeaders != nil:
-		// ConfigValidators rejects this at plan time; reaching it means a
-		// caller built the model directly.
 		diagnostics.AddError("Invalid HTTPS credentials", "Set basic_auth or auth_headers, not both.")
 		return nil, diagnostics
 	case h.BasicAuth != nil:
