@@ -927,7 +927,9 @@ func TestForwardingEndpointHTTPS(t *testing.T) {
 		// basic_auth -> CLEAR -> REPLACE, and only ever with one header. This
 		// one creates with header auth outright and with several headers, since
 		// the connector serializes the map to "name:value,name:value" and a
-		// single pair never exercises the separator.
+		// single pair never exercises the separator. One value carries colons,
+		// a semicolon and internal spaces, all legal where ',' is not, so a
+		// parser splitting on every ':' rather than the first fails here.
 		baseModel := &model.ForwardingEndpointHTTPS{
 			ForwardingEndpointCore: model.ForwardingEndpointCore{
 				Slug:               types.StringValue(slugify("https-hdrcreds", randomInt)),
@@ -938,9 +940,10 @@ func TestForwardingEndpointHTTPS(t *testing.T) {
 			Credentials: &model.HTTPSCredentials{
 				AuthHeaders: &model.AuthHeadersCredentials{
 					Headers: map[string]string{
-						"X-API-Key":     "first-key",
-						"X-Tenant-Id":   "acc-tenant",
-						"Authorization": "Bearer first-token",
+						"X-API-Key":           "first-key",
+						"X-Tenant-Id":         "acc-tenant",
+						"Authorization":       "Bearer first-token",
+						"X-Forwarded-Context": "tenant:acc-tenant; region:us-lab-01a",
 					},
 				},
 			},
@@ -979,9 +982,10 @@ func TestForwardingEndpointHTTPS(t *testing.T) {
 						m.Credentials = &model.HTTPSCredentials{
 							AuthHeaders: &model.AuthHeadersCredentials{
 								Headers: map[string]string{
-									"X-API-Key":     "second-key",
-									"X-Tenant-Id":   "acc-tenant",
-									"Authorization": "Bearer second-token",
+									"X-API-Key":           "second-key",
+									"X-Tenant-Id":         "acc-tenant",
+									"Authorization":       "Bearer second-token",
+									"X-Forwarded-Context": "tenant:acc-tenant; region:us-east-04a",
 								},
 							},
 						}
