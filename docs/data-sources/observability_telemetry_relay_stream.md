@@ -3,12 +3,12 @@
 page_title: "coreweave_observability_telemetry_relay_stream Data Source - coreweave"
 subcategory: ""
 description: |-
-  CoreWeave Telemetry Relay stream data source. Read telemetry stream configuration and status.
+  CoreWeave Telemetry Relay stream data source. Streams are platform-defined categories of telemetry, such as Kubernetes API audit logs; they cannot be created or modified, only read and referenced from a pipeline. zones_active reports where the stream currently has data.
 ---
 
 # coreweave_observability_telemetry_relay_stream (Data Source)
 
-CoreWeave Telemetry Relay stream data source. Read telemetry stream configuration and status.
+CoreWeave Telemetry Relay stream data source. Streams are platform-defined categories of telemetry, such as Kubernetes API audit logs; they cannot be created or modified, only read and referenced from a pipeline. `zones_active` reports where the stream currently has data.
 
 ## Example Usage
 
