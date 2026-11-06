@@ -66,6 +66,10 @@ func (s *TelemetryStreamDataSource) Schema(ctx context.Context, req datasource.S
 				Required:            true,
 			},
 			// Spec fields
+			//
+			// No filter: the spec's LabelSelector is platform-defined and not
+			// something a pipeline can act on, so exposing it would publish an
+			// internal shape the provider would then have to keep.
 			"display_name": schema.StringAttribute{
 				MarkdownDescription: "The display name of the stream.",
 				Computed:            true,
