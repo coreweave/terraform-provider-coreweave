@@ -646,12 +646,11 @@ locals {
   available_instances = data.coreweave_inference_deployment_parameters.deploy_params.instance_types
   instance            = local.preferred_instance != "" ? local.preferred_instance : sort(tolist(local.available_instances))[0]
 
-  # Runtime version is required on create; source it from deployment parameters.
-  # Only LIFECYCLE_STABLE versions accept new deployments. Restrict to plain
-  # MAJOR.MINOR.PATCH for now; pre-release/build-metadata versions are excluded
-  # pending #319.
+  # Select a LIFECYCLE_STABLE version, as the create step does. dynamo-vllm
+  # versions carry build metadata such as 0.28.0+crwv.0, so do not require
+  # plain MAJOR.MINOR.PATCH here.
   dynamo_versions = try(data.coreweave_inference_deployment_parameters.deploy_params.runtime_engine_options["dynamo-vllm"].versions, {})
-  runtime_version = try([for v, o in local.dynamo_versions : v if o.lifecycle == "LIFECYCLE_STABLE" && can(regex("^[0-9]+[.][0-9]+[.][0-9]+$", v))][0], "")
+  runtime_version = try([for v, o in local.dynamo_versions : v if o.lifecycle == "LIFECYCLE_STABLE"][0], "")
 }
 
 resource "coreweave_inference_gateway" "test" {
@@ -725,7 +724,7 @@ resource "coreweave_inference_deployment" "test" {
     }
     precondition {
       condition     = local.runtime_version != ""
-      error_message = "No stable x.y.z dynamo-vllm runtime version available (pre-release/build-metadata excluded pending #319); available: ${jsonencode({ for v, o in local.dynamo_versions : v => o.lifecycle })}"
+      error_message = "No stable dynamo-vllm runtime version available; available:${jsonencode({ for v, o in local.dynamo_versions : v => o.lifecycle })}"
     }
   }
 }
