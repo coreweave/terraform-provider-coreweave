@@ -43,6 +43,19 @@ Settled choices:
   one if per field in ToUpdateRequest_Fields, and a separate
   SetFromDeployment_IncompletePD test instead of a check inside the
   NullPreservation test. That test was later removed with the check.
+- scotchneat review on ffe1ecf (changes requested), addressed in this
+  commit: ValidateConfig rejects pd unless runtime.engine is
+  "dynamo-vllm" (the proto comment on Deployment.pd states that
+  constraint); prefill instance_type gets LengthAtLeast(1); a comment
+  above the prefill autoscaling casts explains the //nolint:gosec and
+  the planned upper-bound follow-up. The engine check is hardcoded on
+  purpose although ModifyPlan avoids a hardcoded engine list: the API
+  advertises no per-engine PD capability to check against. Decode
+  instance_type still has no LengthAtLeast(1); not changed here.
+- scotchneat also left a nit asking for a more descriptive name than
+  pd, without a suggestion. The name was kept because it matches the
+  API field and the proto docs (pd.prefill_*). Renaming is a public
+  schema decision for the user.
 
 ## Actions & Verification
 - gh stack submit opened draft PR #535 (stack #536); alexeldeib was
@@ -51,9 +64,12 @@ Settled choices:
   57a312f and f54c207 (review fixes, force-pushed with leases), then
   624b211, which shrank the change back to cf09947 plus three small
   fixes, then 093afbd, which applied the older style (+35 lines),
-  then this commit, which removes the incomplete-pd error after
-  Copilot review.
-- TestDeploymentPDLifecycle: create with decode gpu_count 64 and a pd
+  then ffe1ecf, which removed the incomplete-pd error after Copilot
+  review, then this commit, which addresses the scotchneat review.
+- TestDeploymentPDLifecycle: a first plan-only step with engine
+  "vllm" expects the ValidateConfig error. It runs first because the
+  post-test destroy uses the last step config, and an invalid last
+  config failed the destroy. Then create with decode gpu_count 64 and a pd
   block, import with ImportStateVerify, then plan-only steps that
   change pd and remove pd; both expect an in-place Update.
 - TestInferenceDeployment_SetFromDeployment_NullPreservation checks
