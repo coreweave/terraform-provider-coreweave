@@ -673,11 +673,10 @@ func TestForwardingEndpointHTTPSAcceptance(t *testing.T) {
 				model: with(valid(), func(m *model.ForwardingEndpointHTTPS) {
 					m.Credentials = &model.HTTPSCredentials{}
 				}),
-				// Matches the diagnostic summary plus one discriminating word, not
-				// the detail prose: rewording the detail should not fail a test.
-				// The diagnostic summary only. The detail names the auth methods, and
-				// a third one would make any list of them wrong.
-				expectError: regexp.MustCompile(`(?i)credentials`),
+				// The provider's own diagnostic summary, not the detail prose: the
+				// detail names the auth methods, and adding a third would make any
+				// list of them wrong. \s+ because terraform wraps diagnostics.
+				expectError: regexp.MustCompile(`(?s)(?i)invalid\s+https\s+credentials`),
 			},
 			{
 				name: "negative credentials_version",
