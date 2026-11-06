@@ -19,6 +19,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// TestForwardingPipelineAcceptance runs the pipeline cases against a live API.
+// They need an organization whose registered clusters are lab-only, and they run
+// serially; both constraints are explained on TestForwardingPipeline in
+// resource_forwarding_pipeline_test.go, the umbrella this suite shares a prefix
+// with.
 func TestForwardingPipelineAcceptance(t *testing.T) {
 	t.Parallel()
 
@@ -26,7 +31,9 @@ func TestForwardingPipelineAcceptance(t *testing.T) {
 	t.Run("lifecycle", testForwardingPipelineLifecycle)
 }
 
-// mutations from triggering Kafka rebalances in one another's status checks.
+// runForwardingPipelineAcceptanceTest runs one pipeline case serially, which is
+// what stops concurrent connector mutations from triggering Kafka rebalances in
+// one another's status checks.
 func runForwardingPipelineAcceptanceTest(t *testing.T, testCase resource.TestCase) {
 	t.Helper()
 
@@ -34,7 +41,8 @@ func runForwardingPipelineAcceptanceTest(t *testing.T, testCase resource.TestCas
 	resource.Test(t, testCase)
 }
 
-// these are safe against any organization.
+// testForwardingPipelineInvalidConfig covers configurations rejected before any
+// API call is made, so these are safe against any organization.
 func testForwardingPipelineInvalidConfig(t *testing.T) {
 	token := testToken(t)
 	resourceName := "invalid_config"
@@ -496,9 +504,13 @@ func testForwardingPipelineLifecycle(t *testing.T) {
 			CheckDestroy:             checkDestroyed(t),
 			Steps: []resource.TestStep{
 				{
-					PreConfig:   func() { t.Log("Testing pipeline creation with invalid stream") },
-					Config:      renderForwardingPipelineResource(t, resourceName, pipeline, endpoint),
-					ExpectError: regexp.MustCompile(`(?i)(not found|invalid|failed)`),
+					PreConfig: func() { t.Log("Testing pipeline creation with invalid stream") },
+					Config:    renderForwardingPipelineResource(t, resourceName, pipeline, endpoint),
+					// Anchored on the offending slug rather than the server's
+					// wording, so this still passes if telecasterd rephrases the
+					// rejection. The bare alternation it replaced passed on any
+					// failure at all, including ones unrelated to the stream.
+					ExpectError: regexp.MustCompile(`(?s)(?i)nonexistent-stream`),
 				},
 			},
 		})
