@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.29.0](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.28.0...v0.29.0) (2026-11-06)
+
+
+### Features
+
+* **inference:** allow 32- and 64-GPU instances ([#534](https://github.com/coreweave/terraform-provider-coreweave/issues/534)) ([145180a](https://github.com/coreweave/terraform-provider-coreweave/commit/145180a4a76e5bbdca1f7acef8b9d6293125d8b7))
+* **inference:** configure prefill/decode pools ([#535](https://github.com/coreweave/terraform-provider-coreweave/issues/535)) ([1c84793](https://github.com/coreweave/terraform-provider-coreweave/commit/1c84793de62e234fd25c4c6dac900878615b57c2))
+
+
+### Bug Fixes
+
+* **release:** use draft-aware lookup before publishing ([#548](https://github.com/coreweave/terraform-provider-coreweave/issues/548)) ([0067f93](https://github.com/coreweave/terraform-provider-coreweave/commit/0067f9389975ef59b2df6d05b6cee66ad812e860))
+
 ## [0.28.0](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.27.0...v0.28.0) (2026-11-04)
 
 
