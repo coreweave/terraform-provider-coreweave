@@ -69,6 +69,22 @@ Settled choices:
   LIFECYCLE_STABLE and x.y.z filter as the main deployment test (#543,
   #545), so CI needs no new variables. ACCEPTANCE_TESTING.md names the
   new case next to the CKS one.
+- Superseded: Cesar replied that the non-blocking suite is for known
+  regressions and that no new test is needed; the pd fields should be
+  exercised on an update step of an existing test, and named
+  TestInferenceDeployment/lifecycle. The non-blocking test, its runner,
+  and the ACCEPTANCE_TESTING.md line were removed. The update step
+  (inferenceDeploymentUpdatedConfig) now switches runtime.engine from
+  vllm to dynamo-vllm, adds pd, and drops engine_env (user chose this,
+  "option A"). Its state checks cover engine, engine_env null, and the
+  pd values; the existing no-op and import steps then verify that the
+  API reads pd back unchanged.
+- Option A trade-off: the acceptance test no longer proves live that
+  an update keeps engine_env; ToUpdateRequest_Fields still checks the
+  provider sends it. Keeping engine_env would have made the required
+  test depend on the dynamo-vllm env allow list too, which lives in
+  feature-flag data; #545 shows the vllm allow list already broke this
+  test once.
 - scotchneat also left a nit asking for a more descriptive name than
   pd, without a suggestion. The name was kept because it matches the
   API field and the proto docs (pd.prefill_*). Renaming is a public
@@ -84,8 +100,9 @@ Settled choices:
   then ffe1ecf, which removed the incomplete-pd error after Copilot
   review, then f292187, which addressed the first scotchneat review,
   then 075b2c1, which skipped the engine check for an unknown pd, then
-  this commit, rebased onto main abd25ec, which adds the non-blocking
-  PD acceptance test.
+  18bece6, rebased onto main abd25ec, which added a non-blocking PD
+  acceptance test, then this commit, which moves that coverage into the
+  update step of TestInferenceDeployment/lifecycle.
 - TestDeploymentPDLifecycle: a first plan-only step with engine
   "vllm" expects the ValidateConfig error. It runs first because the
   post-test destroy uses the last step config, and an invalid last
@@ -100,14 +117,14 @@ Settled choices:
   make generate, and git diff --check passed.
 
 ## Errors & Mistakes
-- The PD acceptance test was not run against the QA API: this session
-  has no QA credentials. A run against a closed port confirmed that the
-  configuration parses and validates and that the test reaches plan.
-- The acceptance test first had an import step with
-  ImportStateVerifyIgnore status/updated_at/conditions; goconst flagged
-  the fifth "conditions" literal in the package. The step was dropped:
-  the mock lifecycle test covers import, and the acceptance state
-  checks and the next step's plan catch a read that loses pd.
+- The acceptance change was not run against the QA API: this session
+  has no QA credentials. The rendered update-step HCL passed
+  terraform fmt -check. Unknowns for the first real run: whether the QA
+  organization has the pdDisaggEnabled flag, and how long the
+  native-to-Dynamo cutover takes.
+- 18bece6 put the coverage in the non-blocking suite without asking
+  the reviewer what coverage they wanted; that suite is for known
+  regressions. Ask before choosing a test home next time.
 - 57a312f and f54c207 grew the PR to +388/-59 by adding prefill
   capacity_classes, shared helpers that refactored decode code, a
   test-only var for rolloutStartGracePeriod, applied update steps, and
@@ -122,6 +139,13 @@ Settled choices:
   drops Pd.
 
 ## Findings & Constraints
+- infr-api (~/work/infr-api) allows an engine change on update:
+  UpdateDeployment only treats hot_load as immutable
+  (checkHotLoadImmutable), and the worker handles native-to-Dynamo
+  cutover (internal/worker/resource/deployment/cleanup.go).
+  validatePDDisagg requires engine dynamo-vllm and the per-organization
+  pdDisaggEnabled LaunchDarkly flag. Capacity validation needs one
+  gateway zone with capacity for both pools.
 - The pinned buf.build/gen/go/coreweave/inference module
   (v1.36.12-20261008185853-22f8f31f8962.2) already has DeploymentPD,
   including DeploymentPDPoolAutoscaling.capacity_classes. It has no
