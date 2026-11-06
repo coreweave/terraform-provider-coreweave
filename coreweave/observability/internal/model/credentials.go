@@ -1,7 +1,6 @@
 package model
 
 import (
-	"fmt"
 	"maps"
 
 	typesv1beta1 "buf.build/gen/go/coreweave/telemetry-relay/protocolbuffers/go/coreweave/telemetryrelay/types/v1beta1"
@@ -13,11 +12,6 @@ import (
 type BasicAuthCredentials struct {
 	Username types.String `tfsdk:"username"`
 	Password types.String `tfsdk:"password"`
-}
-
-func (b *BasicAuthCredentials) Set(msg *typesv1beta1.BasicAuthCredentials) {
-	b.Username = types.StringValue(msg.Username)
-	b.Password = types.StringValue(msg.Password)
 }
 
 func (b *BasicAuthCredentials) ToMsg() (msg *typesv1beta1.BasicAuthCredentials) {
@@ -38,10 +32,6 @@ type AuthHeadersCredentials struct {
 	Headers map[string]string `tfsdk:"headers"`
 }
 
-func (h *AuthHeadersCredentials) Set(msg *typesv1beta1.AuthHeadersCredentials) {
-	h.Headers = maps.Clone(msg.Headers)
-}
-
 func (h *AuthHeadersCredentials) ToMsg() (msg *typesv1beta1.AuthHeadersCredentials) {
 	if h == nil {
 		return nil
@@ -58,30 +48,6 @@ func (h *AuthHeadersCredentials) ToMsg() (msg *typesv1beta1.AuthHeadersCredentia
 type HTTPSCredentials struct {
 	BasicAuth   *BasicAuthCredentials   `tfsdk:"basic_auth"`
 	AuthHeaders *AuthHeadersCredentials `tfsdk:"auth_headers"`
-}
-
-func (h *HTTPSCredentials) Set(msg *typesv1beta1.HTTPSCredentials) (diagnostics diag.Diagnostics) {
-	if msg == nil {
-		return nil
-	}
-
-	h.BasicAuth = nil
-	h.AuthHeaders = nil
-
-	switch kind := msg.WhichAuth(); kind {
-	case typesv1beta1.HTTPSCredentials_Auth_not_set_case:
-		diagnostics.AddError("no auth set for https credentials", "Auth must be set when using https credentials")
-	case typesv1beta1.HTTPSCredentials_BasicAuth_case:
-		h.BasicAuth = new(BasicAuthCredentials)
-		h.BasicAuth.Set(msg.GetBasicAuth())
-	case typesv1beta1.HTTPSCredentials_AuthHeaders_case:
-		h.AuthHeaders = new(AuthHeadersCredentials)
-		h.AuthHeaders.Set(msg.GetAuthHeaders())
-	default:
-		diagnostics.AddError("Unsupported HTTPS auth type", fmt.Sprintf("unsupported https auth type: %s (%d)", kind.String(), kind))
-	}
-
-	return
 }
 
 func (h *HTTPSCredentials) ToMsg() (msg *typesv1beta1.HTTPSCredentials, diagnostics diag.Diagnostics) {
@@ -111,16 +77,6 @@ type S3Credentials struct {
 	AccessKeyID     types.String `tfsdk:"access_key_id"`
 	SecretAccessKey types.String `tfsdk:"secret_access_key"`
 	SessionToken    types.String `tfsdk:"session_token"`
-}
-
-func (s *S3Credentials) Set(msg *typesv1beta1.S3Credentials) {
-	s.AccessKeyID = types.StringValue(msg.AccessKeyId)
-	s.SecretAccessKey = types.StringValue(msg.SecretAccessKey)
-	if msg.SessionToken == "" {
-		s.SessionToken = types.StringNull()
-	} else {
-		s.SessionToken = types.StringValue(msg.SessionToken)
-	}
 }
 
 func (s *S3Credentials) ToMsg() (msg *typesv1beta1.S3Credentials) {

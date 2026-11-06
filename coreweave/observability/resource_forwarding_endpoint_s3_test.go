@@ -252,32 +252,32 @@ func TestForwardingEndpointS3(t *testing.T) {
 			assert.True(t, diags.HasError())
 		})
 
-		// The session token is optional, and an empty one has to read back as
-		// null so that omitting it produces no diff.
-		t.Run("an empty session token reads as null", func(t *testing.T) {
+		// The session token is optional, so an omitted one must not reach the
+		// message as an empty string.
+		t.Run("an omitted session token is absent from the message", func(t *testing.T) {
 			t.Parallel()
 
-			var credentials model.S3Credentials
-			credentials.Set(&typesv1beta1.S3Credentials{
-				AccessKeyId:     "AKIAIOSFODNN7EXAMPLE",
-				SecretAccessKey: "secret",
-			})
+			credentials := &model.S3Credentials{
+				AccessKeyID:     types.StringValue("AKIAIOSFODNN7EXAMPLE"),
+				SecretAccessKey: types.StringValue("secret"),
+				SessionToken:    types.StringNull(),
+			}
 
-			assert.Equal(t, "AKIAIOSFODNN7EXAMPLE", credentials.AccessKeyID.ValueString())
-			assert.True(t, credentials.SessionToken.IsNull())
+			msg := credentials.ToMsg()
+			assert.Equal(t, "AKIAIOSFODNN7EXAMPLE", msg.GetAccessKeyId())
+			assert.Empty(t, msg.GetSessionToken())
 		})
 
-		t.Run("a set session token is preserved", func(t *testing.T) {
+		t.Run("a set session token reaches the message", func(t *testing.T) {
 			t.Parallel()
 
-			var credentials model.S3Credentials
-			credentials.Set(&typesv1beta1.S3Credentials{
-				AccessKeyId:     "AKIAIOSFODNN7EXAMPLE",
-				SecretAccessKey: "secret",
-				SessionToken:    "token",
-			})
+			credentials := &model.S3Credentials{
+				AccessKeyID:     types.StringValue("AKIAIOSFODNN7EXAMPLE"),
+				SecretAccessKey: types.StringValue("secret"),
+				SessionToken:    types.StringValue("token"),
+			}
 
-			assert.Equal(t, "token", credentials.SessionToken.ValueString())
+			assert.Equal(t, "token", credentials.ToMsg().GetSessionToken())
 		})
 
 		t.Run("a nil model converts to a nil message", func(t *testing.T) {
