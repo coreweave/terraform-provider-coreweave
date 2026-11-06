@@ -1,0 +1,167 @@
+#!/usr/bin/env bash
+#
+# Runs a subprovider's acceptance tests against a live API, sweeping leftover
+# test resources first. Wraps `make testacc-sweep` and `make testacc` so the
+# suite list and go test invocation stay defined in one place.
+#
+#   ./acceptance_tests                            # sweep, then run the observability suite
+#   ./acceptance_tests cks networking             # other suites
+#   ./acceptance_tests -r TestForwardingPipeline  # one resource, while iterating
+#   ./acceptance_tests -n                         # show what a sweep would delete, run nothing
+#
+# Requires COREWEAVE_API_TOKEN. Defaults to the public QA API, which is the
+# route a customer takes and needs no internal network; pointing it anywhere
+# else needs --allow-other-environment, because these tests create and destroy
+# real resources in whatever organization the token belongs to.
+
+set -euo pipefail
+
+log() {
+    echo "[$(date +'%Y-%m-%dT%H:%M:%S%z')] $*" >&2
+}
+
+die() {
+    log "ERROR: $*"
+    exit 1
+}
+
+srcdir="$(git -C "$(dirname "$0")" rev-parse --show-toplevel)"
+
+# The public QA API, which fronts staging telecasterd. This is the default
+# because it is the path a customer uses and it needs no VPN or Teleport
+# session, and because it matches setAccEnvDefaults() in the suites, so a bare
+# `go test` and this wrapper agree on where they point.
+#
+# Staging telecasterd is also reachable directly at
+# http://telecasterd-stg.us-east.int.coreweave.com:8080 — the same backend, on
+# the internal network only. Use it with --allow-other-environment when you
+# need to bypass the gateway.
+qa_endpoint="https://api.qa.coreweave.com"
+
+# The one registered lab zone. Passed explicitly rather than relying on the
+# GNUmakefile default, so a change there cannot quietly send a sweep elsewhere.
+lab_zone="US-LAB-01A"
+run_filter=""
+sweep_filter=""
+sweep=true
+dry_run=false
+allow_other_environment=false
+sweep_only=false
+timeout="60m"
+parallel="10"
+suites=()
+
+usage() {
+    sed -n '3,15p' "$0" | sed 's/^# \{0,1\}//'
+    cat <<'EOF'
+
+Options:
+  -r, --run REGEX    pass -run REGEX to go test, e.g. TestForwardingPipeline
+      --sweep-run S  sweep only this resource type, e.g.
+                     coreweave_observability_telemetry_relay_pipeline
+  -t, --timeout DUR  go test timeout (default 60m)
+  -p, --parallel N   go test -parallel (default 10)
+  -n, --dry-run      sweep in dry-run mode and stop; creates and deletes nothing
+  -s, --sweep-only   sweep for real, then stop
+      --no-sweep     skip the pre-run sweep
+      --allow-other-environment
+                     run against a COREWEAVE_API_ENDPOINT other than staging
+  -h, --help         this message
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -r|--run) run_filter="$2"; shift 2 ;;
+        --sweep-run) sweep_filter="$2"; shift 2 ;;
+        -t|--timeout) timeout="$2"; shift 2 ;;
+        -p|--parallel) parallel="$2"; shift 2 ;;
+        -n|--dry-run) dry_run=true; shift ;;
+        -s|--sweep-only) sweep_only=true; shift ;;
+        --no-sweep) sweep=false; shift ;;
+        --allow-other-environment) allow_other_environment=true; shift ;;
+        -h|--help) usage; exit 0 ;;
+        -*) die "unknown option: $1" ;;
+        *) suites+=("$1"); shift ;;
+    esac
+done
+
+if [[ ${#suites[@]} -eq 0 ]]; then
+    suites=(observability)
+fi
+
+for suite in "${suites[@]}"; do
+    [[ -d "$srcdir/coreweave/$suite" ]] || die "no such suite: coreweave/$suite"
+done
+
+# Preflight. A missing token fails late and confusingly inside the test binary,
+# and the default endpoint in internal/testutil points at a local address that
+# nothing will answer, so both are checked up front.
+[[ -n "${COREWEAVE_API_TOKEN:-}" ]] || die "COREWEAVE_API_TOKEN is not set. Create a token in the console for the test account documented in the team KB."
+
+export COREWEAVE_API_ENDPOINT="${COREWEAVE_API_ENDPOINT:-$qa_endpoint}"
+if [[ "$COREWEAVE_API_ENDPOINT" != "$qa_endpoint" ]] && ! $allow_other_environment; then
+    die "COREWEAVE_API_ENDPOINT is $COREWEAVE_API_ENDPOINT, not QA.
+These tests create and delete real resources in the token's organization, and
+the zone slugs they use are lab zones that only staging telecasterd serves.
+Re-run with --allow-other-environment if that is what you intend."
+fi
+
+log "endpoint:  $COREWEAVE_API_ENDPOINT"
+log "zone:      $lab_zone"
+log "suites:    ${suites[*]}"
+[[ -n "$run_filter" ]] && log "run:       $run_filter"
+[[ -n "$sweep_filter" ]] && log "sweep-run: $sweep_filter"
+
+log "Building provider"
+make -C "$srcdir" build >/dev/null || die "build failed; fix that before running acceptance tests"
+
+logdir="$srcdir/dist/acceptance_tests"
+mkdir -p "$logdir"
+stamp="$(date +'%Y%m%dT%H%M%S')"
+
+run_sweep() {
+    local dry="$1"
+    log "Sweeping leftover acceptance resources (dry_run=$dry)"
+    make -C "$srcdir" testacc-sweep \
+        SUITES="${suites[*]}" \
+        TEST_ACC_SWEEP_ZONE="$lab_zone" \
+        SWEEP_DRY_RUN="$dry" \
+        ${sweep_filter:+TEST_ACC_SWEEP_RUN="$sweep_filter"} \
+        2>&1 | tee "$logdir/sweep-$stamp-dry$dry.log"
+}
+
+if $dry_run; then
+    run_sweep true
+    log "Dry run only. Nothing was created or deleted."
+    exit 0
+fi
+
+if $sweep; then
+    # Dry-run first so the log records what is about to go, then sweep for real.
+    run_sweep true
+    run_sweep false
+fi
+
+if $sweep_only; then
+    log "Sweep complete, skipping tests as requested."
+    exit 0
+fi
+
+log "Running acceptance tests"
+testlog="$logdir/test-$stamp.log"
+status=0
+make -C "$srcdir" testacc \
+    SUITES="${suites[*]}" \
+    TEST_ACC_TIMEOUT="$timeout" \
+    TEST_ACC_PARALLEL="$parallel" \
+    ${run_filter:+TEST_ACC_RUN="$run_filter"} \
+    2>&1 | tee "$testlog" || status=$?
+
+# Top-level results only: each resource has exactly one top-level test, so this
+# is a per-resource pass/fail summary rather than a wall of subtests.
+log "Summary (full log: $testlog)"
+grep -E '^(--- )?(PASS|FAIL|SKIP)' "$testlog" | grep -vE '^\s' || true
+grep -E '^(ok|FAIL|---)' "$testlog" | tail -20 || true
+
+exit "$status"
