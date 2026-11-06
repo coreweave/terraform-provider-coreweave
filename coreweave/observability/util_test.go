@@ -178,7 +178,7 @@ func (c comparison) CheckState(_ context.Context, _ statecheck.CheckStateRequest
 }
 
 // expectUnchanged asserts the attribute holds the value a previous step
-// captured. Pair it with extractAttribute earlier in the same slice.
+// captured. Pair it with extractCredentialsUpdatedAt earlier in the same slice.
 func expectUnchanged(attribute string, before, after *string) statecheck.StateCheck {
 	return comparison{func() error {
 		if *before != *after {
