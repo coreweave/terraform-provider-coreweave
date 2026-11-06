@@ -103,13 +103,25 @@ func (r *ResourceForwardingPipeline) Schema(ctx context.Context, req resource.Sc
 			// UpdatePipeline accepts both, so repointing happens in place.
 			// Forcing replacement would tear the pipeline down and leave a window
 			// with no forwarding at all.
+			// Both carry the referenced ref's own slug constraints, not the
+			// pipeline's: a source names a TelemetryStreamRef and a destination a
+			// ForwardingEndpointRef, and both cap at 32 rather than the
+			// pipeline's 65.
 			"source_slug": schema.StringAttribute{
 				MarkdownDescription: "The slug of the telemetry stream to forward. Changing it repoints the pipeline in place.",
 				Required:            true,
+				Validators: []validator.String{
+					stringvalidator.LengthBetween(slugMinLength, streamSlugMaxLength),
+					stringvalidator.RegexMatches(slugPattern, slugPatternDetail),
+				},
 			},
 			"destination_slug": schema.StringAttribute{
 				MarkdownDescription: "The slug of the forwarding endpoint to send data to. Changing it repoints the pipeline in place.",
 				Required:            true,
+				Validators: []validator.String{
+					stringvalidator.LengthBetween(slugMinLength, endpointSlugMaxLength),
+					stringvalidator.RegexMatches(slugPattern, slugPatternDetail),
+				},
 			},
 			"enabled": schema.BoolAttribute{
 				MarkdownDescription: "Whether the forwarding pipeline is enabled. " +
@@ -253,8 +265,13 @@ func (r *ResourceForwardingPipeline) recordPipelineOutcome(
 ) {
 	if pipeline != nil {
 		// Keep the failure detail in state so the user can read state_message.
-		diagnostics.Append(data.Set(ctx, pipeline)...)
-		diagnostics.Append(state.Set(ctx, data)...)
+		// Only write state if the model converted cleanly: a failed Set leaves
+		// data half-populated, and persisting that loses the prior state too.
+		setDiags := data.Set(ctx, pipeline)
+		diagnostics.Append(setDiags...)
+		if !setDiags.HasError() {
+			diagnostics.Append(state.Set(ctx, data)...)
+		}
 	}
 
 	diagnostics.Append(pollDiags...)
@@ -313,7 +330,8 @@ func (r *ResourceForwardingPipeline) Delete(ctx context.Context, req resource.De
 				return nil, typesv1beta1.ForwardingPipelineState_FORWARDING_PIPELINE_STATE_UNSPECIFIED.String(), err
 			}
 			pipeline := result.Pipeline
-			return pipeline, pipeline.Status.State.String(), nil
+			// Getters, not field access: Status may be only partially populated.
+			return pipeline, pipeline.GetStatus().GetState().String(), nil
 		},
 		Timeout: coretf.PollTimeout(ctx, pipelineTimeout),
 	}

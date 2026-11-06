@@ -14,6 +14,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
 var (
@@ -89,6 +90,29 @@ func buildS3CreateRequest(data model.ForwardingEndpointS3) (*clusterv1beta1.Crea
 }
 
 func (r *S3ForwardingEndpointResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
+	// Whether the block is present does not depend on any value being known, so
+	// this check runs before the fully-known gate below. Behind it, a config
+	// that omits credentials while anything else is still unknown — a key from a
+	// resource that does not exist yet — would skip validation entirely and fail
+	// at apply against the server's CEL rule instead.
+	//
+	// S3 credentials are mandatory at create and can never be cleared; the
+	// request carries a message-level CEL rule for each half. Say so here, at
+	// the attribute, rather than letting the server's CEL message surface.
+	var credentials types.Object
+	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("credentials"), &credentials)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	if credentials.IsNull() {
+		resp.Diagnostics.AddAttributeError(
+			path.Root("credentials"),
+			"Missing S3 credentials",
+			"S3 forwarding endpoints require credentials. They are mandatory at creation and cannot be removed afterwards; to stop using these credentials, replace the endpoint.",
+		)
+		return
+	}
+
 	// Before Config.Get, not after: an unknown credentials object cannot be
 	// decoded into the pointer model at all.
 	if !req.Config.Raw.IsFullyKnown() {
@@ -101,17 +125,7 @@ func (r *S3ForwardingEndpointResource) ValidateConfig(ctx context.Context, req r
 		return
 	}
 
-	// S3 credentials are mandatory at create and can never be cleared — the
-	// request carries a message-level CEL rule for each half. Say so here, at
-	// the attribute, rather than letting the server's CEL message surface.
-	if data.Credentials == nil {
-		resp.Diagnostics.AddAttributeError(
-			path.Root("credentials"),
-			"Missing S3 credentials",
-			"S3 forwarding endpoints require credentials. They are mandatory at creation and cannot be removed afterwards; to stop using these credentials, replace the endpoint.",
-		)
-		return
-	}
+	validateCredentialsVersion(data.CredentialsVersion, data.Credentials != nil, &resp.Diagnostics)
 
 	createReq, diagnostics := buildS3CreateRequest(data)
 	resp.Diagnostics.Append(diagnostics...)

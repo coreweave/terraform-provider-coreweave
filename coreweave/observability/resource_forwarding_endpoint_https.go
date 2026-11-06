@@ -139,6 +139,8 @@ func (r *HTTPSForwardingEndpointResource) ValidateConfig(ctx context.Context, re
 		return
 	}
 
+	validateCredentialsVersion(data.CredentialsVersion, data.Credentials != nil, &resp.Diagnostics)
+
 	// Validate the CreateEndpointRequest, not the bare ForwardingEndpoint. The
 	// endpoint message has no credentials field, so validating it left every
 	// HTTPSCredentials rule — the required oneof, the header name and value
