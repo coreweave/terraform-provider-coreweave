@@ -125,7 +125,9 @@ func (r *S3ForwardingEndpointResource) ValidateConfig(ctx context.Context, req r
 		return
 	}
 
-	validateCredentialsVersion(data.CredentialsVersion, data.Credentials != nil, &resp.Diagnostics)
+	// No validateCredentialsVersion call here: the mandatory-credentials check
+	// above returns on a null block, so a counter without credentials cannot
+	// reach this point for S3.
 
 	createReq, diagnostics := buildS3CreateRequest(data)
 	resp.Diagnostics.Append(diagnostics...)
