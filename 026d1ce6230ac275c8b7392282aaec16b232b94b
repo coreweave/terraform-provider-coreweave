@@ -18,6 +18,9 @@ above it uses the same seven values for the prefill pool.
   go test ./..., golangci-lint (0 issues), make generate (no drift),
   and git diff --check passed at the top of the stack, rebased onto
   main 589054f.
+- 2026-11-06: rebased onto main abd25ec so that #535 could use the
+  non-blocking acceptance suite from #541. No conflicts. scotchneat
+  had approved the pre-rebase commit c6689e5.
 
 ## Errors & Mistakes
 None.
