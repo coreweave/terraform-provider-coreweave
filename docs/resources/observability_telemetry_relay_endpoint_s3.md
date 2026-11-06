@@ -49,7 +49,7 @@ resource "coreweave_observability_telemetry_relay_endpoint_s3" "example" {
 
 ### Optional
 
-- `credentials` (Attributes) AWS credentials for S3 bucket access. (see [below for nested schema](#nestedatt--credentials))
+- `credentials` (Attributes) AWS credentials for S3 bucket access. Required: S3 endpoints cannot be created without credentials, and credentials cannot be removed afterwards. (see [below for nested schema](#nestedatt--credentials))
 - `credentials_version` (Number) Rotation counter for `credentials`. Credential attributes are write-only, so they are null in both plan and state and cannot produce a diff on their own. Increment this whenever you change a credential value; the next apply then sends the new credentials. **Changing a credential without incrementing this is a silent no-op** — the stored credentials are left as they are.
 - `timeouts` (Attributes) (see [below for nested schema](#nestedatt--timeouts))
 

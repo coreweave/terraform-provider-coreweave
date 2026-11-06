@@ -45,8 +45,8 @@ resource "coreweave_observability_telemetry_relay_pipeline" "example" {
 }
 
 # Forward from wherever the stream currently has data, instead of naming zones
-# by hand. zones_active is the only part of a stream that is not static, so
-# this is what the data source is for.
+# by hand. zones_active tracks where the stream is live, which is what makes it
+# worth reading through the data source rather than pinning zones by hand.
 #
 # zone_slugs is immutable, so a zone appearing or disappearing replaces the
 # pipeline. Prefer omitting zone_slugs entirely unless the set has to be
