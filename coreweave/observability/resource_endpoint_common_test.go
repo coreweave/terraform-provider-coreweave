@@ -16,6 +16,7 @@ import (
 	"github.com/coreweave/terraform-provider-coreweave/internal/provider"
 	"github.com/coreweave/terraform-provider-coreweave/internal/testutil"
 	"github.com/hashicorp/hcl/v2/hclwrite"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/zclconf/go-cty/cty"
@@ -141,6 +142,69 @@ func TestEndpointCredentialAction(t *testing.T) {
 
 			got := observability.CredentialAction(tt.hasCredentials, tt.priorConfigured, tt.priorVersion, tt.configVersion)
 			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+// TestValidateCredentialsVersion pins the validator's one-directional rule.
+// A counter without credentials is the dangerous shape: credentialAction reads
+// the absent block as CLEAR, so the apply strips the endpoint's auth instead of
+// rotating it. The reverse — credentials with no counter — is PRESERVE and
+// legitimate, so it must not error.
+func TestValidateCredentialsVersion(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name               string
+		version            types.Int64
+		credentialsPresent bool
+		wantError          bool
+	}{
+		{
+			name:               "a counter without credentials is rejected",
+			version:            types.Int64Value(2),
+			credentialsPresent: false,
+			wantError:          true,
+		},
+		{
+			name:               "a counter with credentials is fine",
+			version:            types.Int64Value(2),
+			credentialsPresent: true,
+			wantError:          false,
+		},
+		{
+			name:               "credentials without a counter is the PRESERVE shape",
+			version:            types.Int64Null(),
+			credentialsPresent: true,
+			wantError:          false,
+		},
+		{
+			name:               "neither is fine",
+			version:            types.Int64Null(),
+			credentialsPresent: false,
+			wantError:          false,
+		},
+		{
+			// Hoisted above the fully-known gate, so the validator now sees
+			// unknown counters that it never used to. It must defer, not error.
+			name:               "an unknown counter defers to apply",
+			version:            types.Int64Unknown(),
+			credentialsPresent: false,
+			wantError:          false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			var diagnostics diag.Diagnostics
+			observability.ValidateCredentialsVersion(tt.version, tt.credentialsPresent, &diagnostics)
+
+			assert.Equal(t, tt.wantError, diagnostics.HasError())
+			if tt.wantError {
+				assert.Contains(t, diagnostics.Errors()[0].Summary(), "credentials_version")
+			}
 		})
 	}
 }

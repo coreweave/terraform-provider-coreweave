@@ -17,6 +17,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
 var (
@@ -127,6 +128,20 @@ func buildHTTPSCreateRequest(data model.ForwardingEndpointHTTPS) (*clusterv1beta
 }
 
 func (r *HTTPSForwardingEndpointResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
+	// Ahead of the fully-known gate: whether a credentials block is present does
+	// not depend on any value being known. Behind it, a config that bumps the
+	// counter but omits the block — while some unrelated attribute is still
+	// unknown — skips this check and reaches Update, where credentialAction
+	// reads the absent block as CLEAR and strips the endpoint's auth.
+	var credentials types.Object
+	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("credentials"), &credentials)...)
+	var credentialsVersion types.Int64
+	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("credentials_version"), &credentialsVersion)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	validateCredentialsVersion(credentialsVersion, !credentials.IsNull(), &resp.Diagnostics)
+
 	// Before Config.Get, not after: an unknown auth_headers value cannot be
 	// decoded into map[string]string at all.
 	if !req.Config.Raw.IsFullyKnown() {
@@ -138,8 +153,6 @@ func (r *HTTPSForwardingEndpointResource) ValidateConfig(ctx context.Context, re
 	if resp.Diagnostics.HasError() {
 		return
 	}
-
-	validateCredentialsVersion(data.CredentialsVersion, data.Credentials != nil, &resp.Diagnostics)
 
 	// Validate the CreateEndpointRequest, not the bare ForwardingEndpoint. The
 	// endpoint message has no credentials field, so validating it left every
