@@ -77,4 +77,5 @@ func TestBuildClientUsesDefaultEndpoint(t *testing.T) {
 
 	require.NoError(t, err)
 	require.NotNil(t, client)
+	require.NotNil(t, client.Directory)
 }

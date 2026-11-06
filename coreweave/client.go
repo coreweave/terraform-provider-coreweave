@@ -12,6 +12,7 @@ import (
 	"buf.build/gen/go/coreweave/cks/connectrpc/go/v2/coreweave/cks/v1beta1/cksv1beta1connect"
 	registryconnect "buf.build/gen/go/coreweave/container-registry-api/connectrpc/go/v2/coreweave/registry/v1alpha1/registryv1alpha1connect"
 	"buf.build/gen/go/coreweave/cwobject/connectrpc/go/v2/cwobject/v1/cwobjectv1connect"
+	"buf.build/gen/go/coreweave/directory/connectrpc/go/v2/coreweave/directory/v1alpha/directoryv1alphaconnect"
 	"buf.build/gen/go/coreweave/inference/connectrpc/go/v2/coreweave/inference/v1alpha1/inferencev1alpha1connect"
 	"buf.build/gen/go/coreweave/networking/connectrpc/go/v2/coreweave/networking/v1beta1/networkingv1beta1connect"
 	"buf.build/gen/go/coreweave/sandbox/connectrpc/go/v2/coreweave/sandbox/v1/sandboxv1connect"
@@ -89,6 +90,7 @@ func NewClientWithOptions(
 		SandboxRunnerManagement:     sandboxv1connect.NewRunnerManagementServiceClient(rpcClient),
 		WFControlPlaneServiceClient: control_planev1beta1connect.NewWFControlPlaneServiceClient(rpcClient),
 		CWObjectClient:              cwobjectv1connect.NewCWObjectClient(rpcClient),
+		Directory:                   directoryv1alphaconnect.NewDirectoryServiceClient(rpcClient),
 		Inference: &InferenceClient{
 			HotLoadServiceClient:       inferencev1alpha1connect.NewHotLoadServiceClient(rpcClient),
 			DeploymentServiceClient:    inferencev1alpha1connect.NewDeploymentServiceClient(rpcClient),
@@ -121,6 +123,7 @@ type Client struct {
 
 	Inference               *InferenceClient
 	SandboxRunnerManagement sandboxv1connect.RunnerManagementServiceClient
+	Directory               directoryv1alphaconnect.DirectoryServiceClient
 
 	apiEndpoint      string
 	httpClient       *http.Client
