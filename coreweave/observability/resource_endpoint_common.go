@@ -16,6 +16,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
@@ -89,6 +90,9 @@ func commonEndpointSchema() map[string]schema.Attribute {
 				int64validator.AtLeast(0),
 			},
 		},
+		// Deliberately not pinned with UseStateForUnknown: CLEAR flips this to
+		// false during apply, and a pinned true would fail the plan as an
+		// inconsistent result. Planning it unknown on every update is correct.
 		"credentials_configured": schema.BoolAttribute{
 			MarkdownDescription: "Whether credentials are currently stored for this endpoint. Does not indicate that they are valid, only that they exist.",
 			Computed:            true,
@@ -241,6 +245,25 @@ func awaitEndpointReady(ctx context.Context, client *coreweave.Client, ref *type
 	}
 
 	return endpoint, diagnostics
+}
+
+// validateCredentialsVersion rejects a rotation counter with nothing to rotate.
+//
+// One-directional on purpose. RequiredTogether would also reject credentials
+// without a counter, which is the shape that means PRESERVE: the block stays in
+// config at its current values and nothing is resent. Only the reverse is
+// meaningless — a counter with no credentials silently does nothing, which is
+// exactly the silent no-op the attribute exists to make visible.
+func validateCredentialsVersion(version types.Int64, credentialsPresent bool, diagnostics *diag.Diagnostics) {
+	if version.IsNull() || version.IsUnknown() || credentialsPresent {
+		return
+	}
+
+	diagnostics.AddAttributeError(
+		path.Root("credentials_version"),
+		"credentials_version without credentials",
+		"credentials_version signals that the credentials block changed, so it does nothing on its own. Add a credentials block, or remove credentials_version.",
+	)
 }
 
 // deleteEndpoint is the common Delete implementation for all forwarding endpoint resources.
