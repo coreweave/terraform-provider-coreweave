@@ -52,6 +52,9 @@ Settled choices:
   purpose although ModifyPlan avoids a hardcoded engine list: the API
   advertises no per-engine PD capability to check against. Decode
   instance_type still has no LengthAtLeast(1); not changed here.
+- scotchneat second review on f292187: ValidateConfig also returns
+  when pd is unknown, because a pd set from a variable is unknown at
+  validation and may still turn out null.
 - scotchneat also left a nit asking for a more descriptive name than
   pd, without a suggestion. The name was kept because it matches the
   API field and the proto docs (pd.prefill_*). Renaming is a public
@@ -65,7 +68,8 @@ Settled choices:
   624b211, which shrank the change back to cf09947 plus three small
   fixes, then 093afbd, which applied the older style (+35 lines),
   then ffe1ecf, which removed the incomplete-pd error after Copilot
-  review, then this commit, which addresses the scotchneat review.
+  review, then f292187, which addressed the first scotchneat review,
+  then this commit, which skips the engine check for an unknown pd.
 - TestDeploymentPDLifecycle: a first plan-only step with engine
   "vllm" expects the ValidateConfig error. It runs first because the
   post-test destroy uses the last step config, and an invalid last
