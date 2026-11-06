@@ -15,11 +15,6 @@ type ForwardingPipelineRef struct {
 	Slug types.String `tfsdk:"slug"`
 }
 
-func (m *ForwardingPipelineRef) Set(ref *typesv1beta1.ForwardingPipelineRef) {
-	r := m
-	r.Slug = types.StringValue(ref.Slug)
-}
-
 func (m *ForwardingPipelineRef) ToMsg() (msg *typesv1beta1.ForwardingPipelineRef) {
 	if m == nil {
 		return nil
@@ -36,12 +31,6 @@ type ForwardingPipelineSpec struct {
 	Source      TelemetryStreamRef    `tfsdk:"source"`
 	Destination ForwardingEndpointRef `tfsdk:"destination"`
 	Enabled     types.Bool            `tfsdk:"enabled"`
-}
-
-func (m *ForwardingPipelineSpec) Set(spec *typesv1beta1.ForwardingPipelineSpec) {
-	m.Source.Set(spec.GetSource())
-	m.Destination.Set(spec.GetDestination())
-	m.Enabled = types.BoolValue(spec.Enabled)
 }
 
 func (m *ForwardingPipelineSpec) ToMsg() (msg *typesv1beta1.ForwardingPipelineSpec) {
