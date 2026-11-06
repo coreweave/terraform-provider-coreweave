@@ -11,6 +11,9 @@ import (
 	"google.golang.org/protobuf/reflect/protoreflect"
 )
 
+// slugField is the proto field name shared by every ref message.
+const slugField protoreflect.Name = "slug"
+
 // stringRules reads the buf.validate string constraints declared on a field.
 func stringRules(t *testing.T, message protoreflect.ProtoMessage, field protoreflect.Name) *validate.StringRules {
 	t.Helper()
@@ -22,6 +25,30 @@ func stringRules(t *testing.T, message protoreflect.ProtoMessage, field protoref
 	require.Truef(t, ok, "%s carries no buf.validate.field option", field)
 
 	return rules.GetString()
+}
+
+// TestAuthHeaderValidatorsMirrorProto covers the headers map, whose pair bounds
+// are MapRules rather than the StringRules the table test reads.
+func TestAuthHeaderValidatorsMirrorProto(t *testing.T) {
+	t.Parallel()
+
+	message := &typesv1beta1.AuthHeadersCredentials{}
+	descriptor := message.ProtoReflect().Descriptor().Fields().ByName("headers")
+	require.NotNil(t, descriptor, "no headers field on AuthHeadersCredentials")
+
+	rules, ok := proto.GetExtension(descriptor.Options(), validate.E_Field).(*validate.FieldRules)
+	require.True(t, ok, "headers carries no buf.validate.field option")
+
+	mapRules := rules.GetMap()
+	require.NotNil(t, mapRules, "headers carries no map rules")
+
+	assert.Equal(t, uint64(authHeadersMinPairs), mapRules.GetMinPairs(), "min_pairs drifted from the proto")
+	assert.Equal(t, uint64(authHeadersMaxPairs), mapRules.GetMaxPairs(), "max_pairs drifted from the proto")
+
+	keyRules := mapRules.GetKeys().GetString()
+	require.NotNil(t, keyRules, "headers keys carry no string rules")
+	assert.Equal(t, uint64(authHeaderNameMaxLength), keyRules.GetMaxLen(), "key max_len drifted from the proto")
+	assert.Equal(t, authHeaderNamePat.String(), keyRules.GetPattern(), "key pattern drifted from the proto")
 }
 
 // TestValidatorsMirrorProto pins common_validators.go to the constraints it
@@ -42,7 +69,7 @@ func TestValidatorsMirrorProto(t *testing.T) {
 		{
 			name:    "endpoint slug",
 			message: &typesv1beta1.ForwardingEndpointRef{},
-			field:   "slug",
+			field:   slugField,
 			minLen:  slugMinLength,
 			maxLen:  endpointSlugMaxLength,
 			pattern: slugPattern.String(),
@@ -50,7 +77,7 @@ func TestValidatorsMirrorProto(t *testing.T) {
 		{
 			name:    "pipeline slug",
 			message: &typesv1beta1.ForwardingPipelineRef{},
-			field:   "slug",
+			field:   slugField,
 			minLen:  slugMinLength,
 			maxLen:  pipelineSlugMaxLength,
 			pattern: slugPattern.String(),
@@ -78,6 +105,55 @@ func TestValidatorsMirrorProto(t *testing.T) {
 			message: &typesv1beta1.S3Config{},
 			field:   "region",
 			maxLen:  s3RegionMaxLength,
+		},
+		{
+			name:    "stream slug",
+			message: &typesv1beta1.TelemetryStreamRef{},
+			field:   slugField,
+			minLen:  slugMinLength,
+			maxLen:  streamSlugMaxLength,
+			pattern: slugPattern.String(),
+		},
+		{
+			name:    "basic auth username",
+			message: &typesv1beta1.BasicAuthCredentials{},
+			field:   "username",
+			minLen:  1,
+			maxLen:  basicAuthUsernameMaxLength,
+		},
+		{
+			name:    "basic auth password",
+			message: &typesv1beta1.BasicAuthCredentials{},
+			field:   "password",
+			minLen:  1,
+			maxLen:  basicAuthPasswordMaxLength,
+		},
+		{
+			name:    "s3 access_key_id",
+			message: &typesv1beta1.S3Credentials{},
+			field:   "access_key_id",
+			minLen:  s3AccessKeyIDMinLength,
+			maxLen:  s3AccessKeyIDMaxLength,
+			pattern: s3AccessKeyIDPat.String(),
+		},
+		{
+			name:    "s3 secret_access_key",
+			message: &typesv1beta1.S3Credentials{},
+			field:   "secret_access_key",
+			minLen:  1,
+			maxLen:  s3SecretAccessKeyMaxLength,
+		},
+		{
+			name:    "s3 session_token",
+			message: &typesv1beta1.S3Credentials{},
+			field:   "session_token",
+			maxLen:  s3SessionTokenMaxLength,
+		},
+		{
+			name:    "tls certificate_authority_data",
+			message: &typesv1beta1.TLSConfig{},
+			field:   "certificate_authority_data",
+			maxLen:  tlsCADataMaxLength,
 		},
 	}
 

@@ -8,9 +8,11 @@ import "regexp"
 // than at apply with an opaque server rejection. protovalidate still runs in
 // each resource's ValidateConfig as the backstop.
 const (
-	// ForwardingEndpointRef.slug and ForwardingPipelineRef.slug.
+	// ForwardingEndpointRef.slug, TelemetryStreamRef.slug and
+	// ForwardingPipelineRef.slug.
 	slugMinLength         = 3
 	endpointSlugMaxLength = 32
+	streamSlugMaxLength   = 32
 	pipelineSlugMaxLength = 65
 
 	// ForwardingEndpointSpec.display_name.
@@ -25,10 +27,30 @@ const (
 
 	// ForwardingPipelineSpec.zone_slugs items.
 	zoneSlugMaxLength = 32
+
+	// BasicAuthCredentials.username and .password.
+	basicAuthUsernameMaxLength = 255
+	basicAuthPasswordMaxLength = 1024
+
+	// AuthHeadersCredentials.headers.
+	authHeadersMinPairs     = 1
+	authHeadersMaxPairs     = 20
+	authHeaderNameMaxLength = 255
+
+	// S3Credentials.
+	s3AccessKeyIDMinLength     = 16
+	s3AccessKeyIDMaxLength     = 128
+	s3SecretAccessKeyMaxLength = 1024
+	s3SessionTokenMaxLength    = 2048
+
+	// TLSConfig.certificate_authority_data.
+	tlsCADataMaxLength = 65536
 )
 
 var (
 	slugPattern       = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9-]+$`)
+	s3AccessKeyIDPat  = regexp.MustCompile(`^[A-Z0-9]+$`)
+	authHeaderNamePat = regexp.MustCompile("^[A-Za-z0-9!#$%&'*+.^_`|~-]+$")
 	httpsURLPattern   = regexp.MustCompile(`^https://`)
 	s3URIPattern      = regexp.MustCompile(`^s3://[a-z0-9][a-z0-9.-]*[a-z0-9](/.*)?$`)
 	lowercaseZonePat  = regexp.MustCompile(`^[^A-Z]*$`)
