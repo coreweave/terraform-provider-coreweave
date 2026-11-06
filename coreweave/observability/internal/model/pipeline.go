@@ -122,6 +122,9 @@ func (m *ForwardingPipeline) ToMsg(ctx context.Context) (msg *typesv1beta1.Forwa
 		return nil, nil
 	}
 
+	// A known-empty set converts to the same empty field as null, which Set
+	// reads back as null. The resource schema rejects it with SizeAtLeast(1)
+	// rather than this conversion, so the user gets an attribute error.
 	var zoneSlugs []string
 	if !m.ZoneSlugs.IsNull() && !m.ZoneSlugs.IsUnknown() {
 		diagnostics.Append(m.ZoneSlugs.ElementsAs(ctx, &zoneSlugs, false)...)
