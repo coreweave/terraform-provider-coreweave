@@ -1,0 +1,42 @@
+## Intent & Decisions
+Fix the inference acceptance failure that blocked release PR #549
+(0.29.0, run 42290325887, job 128145081389). The user linked the
+failing step; the fix was made without a separate discussion because
+the cause was a regression from #535 and the fix is one filter.
+Chosen: drop the x.y.z regex for dynamo-vllm and keep only the
+LIFECYCLE_STABLE filter. Rejected: a regex allowing +build metadata;
+it adds a rule that the data does not need.
+
+## Actions & Verification
+- Branch test/inference-dynamo-build-metadata from main 1c84793.
+- go test ./coreweave/inference/ passed; golangci-lint 0 issues.
+- Rendered update-step HCL passed terraform fmt -check.
+- terraform console on sample data selected 0.28.0+crwv.0.
+- Not run against QA (no credentials in this session).
+
+## Errors & Mistakes
+- #535 (1c84793) copied the vllm filter, which requires plain x.y.z
+  pending #319, into the dynamo-vllm update step. QA lists only
+  +crwv.N dynamo-vllm versions, so the precondition failed. Cesar's
+  local acceptance run before merge passed, probably against an
+  environment with a plain dynamo-vllm version; check the QA data, not
+  only a local run.
+
+## Attempts & Outcomes
+None
+
+## Findings & Constraints
+- QA dynamo-vllm versions at failure time: 0.26.x and 0.27.x
+  +crwv.N mostly LIFECYCLE_DEPRECATED, 0.27.0+crwv.13 UNSTABLE,
+  0.28.0+crwv.0 and later LIFECYCLE_STABLE.
+- Terraform iterates map keys in lexical order, so [0] is the
+  lexically smallest stable version.
+- The provider semverPattern accepts build metadata (a9d1221, #329).
+
+## Relevant Files & Commits
+- 1c84793 (#535): added the dynamo-vllm update step.
+- 74b11d3 (#545): the vllm version filter that was copied.
+
+## Open Questions
+- The vllm step still excludes build-metadata versions pending #319;
+  #329 already accepts them, so that exclusion may be stale.
