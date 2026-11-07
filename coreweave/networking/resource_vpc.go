@@ -24,6 +24,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/setplanmodifier"
@@ -740,6 +741,8 @@ func (r *VpcResource) Schema(ctx context.Context, req resource.SchemaRequest, re
 				Attributes: map[string]schema.Attribute{
 					"disable_public_services": schema.BoolAttribute{
 						Optional:            true,
+						Computed:            true,
+						Default:             booldefault.StaticBool(false),
 						MarkdownDescription: "Specifies whether the VPC should prevent public prefixes advertised from Nodes from being imported into public-facing networks, making them inaccessible from the Internet.",
 					},
 				},
@@ -756,6 +759,8 @@ func (r *VpcResource) Schema(ctx context.Context, req resource.SchemaRequest, re
 				Attributes: map[string]schema.Attribute{
 					"disable_public_access": schema.BoolAttribute{
 						Optional:            true,
+						Computed:            true,
+						Default:             booldefault.StaticBool(false),
 						MarkdownDescription: "Specifies whether the VPC should be blocked from consuming public Internet.",
 					},
 				},
