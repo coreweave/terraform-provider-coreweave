@@ -82,11 +82,8 @@ var (
 const (
 	conditionTypeResourcesApplied = "ResourcesApplied"
 
-	// Create waits on this synthetic state (derived from the ResourcesApplied
-	// condition) so an apply returns once resources are applied rather than blocking
-	// on a model pull. A serving Update instead holds for the STATUS_UPDATING rollout
-	// to return to STATUS_READY; an Update that disables the deployment completes here
-	// too, since a torn-down deployment never reaches STATUS_READY (see updateStateChangeConf).
+	// Create and Update wait on this synthetic state so applies return once resources
+	// are applied rather than blocking on model pulls or rollout readiness.
 	resourcesAppliedState = "RESOURCES_APPLIED"
 
 	// deletedState is a synthetic target returned when the API reports NotFound, since
@@ -94,14 +91,6 @@ const (
 	// TODO: follow up with the managed inference team to add STATUS_DELETED to the proto
 	// so deletion can be polled deterministically via status rather than CodeNotFound.
 	deletedState = "NOT_FOUND"
-
-	// rolloutStartGracePeriod delays Update's first status poll so a template or engine
-	// change has time to surface STATUS_UPDATING before we sample it. The worker picks up
-	// a spec change on its broker delta poll (5s) and then flips to STATUS_UPDATING;
-	// without this grace Update could complete on the pre-rollout STATUS_READY still
-	// reported against the prior revision. A scale-only change never leaves READY
-	// (template_only semantics) and completes right after this delay.
-	rolloutStartGracePeriod = 30 * time.Second
 )
 
 // resourcesApplied reports whether the deployment's ResourcesApplied condition
@@ -135,29 +124,6 @@ func (r *InferenceDeploymentResource) resourcesAppliedRefresh(ctx context.Contex
 		}
 		if resourcesApplied(d) {
 			return d, resourcesAppliedState, nil
-		}
-		return d, status.String(), nil
-	}
-}
-
-// rolloutRefresh polls a deployment for a StateChangeConf that completes on
-// STATUS_READY. Update uses it to hold through a STATUS_UPDATING rollout until the
-// new revision serves: per the API contract STATUS_UPDATING outranks READY while a
-// new revision rolls out and clears once it serves. A terminal ERROR/FAILED status
-// returns errDeploymentFailed.
-func (r *InferenceDeploymentResource) rolloutRefresh(ctx context.Context, deploymentID string) retry.StateRefreshFunc {
-	return func() (interface{}, string, error) {
-		getResp, err := r.client.GetDeployment(ctx, &inferencev1.GetDeploymentRequest{
-			Id: deploymentID,
-		})
-		if err != nil {
-			tflog.Error(ctx, "failed to poll deployment", map[string]interface{}{"error": err.Error()})
-			return nil, inferencev1.Status_STATUS_UNSPECIFIED.String(), err
-		}
-		d := getResp.Deployment
-		status := d.GetStatus().GetStatus()
-		if status == inferencev1.Status_STATUS_ERROR || status == inferencev1.Status_STATUS_FAILED {
-			return d, status.String(), errDeploymentFailed
 		}
 		return d, status.String(), nil
 	}
@@ -314,7 +280,7 @@ func (r *InferenceDeploymentResource) Schema(_ context.Context, _ resource.Schem
 			},
 			"status": schema.StringAttribute{
 				Computed:            true,
-				MarkdownDescription: "The current status of the deployment. See the [Inference API overview](https://docs.coreweave.com/products/inference/reference/api-overview) for status values. Creation and updates that disable the deployment return once resources are applied rather than once the deployment is serving, so the status may not be ready immediately. An update to a serving deployment instead blocks until the rollout reaches STATUS_READY. Poll the API for live readiness.",
+				MarkdownDescription: "The current status of the deployment. See the [Inference API overview](https://docs.coreweave.com/products/inference/reference/api-overview) for status values. Creation and updates return once resources are applied rather than once the deployment is serving, so the status may not be ready immediately. Poll the API for live readiness.",
 				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
 			"created_at": schema.StringAttribute{
@@ -774,31 +740,23 @@ func (r *InferenceDeploymentResource) Read(ctx context.Context, req resource.Rea
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-// updateStateChangeConf builds Update's waiter. The completion signal depends on the desired
-// end-state: a serving deployment holds through the STATUS_UPDATING rollout and completes only
-// once the new revision serves at STATUS_READY, so an apply reflects the rolled-out version. A
-// disabled deployment is torn down and never reaches STATUS_READY (status settles at CREATING),
-// so it completes on ResourcesApplied like Create rather than waiting for a READY that never comes.
+// updateStateChangeConf waits for resources to be applied, just like Create.
+// Serving readiness is asynchronous and must not hold the Terraform state lock.
 func (r *InferenceDeploymentResource) updateStateChangeConf(
-	ctx context.Context, deploymentID string, disabled bool,
+	ctx context.Context, deploymentID string,
 ) retry.StateChangeConf {
-	conf := retry.StateChangeConf{
+	return retry.StateChangeConf{
 		Pending: []string{
 			inferencev1.Status_STATUS_UPDATING.String(),
 			inferencev1.Status_STATUS_CREATING.String(),
 			inferencev1.Status_STATUS_UNSPECIFIED.String(),
+			inferencev1.Status_STATUS_READY.String(),
 		},
-		Target:     []string{inferencev1.Status_STATUS_READY.String()},
-		Refresh:    r.rolloutRefresh(ctx, deploymentID),
-		Delay:      rolloutStartGracePeriod,
-		Timeout:    45 * time.Minute,
+		Target:     []string{resourcesAppliedState},
+		Refresh:    r.resourcesAppliedRefresh(ctx, deploymentID),
+		Timeout:    20 * time.Minute,
 		MinTimeout: 5 * time.Second,
 	}
-	if disabled {
-		conf.Target = []string{resourcesAppliedState}
-		conf.Refresh = r.resourcesAppliedRefresh(ctx, deploymentID)
-	}
-	return conf
 }
 
 func (r *InferenceDeploymentResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
@@ -833,7 +791,7 @@ func (r *InferenceDeploymentResource) Update(ctx context.Context, req resource.U
 
 	deploymentID := updateResp.Deployment.GetSpec().GetId()
 
-	conf := r.updateStateChangeConf(ctx, deploymentID, data.Disabled.ValueBool())
+	conf := r.updateStateChangeConf(ctx, deploymentID)
 
 	raw, err := conf.WaitForStateContext(ctx)
 	if err != nil && !errors.Is(err, errDeploymentFailed) {
