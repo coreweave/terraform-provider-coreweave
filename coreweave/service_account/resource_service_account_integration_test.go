@@ -9,12 +9,19 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"buf.build/gen/go/coreweave/directory/connectrpc/go/v2/coreweave/directory/v1alpha/directoryv1alphaconnect"
 	directoryv1alpha "buf.build/gen/go/coreweave/directory/protocolbuffers/go/coreweave/directory/v1alpha"
 	"connectrpc.com/connect/v2"
 	"connectrpc.com/connect/v2/connecthttp"
+	serviceaccount "github.com/coreweave/terraform-provider-coreweave/coreweave/service_account"
 	"github.com/coreweave/terraform-provider-coreweave/internal/provider"
+	frameworkfunction "github.com/hashicorp/terraform-plugin-framework/function"
+	frameworkprovider "github.com/hashicorp/terraform-plugin-framework/provider"
+	"github.com/hashicorp/terraform-plugin-framework/providerserver"
+	frameworkresource "github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
 	tfresource "github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/plancheck"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
@@ -30,10 +37,12 @@ type serviceAccountTestServer struct {
 
 	mu       sync.Mutex
 	accounts map[string]*directoryv1alpha.ServiceAccount
+	creates  int
 
 	emptyCreateResponse      bool
 	emptyCreateResponseUID   bool
 	emptyNextGetResponse     bool
+	notFoundGetResponses     int
 	emptyUpdateResponse      bool
 	notFoundOnNextUpdateCall bool
 }
@@ -42,6 +51,45 @@ type serviceAccountPlanCheck func()
 
 func (check serviceAccountPlanCheck) CheckPlan(_ context.Context, _ plancheck.CheckPlanRequest, _ *plancheck.CheckPlanResponse) {
 	check()
+}
+
+type serviceAccountReadBackTestProvider struct {
+	frameworkprovider.Provider
+	timeout      time.Duration
+	initialDelay time.Duration
+	maxDelay     time.Duration
+}
+
+var _ frameworkprovider.ProviderWithFunctions = &serviceAccountReadBackTestProvider{}
+
+func (p *serviceAccountReadBackTestProvider) Resources(ctx context.Context) []func() frameworkresource.Resource {
+	resources := p.Provider.Resources(ctx)
+	for index, factory := range resources {
+		if _, ok := factory().(*serviceaccount.ServiceAccountResource); ok {
+			resources[index] = func() frameworkresource.Resource {
+				return serviceaccount.NewServiceAccountResourceWithReadBackPolicy(p.timeout, p.initialDelay, p.maxDelay)
+			}
+			break
+		}
+	}
+	return resources
+}
+
+func (p *serviceAccountReadBackTestProvider) Functions(ctx context.Context) []func() frameworkfunction.Function {
+	if providerWithFunctions, ok := p.Provider.(frameworkprovider.ProviderWithFunctions); ok {
+		return providerWithFunctions.Functions(ctx)
+	}
+	return nil
+}
+
+func serviceAccountProviderFactoriesWithReadBackPolicy(timeout, initialDelay, maxDelay time.Duration) map[string]func() (tfprotov6.ProviderServer, error) {
+	factory := providerserver.NewProtocol6WithError(&serviceAccountReadBackTestProvider{
+		Provider:     provider.New("test")(),
+		timeout:      timeout,
+		initialDelay: initialDelay,
+		maxDelay:     maxDelay,
+	})
+	return map[string]func() (tfprotov6.ProviderServer, error){"coreweave": factory}
 }
 
 func newServiceAccountTestServer() *serviceAccountTestServer {
@@ -60,8 +108,9 @@ func (s *serviceAccountTestServer) CreateServiceAccount(_ context.Context, reque
 	if _, exists := s.accounts[name]; exists {
 		return nil, connect.Errorf(connect.CodeAlreadyExists, "service account exists")
 	}
+	s.creates++
 	account := &directoryv1alpha.ServiceAccount{
-		Name: name, Uid: proto.String("c4f985e4-a2f0-44f8-937e-4fc7a4a67d06"), OrgId: proto.String("a1b2c3"),
+		Name: name, Uid: proto.String(fmt.Sprintf("c4f985e4-a2f0-44f8-937e-%012d", s.creates)), OrgId: proto.String("a1b2c3"),
 		Creator: proto.String("organizations/a1b2c3/users/test-user"), DisplayName: request.GetServiceAccount().DisplayName,
 		SystemManaged: proto.Bool(false), Active: proto.Bool(true), CreateTime: timestamppb.Now(),
 	}
@@ -81,6 +130,10 @@ func (s *serviceAccountTestServer) CreateServiceAccount(_ context.Context, reque
 func (s *serviceAccountTestServer) GetServiceAccount(_ context.Context, request *directoryv1alpha.GetServiceAccountRequest) (*directoryv1alpha.ServiceAccount, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.notFoundGetResponses > 0 {
+		s.notFoundGetResponses--
+		return nil, connect.Errorf(connect.CodeNotFound, "service account not yet visible")
+	}
 	if s.emptyNextGetResponse {
 		s.emptyNextGetResponse = false
 		return nil, nil
@@ -137,6 +190,17 @@ func (s *serviceAccountTestServer) checkEmpty(*terraform.State) error {
 	return nil
 }
 
+func (s *serviceAccountTestServer) checkCreateCount(expected int) tfresource.TestCheckFunc {
+	return func(*terraform.State) error {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		if s.creates != expected {
+			return fmt.Errorf("expected %d service account create calls, got %d", expected, s.creates)
+		}
+		return nil
+	}
+}
+
 func (s *serviceAccountTestServer) removeAll() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -167,6 +231,12 @@ func (s *serviceAccountTestServer) returnEmptyNextGetResponse() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.emptyNextGetResponse = true
+}
+
+func (s *serviceAccountTestServer) returnNotFoundOnNextGets(count int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.notFoundGetResponses = count
 }
 
 func (s *serviceAccountTestServer) returnEmptyUpdateResponse() {
@@ -381,11 +451,60 @@ func TestServiceAccountResourceRecoversCreateResponseWithoutUID(t *testing.T) {
 	})
 }
 
-func TestServiceAccountResourcePreservesIdentityWhenCreateReadBackIsInvalid(t *testing.T) {
+func TestServiceAccountResourceRetriesNotFoundCreateReadBack(t *testing.T) {
+	service, server := startServiceAccountTestServer(t)
+	service.returnEmptyCreateResponse()
+	service.returnNotFoundOnNextGets(2)
+
+	tfresource.UnitTest(t, tfresource.TestCase{
+		ProtoV6ProviderFactories: serviceAccountProviderFactoriesWithReadBackPolicy(100*time.Millisecond, time.Millisecond, 2*time.Millisecond),
+		CheckDestroy:             service.checkEmpty,
+		Steps: []tfresource.TestStep{{
+			Config: serviceAccountTestConfig(server.URL, "Eventually visible"),
+			Check: tfresource.ComposeAggregateTestCheckFunc(
+				tfresource.TestCheckResourceAttr(serviceAccountResourceAddress, "name", "organizations/a1b2c3/serviceAccounts/ci-agent"),
+				tfresource.TestCheckResourceAttr(serviceAccountResourceAddress, "uid", "c4f985e4-a2f0-44f8-937e-000000000001"),
+				service.checkCreateCount(1),
+			),
+		}},
+	})
+}
+
+func TestServiceAccountResourceTaintsWhenCreateReadBackRemainsNotFound(t *testing.T) {
+	service, server := startServiceAccountTestServer(t)
+	service.returnEmptyCreateResponse()
+	service.returnNotFoundOnNextGets(1_000)
+	config := serviceAccountTestConfig(server.URL, "Create recovery")
+
+	tfresource.UnitTest(t, tfresource.TestCase{
+		ProtoV6ProviderFactories: serviceAccountProviderFactoriesWithReadBackPolicy(15*time.Millisecond, time.Millisecond, 2*time.Millisecond),
+		CheckDestroy:             service.checkEmpty,
+		Steps: []tfresource.TestStep{
+			{
+				Config:      config,
+				ExpectError: regexp.MustCompile(`(?s)marks.*tainted.*terraform untaint`),
+			},
+			{
+				Config:    config,
+				PreConfig: func() { service.returnNotFoundOnNextGets(0) },
+				ConfigPlanChecks: tfresource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{
+					plancheck.ExpectResourceAction(serviceAccountResourceAddress, plancheck.ResourceActionDestroyBeforeCreate),
+				}},
+				Check: tfresource.ComposeAggregateTestCheckFunc(
+					tfresource.TestCheckResourceAttr(serviceAccountResourceAddress, "name", "organizations/a1b2c3/serviceAccounts/ci-agent"),
+					tfresource.TestCheckResourceAttr(serviceAccountResourceAddress, "uid", "c4f985e4-a2f0-44f8-937e-000000000002"),
+					service.checkCreateCount(2),
+				),
+			},
+		},
+	})
+}
+
+func TestServiceAccountResourceTaintsWhenCreateReadBackIsInvalid(t *testing.T) {
 	service, server := startServiceAccountTestServer(t)
 	service.returnEmptyCreateResponse()
 	service.returnEmptyNextGetResponse()
-	config := serviceAccountTestConfig(server.URL, "Create recovery")
+	config := serviceAccountTestConfig(server.URL, "Invalid read-back")
 
 	tfresource.UnitTest(t, tfresource.TestCase{
 		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
@@ -393,13 +512,17 @@ func TestServiceAccountResourcePreservesIdentityWhenCreateReadBackIsInvalid(t *t
 		Steps: []tfresource.TestStep{
 			{
 				Config:      config,
-				ExpectError: regexp.MustCompile("Unable to Read Service Account After Creation"),
+				ExpectError: regexp.MustCompile(`(?s)marks.*tainted.*terraform untaint`),
 			},
 			{
 				Config: config,
+				ConfigPlanChecks: tfresource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{
+					plancheck.ExpectResourceAction(serviceAccountResourceAddress, plancheck.ResourceActionDestroyBeforeCreate),
+				}},
 				Check: tfresource.ComposeAggregateTestCheckFunc(
 					tfresource.TestCheckResourceAttr(serviceAccountResourceAddress, "name", "organizations/a1b2c3/serviceAccounts/ci-agent"),
-					tfresource.TestCheckResourceAttrSet(serviceAccountResourceAddress, "uid"),
+					tfresource.TestCheckResourceAttr(serviceAccountResourceAddress, "uid", "c4f985e4-a2f0-44f8-937e-000000000002"),
+					service.checkCreateCount(2),
 				),
 			},
 		},

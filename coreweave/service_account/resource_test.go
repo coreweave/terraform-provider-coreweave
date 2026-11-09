@@ -1,10 +1,13 @@
 package serviceaccount
 
 import (
+	"context"
+	"errors"
 	"testing"
 	"time"
 
 	directoryv1alpha "buf.build/gen/go/coreweave/directory/protocolbuffers/go/coreweave/directory/v1alpha"
+	"connectrpc.com/connect/v2"
 	frameworkresource "github.com/hashicorp/terraform-plugin-framework/resource"
 	resourceschema "github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -13,6 +16,83 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
+
+func TestReadBackCreatedServiceAccount(t *testing.T) {
+	t.Parallel()
+
+	t.Run("retries NotFound until visible", func(t *testing.T) {
+		t.Parallel()
+		calls := 0
+		account, err := readBackCreatedServiceAccount(t.Context(), serviceAccountReadBackPolicy{
+			timeout: 100 * time.Millisecond, initialDelay: time.Millisecond, maxDelay: 2 * time.Millisecond,
+		}, func(context.Context) (*directoryv1alpha.ServiceAccount, error) {
+			calls++
+			if calls < 3 {
+				return nil, connect.Errorf(connect.CodeNotFound, "not visible")
+			}
+			return &directoryv1alpha.ServiceAccount{Name: "organizations/a1b2c3/serviceAccounts/ci-agent"}, nil
+		})
+		require.NoError(t, err)
+		require.NotNil(t, account)
+		assert.Equal(t, 3, calls)
+	})
+
+	t.Run("does not retry permanent errors", func(t *testing.T) {
+		t.Parallel()
+		calls := 0
+		permanentErr := connect.Errorf(connect.CodePermissionDenied, "denied")
+		_, err := readBackCreatedServiceAccount(t.Context(), serviceAccountReadBackPolicy{
+			timeout: 100 * time.Millisecond, initialDelay: time.Millisecond, maxDelay: 2 * time.Millisecond,
+		}, func(context.Context) (*directoryv1alpha.ServiceAccount, error) {
+			calls++
+			return nil, permanentErr
+		})
+		require.Same(t, permanentErr, err)
+		assert.Equal(t, connect.CodePermissionDenied, connect.CodeOf(err))
+		assert.Equal(t, 1, calls)
+	})
+
+	t.Run("stops at timeout", func(t *testing.T) {
+		t.Parallel()
+		_, err := readBackCreatedServiceAccount(t.Context(), serviceAccountReadBackPolicy{
+			timeout: 10 * time.Millisecond, initialDelay: time.Millisecond, maxDelay: 2 * time.Millisecond,
+		}, func(context.Context) (*directoryv1alpha.ServiceAccount, error) {
+			return nil, connect.Errorf(connect.CodeNotFound, "not visible")
+		})
+		require.Error(t, err)
+		assert.True(t, errors.Is(err, context.DeadlineExceeded))
+		assert.ErrorContains(t, err, "not visible")
+	})
+
+	t.Run("reports parent cancellation without claiming timeout", func(t *testing.T) {
+		t.Parallel()
+		ctx, cancel := context.WithCancel(t.Context())
+		cancel()
+		_, err := readBackCreatedServiceAccount(ctx, serviceAccountReadBackPolicy{
+			timeout: 30 * time.Second, initialDelay: time.Millisecond, maxDelay: 2 * time.Millisecond,
+		}, func(context.Context) (*directoryv1alpha.ServiceAccount, error) {
+			return nil, connect.Errorf(connect.CodeNotFound, "not visible")
+		})
+		require.Error(t, err)
+		assert.ErrorIs(t, err, context.Canceled)
+		assert.ErrorContains(t, err, "read-back was canceled")
+		assert.NotContains(t, err.Error(), "within 30s")
+	})
+
+	t.Run("normalizes a deadline reached during get", func(t *testing.T) {
+		t.Parallel()
+		_, err := readBackCreatedServiceAccount(t.Context(), serviceAccountReadBackPolicy{
+			timeout: 5 * time.Millisecond, initialDelay: time.Millisecond, maxDelay: 2 * time.Millisecond,
+		}, func(ctx context.Context) (*directoryv1alpha.ServiceAccount, error) {
+			<-ctx.Done()
+			return nil, connect.Errorf(connect.CodeDeadlineExceeded, "get deadline reached")
+		})
+		require.Error(t, err)
+		assert.ErrorIs(t, err, context.DeadlineExceeded)
+		assert.ErrorContains(t, err, "could not be read back within 5ms")
+		assert.ErrorContains(t, err, "get deadline reached")
+	})
+}
 
 func TestResourceSchemas(t *testing.T) {
 	t.Parallel()
