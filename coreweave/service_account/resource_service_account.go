@@ -273,9 +273,9 @@ func readBackCreatedServiceAccount(
 
 func readBackError(policy serviceAccountReadBackPolicy, lastErr, parentErr, retryErr error) error {
 	if parentErr != nil {
-		return fmt.Errorf("service account read-back was canceled (last error: %v): %w", lastErr, parentErr)
+		return fmt.Errorf("service account read-back was canceled (last error: %w): %w", lastErr, parentErr)
 	}
-	return fmt.Errorf("service account could not be read back within %s (last error: %v): %w", policy.timeout, lastErr, retryErr)
+	return fmt.Errorf("service account could not be read back within %s (last error: %w): %w", policy.timeout, lastErr, retryErr)
 }
 
 func (r *ServiceAccountResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
