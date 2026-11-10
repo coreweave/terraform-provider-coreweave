@@ -460,13 +460,8 @@ func TestForwardingEndpointHTTPSAcceptance(t *testing.T) {
 					},
 				}),
 				createHTTPSEndpointTestStep(t, httpsEndpointTestStep{
-					// The credential type is fixed for the life of an endpoint's
-					// credentials: UpdateEndpoint refuses to move between basic_auth
-					// and header_auth, naming both in the violation. The provider
-					// cannot catch this at plan time — credentials are write-only and
-					// state records only credentials_configured, never which type is
-					// stored — so the server's refusal is the only possible signal.
-					// Switching method means clearing first, as the next two steps do.
+					// The credential type is fixed once set, so the switch is
+					// refused while planning. The next two steps clear and reconfigure.
 					TestName:     "switching auth method in place is refused",
 					ResourceName: resourceName,
 					Model: with(baseModel, func(m *model.ForwardingEndpointHTTPS) {
@@ -477,7 +472,21 @@ func TestForwardingEndpointHTTPSAcceptance(t *testing.T) {
 							},
 						}
 					}),
-					ExpectError: regexp.MustCompile(`cannot change credential_type`),
+					ExpectError: regexp.MustCompile(`Credential type cannot be changed`),
+				}),
+				createHTTPSEndpointTestStep(t, httpsEndpointTestStep{
+					// The same switch with the counter untouched, which used to
+					// report success while basic auth stayed live.
+					TestName:     "switching auth method without a version bump is refused",
+					ResourceName: resourceName,
+					Model: with(baseModel, func(m *model.ForwardingEndpointHTTPS) {
+						m.Credentials = &model.HTTPSCredentials{
+							AuthHeaders: &model.AuthHeadersCredentials{
+								Headers: map[string]string{"X-API-Key": "header-secret"},
+							},
+						}
+					}),
+					ExpectError: regexp.MustCompile(`Credential type cannot be changed`),
 				}),
 				createHTTPSEndpointTestStep(t, httpsEndpointTestStep{
 					// Removing the block sends CLEAR, which is legal for HTTPS (unlike
