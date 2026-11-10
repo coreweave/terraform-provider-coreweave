@@ -1,10 +1,8 @@
 package observability
 
-// DeleteEndpointAndWait is exported only for testing purposes.
-var DeleteEndpointAndWait = deleteEndpointAndWait
-
-// CredentialAction is exported only for testing purposes.
-var CredentialAction = credentialAction
-
-// ValidateCredentialsVersion is exported only for testing purposes.
-var ValidateCredentialsVersion = validateCredentialsVersion
+// Unexported identifiers the external test package needs.
+var (
+	DeleteEndpointAndWait      = deleteEndpointAndWait
+	CredentialAction           = credentialAction
+	ValidateCredentialsVersion = validateCredentialsVersion
+)

@@ -105,6 +105,9 @@ type httpsEndpointTestStep struct {
 	// ExpectError asserts the apply is refused. State checks are skipped when
 	// it is set, since nothing was applied to check.
 	ExpectError *regexp.Regexp
+	// CredentialsConfigured overrides the default, which infers it from the
+	// config block. An imported endpoint has credentials the config never had.
+	CredentialsConfigured *bool
 }
 
 func createHTTPSEndpointTestStep(t *testing.T, opts httpsEndpointTestStep) resource.TestStep {
@@ -135,8 +138,12 @@ func createHTTPSEndpointTestStep(t *testing.T, opts httpsEndpointTestStep) resou
 
 	// Credentials are write-only: the server never returns them, so this
 	// computed pair is the only observable record that any were set.
+	credentialsConfigured := opts.Model.Credentials != nil
+	if opts.CredentialsConfigured != nil {
+		credentialsConfigured = *opts.CredentialsConfigured
+	}
 	stateChecks = append(stateChecks,
-		statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("credentials_configured"), knownvalue.Bool(opts.Model.Credentials != nil)))
+		statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("credentials_configured"), knownvalue.Bool(credentialsConfigured)))
 	if opts.Model.Credentials != nil {
 		stateChecks = append(stateChecks,
 			statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("credentials_updated_at"), knownvalue.NotNull()))

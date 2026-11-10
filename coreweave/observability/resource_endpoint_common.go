@@ -111,26 +111,22 @@ func commonEndpointSchema() map[string]schema.Attribute {
 }
 
 // credentialAction decides what UpdateEndpointRequest.credential_action should
-// carry. Write-only credential values are null in plan and state, so the
-// decision is made from the surrounding signals: whether the config still has
-// a credentials block, whether the server already holds credentials, and
-// whether the user bumped the rotation counter.
+// carry. Credential values are write-only, so this reads block presence.
 //
-//	credentials removed, server has some -> CLEAR    (rejected for S3)
-//	credentials removed, server has none -> PRESERVE (nothing to do)
-//	credentials newly added              -> REPLACE
-//	credentials_version changed          -> REPLACE
-//	otherwise                            -> PRESERVE
+//	block gone from config, state had one, server has them -> CLEAR (rejected for S3)
+//	block gone from config, anything else                  -> PRESERVE
+//	block in config, server has none                       -> REPLACE
+//	block in config, credentials_version changed           -> REPLACE
+//	otherwise                                              -> PRESERVE
 //
-// Only REPLACE may carry a credentials payload; the proto says so and the
-// server enforces it.
-func credentialAction(hasCredentials, priorConfigured bool, priorVersion, configVersion types.Int64) clusterv1beta1.UpdateEndpointRequest_CredentialAction {
+// Only REPLACE may carry a payload; the server enforces that.
+func credentialAction(configHasBlock, stateHasBlock, serverHasCredentials bool, priorVersion, configVersion types.Int64) clusterv1beta1.UpdateEndpointRequest_CredentialAction {
 	switch {
-	case !hasCredentials && priorConfigured:
+	case !configHasBlock && stateHasBlock && serverHasCredentials:
 		return clusterv1beta1.UpdateEndpointRequest_CREDENTIAL_ACTION_CLEAR
-	case !hasCredentials:
+	case !configHasBlock:
 		return clusterv1beta1.UpdateEndpointRequest_CREDENTIAL_ACTION_PRESERVE
-	case !priorConfigured:
+	case !serverHasCredentials:
 		return clusterv1beta1.UpdateEndpointRequest_CREDENTIAL_ACTION_REPLACE
 	case !priorVersion.Equal(configVersion):
 		return clusterv1beta1.UpdateEndpointRequest_CREDENTIAL_ACTION_REPLACE
