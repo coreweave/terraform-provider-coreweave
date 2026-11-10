@@ -5,8 +5,8 @@ go 1.27.2
 require (
 	buf.build/gen/go/coreweave/cks/connectrpc/go/v2 v2.0.2-20261014193236-69d4f39faca7.1
 	buf.build/gen/go/coreweave/cks/protocolbuffers/go v1.36.12-20261014193236-69d4f39faca7.2
-	buf.build/gen/go/coreweave/container-registry-api/connectrpc/go/v2 v2.0.1-20261009031350-4d1490e50ed8.1
-	buf.build/gen/go/coreweave/container-registry-api/protocolbuffers/go v1.36.12-20261009031350-4d1490e50ed8.2
+	buf.build/gen/go/coreweave/container-registry-api/connectrpc/go/v2 v2.0.2-20261019135501-78f7b7d0869d.1
+	buf.build/gen/go/coreweave/container-registry-api/protocolbuffers/go v1.36.12-20261019135501-78f7b7d0869d.2
 	buf.build/gen/go/coreweave/cwobject/connectrpc/go/v2 v2.0.0-20260831154917-08064e55742b.1
 	buf.build/gen/go/coreweave/cwobject/protocolbuffers/go v1.36.12-20260831154917-08064e55742b.2
 	buf.build/gen/go/coreweave/directory/connectrpc/go/v2 v2.0.1-20261022011331-2af0c9345d0d.1
