@@ -319,6 +319,7 @@ func (r *HTTPSForwardingEndpointResource) Update(ctx context.Context, req resour
 
 	action := credentialAction(
 		config.Credentials != nil,
+		state.Credentials != nil,
 		state.CredentialsConfigured.ValueBool(),
 		state.CredentialsVersion,
 		config.CredentialsVersion,
