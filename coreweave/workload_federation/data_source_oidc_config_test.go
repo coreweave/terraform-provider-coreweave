@@ -41,6 +41,7 @@ func testOIDCConfigs() (*controlplanev1beta1.OIDCConfig, *controlplanev1beta1.OI
 		Name:      "github-actions",
 		IssuerUrl: "https://token.actions.githubusercontent.com",
 		Audience:  "coreweave",
+		TenantId:  new("123456789"),
 		CreatedAt: timestamppb.New(now),
 		UpdatedAt: timestamppb.New(now),
 	}
@@ -66,21 +67,24 @@ func TestOIDCConfigDataSourceLookup(t *testing.T) {
 		wantUID         string
 		wantName        string
 		wantActive      string
+		wantTenantID    string
 		wantDeactivated bool
 	}{
 		"ID lookup": {
-			selectors:  fmt.Sprintf("  id = %q", testOIDCConfigUID),
-			configs:    []*controlplanev1beta1.OIDCConfig{active},
-			wantUID:    testOIDCConfigUID,
-			wantName:   "github-actions",
-			wantActive: "true",
+			selectors:    fmt.Sprintf("  id = %q", testOIDCConfigUID),
+			configs:      []*controlplanev1beta1.OIDCConfig{active},
+			wantUID:      testOIDCConfigUID,
+			wantName:     "github-actions",
+			wantActive:   "true",
+			wantTenantID: "123456789",
 		},
 		"issuer and audience lookup": {
-			selectors:  "  issuer_url = \"https://token.actions.githubusercontent.com\"\n  audience   = \"coreweave\"",
-			configs:    []*controlplanev1beta1.OIDCConfig{deactivated, active},
-			wantUID:    testOIDCConfigUID,
-			wantName:   "github-actions",
-			wantActive: "true",
+			selectors:    "  issuer_url = \"https://token.actions.githubusercontent.com\"\n  audience   = \"coreweave\"",
+			configs:      []*controlplanev1beta1.OIDCConfig{deactivated, active},
+			wantUID:      testOIDCConfigUID,
+			wantName:     "github-actions",
+			wantActive:   "true",
+			wantTenantID: "123456789",
 		},
 		"deactivated object": {
 			selectors:       fmt.Sprintf("  id = %q", testOIDCConfigOtherUID),
@@ -101,6 +105,11 @@ func TestOIDCConfigDataSourceLookup(t *testing.T) {
 				tfresource.TestCheckResourceAttr(oidcConfigDataSourceAddress, "id", test.wantUID),
 				tfresource.TestCheckResourceAttr(oidcConfigDataSourceAddress, "name", test.wantName),
 				tfresource.TestCheckResourceAttr(oidcConfigDataSourceAddress, "active", test.wantActive),
+			}
+			if test.wantTenantID != "" {
+				checks = append(checks, tfresource.TestCheckResourceAttr(oidcConfigDataSourceAddress, "tenant_id", test.wantTenantID))
+			} else {
+				checks = append(checks, tfresource.TestCheckNoResourceAttr(oidcConfigDataSourceAddress, "tenant_id"))
 			}
 			if test.wantDeactivated {
 				checks = append(checks, tfresource.TestCheckResourceAttrSet(oidcConfigDataSourceAddress, "deactivated_at"))
