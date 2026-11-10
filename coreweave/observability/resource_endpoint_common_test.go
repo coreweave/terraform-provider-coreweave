@@ -166,6 +166,16 @@ func TestEndpointCredentialAction(t *testing.T) {
 	}
 }
 
+// Only REPLACE may carry credentials; an unrelated edit sends PRESERVE, and a
+// payload alongside it is rejected by the server.
+func TestCarriesCredentialPayload(t *testing.T) {
+	t.Parallel()
+
+	assert.True(t, observability.CarriesCredentialPayload(clusterv1beta1.UpdateEndpointRequest_CREDENTIAL_ACTION_REPLACE))
+	assert.False(t, observability.CarriesCredentialPayload(clusterv1beta1.UpdateEndpointRequest_CREDENTIAL_ACTION_PRESERVE))
+	assert.False(t, observability.CarriesCredentialPayload(clusterv1beta1.UpdateEndpointRequest_CREDENTIAL_ACTION_CLEAR))
+}
+
 // TestValidateCredentialsVersion pins the validator's one-directional rule.
 // A counter without credentials is the dangerous shape: credentialAction reads
 // the absent block as CLEAR, so the apply strips the endpoint's auth instead of

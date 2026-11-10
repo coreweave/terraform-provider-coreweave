@@ -120,6 +120,12 @@ func commonEndpointSchema() map[string]schema.Attribute {
 //	otherwise                                              -> PRESERVE
 //
 // Only REPLACE may carry a payload; the server enforces that.
+// carriesCredentialPayload reports whether the action may set the credentials
+// oneof. PRESERVE and CLEAR must leave it unset or the server rejects the request.
+func carriesCredentialPayload(action clusterv1beta1.UpdateEndpointRequest_CredentialAction) bool {
+	return action == clusterv1beta1.UpdateEndpointRequest_CREDENTIAL_ACTION_REPLACE
+}
+
 func credentialAction(configHasBlock, stateHasBlock, serverHasCredentials bool, priorVersion, configVersion types.Int64) clusterv1beta1.UpdateEndpointRequest_CredentialAction {
 	switch {
 	case !configHasBlock && stateHasBlock && serverHasCredentials:
