@@ -21,6 +21,8 @@ const (
 const (
 	fieldSecretKey       protoreflect.Name = "secret_key"
 	fieldSecretAccessKey protoreflect.Name = "secret_access_key"
+	// Session token: the third part of the credential triple, usable on its own.
+	fieldToken protoreflect.Name = "token"
 )
 
 // redactedFields names the fields cleared before a message is logged. Anything
@@ -31,9 +33,9 @@ var redactedFields = map[protoreflect.FullName][]protoreflect.Name{
 	"coreweave.telemetryrelay.svc.cluster.v1beta1.UpdateEndpointRequest": {"kafka", "prometheus", "s3", "https"},
 
 	"coreweave.cwobject.v1.CreateAccessKeyFromJWTResponse":            {fieldSecretKey},
-	"coreweave.cwobject.v1.CreateAccessKeyFromApiTokenResponse":       {fieldSecretAccessKey},
+	"coreweave.cwobject.v1.CreateAccessKeyFromApiTokenResponse":       {fieldSecretAccessKey, fieldToken},
 	"coreweave.cwobject.v1.CreateAccessKeyFromSAMLResponse":           {fieldSecretKey},
-	"coreweave.cwobject.v1.CreateAccessKeyFromContainerCredsResponse": {fieldSecretAccessKey},
+	"coreweave.cwobject.v1.CreateAccessKeyFromContainerCredsResponse": {fieldSecretAccessKey, fieldToken},
 	"coreweave.cwobject.v1.CreateAccessKeyFromOIDCResponse":           {fieldSecretKey},
 }
 
