@@ -80,7 +80,7 @@ Optional:
 
 Required:
 
-- `headers` (Map of String, Sensitive, [Write-only](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments)) Map of HTTP header names to values for authentication. 1 to 20 entries. Names must be unique ignoring case, since HTTP field names are case-insensitive and the endpoint would receive the header twice. `Host`, `Content-Length`, `Content-Type`, `Connection` and `Transfer-Encoding` are set by the forwarder and cannot be overridden. Neither names nor values may contain a comma or `${`, and values cannot begin or end with whitespace.
+- `headers` (Map of String, Sensitive, [Write-only](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments)) Map of HTTP header names to values for authentication. 1 to 20 entries. Names must be unique ignoring case, since HTTP field names are case-insensitive and the endpoint would receive the header twice. `Host`, `Content-Length`, `Content-Type`, `Content-Encoding`, `Connection` and `Transfer-Encoding` are set by the forwarder and cannot be overridden. Neither names nor values may contain a comma or `${`, and values cannot begin or end with whitespace.
 
 
 <a id="nestedatt--credentials--basic_auth"></a>
