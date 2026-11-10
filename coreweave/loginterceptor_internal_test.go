@@ -12,21 +12,32 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/reflect/protoregistry"
+	"google.golang.org/protobuf/types/known/wrapperspb"
 )
 
 // Fake values that must stay out of the logs.
 const (
-	secretPassword   = "pa55word-must-not-be-logged"
-	secretHeader     = "Bearer must-not-be-logged"
-	secretAccessKey  = "SAK-must-not-be-logged"
-	secretSession    = "SESSION-must-not-be-logged"
-	publicSlug       = "endpoint-slug"
-	publicHeaderName = "Authorization"
+	secretPassword     = "pa55word-must-not-be-logged"
+	secretHeader       = "Bearer must-not-be-logged"
+	secretAccessKey    = "SAK-must-not-be-logged"
+	secretSession      = "SESSION-must-not-be-logged"
+	secretSessionToken = "TOKEN-must-not-be-logged"
+
+	// Values that must survive, so an over-broad redaction fails too.
+	publicSlug        = "endpoint-slug"
+	publicHeaderName  = "Authorization"
+	publicAccessKeyID = "AKIA-public-enough"
+	publicPrincipal   = "svc-principal"
 
 	// Names redactCredentials reports as cleared.
 	clearedHTTPS = "https"
 	clearedS3    = "s3"
 )
+
+// secretValues is every fake credential above; no formatted log line may contain any.
+var secretValues = []string{
+	secretPassword, secretHeader, secretAccessKey, secretSession, secretSessionToken,
+}
 
 // Registration is by string, so a rename would silently stop redacting.
 func TestRedactedFieldsResolve(t *testing.T) {
@@ -88,7 +99,7 @@ func s3CredentialsRequest() *clusterv1beta1.CreateEndpointRequest {
 	req := endpointRefRequest()
 
 	creds := &typesv1beta1.S3Credentials{}
-	creds.SetAccessKeyId("AKIA-public-enough")
+	creds.SetAccessKeyId(publicAccessKeyID)
 	creds.SetSecretAccessKey(secretAccessKey)
 	creds.SetSessionToken(secretSession)
 	req.SetS3(creds)
@@ -98,28 +109,158 @@ func s3CredentialsRequest() *clusterv1beta1.CreateEndpointRequest {
 
 func accessKeyResponse() *cwobjectv1.CreateAccessKeyFromJWTResponse {
 	resp := &cwobjectv1.CreateAccessKeyFromJWTResponse{}
-	resp.SetAccessKeyId("AKIA-public-enough")
+	resp.SetAccessKeyId(publicAccessKeyID)
 	resp.SetSecretKey(secretAccessKey)
+	resp.SetPrincipalName(publicPrincipal)
 	return resp
+}
+
+func samlAccessKeyResponse() *cwobjectv1.CreateAccessKeyFromSAMLResponse {
+	resp := &cwobjectv1.CreateAccessKeyFromSAMLResponse{}
+	resp.SetAccessKeyId(publicAccessKeyID)
+	resp.SetSecretKey(secretAccessKey)
+	resp.SetPrincipalName(publicPrincipal)
+	return resp
+}
+
+func oidcAccessKeyResponse() *cwobjectv1.CreateAccessKeyFromOIDCResponse {
+	resp := &cwobjectv1.CreateAccessKeyFromOIDCResponse{}
+	resp.SetAccessKeyId(publicAccessKeyID)
+	resp.SetSecretKey(secretAccessKey)
+	resp.SetPrincipalName(publicPrincipal)
+	return resp
+}
+
+func apiTokenAccessKeyResponse() *cwobjectv1.CreateAccessKeyFromApiTokenResponse {
+	resp := &cwobjectv1.CreateAccessKeyFromApiTokenResponse{}
+	resp.SetAccessKeyId(publicAccessKeyID)
+	resp.SetSecretAccessKey(secretAccessKey)
+	resp.SetToken(wrapperspb.String(secretSessionToken))
+	return resp
+}
+
+func containerCredsAccessKeyResponse() *cwobjectv1.CreateAccessKeyFromContainerCredsResponse {
+	resp := &cwobjectv1.CreateAccessKeyFromContainerCredsResponse{}
+	resp.SetAccessKeyId(publicAccessKeyID)
+	resp.SetSecretAccessKey(secretAccessKey)
+	resp.SetToken(wrapperspb.String(secretSessionToken))
+	return resp
+}
+
+// asUpdate rebuilds a create request as the update that carries the same
+// credential oneof, so both registered endpoint messages get exercised.
+func asUpdate(create *clusterv1beta1.CreateEndpointRequest) proto.Message {
+	update := &clusterv1beta1.UpdateEndpointRequest{}
+	update.SetRef(create.GetRef())
+	update.SetCredentialAction(clusterv1beta1.UpdateEndpointRequest_CREDENTIAL_ACTION_REPLACE)
+	if https := create.GetHttps(); https != nil {
+		update.SetHttps(https)
+	} else {
+		update.SetS3(create.GetS3())
+	}
+	return update
+}
+
+// redactionCase states, per registered message, which fields redaction reports
+// and which values must still reach the log. remains is what keeps the
+// assertion honest where a message is mostly credential: it names the exact
+// output expected instead of merely requiring some output.
+type redactionCase struct {
+	name    string
+	message proto.Message
+	cleared []string
+	remains []string
+}
+
+func redactionCases() []redactionCase {
+	return []redactionCase{
+		{
+			name:    "create https basic auth",
+			message: httpsBasicAuthRequest(),
+			cleared: []string{clearedHTTPS},
+			remains: []string{publicSlug},
+		},
+		{
+			name:    "create https auth headers",
+			message: httpsAuthHeadersRequest(),
+			cleared: []string{clearedHTTPS},
+			remains: []string{publicSlug},
+		},
+		{
+			name:    "create s3 credentials",
+			message: s3CredentialsRequest(),
+			cleared: []string{clearedS3},
+			remains: []string{publicSlug},
+		},
+		{
+			name:    "update https basic auth",
+			message: asUpdate(httpsBasicAuthRequest()),
+			cleared: []string{clearedHTTPS},
+			remains: []string{publicSlug},
+		},
+		{
+			name:    "update https auth headers",
+			message: asUpdate(httpsAuthHeadersRequest()),
+			cleared: []string{clearedHTTPS},
+			remains: []string{publicSlug},
+		},
+		{
+			name:    "update s3 credentials",
+			message: asUpdate(s3CredentialsRequest()),
+			cleared: []string{clearedS3},
+			remains: []string{publicSlug},
+		},
+		{
+			name:    "access key from jwt",
+			message: accessKeyResponse(),
+			cleared: []string{string(fieldSecretKey)},
+			remains: []string{publicAccessKeyID, publicPrincipal},
+		},
+		{
+			name:    "access key from saml",
+			message: samlAccessKeyResponse(),
+			cleared: []string{string(fieldSecretKey)},
+			remains: []string{publicAccessKeyID, publicPrincipal},
+		},
+		{
+			name:    "access key from oidc",
+			message: oidcAccessKeyResponse(),
+			cleared: []string{string(fieldSecretKey)},
+			remains: []string{publicAccessKeyID, publicPrincipal},
+		},
+		{
+			name:    "access key from api token",
+			message: apiTokenAccessKeyResponse(),
+			cleared: []string{string(fieldSecretAccessKey), string(fieldToken)},
+			remains: []string{publicAccessKeyID},
+		},
+		{
+			name:    "access key from container creds",
+			message: containerCredsAccessKeyResponse(),
+			cleared: []string{string(fieldSecretAccessKey), string(fieldToken)},
+			remains: []string{publicAccessKeyID},
+		},
+	}
+}
+
+// Every registered message needs a case, or a new registration ships untested.
+func TestRedactionCasesCoverRegistry(t *testing.T) {
+	t.Parallel()
+
+	covered := map[protoreflect.FullName]bool{}
+	for _, tc := range redactionCases() {
+		covered[tc.message.ProtoReflect().Descriptor().FullName()] = true
+	}
+
+	for messageName := range redactedFields {
+		assert.Truef(t, covered[messageName], "%s has no redaction case", messageName)
+	}
 }
 
 func TestRedactCredentialsKeepsSecretsOutOfLogs(t *testing.T) {
 	t.Parallel()
 
-	secrets := []string{secretPassword, secretHeader, secretAccessKey, secretSession}
-
-	tests := []struct {
-		name    string
-		message proto.Message
-		cleared []string
-	}{
-		{name: "https basic auth", message: httpsBasicAuthRequest(), cleared: []string{clearedHTTPS}},
-		{name: "https auth headers", message: httpsAuthHeadersRequest(), cleared: []string{clearedHTTPS}},
-		{name: "s3 credentials", message: s3CredentialsRequest(), cleared: []string{clearedS3}},
-		{name: "object storage access key", message: accessKeyResponse(), cleared: []string{"secret_key"}},
-	}
-
-	for _, tc := range tests {
+	for _, tc := range redactionCases() {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -127,7 +268,7 @@ func TestRedactCredentialsKeepsSecretsOutOfLogs(t *testing.T) {
 			assert.Equal(t, tc.cleared, cleared)
 
 			formatted := logFormatMessage(redacted)
-			for _, secret := range secrets {
+			for _, secret := range secretValues {
 				assert.NotContains(t, formatted, secret,
 					"credential value reached the log line: %s", formatted)
 			}
@@ -141,37 +282,7 @@ func TestRedactCredentialsKeepsSecretsOutOfLogs(t *testing.T) {
 func TestLogMessageFieldsRedacts(t *testing.T) {
 	t.Parallel()
 
-	secrets := []string{secretPassword, secretHeader, secretAccessKey, secretSession}
-
-	// Update carries the same credential oneof as Create, and is the path that
-	// leaked before redaction was added.
-	asUpdate := func(create *clusterv1beta1.CreateEndpointRequest) proto.Message {
-		update := &clusterv1beta1.UpdateEndpointRequest{}
-		update.SetRef(create.GetRef())
-		update.SetCredentialAction(clusterv1beta1.UpdateEndpointRequest_CREDENTIAL_ACTION_REPLACE)
-		if https := create.GetHttps(); https != nil {
-			update.SetHttps(https)
-		} else {
-			update.SetS3(create.GetS3())
-		}
-		return update
-	}
-
-	tests := []struct {
-		name    string
-		message proto.Message
-		cleared string
-	}{
-		{name: "create https basic auth", message: httpsBasicAuthRequest(), cleared: clearedHTTPS},
-		{name: "create https auth headers", message: httpsAuthHeadersRequest(), cleared: clearedHTTPS},
-		{name: "create s3 credentials", message: s3CredentialsRequest(), cleared: clearedS3},
-		{name: "update https basic auth", message: asUpdate(httpsBasicAuthRequest()), cleared: clearedHTTPS},
-		{name: "update https auth headers", message: asUpdate(httpsAuthHeadersRequest()), cleared: clearedHTTPS},
-		{name: "update s3 credentials", message: asUpdate(s3CredentialsRequest()), cleared: clearedS3},
-		{name: "object storage access key", message: accessKeyResponse(), cleared: "secret_key"},
-	}
-
-	for _, tc := range tests {
+	for _, tc := range redactionCases() {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -180,15 +291,17 @@ func TestLogMessageFieldsRedacts(t *testing.T) {
 			fields := map[string]any{}
 			logMessageFields(fields, tc.message)
 
-			assert.Equal(t, tc.cleared, fields[logRedactedKey])
+			assert.Equal(t, strings.Join(tc.cleared, ","), fields[logRedactedKey])
 			assert.True(t, proto.Equal(original, tc.message),
 				"logging must not strip credentials from the outgoing request")
 
 			formatted, ok := fields[logMessageKey].(string)
 			require.True(t, ok, "no message field was produced")
-			require.NotEmpty(t, formatted)
-			for _, secret := range secrets {
+			for _, secret := range secretValues {
 				assert.NotContains(t, formatted, secret, "credential value reached the log field")
+			}
+			for _, remains := range tc.remains {
+				assert.Contains(t, formatted, remains, "redaction cleared more than the credential")
 			}
 		})
 	}
