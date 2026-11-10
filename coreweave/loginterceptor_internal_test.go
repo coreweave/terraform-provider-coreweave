@@ -22,6 +22,10 @@ const (
 	secretSession    = "SESSION-must-not-be-logged"
 	publicSlug       = "endpoint-slug"
 	publicHeaderName = "Authorization"
+
+	// Names redactCredentials reports as cleared.
+	clearedHTTPS = "https"
+	clearedS3    = "s3"
 )
 
 // Registration is by string, so a rename would silently stop redacting.
@@ -109,9 +113,9 @@ func TestRedactCredentialsKeepsSecretsOutOfLogs(t *testing.T) {
 		message proto.Message
 		cleared []string
 	}{
-		{name: "https basic auth", message: httpsBasicAuthRequest(), cleared: []string{"https"}},
-		{name: "https auth headers", message: httpsAuthHeadersRequest(), cleared: []string{"https"}},
-		{name: "s3 credentials", message: s3CredentialsRequest(), cleared: []string{"s3"}},
+		{name: "https basic auth", message: httpsBasicAuthRequest(), cleared: []string{clearedHTTPS}},
+		{name: "https auth headers", message: httpsAuthHeadersRequest(), cleared: []string{clearedHTTPS}},
+		{name: "s3 credentials", message: s3CredentialsRequest(), cleared: []string{clearedS3}},
 		{name: "object storage access key", message: accessKeyResponse(), cleared: []string{"secret_key"}},
 	}
 
@@ -126,6 +130,65 @@ func TestRedactCredentialsKeepsSecretsOutOfLogs(t *testing.T) {
 			for _, secret := range secrets {
 				assert.NotContains(t, formatted, secret,
 					"credential value reached the log line: %s", formatted)
+			}
+		})
+	}
+}
+
+// TestLogMessageFieldsRedacts drives the function the interceptor calls. The
+// tests above call redactCredentials directly, so they pass even if
+// logMessageFields logs the unredacted message.
+func TestLogMessageFieldsRedacts(t *testing.T) {
+	t.Parallel()
+
+	secrets := []string{secretPassword, secretHeader, secretAccessKey, secretSession}
+
+	// Update carries the same credential oneof as Create, and is the path that
+	// leaked before redaction was added.
+	asUpdate := func(create *clusterv1beta1.CreateEndpointRequest) proto.Message {
+		update := &clusterv1beta1.UpdateEndpointRequest{}
+		update.SetRef(create.GetRef())
+		update.SetCredentialAction(clusterv1beta1.UpdateEndpointRequest_CREDENTIAL_ACTION_REPLACE)
+		if https := create.GetHttps(); https != nil {
+			update.SetHttps(https)
+		} else {
+			update.SetS3(create.GetS3())
+		}
+		return update
+	}
+
+	tests := []struct {
+		name    string
+		message proto.Message
+		cleared string
+	}{
+		{name: "create https basic auth", message: httpsBasicAuthRequest(), cleared: clearedHTTPS},
+		{name: "create https auth headers", message: httpsAuthHeadersRequest(), cleared: clearedHTTPS},
+		{name: "create s3 credentials", message: s3CredentialsRequest(), cleared: clearedS3},
+		{name: "update https basic auth", message: asUpdate(httpsBasicAuthRequest()), cleared: clearedHTTPS},
+		{name: "update https auth headers", message: asUpdate(httpsAuthHeadersRequest()), cleared: clearedHTTPS},
+		{name: "update s3 credentials", message: asUpdate(s3CredentialsRequest()), cleared: clearedS3},
+		{name: "object storage access key", message: accessKeyResponse(), cleared: "secret_key"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			original := proto.Clone(tc.message)
+
+			fields := map[string]any{}
+			logMessageFields(fields, tc.message)
+
+			assert.Equal(t, tc.cleared, fields[logRedactedKey])
+			assert.True(t, proto.Equal(original, tc.message),
+				"logging must not strip credentials from the outgoing request")
+
+			formatted, ok := fields[logMessageKey].(string)
+			require.True(t, ok, "no message field was produced")
+			require.NotEmpty(t, formatted)
+			for _, secret := range secrets {
+				assert.NotContains(t, formatted, secret, "credential value reached the log field")
 			}
 		})
 	}
