@@ -40,6 +40,7 @@ resource "coreweave_observability_telemetry_relay_pipeline" "all_active_zones" {
   slug             = "logs-to-https-all-zones"
   source_slug      = data.coreweave_observability_telemetry_relay_stream.customer_logs.slug
   destination_slug = coreweave_observability_telemetry_relay_endpoint_https.logs.slug
+  enabled          = true
 
   zone_slugs = keys(data.coreweave_observability_telemetry_relay_stream.customer_logs.zones_active)
 }

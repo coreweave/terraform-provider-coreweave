@@ -43,11 +43,16 @@ func authHeadersAttribute() schema.SingleNestedAttribute {
 		Optional:            true,
 		Attributes: map[string]schema.Attribute{
 			"headers": schema.MapAttribute{
-				MarkdownDescription: "Map of HTTP header names to values for authentication.",
-				Required:            true,
-				Sensitive:           true,
-				WriteOnly:           true,
-				ElementType:         types.StringType,
+				MarkdownDescription: "Map of HTTP header names to values for authentication. " +
+					"1 to 20 entries. Names must be unique ignoring case, since HTTP field names " +
+					"are case-insensitive and the endpoint would receive the header twice. " +
+					"`Host`, `Content-Length`, `Content-Type`, `Connection` and `Transfer-Encoding` " +
+					"are set by the forwarder and cannot be overridden. Neither names nor values may " +
+					"contain a comma or `${`, and values cannot begin or end with whitespace.",
+				Required:    true,
+				Sensitive:   true,
+				WriteOnly:   true,
+				ElementType: types.StringType,
 				Validators: []validator.Map{
 					mapvalidator.SizeBetween(authHeadersMinPairs, authHeadersMaxPairs),
 					mapvalidator.KeysAre(
