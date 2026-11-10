@@ -5,6 +5,7 @@ import (
 	"regexp"
 	"testing"
 
+	clusterv1beta1 "buf.build/gen/go/coreweave/telemetry-relay/protocolbuffers/go/coreweave/telemetryrelay/svc/cluster/v1beta1"
 	typesv1beta1 "buf.build/gen/go/coreweave/telemetry-relay/protocolbuffers/go/coreweave/telemetryrelay/types/v1beta1"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave/observability"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave/observability/internal/model"
@@ -703,6 +704,154 @@ func TestForwardingEndpointHTTPSAcceptance(t *testing.T) {
 				})
 			})
 		}
+	})
+
+	// imported credentials are the case credentials_configured cannot speak to.
+	// The server holds credentials Terraform never configured, so an unrelated
+	// edit must not read the absent block as a removal. The config here never
+	// declares credentials at any point, which is what import leaves behind.
+	t.Run("imported credentials survive an unrelated edit", func(t *testing.T) {
+		token := testToken(t)
+		resourceName := fmt.Sprintf("test_acc_https_imported_%s", token)
+		fullResourceName := fmt.Sprintf("%s.%s", httpsEndpointResourceName, resourceName)
+		slug := slugify("https-imp", token)
+		credentialsStillStored := true
+
+		baseModel := &model.ForwardingEndpointHTTPS{
+			ForwardingEndpointCore: model.ForwardingEndpointCore{
+				Slug:        types.StringValue(slug),
+				DisplayName: types.StringValue("Test HTTPS Endpoint Imported"),
+			},
+			Endpoint: types.StringValue(testHTTPSEndpointURL),
+		}
+
+		resource.ParallelTest(t, resource.TestCase{
+			ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+			PreCheck:                 func() { setAccEnvDefaults() },
+			CheckDestroy:             checkDestroyed(t),
+			Steps: []resource.TestStep{
+				{
+					// Created with basic auth outside Terraform, the way an
+					// endpoint made in the console arrives.
+					PreConfig: func() {
+						client := testClient(t)
+						createReq := &clusterv1beta1.CreateEndpointRequest{
+							Ref: &typesv1beta1.ForwardingEndpointRef{Slug: slug},
+							Spec: &typesv1beta1.ForwardingEndpointSpec{
+								DisplayName: "Test HTTPS Endpoint Imported",
+							},
+						}
+						createReq.Spec.SetHttps(&typesv1beta1.HTTPSConfig{Endpoint: testHTTPSEndpointURL})
+						httpsCreds := &typesv1beta1.HTTPSCredentials{}
+						httpsCreds.SetBasicAuth(&typesv1beta1.BasicAuthCredentials{
+							Username: "imported-user",
+							Password: "imported-password",
+						})
+						createReq.SetHttps(httpsCreds)
+
+						_, err := client.CreateEndpoint(t.Context(), createReq)
+						require.NoError(t, err, "failed to create the endpoint out of band")
+					},
+					Config:        renderHTTPSEndpointResource(resourceName, baseModel),
+					ResourceName:  fullResourceName,
+					ImportState:   true,
+					ImportStateId: slug,
+					// Persisted so the next step updates the imported resource
+					// rather than creating one. No ImportStateVerify: that compares
+					// against prior state, and nothing created this through
+					// Terraform, which is the whole point of the case.
+					ImportStatePersist: true,
+				},
+				createHTTPSEndpointTestStep(t, httpsEndpointTestStep{
+					// Compression is the smallest edit that touches nothing about
+					// authentication. Before the ownership marker this sent CLEAR
+					// and silently stripped the endpoint's credentials.
+					TestName:     "an unrelated edit leaves imported credentials alone",
+					ResourceName: resourceName,
+					Model: with(baseModel, func(m *model.ForwardingEndpointHTTPS) {
+						m.Compression = types.StringValue(typesv1beta1.HTTPSConfig_COMPRESSION_TYPE_GZIP.String())
+					}),
+					// No block in config, credentials still on the server. Before
+					// the ownership marker this apply sent CLEAR.
+					CredentialsConfigured: &credentialsStillStored,
+					ExtraChecks: []statecheck.StateCheck{
+						// Import never writes the block and Read preserves whatever
+						// state held, so it stays null. This is what tells an apply
+						// that these credentials were not Terraform's to remove.
+						statecheck.ExpectKnownValue(fullResourceName,
+							tfjsonpath.New("credentials"), knownvalue.Null()),
+					},
+					ConfigPlanChecks: resource.ConfigPlanChecks{
+						PreApply: []plancheck.PlanCheck{
+							plancheck.ExpectResourceAction(fullResourceName, plancheck.ResourceActionUpdate),
+						},
+					},
+				}),
+			},
+		})
+	})
+
+	// The same divergence without import: Terraform creates the endpoint with
+	// no credentials, something else adds them, and an unrelated edit must not
+	// read the absent block as a removal.
+	t.Run("credentials added out of band survive an unrelated edit", func(t *testing.T) {
+		token := testToken(t)
+		resourceName := fmt.Sprintf("test_acc_https_oob_%s", token)
+		fullResourceName := fmt.Sprintf("%s.%s", httpsEndpointResourceName, resourceName)
+		credentialsStillStored := true
+
+		baseModel := &model.ForwardingEndpointHTTPS{
+			ForwardingEndpointCore: model.ForwardingEndpointCore{
+				Slug:        types.StringValue(slugify("https-oob", token)),
+				DisplayName: types.StringValue("Test HTTPS Endpoint Out Of Band"),
+			},
+			Endpoint: types.StringValue(testHTTPSEndpointURL),
+		}
+
+		resource.ParallelTest(t, resource.TestCase{
+			ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+			PreCheck:                 func() { setAccEnvDefaults() },
+			CheckDestroy:             checkDestroyed(t),
+			Steps: []resource.TestStep{
+				createHTTPSEndpointTestStep(t, httpsEndpointTestStep{
+					TestName:     "create without credentials",
+					ResourceName: resourceName,
+					Model:        baseModel,
+				}),
+				createHTTPSEndpointTestStep(t, httpsEndpointTestStep{
+					TestName:     "an unrelated edit leaves out-of-band credentials alone",
+					ResourceName: resourceName,
+					PreConfig: func() {
+						client := testClient(t)
+						updateReq := &clusterv1beta1.UpdateEndpointRequest{
+							Ref: &typesv1beta1.ForwardingEndpointRef{Slug: baseModel.Slug.ValueString()},
+							Spec: &typesv1beta1.ForwardingEndpointSpec{
+								DisplayName: baseModel.DisplayName.ValueString(),
+							},
+						}
+						updateReq.Spec.SetHttps(&typesv1beta1.HTTPSConfig{Endpoint: testHTTPSEndpointURL})
+						creds := &typesv1beta1.HTTPSCredentials{}
+						creds.SetBasicAuth(&typesv1beta1.BasicAuthCredentials{
+							Username: "out-of-band-user",
+							Password: "out-of-band-password",
+						})
+						updateReq.SetHttps(creds)
+						updateReq.SetCredentialAction(clusterv1beta1.UpdateEndpointRequest_CREDENTIAL_ACTION_REPLACE)
+
+						_, err := client.UpdateEndpoint(t.Context(), updateReq)
+						require.NoError(t, err, "failed to add credentials out of band")
+					},
+					Model: with(baseModel, func(m *model.ForwardingEndpointHTTPS) {
+						m.Compression = types.StringValue(typesv1beta1.HTTPSConfig_COMPRESSION_TYPE_GZIP.String())
+					}),
+					CredentialsConfigured: &credentialsStillStored,
+					ExtraChecks: []statecheck.StateCheck{
+						statecheck.ExpectKnownValue(fullResourceName,
+							tfjsonpath.New("credentials"), knownvalue.Null()),
+					},
+				}),
+			},
+		})
 	})
 
 	// disappears covers Read's NotFound path: delete the endpoint behind

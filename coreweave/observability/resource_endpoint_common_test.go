@@ -45,94 +45,114 @@ func TestEndpointCredentialAction(t *testing.T) {
 	)
 
 	tests := []struct {
-		name            string
-		hasCredentials  bool
-		priorConfigured bool
-		priorVersion    types.Int64
-		configVersion   types.Int64
-		want            clusterv1beta1.UpdateEndpointRequest_CredentialAction
+		name                 string
+		configHasBlock       bool
+		serverHasCredentials bool
+		stateHasBlock        bool
+		priorVersion         types.Int64
+		configVersion        types.Int64
+		want                 clusterv1beta1.UpdateEndpointRequest_CredentialAction
 	}{
 		{
-			name:            "block removed while the server holds credentials clears them",
-			hasCredentials:  false,
-			priorConfigured: true,
-			priorVersion:    types.Int64Value(1),
-			configVersion:   types.Int64Null(),
-			want:            clear,
+			name:                 "block removed while the server holds credentials clears them",
+			configHasBlock:       false,
+			serverHasCredentials: true,
+			stateHasBlock:        true,
+			priorVersion:         types.Int64Value(1),
+			configVersion:        types.Int64Null(),
+			want:                 clear,
 		},
 		{
-			name:            "block removed with nothing stored is a no-op",
-			hasCredentials:  false,
-			priorConfigured: false,
-			priorVersion:    types.Int64Null(),
-			configVersion:   types.Int64Null(),
-			want:            preserve,
+			// The import case. The server holds credentials, the config has no
+			// block, and Terraform never had one — so there is nothing the user
+			// asked to remove and an unrelated edit must not strip auth.
+			name:                 "credentials with no block in prior state are left alone",
+			configHasBlock:       false,
+			serverHasCredentials: true,
+			stateHasBlock:        false,
+			priorVersion:         types.Int64Null(),
+			configVersion:        types.Int64Null(),
+			want:                 preserve,
 		},
 		{
-			name:            "removal wins over a bumped counter",
-			hasCredentials:  false,
-			priorConfigured: true,
-			priorVersion:    types.Int64Value(1),
-			configVersion:   types.Int64Value(2),
-			want:            clear,
+			name:                 "block removed with nothing stored is a no-op",
+			configHasBlock:       false,
+			serverHasCredentials: false,
+			priorVersion:         types.Int64Null(),
+			configVersion:        types.Int64Null(),
+			want:                 preserve,
 		},
 		{
-			name:            "credentials added to an endpoint without any are sent",
-			hasCredentials:  true,
-			priorConfigured: false,
-			priorVersion:    types.Int64Null(),
-			configVersion:   types.Int64Value(1),
-			want:            replace,
+			name:                 "removal wins over a bumped counter",
+			configHasBlock:       false,
+			serverHasCredentials: true,
+			stateHasBlock:        true,
+			priorVersion:         types.Int64Value(1),
+			configVersion:        types.Int64Value(2),
+			want:                 clear,
 		},
 		{
-			name:            "newly added wins over an unchanged counter",
-			hasCredentials:  true,
-			priorConfigured: false,
-			priorVersion:    types.Int64Value(1),
-			configVersion:   types.Int64Value(1),
-			want:            replace,
+			name:                 "credentials added to an endpoint without any are sent",
+			configHasBlock:       true,
+			serverHasCredentials: false,
+			priorVersion:         types.Int64Null(),
+			configVersion:        types.Int64Value(1),
+			want:                 replace,
 		},
 		{
-			name:            "a bumped counter rotates",
-			hasCredentials:  true,
-			priorConfigured: true,
-			priorVersion:    types.Int64Value(1),
-			configVersion:   types.Int64Value(2),
-			want:            replace,
+			name:                 "newly added wins over an unchanged counter",
+			configHasBlock:       true,
+			serverHasCredentials: false,
+			priorVersion:         types.Int64Value(1),
+			configVersion:        types.Int64Value(1),
+			want:                 replace,
 		},
 		{
-			name:            "introducing the counter rotates",
-			hasCredentials:  true,
-			priorConfigured: true,
-			priorVersion:    types.Int64Null(),
-			configVersion:   types.Int64Value(1),
-			want:            replace,
+			name:                 "a bumped counter rotates",
+			configHasBlock:       true,
+			serverHasCredentials: true,
+			stateHasBlock:        true,
+			priorVersion:         types.Int64Value(1),
+			configVersion:        types.Int64Value(2),
+			want:                 replace,
 		},
 		{
-			name:            "removing the counter rotates",
-			hasCredentials:  true,
-			priorConfigured: true,
-			priorVersion:    types.Int64Value(1),
-			configVersion:   types.Int64Null(),
-			want:            replace,
+			name:                 "introducing the counter rotates",
+			configHasBlock:       true,
+			serverHasCredentials: true,
+			stateHasBlock:        true,
+			priorVersion:         types.Int64Null(),
+			configVersion:        types.Int64Value(1),
+			want:                 replace,
+		},
+		{
+			name:                 "removing the counter rotates",
+			configHasBlock:       true,
+			serverHasCredentials: true,
+			stateHasBlock:        true,
+			priorVersion:         types.Int64Value(1),
+			configVersion:        types.Int64Null(),
+			want:                 replace,
 		},
 		{
 			// The documented cost of the write-only design: editing a secret
 			// without bumping the counter sends nothing and the apply succeeds.
-			name:            "an edited secret with an unchanged counter is a silent no-op",
-			hasCredentials:  true,
-			priorConfigured: true,
-			priorVersion:    types.Int64Value(3),
-			configVersion:   types.Int64Value(3),
-			want:            preserve,
+			name:                 "an edited secret with an unchanged counter is a silent no-op",
+			configHasBlock:       true,
+			serverHasCredentials: true,
+			stateHasBlock:        true,
+			priorVersion:         types.Int64Value(3),
+			configVersion:        types.Int64Value(3),
+			want:                 preserve,
 		},
 		{
-			name:            "credentials held with no counter on either side preserve",
-			hasCredentials:  true,
-			priorConfigured: true,
-			priorVersion:    types.Int64Null(),
-			configVersion:   types.Int64Null(),
-			want:            preserve,
+			name:                 "credentials held with no counter on either side preserve",
+			configHasBlock:       true,
+			serverHasCredentials: true,
+			stateHasBlock:        true,
+			priorVersion:         types.Int64Null(),
+			configVersion:        types.Int64Null(),
+			want:                 preserve,
 		},
 	}
 
@@ -140,7 +160,7 @@ func TestEndpointCredentialAction(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			got := observability.CredentialAction(tt.hasCredentials, tt.priorConfigured, tt.priorVersion, tt.configVersion)
+			got := observability.CredentialAction(tt.configHasBlock, tt.stateHasBlock, tt.serverHasCredentials, tt.priorVersion, tt.configVersion)
 			assert.Equal(t, tt.want, got)
 		})
 	}
