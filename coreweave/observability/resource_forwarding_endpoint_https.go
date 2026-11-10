@@ -383,9 +383,7 @@ func (r *HTTPSForwardingEndpointResource) Update(ctx context.Context, req resour
 	)
 	updateReq.SetCredentialAction(action)
 
-	// Only REPLACE carries a payload. PRESERVE and CLEAR must leave the oneof
-	// unset, or the server rejects the request.
-	if action == clusterv1beta1.UpdateEndpointRequest_CREDENTIAL_ACTION_REPLACE {
+	if carriesCredentialPayload(action) {
 		creds, diags := getHTTPSCredentials(config)
 		resp.Diagnostics.Append(diags...)
 		if resp.Diagnostics.HasError() {

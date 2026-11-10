@@ -4,5 +4,6 @@ package observability
 var (
 	DeleteEndpointAndWait      = deleteEndpointAndWait
 	CredentialAction           = credentialAction
+	CarriesCredentialPayload   = carriesCredentialPayload
 	ValidateCredentialsVersion = validateCredentialsVersion
 )

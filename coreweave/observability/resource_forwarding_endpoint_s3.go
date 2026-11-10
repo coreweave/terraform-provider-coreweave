@@ -294,7 +294,7 @@ func (r *S3ForwardingEndpointResource) Update(ctx context.Context, req resource.
 	// CLEAR is unreachable here: ValidateConfig requires a credentials block on
 	// every S3 endpoint, matching the request's CEL rule
 	// "credentials cannot be cleared for S3 endpoints".
-	if action == clusterv1beta1.UpdateEndpointRequest_CREDENTIAL_ACTION_REPLACE {
+	if carriesCredentialPayload(action) {
 		updateReq.SetS3(getS3Credentials(config))
 	}
 
