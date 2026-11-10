@@ -25,6 +25,7 @@ var (
 	_ resource.ResourceWithValidateConfig   = &HTTPSForwardingEndpointResource{}
 	_ resource.ResourceWithConfigValidators = &HTTPSForwardingEndpointResource{}
 	_ resource.ResourceWithImportState      = &HTTPSForwardingEndpointResource{}
+	_ resource.ResourceWithModifyPlan       = &HTTPSForwardingEndpointResource{}
 )
 
 func NewForwardingEndpointHTTPSResource() resource.Resource {
@@ -167,6 +168,62 @@ func (r *HTTPSForwardingEndpointResource) ValidateConfig(ctx context.Context, re
 	if err := protovalidate.Validate(createReq); err != nil {
 		resp.Diagnostics.AddError("Validation Error", err.Error())
 	}
+}
+
+// authMethodNotImplemented marks a credentials arm with no case below.
+const authMethodNotImplemented = "not_implemented"
+
+// authMethod names the configured arm, or "" when no block is set. Only the
+// secret values are write-only, so the arm itself survives in state.
+func authMethod(credentials *model.HTTPSCredentials) string {
+	switch {
+	case credentials == nil:
+		return ""
+	case credentials.BasicAuth != nil:
+		return "basic_auth"
+	case credentials.AuthHeaders != nil:
+		return "auth_headers"
+	default:
+		// Not "": that reads as no block at all, which ModifyPlan skips.
+		return authMethodNotImplemented
+	}
+}
+
+// ModifyPlan refuses a basic_auth <-> auth_headers switch: the server fixes the
+// credential type once set, and PRESERVE carries no type for it to reject.
+func (r *HTTPSForwardingEndpointResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
+	// Null state is Create, null plan is Destroy. Neither can switch a method.
+	if req.State.Raw.IsNull() || req.Plan.Raw.IsNull() {
+		return
+	}
+
+	var state, config model.ForwardingEndpointHTTPS
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+	resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	stored, configured := authMethod(state.Credentials), authMethod(config.Credentials)
+	if stored == authMethodNotImplemented || configured == authMethodNotImplemented {
+		resp.Diagnostics.AddAttributeError(
+			path.Root("credentials"),
+			"Credential type not implemented",
+			"This provider does not implement the configured authentication method.",
+		)
+		return
+	}
+	if stored == "" || configured == "" || stored == configured {
+		return
+	}
+
+	resp.Diagnostics.AddAttributeError(
+		path.Root("credentials"),
+		"Credential type cannot be changed",
+		fmt.Sprintf("This endpoint stores %s credentials and the API fixes that choice once set. "+
+			"Remove the credentials block and apply to clear them, then configure %s.",
+			stored, configured),
+	)
 }
 
 func (r *HTTPSForwardingEndpointResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
