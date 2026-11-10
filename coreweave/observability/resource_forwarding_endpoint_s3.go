@@ -284,6 +284,7 @@ func (r *S3ForwardingEndpointResource) Update(ctx context.Context, req resource.
 
 	action := credentialAction(
 		config.Credentials != nil,
+		state.Credentials != nil,
 		state.CredentialsConfigured.ValueBool(),
 		state.CredentialsVersion,
 		config.CredentialsVersion,
