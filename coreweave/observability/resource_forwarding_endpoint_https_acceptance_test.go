@@ -914,4 +914,66 @@ func TestForwardingEndpointHTTPSAcceptance(t *testing.T) {
 			},
 		})
 	})
+
+	// Asserts the behavior the proto describes: display_name is an ordinary
+	// in-place update. UpdateEndpoint currently rejects any changed value as
+	// immutable, a server rule the proto does not state and whose console
+	// justification is stale, so this case FAILS until o11y-mgmt#588 removes the
+	// guard and reaches the deployed API. That failure is the signal.
+	//
+	// TODO: once it passes, fold this into lifecycle and drop that test's
+	// endpoint-URL workaround, which exists only to avoid renaming.
+	t.Run("display_name_rename", func(t *testing.T) {
+		t.Parallel()
+
+		token := testToken(t)
+		resourceName := fmt.Sprintf("test_acc_https_rename_%s", token)
+		fullResourceName := fmt.Sprintf("%s.%s", httpsEndpointResourceName, resourceName)
+
+		baseModel := &model.ForwardingEndpointHTTPS{
+			ForwardingEndpointCore: model.ForwardingEndpointCore{
+				Slug:        types.StringValue(slugify("https-rename", token)),
+				DisplayName: types.StringValue("Test HTTPS Endpoint"),
+			},
+			Endpoint: types.StringValue(testHTTPSEndpointURL),
+		}
+
+		const renamed = "Renamed HTTPS Endpoint"
+
+		resource.ParallelTest(t, resource.TestCase{
+			ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+			PreCheck:                 func() { setAccEnvDefaults() },
+			CheckDestroy:             checkDestroyed(t),
+			Steps: []resource.TestStep{
+				createHTTPSEndpointTestStep(t, httpsEndpointTestStep{
+					TestName:     "create the endpoint to rename",
+					ResourceName: resourceName,
+					Model:        baseModel,
+					ConfigPlanChecks: resource.ConfigPlanChecks{
+						PreApply: []plancheck.PlanCheck{
+							plancheck.ExpectResourceAction(fullResourceName, plancheck.ResourceActionCreate),
+						},
+					},
+				}),
+				createHTTPSEndpointTestStep(t, httpsEndpointTestStep{
+					// Only display_name changes; slug, address and credentials are
+					// untouched, so a failure here can have no other cause.
+					TestName:     "rename in place",
+					ResourceName: resourceName,
+					Model: with(baseModel, func(m *model.ForwardingEndpointHTTPS) {
+						m.DisplayName = types.StringValue(renamed)
+					}),
+					ConfigPlanChecks: resource.ConfigPlanChecks{
+						PreApply: []plancheck.PlanCheck{
+							plancheck.ExpectResourceAction(fullResourceName, plancheck.ResourceActionUpdate),
+						},
+					},
+					ExtraChecks: []statecheck.StateCheck{
+						statecheck.ExpectKnownValue(fullResourceName,
+							tfjsonpath.New("display_name"), knownvalue.StringExact(renamed)),
+					},
+				}),
+			},
+		})
+	})
 }
