@@ -7,3 +7,5 @@ var (
 	CarriesCredentialPayload   = carriesCredentialPayload
 	ValidateCredentialsVersion = validateCredentialsVersion
 )
+
+type CredentialStatus = credentialStatus
