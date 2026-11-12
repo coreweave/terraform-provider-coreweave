@@ -1,7 +1,7 @@
 package model
 
 import (
-	"maps"
+	"context"
 
 	typesv1beta1 "buf.build/gen/go/coreweave/telemetry-relay/protocolbuffers/go/coreweave/telemetryrelay/types/v1beta1"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -29,19 +29,27 @@ func (b *BasicAuthCredentials) ToMsg() (msg *typesv1beta1.BasicAuthCredentials) 
 
 // AuthHeadersCredentials contains custom HTTP headers for authentication.
 type AuthHeadersCredentials struct {
-	Headers map[string]string `tfsdk:"headers"`
+	Headers types.Map `tfsdk:"headers"`
 }
 
-func (h *AuthHeadersCredentials) ToMsg() (msg *typesv1beta1.AuthHeadersCredentials) {
+func (h *AuthHeadersCredentials) ToMsg() (msg *typesv1beta1.AuthHeadersCredentials, diagnostics diag.Diagnostics) {
 	if h == nil {
-		return nil
+		return nil, nil
+	}
+
+	headers := make(map[string]string, len(h.Headers.Elements()))
+	if !h.Headers.IsNull() && !h.Headers.IsUnknown() {
+		diagnostics.Append(h.Headers.ElementsAs(context.Background(), &headers, false)...)
+		if diagnostics.HasError() {
+			return nil, diagnostics
+		}
 	}
 
 	msg = &typesv1beta1.AuthHeadersCredentials{
-		Headers: maps.Clone(h.Headers),
+		Headers: headers,
 	}
 
-	return msg
+	return msg, diagnostics
 }
 
 // HTTPSCredentials contains authentication credentials for HTTPS endpoints.
@@ -63,7 +71,12 @@ func (h *HTTPSCredentials) ToMsg() (msg *typesv1beta1.HTTPSCredentials, diagnost
 	case h.BasicAuth != nil:
 		msg.SetBasicAuth(h.BasicAuth.ToMsg())
 	case h.AuthHeaders != nil:
-		msg.SetAuthHeaders(h.AuthHeaders.ToMsg())
+		headers, diags := h.AuthHeaders.ToMsg()
+		diagnostics.Append(diags...)
+		if diagnostics.HasError() {
+			return nil, diagnostics
+		}
+		msg.SetAuthHeaders(headers)
 	default:
 		diagnostics.AddError("Invalid HTTPS credentials", "One of basic_auth or auth_headers is required.")
 		return nil, diagnostics
