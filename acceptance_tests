@@ -27,14 +27,10 @@ die() {
 
 srcdir="$(git -C "$(dirname "$0")" rev-parse --show-toplevel)"
 
-# The public QA API, which fronts staging telecasterd. This is the default
-# because it is the path a customer uses and it needs no VPN or Teleport
-# session, and because it matches setAccEnvDefaults() in the suites, so a bare
-# `go test` and this wrapper agree on where they point.
-#
-# Staging telecasterd is also reachable directly on the internal network --
-# the same backend, without the gateway. Use --allow-other-environment to point
-# there; the address is in the team's internal docs rather than this repository.
+# The public QA API. This is the default because it is the path a customer
+# uses, and because it matches setAccEnvDefaults() in the suites, so a bare
+# `go test` and this wrapper agree on where they point. Any other endpoint
+# needs --allow-other-environment.
 qa_endpoint="https://api.qa.coreweave.com"
 
 # The one registered lab zone. Passed explicitly rather than relying on the
@@ -102,7 +98,7 @@ export COREWEAVE_API_ENDPOINT="${COREWEAVE_API_ENDPOINT:-$qa_endpoint}"
 if [[ "$COREWEAVE_API_ENDPOINT" != "$qa_endpoint" ]] && ! $allow_other_environment; then
     die "COREWEAVE_API_ENDPOINT is $COREWEAVE_API_ENDPOINT, not QA.
 These tests create and delete real resources in the token's organization, and
-the zone slugs they use are lab zones that only staging telecasterd serves.
+the zone slugs they use are lab zones that only QA serves.
 Re-run with --allow-other-environment if that is what you intend."
 fi
 
