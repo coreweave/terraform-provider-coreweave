@@ -46,7 +46,7 @@ resource "coreweave_observability_telemetry_relay_endpoint_https" "example" {
 
 ### Required
 
-- `display_name` (String) The display name of the forwarding endpoint.
+- `display_name` (String) The display name of the forwarding endpoint. `UpdateEndpoint` currently rejects a change as immutable, so renaming an existing endpoint fails at apply.
 - `endpoint` (String) The HTTPS endpoint URL. Plain HTTP is rejected, as are targets resolving to loopback, private, or link-local addresses.
 - `slug` (String) The slug of the forwarding endpoint. Used as a unique identifier. Must be 3-32 characters, start with an alphanumeric character, and contain only alphanumeric characters and hyphens.
 

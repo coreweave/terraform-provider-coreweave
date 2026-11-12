@@ -46,8 +46,9 @@ func commonEndpointSchema() map[string]schema.Attribute {
 			},
 		},
 		"display_name": schema.StringAttribute{
-			MarkdownDescription: "The display name of the forwarding endpoint.",
-			Required:            true,
+			MarkdownDescription: "The display name of the forwarding endpoint. " +
+				"`UpdateEndpoint` currently rejects a change as immutable, so renaming an existing endpoint fails at apply.",
+			Required: true,
 			Validators: []validator.String{
 				stringvalidator.LengthBetween(1, displayNameMaxLength),
 			},
