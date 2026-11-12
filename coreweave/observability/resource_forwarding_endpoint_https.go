@@ -12,6 +12,7 @@ import (
 	"github.com/coreweave/terraform-provider-coreweave/internal/coretf"
 	"github.com/hashicorp/terraform-plugin-framework-validators/resourcevalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -173,20 +174,38 @@ func (r *HTTPSForwardingEndpointResource) ValidateConfig(ctx context.Context, re
 // authMethodNotImplemented marks a credentials arm with no case below.
 const authMethodNotImplemented = "not_implemented"
 
-// authMethod names the configured arm, or "" when no block is set. Only the
-// secret values are write-only, so the arm itself survives in state.
-func authMethod(credentials *model.HTTPSCredentials) string {
+// attributeSource is the part of tfsdk.State and tfsdk.Config authMethod needs.
+type attributeSource interface {
+	GetAttribute(ctx context.Context, path path.Path, target any) diag.Diagnostics
+}
+
+// authMethod names the selected arm, or "" when no block is set. It reads the
+// block as Terraform values rather than decoding the model: a header value that
+// is unknown until another resource applies cannot convert to map[string]string,
+// and an unknown secret is not an unknown authentication method.
+func authMethod(ctx context.Context, src attributeSource) (string, diag.Diagnostics) {
+	var credentials types.Object
+	diagnostics := src.GetAttribute(ctx, path.Root("credentials"), &credentials)
+	if diagnostics.HasError() || credentials.IsNull() || credentials.IsUnknown() {
+		return "", diagnostics
+	}
+
+	attributes := credentials.Attributes()
 	switch {
-	case credentials == nil:
-		return ""
-	case credentials.BasicAuth != nil:
-		return "basic_auth"
-	case credentials.AuthHeaders != nil:
-		return "auth_headers"
+	case isSelected(attributes["basic_auth"]):
+		return "basic_auth", diagnostics
+	case isSelected(attributes["auth_headers"]):
+		return "auth_headers", diagnostics
 	default:
 		// Not "": that reads as no block at all, which ModifyPlan skips.
-		return authMethodNotImplemented
+		return authMethodNotImplemented, diagnostics
 	}
+}
+
+// isSelected reports whether an arm was chosen. Unknown counts: the arm is set
+// even when its values are not yet resolved.
+func isSelected(arm attr.Value) bool {
+	return arm != nil && !arm.IsNull()
 }
 
 // ModifyPlan refuses a basic_auth <-> auth_headers switch: the server fixes the
@@ -197,14 +216,14 @@ func (r *HTTPSForwardingEndpointResource) ModifyPlan(ctx context.Context, req re
 		return
 	}
 
-	var state, config model.ForwardingEndpointHTTPS
-	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
-	resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
+	stored, diags := authMethod(ctx, req.State)
+	resp.Diagnostics.Append(diags...)
+	configured, diags := authMethod(ctx, req.Config)
+	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	stored, configured := authMethod(state.Credentials), authMethod(config.Credentials)
 	if stored == authMethodNotImplemented || configured == authMethodNotImplemented {
 		resp.Diagnostics.AddAttributeError(
 			path.Root("credentials"),
