@@ -34,14 +34,13 @@ A dispatched branch can read every other `QA` secret. Write access is the contro
 
 | | |
 |---|---|
-| Secret | `COREWEAVE_OBSERVABILITY_API_TOKEN`, in the `QA` environment |
-| Organization | **`q8e412`** — Telemetry Relay QA, lab-only clusters |
-| Expires | **2027-10-01** |
-| If absent | fails closed; never falls back to the shared `COREWEAVE_API_TOKEN` |
+| Secret | `COREWEAVE_API_TOKEN`, in the `QA` environment — the same secret every suite except `object_storage` uses |
+| Organization | must have **exactly one** registered cluster, in `US-LAB-01A` |
+| If absent | the suite fails on the first API call |
 
-**The organization must be lab-only.** A pipeline creates one connector per source Kafka cluster holding the stream's topics, so an organization with a production cluster footprint would get real connectors in a production zone.
+**The organization must be lab-only, and must have a registration.** A pipeline creates one connector per source Kafka cluster holding the stream's topics, so an organization with a production cluster footprint would get real connectors in a production zone. An organization with no registered clusters at all fails `CreatePipeline`'s precondition, so the suite cannot run there either.
 
-An expired token fails as `401` on the first API call, which reads as a broken test rather than a lapsed credential — check the expiry before debugging a suite that was green yesterday. To rotate, mint a replacement for `q8e412` in the QA console and overwrite the secret; no workflow edit needed.
+An expired token fails as `401` on the first API call, which reads as a broken test rather than a lapsed credential — check the credential before debugging a suite that was green yesterday.
 
 Local runs need a `q8e412` token too: the sweeper deletes every endpoint and pipeline prefixed `test-acc-` in whatever organization the token belongs to. They also hold no `acceptance-test-<suite>` lock, so check for an in-flight manual or release run first.
 
