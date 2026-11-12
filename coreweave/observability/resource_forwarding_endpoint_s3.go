@@ -36,7 +36,7 @@ func (r *S3ForwardingEndpointResource) Metadata(ctx context.Context, req resourc
 }
 
 func (r *S3ForwardingEndpointResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
-	attributes := commonEndpointSchema()
+	attributes := commonEndpointSchema(ctx)
 
 	// Named `uri` after the proto field it maps to. It carries an optional key
 	// prefix as well as the bucket, so `bucket` would have been a lie.

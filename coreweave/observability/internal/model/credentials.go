@@ -32,14 +32,14 @@ type AuthHeadersCredentials struct {
 	Headers types.Map `tfsdk:"headers"`
 }
 
-func (h *AuthHeadersCredentials) ToMsg() (msg *typesv1beta1.AuthHeadersCredentials, diagnostics diag.Diagnostics) {
+func (h *AuthHeadersCredentials) ToMsg(ctx context.Context) (msg *typesv1beta1.AuthHeadersCredentials, diagnostics diag.Diagnostics) {
 	if h == nil {
 		return nil, nil
 	}
 
 	headers := make(map[string]string, len(h.Headers.Elements()))
 	if !h.Headers.IsNull() && !h.Headers.IsUnknown() {
-		diagnostics.Append(h.Headers.ElementsAs(context.Background(), &headers, false)...)
+		diagnostics.Append(h.Headers.ElementsAs(ctx, &headers, false)...)
 		if diagnostics.HasError() {
 			return nil, diagnostics
 		}
@@ -58,7 +58,7 @@ type HTTPSCredentials struct {
 	AuthHeaders *AuthHeadersCredentials `tfsdk:"auth_headers"`
 }
 
-func (h *HTTPSCredentials) ToMsg() (msg *typesv1beta1.HTTPSCredentials, diagnostics diag.Diagnostics) {
+func (h *HTTPSCredentials) ToMsg(ctx context.Context) (msg *typesv1beta1.HTTPSCredentials, diagnostics diag.Diagnostics) {
 	if h == nil {
 		return nil, nil
 	}
@@ -71,7 +71,7 @@ func (h *HTTPSCredentials) ToMsg() (msg *typesv1beta1.HTTPSCredentials, diagnost
 	case h.BasicAuth != nil:
 		msg.SetBasicAuth(h.BasicAuth.ToMsg())
 	case h.AuthHeaders != nil:
-		headers, diags := h.AuthHeaders.ToMsg()
+		headers, diags := h.AuthHeaders.ToMsg(ctx)
 		diagnostics.Append(diags...)
 		if diagnostics.HasError() {
 			return nil, diagnostics

@@ -32,7 +32,7 @@ const (
 	endpointTimeout = 5 * time.Minute
 )
 
-func commonEndpointSchema() map[string]schema.Attribute {
+func commonEndpointSchema(ctx context.Context) map[string]schema.Attribute {
 	return map[string]schema.Attribute{
 		"slug": schema.StringAttribute{
 			MarkdownDescription: "The slug of the forwarding endpoint. Used as a unique identifier. Must be 3-32 characters, start with an alphanumeric character, and contain only alphanumeric characters and hyphens.",
@@ -103,7 +103,7 @@ func commonEndpointSchema() map[string]schema.Attribute {
 			Computed:            true,
 			CustomType:          timetypes.RFC3339Type{},
 		},
-		"timeouts": timeouts.Attributes(context.Background(), timeouts.Opts{
+		"timeouts": timeouts.Attributes(ctx, timeouts.Opts{
 			Create: true,
 			Update: true,
 			Delete: true,
