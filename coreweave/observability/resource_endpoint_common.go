@@ -119,19 +119,16 @@ func carriesCredentialPayload(action clusterv1beta1.UpdateEndpointRequest_Creden
 // credentialAction decides what UpdateEndpointRequest.credential_action should
 // carry. Credential values are write-only, so this reads block presence.
 //
-//	block gone from config, state had one, server has them -> CLEAR (rejected for S3)
-//	block gone from config, anything else                  -> PRESERVE
-//	block in config, state had none                        -> REPLACE
-//	block in config, server has none                       -> REPLACE
-//	block in config, credentials_version changed           -> REPLACE
-//	otherwise                                              -> PRESERVE
+//	config block absent, state had one, server has them -> CLEAR (rejected for S3)
+//	config block absent                                 -> PRESERVE
+//	config block present, nothing managed or stored yet -> REPLACE
+//	config block present, counter changed               -> REPLACE
+//	config block present                                -> PRESERVE
 //
-// A block where state had none is Terraform adopting credentials it did not
-// manage before, as after an import. PRESERVE there reports success without
-// ever sending what the user configured.
+// A block where state had none is an adoption, as after an import.
 //
 // Only REPLACE may carry a payload; the server enforces that.
-func credentialAction(in credentialInput) clusterv1beta1.UpdateEndpointRequest_CredentialAction {
+func credentialAction(in credentialStatus) clusterv1beta1.UpdateEndpointRequest_CredentialAction {
 	switch {
 	case !in.ConfigHasBlock && in.StateHasBlock && in.ServerHasCredentials:
 		return clusterv1beta1.UpdateEndpointRequest_CREDENTIAL_ACTION_CLEAR
@@ -146,8 +143,8 @@ func credentialAction(in credentialInput) clusterv1beta1.UpdateEndpointRequest_C
 	}
 }
 
-// credentialInput is what credentialAction reads.
-type credentialInput struct {
+// credentialStatus is what credentialAction reads.
+type credentialStatus struct {
 	// ConfigHasBlock reports a credentials block in the configuration.
 	ConfigHasBlock bool
 	// StateHasBlock reports one in prior state: credentials Terraform manages.

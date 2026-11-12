@@ -8,4 +8,4 @@ var (
 	ValidateCredentialsVersion = validateCredentialsVersion
 )
 
-type CredentialInput = credentialInput
+type CredentialStatus = credentialStatus

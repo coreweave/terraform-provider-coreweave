@@ -46,12 +46,12 @@ func TestEndpointCredentialAction(t *testing.T) {
 
 	tests := []struct {
 		name  string
-		input observability.CredentialInput
+		input observability.CredentialStatus
 		want  clusterv1beta1.UpdateEndpointRequest_CredentialAction
 	}{
 		{
 			name: "block removed while the server holds credentials clears them",
-			input: observability.CredentialInput{
+			input: observability.CredentialStatus{
 				ConfigHasBlock:       false,
 				ServerHasCredentials: true,
 				StateHasBlock:        true,
@@ -65,7 +65,7 @@ func TestEndpointCredentialAction(t *testing.T) {
 			// block, and Terraform never had one — so there is nothing the user
 			// asked to remove and an unrelated edit must not strip auth.
 			name: "credentials with no block in prior state are left alone",
-			input: observability.CredentialInput{
+			input: observability.CredentialStatus{
 				ConfigHasBlock:       false,
 				ServerHasCredentials: true,
 				StateHasBlock:        false,
@@ -76,7 +76,7 @@ func TestEndpointCredentialAction(t *testing.T) {
 		},
 		{
 			name: "block removed with nothing stored is a no-op",
-			input: observability.CredentialInput{
+			input: observability.CredentialStatus{
 				ConfigHasBlock:       false,
 				ServerHasCredentials: false,
 				PriorVersion:         types.Int64Null(),
@@ -86,7 +86,7 @@ func TestEndpointCredentialAction(t *testing.T) {
 		},
 		{
 			name: "removal wins over a bumped counter",
-			input: observability.CredentialInput{
+			input: observability.CredentialStatus{
 				ConfigHasBlock:       false,
 				ServerHasCredentials: true,
 				StateHasBlock:        true,
@@ -97,7 +97,7 @@ func TestEndpointCredentialAction(t *testing.T) {
 		},
 		{
 			name: "credentials added to an endpoint without any are sent",
-			input: observability.CredentialInput{
+			input: observability.CredentialStatus{
 				ConfigHasBlock:       true,
 				ServerHasCredentials: false,
 				PriorVersion:         types.Int64Null(),
@@ -107,7 +107,7 @@ func TestEndpointCredentialAction(t *testing.T) {
 		},
 		{
 			name: "newly added wins over an unchanged counter",
-			input: observability.CredentialInput{
+			input: observability.CredentialStatus{
 				ConfigHasBlock:       true,
 				ServerHasCredentials: false,
 				PriorVersion:         types.Int64Value(1),
@@ -120,7 +120,7 @@ func TestEndpointCredentialAction(t *testing.T) {
 			// The first block Terraform configures has to be sent: preserving
 			// it reports success while the configured values never leave.
 			name: "the first configured block after import replaces",
-			input: observability.CredentialInput{
+			input: observability.CredentialStatus{
 				ConfigHasBlock:       true,
 				ServerHasCredentials: true,
 				StateHasBlock:        false,
@@ -131,7 +131,7 @@ func TestEndpointCredentialAction(t *testing.T) {
 		},
 		{
 			name: "a bumped counter rotates",
-			input: observability.CredentialInput{
+			input: observability.CredentialStatus{
 				ConfigHasBlock:       true,
 				ServerHasCredentials: true,
 				StateHasBlock:        true,
@@ -142,7 +142,7 @@ func TestEndpointCredentialAction(t *testing.T) {
 		},
 		{
 			name: "introducing the counter rotates",
-			input: observability.CredentialInput{
+			input: observability.CredentialStatus{
 				ConfigHasBlock:       true,
 				ServerHasCredentials: true,
 				StateHasBlock:        true,
@@ -153,7 +153,7 @@ func TestEndpointCredentialAction(t *testing.T) {
 		},
 		{
 			name: "removing the counter rotates",
-			input: observability.CredentialInput{
+			input: observability.CredentialStatus{
 				ConfigHasBlock:       true,
 				ServerHasCredentials: true,
 				StateHasBlock:        true,
@@ -166,7 +166,7 @@ func TestEndpointCredentialAction(t *testing.T) {
 			// The documented cost of the write-only design: editing a secret
 			// without bumping the counter sends nothing and the apply succeeds.
 			name: "an edited secret with an unchanged counter is a silent no-op",
-			input: observability.CredentialInput{
+			input: observability.CredentialStatus{
 				ConfigHasBlock:       true,
 				ServerHasCredentials: true,
 				StateHasBlock:        true,
@@ -177,7 +177,7 @@ func TestEndpointCredentialAction(t *testing.T) {
 		},
 		{
 			name: "credentials held with no counter on either side preserve",
-			input: observability.CredentialInput{
+			input: observability.CredentialStatus{
 				ConfigHasBlock:       true,
 				ServerHasCredentials: true,
 				StateHasBlock:        true,

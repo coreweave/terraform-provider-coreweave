@@ -374,7 +374,7 @@ func (r *HTTPSForwardingEndpointResource) Update(ctx context.Context, req resour
 		Spec: endpointMsg.GetSpec(),
 	}
 
-	action := credentialAction(credentialInput{
+	action := credentialAction(credentialStatus{
 		ConfigHasBlock:       config.Credentials != nil,
 		StateHasBlock:        state.Credentials != nil,
 		ServerHasCredentials: state.CredentialsConfigured.ValueBool(),

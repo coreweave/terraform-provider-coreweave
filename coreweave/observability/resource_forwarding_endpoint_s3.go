@@ -282,7 +282,7 @@ func (r *S3ForwardingEndpointResource) Update(ctx context.Context, req resource.
 		Spec: endpointMsg.GetSpec(),
 	}
 
-	action := credentialAction(credentialInput{
+	action := credentialAction(credentialStatus{
 		ConfigHasBlock:       config.Credentials != nil,
 		StateHasBlock:        state.Credentials != nil,
 		ServerHasCredentials: state.CredentialsConfigured.ValueBool(),
