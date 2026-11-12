@@ -41,7 +41,7 @@ func (r *HTTPSForwardingEndpointResource) Metadata(ctx context.Context, req reso
 }
 
 func (r *HTTPSForwardingEndpointResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
-	attributes := commonEndpointSchema()
+	attributes := commonEndpointSchema(ctx)
 
 	attributes["endpoint"] = schema.StringAttribute{
 		MarkdownDescription: "The HTTPS endpoint URL. Plain HTTP is rejected, as are targets resolving to loopback, private, or link-local addresses.",
@@ -104,13 +104,13 @@ func (r *HTTPSForwardingEndpointResource) ConfigValidators(ctx context.Context) 
 // credentials came from the config. Create, ValidateConfig and the plan-time
 // credential checks all go through it, so what gets validated is what gets
 // sent.
-func buildHTTPSCreateRequest(data model.ForwardingEndpointHTTPS) (*clusterv1beta1.CreateEndpointRequest, diag.Diagnostics) {
+func buildHTTPSCreateRequest(ctx context.Context, data model.ForwardingEndpointHTTPS) (*clusterv1beta1.CreateEndpointRequest, diag.Diagnostics) {
 	var diagnostics diag.Diagnostics
 
 	endpointMsg, diags := data.ToMsg()
 	diagnostics.Append(diags...)
 
-	creds, diags := getHTTPSCredentials(data)
+	creds, diags := getHTTPSCredentials(ctx, data)
 	diagnostics.Append(diags...)
 	if diagnostics.HasError() {
 		return nil, diagnostics
@@ -159,7 +159,7 @@ func (r *HTTPSForwardingEndpointResource) ValidateConfig(ctx context.Context, re
 	// endpoint message has no credentials field, so validating it left every
 	// HTTPSCredentials rule — the required oneof, the header name and value
 	// patterns, the reserved-header list — to surface at apply.
-	createReq, diagnostics := buildHTTPSCreateRequest(data)
+	createReq, diagnostics := buildHTTPSCreateRequest(ctx, data)
 	resp.Diagnostics.Append(diagnostics...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -230,12 +230,12 @@ func (r *HTTPSForwardingEndpointResource) ImportState(ctx context.Context, req r
 	resource.ImportStatePassthroughID(ctx, path.Root("slug"), req, resp)
 }
 
-func getHTTPSCredentials(data model.ForwardingEndpointHTTPS) (credentials *typesv1beta1.HTTPSCredentials, diagnostics diag.Diagnostics) {
+func getHTTPSCredentials(ctx context.Context, data model.ForwardingEndpointHTTPS) (credentials *typesv1beta1.HTTPSCredentials, diagnostics diag.Diagnostics) {
 	if data.Credentials == nil {
 		return nil, nil
 	}
 
-	credentials, diags := data.Credentials.ToMsg()
+	credentials, diags := data.Credentials.ToMsg(ctx)
 	diagnostics.Append(diags...)
 	return credentials, diagnostics
 }
@@ -249,7 +249,7 @@ func (r *HTTPSForwardingEndpointResource) Create(ctx context.Context, req resour
 		return
 	}
 
-	createReq, diags := buildHTTPSCreateRequest(config)
+	createReq, diags := buildHTTPSCreateRequest(ctx, config)
 	resp.Diagnostics.Append(diags...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -384,7 +384,7 @@ func (r *HTTPSForwardingEndpointResource) Update(ctx context.Context, req resour
 	updateReq.SetCredentialAction(action)
 
 	if carriesCredentialPayload(action) {
-		creds, diags := getHTTPSCredentials(config)
+		creds, diags := getHTTPSCredentials(ctx, config)
 		resp.Diagnostics.Append(diags...)
 		if resp.Diagnostics.HasError() {
 			return
