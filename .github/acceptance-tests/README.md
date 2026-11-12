@@ -44,6 +44,12 @@ An expired token fails as `401` on the first API call, which reads as a broken t
 
 Local runs need a token for the same organization: the sweeper deletes every endpoint and pipeline prefixed `test-acc-` in whatever organization the token belongs to. They also hold no `acceptance-test-<suite>` lock, so check for an in-flight manual or release run first.
 
+### Getting a token
+
+Minting one requires console access to the shared QA organization, which is granted rather than self-served — ask in the team's internal channel; the organization and the account that owns it are recorded in the team KB rather than here. Once you have access, create the token in the QA console and export it as `COREWEAVE_API_TOKEN`.
+
+Signing up for your own QA organization is not a substitute. A fresh organization has no registered clusters, so its streams carry no topics and `CreatePipeline` fails its precondition before any resource is created.
+
 Confirm an organization is lab-only by listing its streams and checking every `zones_active`:
 
 ```sh
