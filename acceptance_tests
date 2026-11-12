@@ -32,10 +32,9 @@ srcdir="$(git -C "$(dirname "$0")" rev-parse --show-toplevel)"
 # session, and because it matches setAccEnvDefaults() in the suites, so a bare
 # `go test` and this wrapper agree on where they point.
 #
-# Staging telecasterd is also reachable directly at
-# http://telecasterd-stg.us-east.int.coreweave.com:8080 — the same backend, on
-# the internal network only. Use it with --allow-other-environment when you
-# need to bypass the gateway.
+# Staging telecasterd is also reachable directly on the internal network --
+# the same backend, without the gateway. Use --allow-other-environment to point
+# there; the address is in the team's internal docs rather than this repository.
 qa_endpoint="https://api.qa.coreweave.com"
 
 # The one registered lab zone. Passed explicitly rather than relying on the
