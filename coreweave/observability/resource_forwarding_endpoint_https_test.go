@@ -77,8 +77,8 @@ func renderHTTPSEndpointResource(resourceName string, m *model.ForwardingEndpoin
 		}
 		if m.Credentials.AuthHeaders != nil {
 			headersMap := make(map[string]cty.Value)
-			for key, value := range m.Credentials.AuthHeaders.Headers {
-				headersMap[key] = cty.StringVal(value)
+			for key, value := range m.Credentials.AuthHeaders.Headers.Elements() {
+				headersMap[key] = cty.StringVal(value.(types.String).ValueString())
 			}
 			credsObj["auth_headers"] = cty.ObjectVal(map[string]cty.Value{
 				"headers": cty.MapVal(headersMap),
@@ -422,4 +422,12 @@ func TestForwardingEndpointHTTPS(t *testing.T) {
 			assert.Nil(t, msg)
 		})
 	})
+}
+
+func authHeaders(t *testing.T, headers map[string]string) types.Map {
+	t.Helper()
+
+	m, diags := types.MapValueFrom(t.Context(), types.StringType, headers)
+	require.False(t, diags.HasError(), "%v", diags)
+	return m
 }
