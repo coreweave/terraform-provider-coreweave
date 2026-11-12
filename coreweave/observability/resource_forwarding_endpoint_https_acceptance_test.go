@@ -920,8 +920,6 @@ func TestForwardingEndpointHTTPSAcceptance(t *testing.T) {
 	// Fails until o11y-mgmt#588 removes the server's display_name immutability.
 	// TODO: fold into lifecycle and drop its endpoint-URL workaround once green.
 	t.Run("display_name_rename", func(t *testing.T) {
-		t.Parallel()
-
 		token := testToken(t)
 		resourceName := fmt.Sprintf("test_acc_https_rename_%s", token)
 		fullResourceName := fmt.Sprintf("%s.%s", httpsEndpointResourceName, resourceName)
