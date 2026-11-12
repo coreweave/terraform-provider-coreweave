@@ -7,3 +7,6 @@ var (
 	CarriesCredentialPayload   = carriesCredentialPayload
 	ValidateCredentialsVersion = validateCredentialsVersion
 )
+
+// CredentialInput is credentialAction's parameter, for table-driven tests.
+type CredentialInput = credentialInput

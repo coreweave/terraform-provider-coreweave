@@ -131,19 +131,32 @@ func carriesCredentialPayload(action clusterv1beta1.UpdateEndpointRequest_Creden
 // ever sending what the user configured.
 //
 // Only REPLACE may carry a payload; the server enforces that.
-func credentialAction(configHasBlock, stateHasBlock, serverHasCredentials bool, priorVersion, configVersion types.Int64) clusterv1beta1.UpdateEndpointRequest_CredentialAction {
+func credentialAction(in credentialInput) clusterv1beta1.UpdateEndpointRequest_CredentialAction {
 	switch {
-	case !configHasBlock && stateHasBlock && serverHasCredentials:
+	case !in.ConfigHasBlock && in.StateHasBlock && in.ServerHasCredentials:
 		return clusterv1beta1.UpdateEndpointRequest_CREDENTIAL_ACTION_CLEAR
-	case !configHasBlock:
+	case !in.ConfigHasBlock:
 		return clusterv1beta1.UpdateEndpointRequest_CREDENTIAL_ACTION_PRESERVE
-	case !stateHasBlock || !serverHasCredentials:
+	case !in.StateHasBlock || !in.ServerHasCredentials:
 		return clusterv1beta1.UpdateEndpointRequest_CREDENTIAL_ACTION_REPLACE
-	case !priorVersion.Equal(configVersion):
+	case !in.PriorVersion.Equal(in.ConfigVersion):
 		return clusterv1beta1.UpdateEndpointRequest_CREDENTIAL_ACTION_REPLACE
 	default:
 		return clusterv1beta1.UpdateEndpointRequest_CREDENTIAL_ACTION_PRESERVE
 	}
+}
+
+// credentialInput is what credentialAction reads.
+type credentialInput struct {
+	// ConfigHasBlock reports a credentials block in the configuration.
+	ConfigHasBlock bool
+	// StateHasBlock reports one in prior state: credentials Terraform manages.
+	StateHasBlock bool
+	// ServerHasCredentials is the endpoint's credentials_configured status.
+	ServerHasCredentials bool
+	// PriorVersion and ConfigVersion are the user-owned rotation counter.
+	PriorVersion  types.Int64
+	ConfigVersion types.Int64
 }
 
 func pollForEndpointReady(ctx context.Context, client *coreweave.Client, ref *typesv1beta1.ForwardingEndpointRef) (*typesv1beta1.ForwardingEndpoint, error) {
