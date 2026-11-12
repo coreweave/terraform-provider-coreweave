@@ -143,7 +143,8 @@ func credentialAction(in credentialStatus) clusterv1beta1.UpdateEndpointRequest_
 	}
 }
 
-// credentialStatus is what credentialAction reads.
+// credentialStatus is everything available for choosing a credential_action,
+// such as PRESERVE or CLEAR.
 type credentialStatus struct {
 	// ConfigHasBlock reports a credentials block in the configuration.
 	ConfigHasBlock bool
