@@ -480,6 +480,10 @@ func TestForwardingEndpointHTTPSAcceptance(t *testing.T) {
 					TestName:     "switching auth method without a version bump is refused",
 					ResourceName: resourceName,
 					Model: with(baseModel, func(m *model.ForwardingEndpointHTTPS) {
+						// baseModel carries version 1, but the last applied step
+						// was 2. Restate it so this case really is an unchanged
+						// counter rather than 2 -> 1.
+						m.CredentialsVersion = types.Int64Value(2)
 						m.Credentials = &model.HTTPSCredentials{
 							AuthHeaders: &model.AuthHeadersCredentials{
 								Headers: map[string]string{"X-API-Key": "header-secret"},
