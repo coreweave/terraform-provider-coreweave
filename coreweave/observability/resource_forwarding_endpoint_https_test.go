@@ -424,8 +424,6 @@ func TestForwardingEndpointHTTPS(t *testing.T) {
 	})
 }
 
-// authHeaders builds the Headers map for a credentials fixture. Headers is
-// types.Map, so a literal needs converting.
 func authHeaders(t *testing.T, headers map[string]string) types.Map {
 	t.Helper()
 
