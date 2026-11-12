@@ -917,7 +917,7 @@ func TestForwardingEndpointHTTPSAcceptance(t *testing.T) {
 		})
 	})
 
-	// Fails until o11y-mgmt#588 removes the server's display_name immutability.
+	// Fails until the API stops rejecting display_name changes as immutable.
 	// TODO: fold into lifecycle and drop its endpoint-URL workaround once green.
 	t.Run("display_name_rename", func(t *testing.T) {
 		token := testToken(t)
