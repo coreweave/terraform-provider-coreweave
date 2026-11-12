@@ -121,9 +121,14 @@ func carriesCredentialPayload(action clusterv1beta1.UpdateEndpointRequest_Creden
 //
 //	block gone from config, state had one, server has them -> CLEAR (rejected for S3)
 //	block gone from config, anything else                  -> PRESERVE
+//	block in config, state had none                        -> REPLACE
 //	block in config, server has none                       -> REPLACE
 //	block in config, credentials_version changed           -> REPLACE
 //	otherwise                                              -> PRESERVE
+//
+// A block where state had none is Terraform adopting credentials it did not
+// manage before, as after an import. PRESERVE there reports success without
+// ever sending what the user configured.
 //
 // Only REPLACE may carry a payload; the server enforces that.
 func credentialAction(configHasBlock, stateHasBlock, serverHasCredentials bool, priorVersion, configVersion types.Int64) clusterv1beta1.UpdateEndpointRequest_CredentialAction {
@@ -132,7 +137,7 @@ func credentialAction(configHasBlock, stateHasBlock, serverHasCredentials bool, 
 		return clusterv1beta1.UpdateEndpointRequest_CREDENTIAL_ACTION_CLEAR
 	case !configHasBlock:
 		return clusterv1beta1.UpdateEndpointRequest_CREDENTIAL_ACTION_PRESERVE
-	case !serverHasCredentials:
+	case !stateHasBlock || !serverHasCredentials:
 		return clusterv1beta1.UpdateEndpointRequest_CREDENTIAL_ACTION_REPLACE
 	case !priorVersion.Equal(configVersion):
 		return clusterv1beta1.UpdateEndpointRequest_CREDENTIAL_ACTION_REPLACE
