@@ -42,7 +42,7 @@ A dispatched branch can read every other `QA` secret. Write access is the contro
 
 An expired token fails as `401` on the first API call, which reads as a broken test rather than a lapsed credential — check the credential before debugging a suite that was green yesterday.
 
-Local runs need a `q8e412` token too: the sweeper deletes every endpoint and pipeline prefixed `test-acc-` in whatever organization the token belongs to. They also hold no `acceptance-test-<suite>` lock, so check for an in-flight manual or release run first.
+Local runs need a token for the same organization: the sweeper deletes every endpoint and pipeline prefixed `test-acc-` in whatever organization the token belongs to. They also hold no `acceptance-test-<suite>` lock, so check for an in-flight manual or release run first.
 
 Confirm an organization is lab-only by listing its streams and checking every `zones_active`:
 
