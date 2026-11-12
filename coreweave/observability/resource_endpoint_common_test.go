@@ -108,6 +108,18 @@ func TestEndpointCredentialAction(t *testing.T) {
 			want:                 replace,
 		},
 		{
+			// Import leaves credentials on the server with no block in state.
+			// The first block Terraform configures has to be sent: preserving
+			// it reports success while the configured values never leave.
+			name:                 "the first configured block after import replaces",
+			configHasBlock:       true,
+			serverHasCredentials: true,
+			stateHasBlock:        false,
+			priorVersion:         types.Int64Null(),
+			configVersion:        types.Int64Null(),
+			want:                 replace,
+		},
+		{
 			name:                 "a bumped counter rotates",
 			configHasBlock:       true,
 			serverHasCredentials: true,
