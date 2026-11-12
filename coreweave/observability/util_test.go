@@ -23,16 +23,16 @@ const (
 	AcceptanceTestPrefix = "tf-acc-tc-"
 
 	// Endpoint URL used by acceptance tests. buf.validate requires the https://
-	// scheme, and the host must survive two independent SSRF checks:
-	// telecasterd's CreateEndpoint and kafkaclusterd's connector builder. Both
+	// scheme, and the host must survive two independent server-side SSRF
+	// checks, one at endpoint creation and one at connector build. Both
 	// reject loopback, private, link-local, multicast and carrier-grade-NAT
 	// targets, and both treat a name that does not resolve as a failure, so a
 	// .test or .invalid host is rejected outright.
 	//
-	// 192.0.2.1 is TEST-NET-1 (RFC 5737). It takes the literal-IP branch in
-	// telecasterd's validator and is absent from kafkaclusterd's reserved-block
-	// list, so it passes both, and unlike example.com it is guaranteed never to
-	// route anywhere -- no risk of a test POSTing records at a live host.
+	// 192.0.2.1 is TEST-NET-1 (RFC 5737). It takes the literal-IP branch in the
+	// first check and is absent from the second's reserved-block list, so it
+	// passes both, and unlike example.com it is guaranteed never to route
+	// anywhere -- no risk of a test POSTing records at a live host.
 	// Connections to it hang until timeout rather than returning a status, so
 	// it exercises endpoint lifecycle only, never delivery.
 	testHTTPSEndpointURL = "https://192.0.2.1/ingest"
@@ -46,10 +46,10 @@ const (
 	// canonicalises, so an uppercase value would never match on read-back.
 	//
 	// us-lab-01a is the only registered lab zone. us-lab-01b and us-lab-02a
-	// appear in staging's zoneConfig map but are not registered zones, so
-	// CreatePipeline rejects them with INVALID_ZONE. The zone_slugs subtests
-	// therefore prove replacement by adding and removing this one zone rather
-	// than by swapping between two.
+	// are known zone names but are not registered, so CreatePipeline rejects
+	// them with INVALID_ZONE. The zone_slugs subtests therefore prove
+	// replacement by adding and removing this one zone rather than by swapping
+	// between two.
 	testLabZoneSlug = "us-lab-01a"
 
 	// A self-signed CA, used only to exercise the tls attribute's round-trip.

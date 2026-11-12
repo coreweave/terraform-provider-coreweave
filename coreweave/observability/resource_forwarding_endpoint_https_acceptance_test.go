@@ -468,7 +468,7 @@ func TestForwardingEndpointHTTPSAcceptance(t *testing.T) {
 						m.CredentialsVersion = types.Int64Value(3)
 						m.Credentials = &model.HTTPSCredentials{
 							AuthHeaders: &model.AuthHeadersCredentials{
-								Headers: map[string]string{"X-API-Key": "header-secret"},
+								Headers: authHeaders(t, map[string]string{"X-API-Key": "header-secret"}),
 							},
 						}
 					}),
@@ -480,9 +480,11 @@ func TestForwardingEndpointHTTPSAcceptance(t *testing.T) {
 					TestName:     "switching auth method without a version bump is refused",
 					ResourceName: resourceName,
 					Model: with(baseModel, func(m *model.ForwardingEndpointHTTPS) {
+						// The last applied step set 2; baseModel carries 1.
+						m.CredentialsVersion = types.Int64Value(2)
 						m.Credentials = &model.HTTPSCredentials{
 							AuthHeaders: &model.AuthHeadersCredentials{
-								Headers: map[string]string{"X-API-Key": "header-secret"},
+								Headers: authHeaders(t, map[string]string{"X-API-Key": "header-secret"}),
 							},
 						}
 					}),
@@ -516,7 +518,7 @@ func TestForwardingEndpointHTTPSAcceptance(t *testing.T) {
 						m.CredentialsVersion = types.Int64Value(3)
 						m.Credentials = &model.HTTPSCredentials{
 							AuthHeaders: &model.AuthHeadersCredentials{
-								Headers: map[string]string{"X-API-Key": "header-secret"},
+								Headers: authHeaders(t, map[string]string{"X-API-Key": "header-secret"}),
 							},
 						}
 					}),
@@ -550,12 +552,12 @@ func TestForwardingEndpointHTTPSAcceptance(t *testing.T) {
 			Endpoint: types.StringValue(testHTTPSEndpointURL),
 			Credentials: &model.HTTPSCredentials{
 				AuthHeaders: &model.AuthHeadersCredentials{
-					Headers: map[string]string{
+					Headers: authHeaders(t, map[string]string{
 						"X-API-Key":           "first-key",
 						"X-Tenant-Id":         "acc-tenant",
 						"Authorization":       "Bearer first-token",
 						"X-Forwarded-Context": "tenant:acc-tenant; region:us-lab-01a",
-					},
+					}),
 				},
 			},
 		}
@@ -592,12 +594,12 @@ func TestForwardingEndpointHTTPSAcceptance(t *testing.T) {
 						m.CredentialsVersion = types.Int64Value(2)
 						m.Credentials = &model.HTTPSCredentials{
 							AuthHeaders: &model.AuthHeadersCredentials{
-								Headers: map[string]string{
+								Headers: authHeaders(t, map[string]string{
 									"X-API-Key":           "second-key",
 									"X-Tenant-Id":         "acc-tenant",
 									"Authorization":       "Bearer second-token",
 									"X-Forwarded-Context": "tenant:acc-tenant; region:us-east-04a",
-								},
+								}),
 							},
 						}
 					}),
@@ -645,7 +647,7 @@ func TestForwardingEndpointHTTPSAcceptance(t *testing.T) {
 							Password: types.StringValue("secret"),
 						},
 						AuthHeaders: &model.AuthHeadersCredentials{
-							Headers: map[string]string{"X-API-Key": "secret"},
+							Headers: authHeaders(t, map[string]string{"X-API-Key": "secret"}),
 						},
 					}
 				}),
@@ -659,7 +661,7 @@ func TestForwardingEndpointHTTPSAcceptance(t *testing.T) {
 				model: with(valid(), func(m *model.ForwardingEndpointHTTPS) {
 					m.Credentials = &model.HTTPSCredentials{
 						AuthHeaders: &model.AuthHeadersCredentials{
-							Headers: map[string]string{"Content-Type": "application/json"},
+							Headers: authHeaders(t, map[string]string{"Content-Type": "application/json"}),
 						},
 					}
 				}),
@@ -670,7 +672,7 @@ func TestForwardingEndpointHTTPSAcceptance(t *testing.T) {
 				model: with(valid(), func(m *model.ForwardingEndpointHTTPS) {
 					m.Credentials = &model.HTTPSCredentials{
 						AuthHeaders: &model.AuthHeadersCredentials{
-							Headers: map[string]string{"X-Api-Key": "a", "x-api-key": "b"},
+							Headers: authHeaders(t, map[string]string{"X-Api-Key": "a", "x-api-key": "b"}),
 						},
 					}
 				}),
@@ -909,6 +911,60 @@ func TestForwardingEndpointHTTPSAcceptance(t *testing.T) {
 						PreApply: []plancheck.PlanCheck{
 							plancheck.ExpectResourceAction(fullResourceName, plancheck.ResourceActionCreate),
 						},
+					},
+				}),
+			},
+		})
+	})
+
+	// Fails until the API allows display_name to change.
+	// TODO: fold into lifecycle and drop its endpoint-URL workaround once green.
+	t.Run("display_name_rename", func(t *testing.T) {
+		token := testToken(t)
+		resourceName := fmt.Sprintf("test_acc_https_rename_%s", token)
+		fullResourceName := fmt.Sprintf("%s.%s", httpsEndpointResourceName, resourceName)
+
+		baseModel := &model.ForwardingEndpointHTTPS{
+			ForwardingEndpointCore: model.ForwardingEndpointCore{
+				Slug:        types.StringValue(slugify("https-rename", token)),
+				DisplayName: types.StringValue("Test HTTPS Endpoint"),
+			},
+			Endpoint: types.StringValue(testHTTPSEndpointURL),
+		}
+
+		const renamed = "Renamed HTTPS Endpoint"
+
+		resource.ParallelTest(t, resource.TestCase{
+			ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+			PreCheck:                 func() { setAccEnvDefaults() },
+			CheckDestroy:             checkDestroyed(t),
+			Steps: []resource.TestStep{
+				createHTTPSEndpointTestStep(t, httpsEndpointTestStep{
+					TestName:     "create the endpoint to rename",
+					ResourceName: resourceName,
+					Model:        baseModel,
+					ConfigPlanChecks: resource.ConfigPlanChecks{
+						PreApply: []plancheck.PlanCheck{
+							plancheck.ExpectResourceAction(fullResourceName, plancheck.ResourceActionCreate),
+						},
+					},
+				}),
+				createHTTPSEndpointTestStep(t, httpsEndpointTestStep{
+					// Only display_name changes; slug, address and credentials are
+					// untouched, so a failure here can have no other cause.
+					TestName:     "rename in place",
+					ResourceName: resourceName,
+					Model: with(baseModel, func(m *model.ForwardingEndpointHTTPS) {
+						m.DisplayName = types.StringValue(renamed)
+					}),
+					ConfigPlanChecks: resource.ConfigPlanChecks{
+						PreApply: []plancheck.PlanCheck{
+							plancheck.ExpectResourceAction(fullResourceName, plancheck.ResourceActionUpdate),
+						},
+					},
+					ExtraChecks: []statecheck.StateCheck{
+						statecheck.ExpectKnownValue(fullResourceName,
+							tfjsonpath.New("display_name"), knownvalue.StringExact(renamed)),
 					},
 				}),
 			},

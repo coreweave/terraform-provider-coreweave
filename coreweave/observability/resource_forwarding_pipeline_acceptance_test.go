@@ -157,10 +157,9 @@ func testForwardingPipelineLifecycle(t *testing.T) {
 						// per Kafka cluster holding the stream's topics, so an unscoped
 						// pipeline creates connectors in whatever production zones the org
 						// reaches -- which an acceptance test may not do. It also fails
-						// there: a production kafkaclusterd unwraps credentials with
-						// telecasterd-secrets while staging telecasterd sealed them with
-						// telecasterd-secrets-stg, so a credentialed endpoint dies on
-						// crypto/rsa: decryption error after the ten minute poll timeout.
+						// there: production and QA seal endpoint credentials with
+						// different keys, so a credentialed endpoint dies on crypto/rsa:
+						// decryption error after the ten minute poll timeout.
 						pipeline := &model.ForwardingPipeline{
 							Slug:            types.StringValue(pipelineSlug),
 							SourceSlug:      types.StringValue(streamSlug),
@@ -507,7 +506,7 @@ func testForwardingPipelineLifecycle(t *testing.T) {
 					PreConfig: func() { t.Log("Testing pipeline creation with invalid stream") },
 					Config:    renderForwardingPipelineResource(t, resourceName, pipeline, endpoint),
 					// Anchored on the offending slug rather than the server's
-					// wording, so this still passes if telecasterd rephrases the
+					// wording, so this still passes if the server rephrases the
 					// rejection. The bare alternation it replaced passed on any
 					// failure at all, including ones unrelated to the stream.
 					ExpectError: regexp.MustCompile(`(?s)(?i)nonexistent-stream`),

@@ -145,12 +145,10 @@ var (
 
 	// The per-cluster log streams, which are the only ones a lab-scoped
 	// pipeline can bind to. logs-audit-console and logs-audit-cw-api are
-	// org-scoped: the control plane produces them once per org in us-east-03a,
-	// the zone hosting the console, under a fixed cluster segment
-	// (logs.us-east-03a.<org>.fluffybunny.audit.console). Cluster registration
-	// deliberately skips them per-cluster, so they never exist in the org's own
-	// zone and a pipeline reaching them would create a connector in a
-	// production zone.
+	// org-scoped: the control plane produces them once per org, in the zone
+	// hosting the console. Cluster registration deliberately skips them
+	// per-cluster, so they never exist in the org's own zone and a pipeline
+	// reaching them would create a connector in a production zone.
 	matrixLogsStreams = []string{
 		"logs-audit-caios",
 		"logs-audit-kube-api",
@@ -304,9 +302,8 @@ func zoneSlugSet(t *testing.T, zones ...string) types.Set {
 //
 // Unlike the endpoint suites, which are database-only server-side, a pipeline
 // provisions one connector per source Kafka cluster holding the stream's
-// topics. Staging telecasterd is wired to 26 production kafkaclusterd
-// instances, so running these against an org with a production cluster
-// footprint creates real connectors in a production zone.
+// topics, so running these against an org with a production cluster footprint
+// creates real connectors in a production zone.
 //
 // A fresh QA org is not a substitute: with no registered clusters,
 // CreatePipeline cannot succeed at all, because the workflow fails the
@@ -315,7 +312,7 @@ func zoneSlugSet(t *testing.T, zones ...string) types.Set {
 //
 // Run the acceptance cases serially. Every pipeline's connectors live in the
 // organization's one Connect cluster, and Kafka Connect rebalances whenever a
-// connector is added or removed. Concurrent cases make telecasterd record the
+// connector is added or removed. Concurrent cases make the server record the
 // transient "a rebalance is expected" status as a terminal pipeline error.
 // HTTP retries cannot recover that server-side state, so pipeline concurrency
 // is bounded here while unit tests and the endpoint acceptance suites remain
