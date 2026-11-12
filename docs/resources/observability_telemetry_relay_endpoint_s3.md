@@ -42,7 +42,7 @@ resource "coreweave_observability_telemetry_relay_endpoint_s3" "example" {
 
 ### Required
 
-- `display_name` (String) The display name of the forwarding endpoint.
+- `display_name` (String) The display name of the forwarding endpoint. `UpdateEndpoint` currently rejects a change as immutable, so renaming an existing endpoint fails at apply.
 - `region` (String) The region where the bucket is located. Required for AWS S3; for S3-compatible stores use the store's own region value.
 - `slug` (String) The slug of the forwarding endpoint. Used as a unique identifier. Must be 3-32 characters, start with an alphanumeric character, and contain only alphanumeric characters and hyphens.
 - `uri` (String) The S3 URI where data is written, in the form `s3://bucket-name/optional/prefix/`.
