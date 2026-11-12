@@ -468,7 +468,7 @@ func TestForwardingEndpointHTTPSAcceptance(t *testing.T) {
 						m.CredentialsVersion = types.Int64Value(3)
 						m.Credentials = &model.HTTPSCredentials{
 							AuthHeaders: &model.AuthHeadersCredentials{
-								Headers: map[string]string{"X-API-Key": "header-secret"},
+								Headers: authHeaders(t, map[string]string{"X-API-Key": "header-secret"}),
 							},
 						}
 					}),
@@ -482,7 +482,7 @@ func TestForwardingEndpointHTTPSAcceptance(t *testing.T) {
 					Model: with(baseModel, func(m *model.ForwardingEndpointHTTPS) {
 						m.Credentials = &model.HTTPSCredentials{
 							AuthHeaders: &model.AuthHeadersCredentials{
-								Headers: map[string]string{"X-API-Key": "header-secret"},
+								Headers: authHeaders(t, map[string]string{"X-API-Key": "header-secret"}),
 							},
 						}
 					}),
@@ -516,7 +516,7 @@ func TestForwardingEndpointHTTPSAcceptance(t *testing.T) {
 						m.CredentialsVersion = types.Int64Value(3)
 						m.Credentials = &model.HTTPSCredentials{
 							AuthHeaders: &model.AuthHeadersCredentials{
-								Headers: map[string]string{"X-API-Key": "header-secret"},
+								Headers: authHeaders(t, map[string]string{"X-API-Key": "header-secret"}),
 							},
 						}
 					}),
@@ -550,12 +550,12 @@ func TestForwardingEndpointHTTPSAcceptance(t *testing.T) {
 			Endpoint: types.StringValue(testHTTPSEndpointURL),
 			Credentials: &model.HTTPSCredentials{
 				AuthHeaders: &model.AuthHeadersCredentials{
-					Headers: map[string]string{
+					Headers: authHeaders(t, map[string]string{
 						"X-API-Key":           "first-key",
 						"X-Tenant-Id":         "acc-tenant",
 						"Authorization":       "Bearer first-token",
 						"X-Forwarded-Context": "tenant:acc-tenant; region:us-lab-01a",
-					},
+					}),
 				},
 			},
 		}
@@ -592,12 +592,12 @@ func TestForwardingEndpointHTTPSAcceptance(t *testing.T) {
 						m.CredentialsVersion = types.Int64Value(2)
 						m.Credentials = &model.HTTPSCredentials{
 							AuthHeaders: &model.AuthHeadersCredentials{
-								Headers: map[string]string{
+								Headers: authHeaders(t, map[string]string{
 									"X-API-Key":           "second-key",
 									"X-Tenant-Id":         "acc-tenant",
 									"Authorization":       "Bearer second-token",
 									"X-Forwarded-Context": "tenant:acc-tenant; region:us-east-04a",
-								},
+								}),
 							},
 						}
 					}),
@@ -645,7 +645,7 @@ func TestForwardingEndpointHTTPSAcceptance(t *testing.T) {
 							Password: types.StringValue("secret"),
 						},
 						AuthHeaders: &model.AuthHeadersCredentials{
-							Headers: map[string]string{"X-API-Key": "secret"},
+							Headers: authHeaders(t, map[string]string{"X-API-Key": "secret"}),
 						},
 					}
 				}),
@@ -659,7 +659,7 @@ func TestForwardingEndpointHTTPSAcceptance(t *testing.T) {
 				model: with(valid(), func(m *model.ForwardingEndpointHTTPS) {
 					m.Credentials = &model.HTTPSCredentials{
 						AuthHeaders: &model.AuthHeadersCredentials{
-							Headers: map[string]string{"Content-Type": "application/json"},
+							Headers: authHeaders(t, map[string]string{"Content-Type": "application/json"}),
 						},
 					}
 				}),
@@ -670,7 +670,7 @@ func TestForwardingEndpointHTTPSAcceptance(t *testing.T) {
 				model: with(valid(), func(m *model.ForwardingEndpointHTTPS) {
 					m.Credentials = &model.HTTPSCredentials{
 						AuthHeaders: &model.AuthHeadersCredentials{
-							Headers: map[string]string{"X-Api-Key": "a", "x-api-key": "b"},
+							Headers: authHeaders(t, map[string]string{"X-Api-Key": "a", "x-api-key": "b"}),
 						},
 					}
 				}),
