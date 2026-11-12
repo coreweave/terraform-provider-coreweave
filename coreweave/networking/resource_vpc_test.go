@@ -957,6 +957,81 @@ func TestHostPrefixDefault(t *testing.T) {
 	})
 }
 
+// An ingress or egress object configured without its bool must plan the bool
+// as false, because the provider stores false. Planning null fails the apply
+// with an inconsistent result.
+func TestVpcEmptyIngressEgress(t *testing.T) {
+	randomInt := rand.IntN(99)
+	vpcName := fmt.Sprintf("%sempty-ie-%x", AcceptanceTestPrefix, randomInt)
+	resourceName := fmt.Sprintf("test_empty_ingress_egress_%x", randomInt)
+	fullResourceName := fmt.Sprintf("coreweave_networking_vpc.%s", resourceName)
+
+	config := func(ingress, egress string) string {
+		return fmt.Sprintf(`
+resource "coreweave_networking_vpc" %q {
+  name    = %q
+  zone    = %q
+  ingress = %s
+  egress  = %s
+}
+`, resourceName, vpcName, testutil.AcceptanceTestZone, ingress, egress)
+	}
+
+	resource.ParallelTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+		PreCheck: func() {
+			testutil.SetEnvDefaults()
+		},
+		Steps: []resource.TestStep{
+			{
+				PreConfig: func() {
+					t.Log("Beginning coreweave_networking_vpc create test with empty ingress and egress")
+				},
+				Config: config("{}", "{}"),
+				ConfigPlanChecks: resource.ConfigPlanChecks{
+					PreApply: []plancheck.PlanCheck{
+						plancheck.ExpectResourceAction(fullResourceName, plancheck.ResourceActionCreate),
+					},
+				},
+				ConfigStateChecks: []statecheck.StateCheck{
+					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("ingress").AtMapKey("disable_public_services"), knownvalue.Bool(false)),
+					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("egress").AtMapKey("disable_public_access"), knownvalue.Bool(false)),
+				},
+			},
+			{
+				PreConfig: func() {
+					t.Log("Beginning coreweave_networking_vpc update test enabling ingress and egress restrictions")
+				},
+				Config: config("{ disable_public_services = true }", "{ disable_public_access = true }"),
+				ConfigPlanChecks: resource.ConfigPlanChecks{
+					PreApply: []plancheck.PlanCheck{
+						plancheck.ExpectResourceAction(fullResourceName, plancheck.ResourceActionUpdate),
+					},
+				},
+				ConfigStateChecks: []statecheck.StateCheck{
+					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("ingress").AtMapKey("disable_public_services"), knownvalue.Bool(true)),
+					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("egress").AtMapKey("disable_public_access"), knownvalue.Bool(true)),
+				},
+			},
+			{
+				PreConfig: func() {
+					t.Log("Beginning coreweave_networking_vpc update test emptying ingress and egress")
+				},
+				Config: config("{}", "{}"),
+				ConfigPlanChecks: resource.ConfigPlanChecks{
+					PreApply: []plancheck.PlanCheck{
+						plancheck.ExpectResourceAction(fullResourceName, plancheck.ResourceActionUpdate),
+					},
+				},
+				ConfigStateChecks: []statecheck.StateCheck{
+					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("ingress").AtMapKey("disable_public_services"), knownvalue.Bool(false)),
+					statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("egress").AtMapKey("disable_public_access"), knownvalue.Bool(false)),
+				},
+			},
+		},
+	})
+}
+
 func TestMustRenderVpcResource(t *testing.T) {
 	t.Parallel()
 	ctx := t.Context()
