@@ -282,13 +282,13 @@ func (r *S3ForwardingEndpointResource) Update(ctx context.Context, req resource.
 		Spec: endpointMsg.GetSpec(),
 	}
 
-	action := credentialAction(
-		config.Credentials != nil,
-		state.Credentials != nil,
-		state.CredentialsConfigured.ValueBool(),
-		state.CredentialsVersion,
-		config.CredentialsVersion,
-	)
+	action := credentialAction(credentialStatus{
+		ConfigHasBlock:       config.Credentials != nil,
+		StateHasBlock:        state.Credentials != nil,
+		ServerHasCredentials: state.CredentialsConfigured.ValueBool(),
+		PriorVersion:         state.CredentialsVersion,
+		ConfigVersion:        config.CredentialsVersion,
+	})
 	updateReq.SetCredentialAction(action)
 
 	// CLEAR is unreachable here: ValidateConfig requires a credentials block on
