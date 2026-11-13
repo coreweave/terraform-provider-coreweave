@@ -92,7 +92,10 @@ done
 # Preflight. A missing token fails late and confusingly inside the test binary,
 # and the default endpoint in internal/testutil points at a local address that
 # nothing will answer, so both are checked up front.
-[[ -n "${COREWEAVE_API_TOKEN:-}" ]] || die "COREWEAVE_API_TOKEN is not set. Create a token in the console for the test account documented in the team KB."
+#
+# Local runs use the Telemetry Relay QA organization; CI uses the shared one.
+[[ -n "${COREWEAVE_OBSERVABILITY_API_TOKEN:-}" ]] || die "COREWEAVE_OBSERVABILITY_API_TOKEN is not set. See .github/acceptance-tests/README.md."
+export COREWEAVE_API_TOKEN="$COREWEAVE_OBSERVABILITY_API_TOKEN"
 
 export COREWEAVE_API_ENDPOINT="${COREWEAVE_API_ENDPOINT:-$qa_endpoint}"
 if [[ "$COREWEAVE_API_ENDPOINT" != "$qa_endpoint" ]] && ! $allow_other_environment; then
