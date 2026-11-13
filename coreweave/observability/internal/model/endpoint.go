@@ -160,9 +160,14 @@ type ForwardingEndpointHTTPS struct {
 // Set sets the model from a ForwardingEndpoint message.
 // This implementation behaves a bit differently than most, because it presents a single model for both the HTTPS config and the credentials.
 func (m *ForwardingEndpointHTTPS) Set(endpoint *typesv1beta1.ForwardingEndpoint) (diagnostics diag.Diagnostics) {
+	if endpoint == nil {
+		diagnostics.AddError("Missing Endpoint", "The API returned no endpoint.")
+		return diagnostics
+	}
+
 	if endpoint.Spec.WhichConfig() != typesv1beta1.ForwardingEndpointSpec_Https_case {
 		diagnostics.AddError("Invalid Endpoint Type", "The endpoint is not an HTTPS endpoint")
-		return
+		return diagnostics
 	}
 
 	m.coreSet(endpoint)
@@ -184,7 +189,7 @@ func (m *ForwardingEndpointHTTPS) Set(endpoint *typesv1beta1.ForwardingEndpoint)
 		m.TLS = nil
 	}
 
-	return
+	return diagnostics
 }
 
 func (m *ForwardingEndpointHTTPS) ToMsg() (msg *typesv1beta1.ForwardingEndpoint, diagnostics diag.Diagnostics) {
@@ -246,6 +251,11 @@ type ForwardingEndpointS3 struct {
 }
 
 func (m *ForwardingEndpointS3) Set(endpoint *typesv1beta1.ForwardingEndpoint) (diagnostics diag.Diagnostics) {
+	if endpoint == nil {
+		diagnostics.AddError("Missing Endpoint", "The API returned no endpoint.")
+		return
+	}
+
 	if endpoint.Spec.WhichConfig() != typesv1beta1.ForwardingEndpointSpec_S3_case {
 		diagnostics.AddError("Invalid Endpoint Type", "The endpoint is not an S3 endpoint")
 		return
