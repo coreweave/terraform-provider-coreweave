@@ -102,6 +102,12 @@ func TestS3ModifyPlanAddressChange(t *testing.T) {
 			config: unknownSlug(endpoint(otherBucket, 1)),
 		},
 		{
+			name:      "uri change with an unchanged slug is still refused",
+			state:     withSlug(endpoint(bucket, 1), "logs-old"),
+			config:    withSlug(endpoint(otherBucket, 1), "logs-old"),
+			wantError: true,
+		},
+		{
 			name:   "unchanged uri is allowed",
 			state:  endpoint(bucket, 1),
 			config: endpoint(bucket, 1),
@@ -127,6 +133,16 @@ func TestS3ModifyPlanAddressChange(t *testing.T) {
 				return
 			}
 			require.False(t, resp.Diagnostics.HasError(), "%v", resp.Diagnostics)
+			if tt.name == "unknown planned slug defers the uri check" {
+				// Replan the same change after the slug resolves to the existing one.
+				resolved := withSlug(tt.config, "logs-old")
+				req.Plan.Raw = resolved
+				req.Config.Raw = resolved
+				resp = resource.ModifyPlanResponse{Plan: req.Plan}
+				newResource().ModifyPlan(t.Context(), req, &resp)
+				require.True(t, resp.Diagnostics.HasError(), "resolved in-place URI change must be refused")
+				require.Contains(t, resp.Diagnostics.Errors()[0].Summary(), "Credentials must be updated when the address changes")
+			}
 		})
 	}
 }
