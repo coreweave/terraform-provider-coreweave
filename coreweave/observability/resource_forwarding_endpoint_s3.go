@@ -21,6 +21,7 @@ var (
 	_ resource.ResourceWithConfigure      = &S3ForwardingEndpointResource{}
 	_ resource.ResourceWithValidateConfig = &S3ForwardingEndpointResource{}
 	_ resource.ResourceWithImportState    = &S3ForwardingEndpointResource{}
+	_ resource.ResourceWithModifyPlan     = &S3ForwardingEndpointResource{}
 )
 
 func NewForwardingEndpointS3Resource() resource.Resource {
@@ -138,6 +139,17 @@ func (r *S3ForwardingEndpointResource) ValidateConfig(ctx context.Context, req r
 	if err := protovalidate.Validate(createReq); err != nil {
 		resp.Diagnostics.AddError("Validation Error", err.Error())
 	}
+}
+
+// ModifyPlan refuses a uri edit that would preserve the stored credentials. A
+// key-prefix change is enough; the secret itself need not change.
+func (r *S3ForwardingEndpointResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
+	// Null state is Create, null plan is Destroy. Neither moves an address.
+	if req.State.Raw.IsNull() || req.Plan.Raw.IsNull() {
+		return
+	}
+
+	checkAddressChange(ctx, req, resp, path.Root("uri"))
 }
 
 func (r *S3ForwardingEndpointResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {

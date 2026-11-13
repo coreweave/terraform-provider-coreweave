@@ -222,6 +222,8 @@ func (r *HTTPSForwardingEndpointResource) ModifyPlan(ctx context.Context, req re
 		return
 	}
 
+	checkAddressChange(ctx, req, resp, path.Root("endpoint"))
+
 	stored, storedDeferred := authMethod(ctx, req.State, &resp.Diagnostics)
 	configured, configuredDeferred := authMethod(ctx, req.Config, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {

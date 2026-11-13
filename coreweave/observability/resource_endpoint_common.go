@@ -15,8 +15,10 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
+	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
@@ -115,6 +117,62 @@ func commonEndpointSchema(ctx context.Context) map[string]schema.Attribute {
 // oneof. PRESERVE and CLEAR must leave it unset or the server rejects the request.
 func carriesCredentialPayload(action clusterv1beta1.UpdateEndpointRequest_CredentialAction) bool {
 	return action == clusterv1beta1.UpdateEndpointRequest_CREDENTIAL_ACTION_REPLACE
+}
+
+// checkAddressChange refuses an address edit that would preserve the stored
+// credentials. The API requires them to be resent when the address changes;
+// preserving them leaves the endpoint unable to deliver.
+//
+// It defers while any input is unknown; Update still chooses the action.
+func checkAddressChange(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse, address path.Path) {
+	var priorAddress, plannedAddress types.String
+	resp.Diagnostics.Append(req.State.GetAttribute(ctx, address, &priorAddress)...)
+	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, address, &plannedAddress)...)
+
+	var serverHasCredentials types.Bool
+	resp.Diagnostics.Append(req.State.GetAttribute(ctx, path.Root("credentials_configured"), &serverHasCredentials)...)
+
+	var priorCredentials, configCredentials types.Object
+	resp.Diagnostics.Append(req.State.GetAttribute(ctx, path.Root("credentials"), &priorCredentials)...)
+	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("credentials"), &configCredentials)...)
+
+	var priorVersion, configVersion types.Int64
+	resp.Diagnostics.Append(req.State.GetAttribute(ctx, path.Root("credentials_version"), &priorVersion)...)
+	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("credentials_version"), &configVersion)...)
+
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	for _, value := range []attr.Value{
+		priorAddress, plannedAddress, serverHasCredentials,
+		priorCredentials, configCredentials, priorVersion, configVersion,
+	} {
+		if value.IsUnknown() {
+			return
+		}
+	}
+
+	if priorAddress.Equal(plannedAddress) || !serverHasCredentials.ValueBool() {
+		return
+	}
+
+	switch {
+	case configCredentials.IsNull() && !priorCredentials.IsNull():
+		// Removing the block clears the credentials, so none survive the move.
+		return
+	case configCredentials.IsNull():
+		resp.Diagnostics.AddAttributeError(
+			address,
+			"Credentials must be updated when the address changes",
+			"Add a credentials block, or revert the address.",
+		)
+	case priorVersion.Equal(configVersion):
+		resp.Diagnostics.AddAttributeError(
+			address,
+			"Credentials must be updated when the address changes",
+			"Increment credentials_version, or revert the address.",
+		)
+	}
 }
 
 // credentialAction decides what UpdateEndpointRequest.credential_action should
