@@ -175,23 +175,15 @@ const authMethodNotImplemented = "not_implemented"
 
 // attributeSource is the part of tfsdk.State and tfsdk.Config that authMethod
 // needs, so one reader serves both.
-type attributeSource interface {
-	GetAttribute(ctx context.Context, path path.Path, target any) diag.Diagnostics
-}
-
 // authMethod names the configured arm, or "" when no block is set. Only the
 // secret values are write-only, so the arm itself survives in state.
 //
-// It reads the credentials object alone rather than the whole model: an
-// unknown object elsewhere in the config, such as tls resolved from another
-// resource, cannot decode into its model pointer and would fail the plan.
-// deferred reports an unknown shape, where the arm cannot be read yet.
-func authMethod(ctx context.Context, src attributeSource, diagnostics *diag.Diagnostics) (method string, deferred bool) {
-	var credentials types.Object
-	diagnostics.Append(src.GetAttribute(ctx, path.Root("credentials"), &credentials)...)
+// It takes the credentials object rather than the model: an unknown object
+// elsewhere in the config, such as tls resolved from another resource, cannot
+// decode into its model pointer and would fail the plan. deferred reports an
+// unknown shape, where the arm cannot be read yet.
+func authMethod(credentials types.Object) (method string, deferred bool) {
 	switch {
-	case diagnostics.HasError():
-		return "", false
 	case credentials.IsUnknown():
 		return "", true
 	case credentials.IsNull():
@@ -224,11 +216,15 @@ func (r *HTTPSForwardingEndpointResource) ModifyPlan(ctx context.Context, req re
 
 	checkAddressChange(ctx, req, resp, path.Root("endpoint"))
 
-	stored, storedDeferred := authMethod(ctx, req.State, &resp.Diagnostics)
-	configured, configuredDeferred := authMethod(ctx, req.Config, &resp.Diagnostics)
+	var storedCredentials, configCredentials types.Object
+	resp.Diagnostics.Append(req.State.GetAttribute(ctx, path.Root("credentials"), &storedCredentials)...)
+	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("credentials"), &configCredentials)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
+	stored, storedDeferred := authMethod(storedCredentials)
+	configured, configuredDeferred := authMethod(configCredentials)
 	if storedDeferred || configuredDeferred {
 		return
 	}
