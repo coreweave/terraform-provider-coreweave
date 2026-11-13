@@ -21,7 +21,7 @@ jobs:
       (github.event_name == 'pull_request_target' && github.event.pull_request.merged &&
        github.event.pull_request.head.ref == 'release-please--branches--main' &&
        github.event.pull_request.head.repo.full_name == github.repository)
-    runs-on: ubuntu-latest
+    runs-on: cw-static-pub-x64-4c
     timeout-minutes: 15
     permissions:
       contents: read
@@ -48,7 +48,7 @@ jobs:
       queue: max
       cancel-in-progress: false
     needs: validation
-    runs-on: ubuntu-latest
+    runs-on: cw-static-pub-x64-4c
     permissions:
       contents: write
       pull-requests: write
