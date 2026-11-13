@@ -181,6 +181,20 @@ func TestHTTPSModifyPlanAddressChange(t *testing.T) {
 		newAddress = "https://logs.example.com/v2"
 	)
 
+	// withSlug renames the endpoint, which replaces it rather than updating.
+	withSlug := func(base tftypes.Value, slug string) tftypes.Value {
+		plan := tfsdk.Plan{Schema: schema.Schema, Raw: base}
+		require.False(t, plan.SetAttribute(ctx, path.Root("slug"), types.StringValue(slug)).HasError())
+		return plan.Raw
+	}
+
+	// An unknown planned slug cannot say whether this is a replacement.
+	unknownSlug := func(base tftypes.Value) tftypes.Value {
+		plan := tfsdk.Plan{Schema: schema.Schema, Raw: base}
+		require.False(t, plan.SetAttribute(ctx, path.Root("slug"), types.StringUnknown()).HasError())
+		return plan.Raw
+	}
+
 	// An address resolved from another resource is unknown while planning.
 	unknownAddress := func(base tftypes.Value) tftypes.Value {
 		plan := tfsdk.Plan{Schema: schema.Schema, Raw: base}
@@ -235,6 +249,23 @@ func TestHTTPSModifyPlanAddressChange(t *testing.T) {
 			name:   "address change with no stored credentials is allowed",
 			state:  endpoint(oldAddress, 1, false, false),
 			config: endpoint(newAddress, 1, false, false),
+		},
+		{
+			// A changed slug replaces the endpoint, so nothing is preserved.
+			name:   "slug change alongside an address change is allowed",
+			state:  endpoint(oldAddress, 1, true, true),
+			config: withSlug(endpoint(newAddress, 1, true, true), "logs-new"),
+		},
+		{
+			name:   "unknown planned slug defers the address check",
+			state:  withSlug(endpoint(oldAddress, 1, true, true), "logs-old"),
+			config: unknownSlug(endpoint(newAddress, 1, true, true)),
+		},
+		{
+			name:      "address change with an unchanged slug is still refused",
+			state:     withSlug(endpoint(oldAddress, 1, true, true), "logs-old"),
+			config:    withSlug(endpoint(newAddress, 1, true, true), "logs-old"),
+			wantError: true,
 		},
 		{
 			name:   "unchanged address is allowed",

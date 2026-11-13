@@ -56,6 +56,18 @@ func TestS3ModifyPlanAddressChange(t *testing.T) {
 		prefixedOnly = "s3://logs-bucket/audit/v2"
 	)
 
+	// A changed slug replaces the endpoint; an unknown one cannot say yet.
+	withSlug := func(base tftypes.Value, slug string) tftypes.Value {
+		plan := tfsdk.Plan{Schema: schema.Schema, Raw: base}
+		require.False(t, plan.SetAttribute(ctx, path.Root("slug"), types.StringValue(slug)).HasError())
+		return plan.Raw
+	}
+	unknownSlug := func(base tftypes.Value) tftypes.Value {
+		plan := tfsdk.Plan{Schema: schema.Schema, Raw: base}
+		require.False(t, plan.SetAttribute(ctx, path.Root("slug"), types.StringUnknown()).HasError())
+		return plan.Raw
+	}
+
 	tests := []struct {
 		name      string
 		state     tftypes.Value
@@ -78,6 +90,16 @@ func TestS3ModifyPlanAddressChange(t *testing.T) {
 			name:   "uri change with a bumped counter is allowed",
 			state:  endpoint(bucket, 1),
 			config: endpoint(otherBucket, 2),
+		},
+		{
+			name:   "slug change alongside a uri change is allowed",
+			state:  withSlug(endpoint(bucket, 1), "logs-old"),
+			config: withSlug(endpoint(otherBucket, 1), "logs-new"),
+		},
+		{
+			name:   "unknown planned slug defers the uri check",
+			state:  withSlug(endpoint(bucket, 1), "logs-old"),
+			config: unknownSlug(endpoint(otherBucket, 1)),
 		},
 		{
 			name:   "unchanged uri is allowed",
