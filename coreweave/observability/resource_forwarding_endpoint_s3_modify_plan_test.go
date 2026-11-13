@@ -12,13 +12,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestS3ModifyPlanAddressChange covers the S3 half of the address guard. The
-// decision logic is shared with HTTPS and tested there; what this pins is the
-// wiring — that ModifyPlan is reached at all, and that it reads uri rather
-// than endpoint, so a key-prefix edit counts as an address change.
+// TestS3ModifyPlanAddressChange pins that ModifyPlan reads uri, so a change
+// to the key prefix alone counts as an address change.
 //
-// S3 credentials are mandatory, so the branches for a removed block and for an
-// endpoint with no stored credentials are unreachable here.
+// S3 credentials are mandatory, so the removed-block and no-credentials
+// branches are unreachable here.
 func TestS3ModifyPlanAddressChange(t *testing.T) {
 	t.Parallel()
 
