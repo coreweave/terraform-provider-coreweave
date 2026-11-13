@@ -18,7 +18,7 @@ jobs:
       snapshot: false
 
   lint:
-    runs-on: ubuntu-latest
+    runs-on: cw-static-pub-x64-4c
     needs: build
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -26,7 +26,7 @@ jobs:
       - run: make lint
 
   generate:
-    runs-on: ubuntu-latest
+    runs-on: cw-static-pub-x64-4c
     needs: build
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -47,7 +47,7 @@ jobs:
   test:
     name: Tests
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: cw-static-pub-x64-4c
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -62,7 +62,7 @@ jobs:
 
   pr-title-format:
     name: Validate PR title
-    runs-on: ubuntu-latest
+    runs-on: cw-static-pub-x64-4c
     if: github.event_name == 'pull_request'
     permissions:
       contents: read
@@ -127,7 +127,7 @@ jobs:
           }
 
   select-acceptance:
-    runs-on: ubuntu-latest
+    runs-on: cw-static-pub-x64-4c
     outputs:
       suites: ${{ steps.selection.outputs.suites }}
     permissions:
@@ -179,7 +179,7 @@ jobs:
     name: PR validation
     needs: [build, lint, generate, snapshot-build, test, pr-title-format, select-acceptance, acceptance-tests]
     if: ${{ always() }}
-    runs-on: ubuntu-latest
+    runs-on: cw-static-pub-x64-4c
     timeout-minutes: 5
     permissions: {}
     steps:
@@ -202,7 +202,7 @@ jobs:
     name: Release acceptance
     needs: [select-acceptance, validation, acceptance-tests]
     if: needs.select-acceptance.outputs.suites != '[]'
-    runs-on: ubuntu-latest
+    runs-on: cw-static-pub-x64-4c
     permissions: {}
     steps:
       - uses: re-actors/alls-green@b5b5b37504aa4183270bd3d855c52a67f212be35 # v1.3.0

@@ -15,7 +15,7 @@ concurrency:
 jobs:
   release-please:
     if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
+    runs-on: cw-static-pub-x64-4c
     permissions:
       contents: write
       pull-requests: write

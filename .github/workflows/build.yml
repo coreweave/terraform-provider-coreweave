@@ -15,7 +15,7 @@ on:
 jobs:
   native:
     name: Build
-    runs-on: ubuntu-latest
+    runs-on: cw-static-pub-x64-4c
     timeout-minutes: 5
     if: ${{ inputs.native }}
     steps:
@@ -26,7 +26,7 @@ jobs:
 
   snapshot:
     name: Snapshot Build
-    runs-on: ubuntu-latest
+    runs-on: cw-static-pub-x64-4c
     timeout-minutes: 15
     if: ${{ inputs.snapshot }}
     steps:
