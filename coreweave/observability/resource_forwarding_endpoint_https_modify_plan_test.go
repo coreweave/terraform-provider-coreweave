@@ -58,6 +58,21 @@ func TestHTTPSModifyPlanCredentialArms(t *testing.T) {
 		basicKnown     = credentials(passwordPath, types.StringValue("old"), 1)
 	)
 
+	// unknownObject models a whole object resolved from another resource: the
+	// attribute at p is unknown rather than its leaves.
+	unknownObject := func(base tftypes.Value, p path.Path) tftypes.Value {
+		attribute, diags := schema.Schema.AttributeAtPath(ctx, p)
+		require.False(t, diags.HasError(), "%v", diags)
+		object, ok := attribute.GetType().(types.ObjectType)
+		require.True(t, ok, "%s is not an object attribute", p)
+
+		plan := tfsdk.Plan{Schema: schema.Schema, Raw: base}
+		require.False(t, plan.SetAttribute(ctx, p, types.ObjectUnknown(object.AttrTypes)).HasError())
+		return plan.Raw
+	}
+	basicUnknownTLS := unknownObject(basicKnown, path.Root("tls"))
+	basicUnknownCredentials := unknownObject(basicKnown, path.Root("credentials"))
+
 	tests := []struct {
 		name      string
 		state     tftypes.Value
@@ -87,6 +102,17 @@ func TestHTTPSModifyPlanCredentialArms(t *testing.T) {
 			state:     basicKnown,
 			config:    headersRotated,
 			wantError: true,
+		},
+		{
+			name:   "unchanged auth method with unknown TLS object",
+			state:  basicKnown,
+			config: basicUnknownTLS,
+		},
+		{
+			// The arm cannot be read, so the guard defers rather than guesses.
+			name:   "unknown credentials object defers the arm check",
+			state:  basicKnown,
+			config: basicUnknownCredentials,
 		},
 	}
 
