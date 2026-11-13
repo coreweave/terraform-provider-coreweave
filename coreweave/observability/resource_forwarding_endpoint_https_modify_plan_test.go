@@ -181,6 +181,13 @@ func TestHTTPSModifyPlanAddressChange(t *testing.T) {
 		newAddress = "https://logs.example.com/v2"
 	)
 
+	// An address resolved from another resource is unknown while planning.
+	unknownAddress := func(base tftypes.Value) tftypes.Value {
+		plan := tfsdk.Plan{Schema: schema.Schema, Raw: base}
+		require.False(t, plan.SetAttribute(ctx, path.Root("endpoint"), types.StringUnknown()).HasError())
+		return plan.Raw
+	}
+
 	tests := []struct {
 		name      string
 		state     tftypes.Value
@@ -192,6 +199,12 @@ func TestHTTPSModifyPlanAddressChange(t *testing.T) {
 			state:     endpoint(oldAddress, 1, true, true),
 			config:    endpoint(newAddress, 1, true, true),
 			wantError: true,
+		},
+		{
+			// Deferred to the apply-time plan, which has a known address.
+			name:   "unknown address defers rather than refusing",
+			state:  endpoint(oldAddress, 1, true, true),
+			config: unknownAddress(endpoint(newAddress, 1, true, true)),
 		},
 		{
 			name:   "address change with a bumped counter is allowed",
