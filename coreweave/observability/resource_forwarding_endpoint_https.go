@@ -402,13 +402,21 @@ func (r *HTTPSForwardingEndpointResource) Update(ctx context.Context, req resour
 		Spec: endpointMsg.GetSpec(),
 	}
 
-	action := credentialAction(credentialStatus{
+	status := credentialStatus{
 		ConfigHasBlock:       config.Credentials != nil,
 		StateHasBlock:        state.Credentials != nil,
 		ServerHasCredentials: state.CredentialsConfigured.ValueBool(),
 		PriorVersion:         state.CredentialsVersion,
 		ConfigVersion:        config.CredentialsVersion,
-	})
+	}
+	action := credentialAction(status)
+
+	// ModifyPlan defers this when a value is unknown at plan time, so the
+	// resolved address is checked once more before the request goes out.
+	resp.Diagnostics.Append(addressChangeDiagnostics(path.Root("endpoint"), !state.Endpoint.Equal(data.Endpoint), status)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 	updateReq.SetCredentialAction(action)
 
 	if carriesCredentialPayload(action) {

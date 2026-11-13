@@ -212,6 +212,13 @@ func TestHTTPSModifyPlanAddressChange(t *testing.T) {
 			wantError: true,
 		},
 		{
+			// Adopting after import sends the credentials, so the counter need
+			// not move: credentialAction already selects REPLACE here.
+			name:   "address change while adopting credentials is allowed",
+			state:  endpoint(oldAddress, 1, true, false),
+			config: endpoint(newAddress, 1, true, true),
+		},
+		{
 			name:   "address change with no stored credentials is allowed",
 			state:  endpoint(oldAddress, 1, false, false),
 			config: endpoint(newAddress, 1, false, false),
