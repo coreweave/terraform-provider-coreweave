@@ -152,27 +152,33 @@ func checkAddressChange(ctx context.Context, req resource.ModifyPlanRequest, res
 		}
 	}
 
-	if priorAddress.Equal(plannedAddress) || !serverHasCredentials.ValueBool() {
-		return
+	status := credentialStatus{
+		ConfigHasBlock:       !configCredentials.IsNull(),
+		StateHasBlock:        !priorCredentials.IsNull(),
+		ServerHasCredentials: serverHasCredentials.ValueBool(),
+		PriorVersion:         priorVersion,
+		ConfigVersion:        configVersion,
+	}
+	resp.Diagnostics.Append(addressChangeDiagnostics(address, !priorAddress.Equal(plannedAddress), status)...)
+}
+
+// addressChangeDiagnostics reports an update that would keep the stored
+// credentials while the address changes. The decision comes from
+// credentialAction rather than a second copy of its rules, so adoption after
+// an import still sends the credentials and is allowed through.
+func addressChangeDiagnostics(address path.Path, addressChanged bool, in credentialStatus) diag.Diagnostics {
+	var diagnostics diag.Diagnostics
+	if !addressChanged || !in.ServerHasCredentials ||
+		credentialAction(in) != clusterv1beta1.UpdateEndpointRequest_CREDENTIAL_ACTION_PRESERVE {
+		return diagnostics
 	}
 
-	switch {
-	case configCredentials.IsNull() && !priorCredentials.IsNull():
-		// Removing the block clears the credentials, so none survive the move.
-		return
-	case configCredentials.IsNull():
-		resp.Diagnostics.AddAttributeError(
-			address,
-			"Credentials must be updated when the address changes",
-			"Add a credentials block, or revert the address.",
-		)
-	case priorVersion.Equal(configVersion):
-		resp.Diagnostics.AddAttributeError(
-			address,
-			"Credentials must be updated when the address changes",
-			"Increment credentials_version, or revert the address.",
-		)
+	remedy := "Increment credentials_version, or revert the address."
+	if !in.ConfigHasBlock {
+		remedy = "Add a credentials block, or revert the address."
 	}
+	diagnostics.AddAttributeError(address, "Credentials must be updated when the address changes", remedy)
+	return diagnostics
 }
 
 // credentialAction decides what UpdateEndpointRequest.credential_action should
