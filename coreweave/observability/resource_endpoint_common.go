@@ -140,16 +140,27 @@ func checkAddressChange(ctx context.Context, req resource.ModifyPlanRequest, res
 	resp.Diagnostics.Append(req.State.GetAttribute(ctx, path.Root("credentials_version"), &priorVersion)...)
 	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("credentials_version"), &configVersion)...)
 
+	var priorSlug, plannedSlug types.String
+	resp.Diagnostics.Append(req.State.GetAttribute(ctx, path.Root("slug"), &priorSlug)...)
+	resp.Diagnostics.Append(req.Plan.GetAttribute(ctx, path.Root("slug"), &plannedSlug)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
 	for _, value := range []attr.Value{
 		priorAddress, plannedAddress, serverHasCredentials,
 		priorCredentials, configCredentials, priorVersion, configVersion,
+		priorSlug, plannedSlug,
 	} {
 		if value.IsUnknown() {
 			return
 		}
+	}
+
+	// slug requires replacement, and a replacement creates the endpoint with
+	// the configured credentials, so none are preserved across the change.
+	if !priorSlug.Equal(plannedSlug) {
+		return
 	}
 
 	status := credentialStatus{
