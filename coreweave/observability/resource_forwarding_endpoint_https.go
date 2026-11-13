@@ -173,20 +173,45 @@ func (r *HTTPSForwardingEndpointResource) ValidateConfig(ctx context.Context, re
 // authMethodNotImplemented marks a credentials arm with no case below.
 const authMethodNotImplemented = "not_implemented"
 
+// attributeSource is the part of tfsdk.State and tfsdk.Config that authMethod
+// needs, so one reader serves both.
+type attributeSource interface {
+	GetAttribute(ctx context.Context, path path.Path, target any) diag.Diagnostics
+}
+
 // authMethod names the configured arm, or "" when no block is set. Only the
 // secret values are write-only, so the arm itself survives in state.
-func authMethod(credentials *model.HTTPSCredentials) string {
+//
+// It reads the credentials object alone rather than the whole model: an
+// unknown object elsewhere in the config, such as tls resolved from another
+// resource, cannot decode into its model pointer and would fail the plan.
+// deferred reports an unknown shape, where the arm cannot be read yet.
+func authMethod(ctx context.Context, src attributeSource, diagnostics *diag.Diagnostics) (method string, deferred bool) {
+	var credentials types.Object
+	diagnostics.Append(src.GetAttribute(ctx, path.Root("credentials"), &credentials)...)
 	switch {
-	case credentials == nil:
-		return ""
-	case credentials.BasicAuth != nil:
-		return "basic_auth"
-	case credentials.AuthHeaders != nil:
-		return "auth_headers"
-	default:
-		// Not "": that reads as no block at all, which ModifyPlan skips.
-		return authMethodNotImplemented
+	case diagnostics.HasError():
+		return "", false
+	case credentials.IsUnknown():
+		return "", true
+	case credentials.IsNull():
+		return "", false
 	}
+
+	arms := credentials.Attributes()
+	for _, arm := range []string{"basic_auth", "auth_headers"} {
+		value, ok := arms[arm]
+		switch {
+		case !ok || value == nil || value.IsNull():
+			continue
+		case value.IsUnknown():
+			return "", true
+		default:
+			return arm, false
+		}
+	}
+	// Not "": that reads as no block at all, which ModifyPlan skips.
+	return authMethodNotImplemented, false
 }
 
 // ModifyPlan refuses a basic_auth <-> auth_headers switch: the server fixes the
@@ -197,14 +222,15 @@ func (r *HTTPSForwardingEndpointResource) ModifyPlan(ctx context.Context, req re
 		return
 	}
 
-	var state, config model.ForwardingEndpointHTTPS
-	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
-	resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
+	stored, storedDeferred := authMethod(ctx, req.State, &resp.Diagnostics)
+	configured, configuredDeferred := authMethod(ctx, req.Config, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
+	if storedDeferred || configuredDeferred {
+		return
+	}
 
-	stored, configured := authMethod(state.Credentials), authMethod(config.Credentials)
 	if stored == authMethodNotImplemented || configured == authMethodNotImplemented {
 		resp.Diagnostics.AddAttributeError(
 			path.Root("credentials"),
