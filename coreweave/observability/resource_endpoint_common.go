@@ -119,6 +119,24 @@ func carriesCredentialPayload(action clusterv1beta1.UpdateEndpointRequest_Creden
 	return action == clusterv1beta1.UpdateEndpointRequest_CREDENTIAL_ACTION_REPLACE
 }
 
+// planReplacesEndpoint reports whether the plan changes the slug, which
+// destroys the endpoint and creates a new one from the configuration. The
+// checks in ModifyPlan all concern updating an endpoint in place, so none of
+// them apply then. deferred means the slug is unknown and the answer is not
+// available yet.
+func planReplacesEndpoint(ctx context.Context, req resource.ModifyPlanRequest, diagnostics *diag.Diagnostics) (replacing, deferred bool) {
+	var priorSlug, plannedSlug types.String
+	diagnostics.Append(req.State.GetAttribute(ctx, path.Root("slug"), &priorSlug)...)
+	diagnostics.Append(req.Plan.GetAttribute(ctx, path.Root("slug"), &plannedSlug)...)
+	if diagnostics.HasError() {
+		return false, false
+	}
+	if priorSlug.IsUnknown() || plannedSlug.IsUnknown() {
+		return false, true
+	}
+	return !priorSlug.Equal(plannedSlug), false
+}
+
 // checkAddressChange refuses an address edit that would preserve the stored
 // credentials. The API requires them to be resent when the address changes;
 // preserving them leaves the endpoint unable to deliver.
@@ -140,27 +158,16 @@ func checkAddressChange(ctx context.Context, req resource.ModifyPlanRequest, res
 	resp.Diagnostics.Append(req.State.GetAttribute(ctx, path.Root("credentials_version"), &priorVersion)...)
 	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("credentials_version"), &configVersion)...)
 
-	var priorSlug, plannedSlug types.String
-	resp.Diagnostics.Append(req.State.GetAttribute(ctx, path.Root("slug"), &priorSlug)...)
-	resp.Diagnostics.Append(req.Plan.GetAttribute(ctx, path.Root("slug"), &plannedSlug)...)
-
 	if resp.Diagnostics.HasError() {
 		return
 	}
 	for _, value := range []attr.Value{
 		priorAddress, plannedAddress, serverHasCredentials,
 		priorCredentials, configCredentials, priorVersion, configVersion,
-		priorSlug, plannedSlug,
 	} {
 		if value.IsUnknown() {
 			return
 		}
-	}
-
-	// slug requires replacement, and a replacement creates the endpoint with
-	// the configured credentials, so none are preserved across the change.
-	if !priorSlug.Equal(plannedSlug) {
-		return
 	}
 
 	status := credentialStatus{

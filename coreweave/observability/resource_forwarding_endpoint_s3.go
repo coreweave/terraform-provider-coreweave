@@ -149,6 +149,11 @@ func (r *S3ForwardingEndpointResource) ModifyPlan(ctx context.Context, req resou
 		return
 	}
 
+	replacing, deferred := planReplacesEndpoint(ctx, req, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() || deferred || replacing {
+		return
+	}
+
 	checkAddressChange(ctx, req, resp, path.Root("uri"))
 }
 

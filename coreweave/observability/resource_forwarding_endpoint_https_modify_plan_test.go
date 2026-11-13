@@ -296,3 +296,85 @@ func TestHTTPSModifyPlanAddressChange(t *testing.T) {
 		})
 	}
 }
+
+// TestHTTPSModifyPlanSlugChange checks that changing the slug lets an auth
+// method switch through. Changing the slug destroys the endpoint and creates
+// a new one from the configuration, so nothing the old endpoint stored —
+// neither its address nor its credential type — restricts the new one.
+func TestHTTPSModifyPlanSlugChange(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+
+	newResource := func() *observability.HTTPSForwardingEndpointResource {
+		r, ok := observability.NewForwardingEndpointHTTPSResource().(*observability.HTTPSForwardingEndpointResource)
+		require.True(t, ok, "unexpected resource type")
+		return r
+	}
+
+	var schema resource.SchemaResponse
+	newResource().Schema(ctx, resource.SchemaRequest{}, &schema)
+	require.False(t, schema.Diagnostics.HasError(), "%v", schema.Diagnostics)
+
+	// endpoint sets a slug and one credential arm.
+	endpoint := func(slug string, arm path.Path, value any) tftypes.Value {
+		plan := tfsdk.Plan{
+			Schema: schema.Schema,
+			Raw:    tftypes.NewValue(schema.Schema.Type().TerraformType(ctx), nil),
+		}
+		require.False(t, plan.SetAttribute(ctx, path.Root("slug"), types.StringValue(slug)).HasError())
+		require.False(t, plan.SetAttribute(ctx, path.Root("credentials_version"), types.Int64Value(1)).HasError())
+		require.False(t, plan.SetAttribute(ctx, path.Root("credentials_configured"), types.BoolValue(true)).HasError())
+		require.False(t, plan.SetAttribute(ctx, arm, value).HasError())
+		return plan.Raw
+	}
+
+	headers, diags := types.MapValueFrom(ctx, types.StringType, map[string]types.String{"X-API-Key": types.StringValue("key")})
+	require.False(t, diags.HasError(), "%v", diags)
+
+	var (
+		basicPath   = path.Root("credentials").AtName("basic_auth").AtName("password")
+		headersPath = path.Root("credentials").AtName("auth_headers").AtName("headers")
+	)
+
+	tests := []struct {
+		name      string
+		state     tftypes.Value
+		config    tftypes.Value
+		wantError bool
+	}{
+		{
+			name:   "slug change allows an auth method switch",
+			state:  endpoint("logs-old", basicPath, types.StringValue("old")),
+			config: endpoint("logs-new", headersPath, headers),
+		},
+		{
+			name:      "unchanged slug still refuses an auth method switch",
+			state:     endpoint("logs-old", basicPath, types.StringValue("old")),
+			config:    endpoint("logs-old", headersPath, headers),
+			wantError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			plan := tfsdk.Plan{Schema: schema.Schema, Raw: tt.config}
+			req := resource.ModifyPlanRequest{
+				State:  tfsdk.State{Schema: schema.Schema, Raw: tt.state},
+				Config: tfsdk.Config{Schema: schema.Schema, Raw: tt.config},
+				Plan:   plan,
+			}
+			resp := resource.ModifyPlanResponse{Plan: plan}
+			newResource().ModifyPlan(t.Context(), req, &resp)
+
+			if tt.wantError {
+				require.True(t, resp.Diagnostics.HasError(), "expected the method-change diagnostic")
+				require.Contains(t, resp.Diagnostics.Errors()[0].Summary(), "Credential type cannot be changed")
+				return
+			}
+			require.False(t, resp.Diagnostics.HasError(), "%v", resp.Diagnostics)
+		})
+	}
+}
