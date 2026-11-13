@@ -32,23 +32,16 @@ A dispatched branch can read every other `QA` secret. Write access is the contro
 
 ## Credentials
 
-| | |
-|---|---|
-| Secret | `COREWEAVE_API_TOKEN`, in the `QA` environment — the same secret every suite except `object_storage` uses |
-| Organization | must have **exactly one** registered cluster, in `US-LAB-01A` |
-| If absent | the suite fails on the first API call |
+| Where | Token | Organization |
+|---|---|---|
+| CI | `COREWEAVE_API_TOKEN`, `QA` environment | shared, as every suite except `object_storage` |
+| Local | `COREWEAVE_OBSERVABILITY_API_TOKEN` | Telemetry Relay QA |
 
-**The organization must be lab-only, and must have a registration.** A pipeline creates one connector per source Kafka cluster holding the stream's topics, so an organization with a production cluster footprint would get real connectors in a production zone. An organization with no registered clusters at all fails `CreatePipeline`'s precondition, so the suite cannot run there either.
+Local runs never use the shared token: the sweeper deletes every endpoint and pipeline prefixed `test-acc-` in the token's organization, which would hit an in-flight CI run.
 
-An expired token fails as `401` on the first API call, which reads as a broken test rather than a lapsed credential — check the credential before debugging a suite that was green yesterday.
+Either organization must be lab-only with exactly one registered cluster, in `US-LAB-01A`. A pipeline creates one connector per source Kafka cluster holding the stream's topics, so a production footprint would get real connectors in a production zone; no registration at all fails `CreatePipeline`'s precondition. Access is granted rather than self-served — ask in the team's internal channel.
 
-Local runs need a token for the same organization: the sweeper deletes every endpoint and pipeline prefixed `test-acc-` in whatever organization the token belongs to. They also hold no `acceptance-test-<suite>` lock, so check for an in-flight manual or release run first.
-
-### Getting a token
-
-Minting one requires console access to the shared QA organization, which is granted rather than self-served — ask in the team's internal channel; the organization and the account that owns it are recorded in the team KB rather than here. Once you have access, create the token in the QA console and export it as `COREWEAVE_API_TOKEN`.
-
-Signing up for your own QA organization is not a substitute. A fresh organization has no registered clusters, so its streams carry no topics and `CreatePipeline` fails its precondition before any resource is created.
+An expired token fails as `401` on the first API call, which reads as a broken test rather than a lapsed credential.
 
 Confirm an organization is lab-only by listing its streams and checking every `zones_active`:
 
