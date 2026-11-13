@@ -173,8 +173,6 @@ func (r *HTTPSForwardingEndpointResource) ValidateConfig(ctx context.Context, re
 // authMethodNotImplemented marks a credentials arm with no case below.
 const authMethodNotImplemented = "not_implemented"
 
-// attributeSource is the part of tfsdk.State and tfsdk.Config that authMethod
-// needs, so one reader serves both.
 // authMethod names the configured arm, or "" when no block is set. Only the
 // secret values are write-only, so the arm itself survives in state.
 //
