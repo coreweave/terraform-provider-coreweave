@@ -58,6 +58,21 @@ func TestHTTPSModifyPlanCredentialArms(t *testing.T) {
 		basicKnown     = credentials(passwordPath, types.StringValue("old"), 1)
 	)
 
+	// unknownObject models a whole object resolved from another resource: the
+	// attribute at p is unknown rather than its leaves.
+	unknownObject := func(base tftypes.Value, p path.Path) tftypes.Value {
+		attribute, diags := schema.Schema.AttributeAtPath(ctx, p)
+		require.False(t, diags.HasError(), "%v", diags)
+		object, ok := attribute.GetType().(types.ObjectType)
+		require.True(t, ok, "%s is not an object attribute", p)
+
+		plan := tfsdk.Plan{Schema: schema.Schema, Raw: base}
+		require.False(t, plan.SetAttribute(ctx, p, types.ObjectUnknown(object.AttrTypes)).HasError())
+		return plan.Raw
+	}
+	basicUnknownTLS := unknownObject(basicKnown, path.Root("tls"))
+	basicUnknownCredentials := unknownObject(basicKnown, path.Root("credentials"))
+
 	tests := []struct {
 		name      string
 		state     tftypes.Value
@@ -88,6 +103,17 @@ func TestHTTPSModifyPlanCredentialArms(t *testing.T) {
 			config:    headersRotated,
 			wantError: true,
 		},
+		{
+			name:   "unchanged auth method with unknown TLS object",
+			state:  basicKnown,
+			config: basicUnknownTLS,
+		},
+		{
+			// The arm cannot be read, so the guard defers rather than guesses.
+			name:   "unknown credentials object defers the arm check",
+			state:  basicKnown,
+			config: basicUnknownCredentials,
+		},
 	}
 
 	for _, tt := range tests {
@@ -106,6 +132,113 @@ func TestHTTPSModifyPlanCredentialArms(t *testing.T) {
 			if tt.wantError {
 				require.True(t, resp.Diagnostics.HasError(), "expected the method-change diagnostic")
 				require.Contains(t, resp.Diagnostics.Errors()[0].Summary(), "Credential type cannot be changed")
+				return
+			}
+			require.False(t, resp.Diagnostics.HasError(), "%v", resp.Diagnostics)
+		})
+	}
+}
+
+// TestHTTPSModifyPlanAddressChange checks that an address edit cannot preserve
+// credentials the API will no longer accept, while leaving every case that
+// carries no stored credentials across the change alone.
+func TestHTTPSModifyPlanAddressChange(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+
+	newResource := func() *observability.HTTPSForwardingEndpointResource {
+		r, ok := observability.NewForwardingEndpointHTTPSResource().(*observability.HTTPSForwardingEndpointResource)
+		require.True(t, ok, "unexpected resource type")
+		return r
+	}
+
+	var schema resource.SchemaResponse
+	newResource().Schema(ctx, resource.SchemaRequest{}, &schema)
+	require.False(t, schema.Diagnostics.HasError(), "%v", schema.Diagnostics)
+
+	// endpoint builds a value with an address, the rotation counter, whether the
+	// server holds credentials, and optionally a basic_auth block.
+	endpoint := func(address string, version int64, configured, withBlock bool) tftypes.Value {
+		plan := tfsdk.Plan{
+			Schema: schema.Schema,
+			Raw:    tftypes.NewValue(schema.Schema.Type().TerraformType(ctx), nil),
+		}
+		set := func(p path.Path, v any) {
+			require.False(t, plan.SetAttribute(ctx, p, v).HasError())
+		}
+		set(path.Root("endpoint"), types.StringValue(address))
+		set(path.Root("credentials_version"), types.Int64Value(version))
+		set(path.Root("credentials_configured"), types.BoolValue(configured))
+		if withBlock {
+			set(path.Root("credentials").AtName("basic_auth").AtName("password"), types.StringValue("secret"))
+		}
+		return plan.Raw
+	}
+
+	const (
+		oldAddress = "https://logs.example.com/v1"
+		newAddress = "https://logs.example.com/v2"
+	)
+
+	tests := []struct {
+		name      string
+		state     tftypes.Value
+		config    tftypes.Value
+		wantError bool
+	}{
+		{
+			name:      "address change with an unchanged counter is refused",
+			state:     endpoint(oldAddress, 1, true, true),
+			config:    endpoint(newAddress, 1, true, true),
+			wantError: true,
+		},
+		{
+			name:   "address change with a bumped counter is allowed",
+			state:  endpoint(oldAddress, 1, true, true),
+			config: endpoint(newAddress, 2, true, true),
+		},
+		{
+			// Dropping the block clears the credentials, so none are preserved.
+			name:   "address change that clears credentials is allowed",
+			state:  endpoint(oldAddress, 1, true, true),
+			config: endpoint(newAddress, 1, true, false),
+		},
+		{
+			// Adopted after import: nothing in config can resend them.
+			name:      "address change with no block to resend from is refused",
+			state:     endpoint(oldAddress, 1, true, false),
+			config:    endpoint(newAddress, 1, true, false),
+			wantError: true,
+		},
+		{
+			name:   "address change with no stored credentials is allowed",
+			state:  endpoint(oldAddress, 1, false, false),
+			config: endpoint(newAddress, 1, false, false),
+		},
+		{
+			name:   "unchanged address is allowed",
+			state:  endpoint(oldAddress, 1, true, true),
+			config: endpoint(oldAddress, 1, true, true),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			plan := tfsdk.Plan{Schema: schema.Schema, Raw: tt.config}
+			req := resource.ModifyPlanRequest{
+				State:  tfsdk.State{Schema: schema.Schema, Raw: tt.state},
+				Config: tfsdk.Config{Schema: schema.Schema, Raw: tt.config},
+				Plan:   plan,
+			}
+			resp := resource.ModifyPlanResponse{Plan: plan}
+			newResource().ModifyPlan(t.Context(), req, &resp)
+
+			if tt.wantError {
+				require.True(t, resp.Diagnostics.HasError(), "expected the address-change diagnostic")
+				require.Contains(t, resp.Diagnostics.Errors()[0].Summary(), "Credentials must be updated when the address changes")
 				return
 			}
 			require.False(t, resp.Diagnostics.HasError(), "%v", resp.Diagnostics)
