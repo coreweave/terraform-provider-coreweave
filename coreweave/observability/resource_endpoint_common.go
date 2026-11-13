@@ -123,7 +123,7 @@ func carriesCredentialPayload(action clusterv1beta1.UpdateEndpointRequest_Creden
 // credentials. The API requires them to be resent when the address changes;
 // preserving them leaves the endpoint unable to deliver.
 //
-// It defers while any input is unknown; Update still chooses the action.
+// It defers while any input is unknown.
 func checkAddressChange(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse, address path.Path) {
 	var priorAddress, plannedAddress types.String
 	resp.Diagnostics.Append(req.State.GetAttribute(ctx, address, &priorAddress)...)
@@ -163,9 +163,7 @@ func checkAddressChange(ctx context.Context, req resource.ModifyPlanRequest, res
 }
 
 // addressChangeDiagnostics reports an update that would keep the stored
-// credentials while the address changes. The decision comes from
-// credentialAction rather than a second copy of its rules, so adoption after
-// an import still sends the credentials and is allowed through.
+// credentials while the address changes.
 func addressChangeDiagnostics(address path.Path, addressChanged bool, in credentialStatus) diag.Diagnostics {
 	var diagnostics diag.Diagnostics
 	if !addressChanged || !in.ServerHasCredentials ||

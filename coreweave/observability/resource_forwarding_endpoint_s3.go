@@ -303,8 +303,6 @@ func (r *S3ForwardingEndpointResource) Update(ctx context.Context, req resource.
 	}
 	action := credentialAction(status)
 
-	// ModifyPlan defers this when a value is unknown at plan time, so the
-	// resolved address is checked once more before the request goes out.
 	resp.Diagnostics.Append(addressChangeDiagnostics(path.Root("uri"), !state.URI.Equal(data.URI), status)...)
 	if resp.Diagnostics.HasError() {
 		return
