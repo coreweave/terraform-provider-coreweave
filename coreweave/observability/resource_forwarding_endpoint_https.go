@@ -176,10 +176,9 @@ const authMethodNotImplemented = "not_implemented"
 // authMethod names the configured arm, or "" when no block is set. Only the
 // secret values are write-only, so the arm itself survives in state.
 //
-// It takes the credentials object rather than the model: an unknown object
-// elsewhere in the config, such as tls resolved from another resource, cannot
-// decode into its model pointer and would fail the plan. deferred reports an
-// unknown shape, where the arm cannot be read yet.
+// An unknown object anywhere in the config cannot decode into the model's
+// pointer fields, so this reads the credentials object alone. deferred
+// reports an unknown shape, where the arm cannot be read yet.
 func authMethod(credentials types.Object) (method string, deferred bool) {
 	switch {
 	case credentials.IsUnknown():
@@ -405,8 +404,6 @@ func (r *HTTPSForwardingEndpointResource) Update(ctx context.Context, req resour
 	}
 	action := credentialAction(status)
 
-	// ModifyPlan defers this when a value is unknown at plan time, so the
-	// resolved address is checked once more before the request goes out.
 	resp.Diagnostics.Append(addressChangeDiagnostics(path.Root("endpoint"), !state.Endpoint.Equal(data.Endpoint), status)...)
 	if resp.Diagnostics.HasError() {
 		return
