@@ -294,6 +294,13 @@ func TestHandleAPIError(t *testing.T) {
 				"Service Unavailable",
 				"unavailable: identity provider unreachable",
 			)},
+		}, {
+			name: "Unimplemented error",
+			err:  connect.NewError(connect.CodeUnimplemented, "Directory write API is disabled"),
+			want: diag.Diagnostics{diag.NewErrorDiagnostic(
+				"API Not Available",
+				"The requested API is not implemented or is not enabled for this organization: unimplemented: Directory write API is disabled. Contact CoreWeave support to enable it for your organization.",
+			)},
 		},
 	}
 

@@ -296,6 +296,12 @@ func handleAPIError(ctx context.Context, err error, diagnostics *diag.Diagnostic
 			connectErr.Error(),
 		)
 
+	case connect.CodeUnimplemented:
+		diagnostics.AddError(
+			"API Not Available",
+			fmt.Sprintf("The requested API is not implemented or is not enabled for this organization: %s. Contact CoreWeave support to enable it for your organization.", connectErr.Error()),
+		)
+
 	case connect.CodePermissionDenied:
 		diagnostics.AddError(
 			"Unauthorized",

@@ -1,0 +1,232 @@
+package serviceaccount
+
+import (
+	"context"
+	"errors"
+	"testing"
+	"time"
+
+	directoryv1alpha "buf.build/gen/go/coreweave/directory/protocolbuffers/go/coreweave/directory/v1alpha"
+	"connectrpc.com/connect/v2"
+	frameworkresource "github.com/hashicorp/terraform-plugin-framework/resource"
+	resourceschema "github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/timestamppb"
+)
+
+func TestReadBackCreatedServiceAccount(t *testing.T) {
+	t.Parallel()
+
+	t.Run("retries NotFound until visible", func(t *testing.T) {
+		t.Parallel()
+		calls := 0
+		account, err := readBackCreatedServiceAccount(t.Context(), serviceAccountReadBackPolicy{
+			timeout: 100 * time.Millisecond, initialDelay: time.Millisecond, maxDelay: 2 * time.Millisecond,
+		}, func(context.Context) (*directoryv1alpha.ServiceAccount, error) {
+			calls++
+			if calls < 3 {
+				return nil, connect.Errorf(connect.CodeNotFound, "not visible")
+			}
+			return &directoryv1alpha.ServiceAccount{Name: "organizations/a1b2c3/serviceAccounts/ci-agent"}, nil
+		})
+		require.NoError(t, err)
+		require.NotNil(t, account)
+		assert.Equal(t, 3, calls)
+	})
+
+	t.Run("does not retry permanent errors", func(t *testing.T) {
+		t.Parallel()
+		calls := 0
+		permanentErr := connect.Errorf(connect.CodePermissionDenied, "denied")
+		_, err := readBackCreatedServiceAccount(t.Context(), serviceAccountReadBackPolicy{
+			timeout: 100 * time.Millisecond, initialDelay: time.Millisecond, maxDelay: 2 * time.Millisecond,
+		}, func(context.Context) (*directoryv1alpha.ServiceAccount, error) {
+			calls++
+			return nil, permanentErr
+		})
+		require.Same(t, permanentErr, err)
+		assert.Equal(t, connect.CodePermissionDenied, connect.CodeOf(err))
+		assert.Equal(t, 1, calls)
+	})
+
+	t.Run("stops at timeout", func(t *testing.T) {
+		t.Parallel()
+		_, err := readBackCreatedServiceAccount(t.Context(), serviceAccountReadBackPolicy{
+			timeout: 10 * time.Millisecond, initialDelay: time.Millisecond, maxDelay: 2 * time.Millisecond,
+		}, func(context.Context) (*directoryv1alpha.ServiceAccount, error) {
+			return nil, connect.Errorf(connect.CodeNotFound, "not visible")
+		})
+		require.Error(t, err)
+		assert.True(t, errors.Is(err, context.DeadlineExceeded))
+		assert.ErrorContains(t, err, "not visible")
+	})
+
+	t.Run("reports parent cancellation without claiming timeout", func(t *testing.T) {
+		t.Parallel()
+		ctx, cancel := context.WithCancel(t.Context())
+		cancel()
+		_, err := readBackCreatedServiceAccount(ctx, serviceAccountReadBackPolicy{
+			timeout: 30 * time.Second, initialDelay: time.Millisecond, maxDelay: 2 * time.Millisecond,
+		}, func(context.Context) (*directoryv1alpha.ServiceAccount, error) {
+			return nil, connect.Errorf(connect.CodeNotFound, "not visible")
+		})
+		require.Error(t, err)
+		assert.ErrorIs(t, err, context.Canceled)
+		assert.ErrorContains(t, err, "read-back was canceled")
+		assert.NotContains(t, err.Error(), "within 30s")
+	})
+
+	t.Run("normalizes a deadline reached during get", func(t *testing.T) {
+		t.Parallel()
+		_, err := readBackCreatedServiceAccount(t.Context(), serviceAccountReadBackPolicy{
+			timeout: 5 * time.Millisecond, initialDelay: time.Millisecond, maxDelay: 2 * time.Millisecond,
+		}, func(ctx context.Context) (*directoryv1alpha.ServiceAccount, error) {
+			<-ctx.Done()
+			return nil, connect.Errorf(connect.CodeDeadlineExceeded, "get deadline reached")
+		})
+		require.Error(t, err)
+		assert.ErrorIs(t, err, context.DeadlineExceeded)
+		assert.ErrorContains(t, err, "could not be read back within 5ms")
+		assert.ErrorContains(t, err, "get deadline reached")
+	})
+}
+
+func TestResourceSchemas(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]struct {
+		resource frameworkresource.Resource
+		required []string
+		computed []string
+		optional []string
+	}{
+		"service account": {
+			resource: NewServiceAccountResource(),
+			required: []string{"id", "organization_id"},
+			computed: []string{"name", "uid", "creator", "system_managed", "active", "created_at", "updated_at"},
+			optional: []string{"display_name"},
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			response := &frameworkresource.SchemaResponse{}
+			test.resource.Schema(t.Context(), frameworkresource.SchemaRequest{}, response)
+			require.False(t, response.Diagnostics.HasError(), response.Diagnostics.Errors())
+			diagnostics := response.Schema.ValidateImplementation(t.Context())
+			require.False(t, diagnostics.HasError(), diagnostics.Errors())
+			for _, attribute := range test.required {
+				assert.True(t, response.Schema.Attributes[attribute].IsRequired(), attribute)
+			}
+			for _, attribute := range test.computed {
+				assert.True(t, response.Schema.Attributes[attribute].IsComputed(), attribute)
+			}
+			for _, attribute := range test.optional {
+				assert.True(t, response.Schema.Attributes[attribute].IsOptional(), attribute)
+			}
+		})
+	}
+
+	response := &frameworkresource.SchemaResponse{}
+	NewServiceAccountResource().Schema(t.Context(), frameworkresource.SchemaRequest{}, response)
+	creator := response.Schema.Attributes["creator"].(resourceschema.StringAttribute)
+	assert.Len(t, creator.PlanModifiers, 1)
+	systemManaged := response.Schema.Attributes["system_managed"].(resourceschema.BoolAttribute)
+	assert.Len(t, systemManaged.PlanModifiers, 1)
+	active := response.Schema.Attributes["active"].(resourceschema.BoolAttribute)
+	assert.Empty(t, active.PlanModifiers)
+}
+
+func TestServiceAccountMetadataUsesIAMNamespace(t *testing.T) {
+	t.Parallel()
+	response := &frameworkresource.MetadataResponse{}
+	NewServiceAccountResource().Metadata(t.Context(), frameworkresource.MetadataRequest{ProviderTypeName: "coreweave"}, response)
+	assert.Equal(t, "coreweave_iam_service_account", response.TypeName)
+}
+
+func TestServiceAccountCreateRequest(t *testing.T) {
+	t.Parallel()
+	model := ServiceAccountResourceModel{
+		ID: types.StringValue("ci-agent"), OrganizationID: types.StringValue("a1b2c3"),
+		DisplayName: types.StringValue("CI agent"),
+	}
+	request := model.createRequest()
+	assert.Equal(t, "organizations/a1b2c3", request.GetParent())
+	assert.Equal(t, "ci-agent", request.GetServiceAccountId())
+	require.NotNil(t, request.GetServiceAccount())
+	assert.True(t, request.GetServiceAccount().HasDisplayName())
+	assert.Equal(t, "CI agent", request.GetServiceAccount().GetDisplayName())
+}
+
+func TestServiceAccountCreateRequestPreservesAbsentDisplayName(t *testing.T) {
+	t.Parallel()
+	model := ServiceAccountResourceModel{ID: types.StringValue("ci-agent"), OrganizationID: types.StringValue("a1b2c3"), DisplayName: types.StringNull()}
+	assert.False(t, model.createRequest().GetServiceAccount().HasDisplayName())
+}
+
+func TestServiceAccountSetFromProto(t *testing.T) {
+	t.Parallel()
+	created := time.Date(2026, 10, 21, 12, 0, 0, 0, time.UTC)
+	account := &directoryv1alpha.ServiceAccount{
+		Name: "organizations/a1b2c3/serviceAccounts/ci-agent", Uid: proto.String("8d39f431-715c-4c6c-916a-849292f97920"),
+		OrgId: proto.String("a1b2c3"), Creator: proto.String("organizations/a1b2c3/users/user-1"),
+		DisplayName: proto.String("CI agent"), SystemManaged: proto.Bool(false), Active: proto.Bool(true),
+		CreateTime: timestamppb.New(created), UpdateTime: timestamppb.New(created.Add(time.Hour)),
+	}
+	var model ServiceAccountResourceModel
+	require.NoError(t, model.setFromProto(account))
+	assert.Equal(t, "ci-agent", model.ID.ValueString())
+	assert.Equal(t, "a1b2c3", model.OrganizationID.ValueString())
+	assert.Equal(t, account.GetName(), model.Name.ValueString())
+	assert.Equal(t, account.GetUid(), model.UID.ValueString())
+	assert.Equal(t, "CI agent", model.DisplayName.ValueString())
+	assert.True(t, model.Active.ValueBool())
+	assert.Equal(t, created.Format(time.RFC3339), model.CreatedAt.ValueString())
+	assert.Equal(t, created.Add(time.Hour).Format(time.RFC3339), model.UpdatedAt.ValueString())
+}
+
+func TestServiceAccountSetFromProtoPreservesAbsentUpdateTime(t *testing.T) {
+	t.Parallel()
+	account := &directoryv1alpha.ServiceAccount{
+		Name: "organizations/a1b2c3/serviceAccounts/ci-agent",
+		Uid:  proto.String("8d39f431-715c-4c6c-916a-849292f97920"),
+	}
+	var model ServiceAccountResourceModel
+	require.NoError(t, model.setFromProto(account))
+	assert.True(t, model.UpdatedAt.IsNull())
+}
+
+func TestServiceAccountFillUnknownFromProtoPreservesKnownValues(t *testing.T) {
+	t.Parallel()
+	model := ServiceAccountResourceModel{
+		ID:             types.StringValue("ci-agent"),
+		OrganizationID: types.StringValue("a1b2c3"),
+		Name:           types.StringValue("organizations/a1b2c3/serviceAccounts/ci-agent"),
+		UID:            types.StringValue("8d39f431-715c-4c6c-916a-849292f97920"),
+		DisplayName:    types.StringValue("planned display name"),
+		Active:         types.BoolUnknown(),
+	}
+	account := &directoryv1alpha.ServiceAccount{
+		Name:        "organizations/a1b2c3/serviceAccounts/ci-agent",
+		Uid:         proto.String("8d39f431-715c-4c6c-916a-849292f97920"),
+		DisplayName: proto.String("remote display name"),
+		Active:      proto.Bool(false),
+	}
+
+	require.NoError(t, model.fillUnknownFromProto(account))
+	assert.Equal(t, "planned display name", model.DisplayName.ValueString())
+	assert.False(t, model.Active.ValueBool())
+}
+
+func TestCanonicalNameParsing(t *testing.T) {
+	t.Parallel()
+	organizationID, serviceAccountID, err := parseServiceAccountName("organizations/a1b2c3/serviceAccounts/ci-agent")
+	require.NoError(t, err)
+	assert.Equal(t, "a1b2c3", organizationID)
+	assert.Equal(t, "ci-agent", serviceAccountID)
+	_, _, err = parseServiceAccountName("ci-agent")
+	require.Error(t, err)
+}
