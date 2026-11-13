@@ -16,6 +16,7 @@ import (
 	"buf.build/gen/go/coreweave/inference/connectrpc/go/v2/coreweave/inference/v1alpha1/inferencev1alpha1connect"
 	"buf.build/gen/go/coreweave/networking/connectrpc/go/v2/coreweave/networking/v1beta1/networkingv1beta1connect"
 	"buf.build/gen/go/coreweave/sandbox/connectrpc/go/v2/coreweave/sandbox/v1/sandboxv1connect"
+	"buf.build/gen/go/coreweave/telemetry-relay/connectrpc/go/v2/coreweave/telemetryrelay/svc/cluster/v1beta1/clusterv1beta1connect"
 	"buf.build/gen/go/coreweave/workload-federation/connectrpc/go/v2/coreweave/workload_federation/control_plane/v1beta1/control_planev1beta1connect"
 	"connectrpc.com/connect/v2"
 	"connectrpc.com/connect/v2/connecthttp"
@@ -91,6 +92,7 @@ func NewClientWithOptions(
 		WFControlPlaneServiceClient: control_planev1beta1connect.NewWFControlPlaneServiceClient(rpcClient),
 		CWObjectClient:              cwobjectv1connect.NewCWObjectClient(rpcClient),
 		Directory:                   directoryv1alphaconnect.NewDirectoryServiceClient(rpcClient),
+		TelemetryRelayServiceClient: clusterv1beta1connect.NewTelemetryRelayServiceClient(rpcClient),
 		Inference: &InferenceClient{
 			HotLoadServiceClient:       inferencev1alpha1connect.NewHotLoadServiceClient(rpcClient),
 			DeploymentServiceClient:    inferencev1alpha1connect.NewDeploymentServiceClient(rpcClient),
@@ -120,6 +122,7 @@ type Client struct {
 	networkingv1beta1connect.VPCServiceClient
 	control_planev1beta1connect.WFControlPlaneServiceClient
 	cwobjectv1connect.CWObjectClient
+	clusterv1beta1connect.TelemetryRelayServiceClient
 
 	Inference               *InferenceClient
 	SandboxRunnerManagement sandboxv1connect.RunnerManagementServiceClient

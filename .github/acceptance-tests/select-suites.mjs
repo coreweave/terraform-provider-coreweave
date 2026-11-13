@@ -1,7 +1,7 @@
 import { readFileSync, appendFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 
-export const allSuites = ['caller_identity', 'cks', 'networking', 'object_storage', 'inference', 'container_registry'];
+export const allSuites = ['caller_identity', 'cks', 'networking', 'object_storage', 'inference', 'container_registry', 'observability'];
 
 export function selectSuites(pr, expectedHead, repository) {
   if (!/^[a-f0-9]{40}$/.test(expectedHead) || pr?.state !== 'open' || pr?.head?.sha !== expectedHead) {
