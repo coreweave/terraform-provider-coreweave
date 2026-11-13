@@ -71,7 +71,6 @@ func TestS3ModifyPlanAddressChange(t *testing.T) {
 			wantError: true,
 		},
 		{
-			// Eric's case: the bucket is the same, only the key prefix moves.
 			name:      "key-prefix change with an unchanged counter is refused",
 			state:     endpoint(bucket, 1),
 			config:    endpoint(prefixedOnly, 1),
