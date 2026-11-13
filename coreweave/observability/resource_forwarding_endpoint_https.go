@@ -211,6 +211,11 @@ func (r *HTTPSForwardingEndpointResource) ModifyPlan(ctx context.Context, req re
 		return
 	}
 
+	replacing, deferred := planReplacesEndpoint(ctx, req, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() || deferred || replacing {
+		return
+	}
+
 	checkAddressChange(ctx, req, resp, path.Root("endpoint"))
 
 	var storedCredentials, configCredentials types.Object
