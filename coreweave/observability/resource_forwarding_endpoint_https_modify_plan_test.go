@@ -253,7 +253,7 @@ func TestHTTPSModifyPlanAddressChange(t *testing.T) {
 		{
 			// A changed slug replaces the endpoint, so nothing is preserved.
 			name:   "slug change alongside an address change is allowed",
-			state:  endpoint(oldAddress, 1, true, true),
+			state:  withSlug(endpoint(oldAddress, 1, true, true), "logs-old"),
 			config: withSlug(endpoint(newAddress, 1, true, true), "logs-new"),
 		},
 		{
@@ -293,6 +293,16 @@ func TestHTTPSModifyPlanAddressChange(t *testing.T) {
 				return
 			}
 			require.False(t, resp.Diagnostics.HasError(), "%v", resp.Diagnostics)
+			if tt.name == "unknown planned slug defers the address check" {
+				// Replan the same change after the slug resolves to the existing one.
+				resolved := withSlug(tt.config, "logs-old")
+				req.Plan.Raw = resolved
+				req.Config.Raw = resolved
+				resp = resource.ModifyPlanResponse{Plan: req.Plan}
+				newResource().ModifyPlan(t.Context(), req, &resp)
+				require.True(t, resp.Diagnostics.HasError(), "resolved in-place address change must be refused")
+				require.Contains(t, resp.Diagnostics.Errors()[0].Summary(), "Credentials must be updated when the address changes")
+			}
 		})
 	}
 }
