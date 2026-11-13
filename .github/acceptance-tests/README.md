@@ -32,18 +32,16 @@ A dispatched branch can read every other `QA` secret. Write access is the contro
 
 ## Credentials
 
-| | |
-|---|---|
-| Secret | `COREWEAVE_OBSERVABILITY_API_TOKEN`, in the `QA` environment |
-| Organization | Telemetry Relay QA, lab-only clusters |
-| Expires | **2027-10-01** |
-| If absent | fails closed; never falls back to the shared `COREWEAVE_API_TOKEN` |
+| Where | Token | Organization |
+|---|---|---|
+| CI | `COREWEAVE_API_TOKEN`, `QA` environment | shared, as every suite except `object_storage` |
+| Local | `COREWEAVE_OBSERVABILITY_API_TOKEN` | Telemetry Relay QA |
 
-**The organization must be lab-only.** A pipeline creates one connector per source Kafka cluster holding the stream's topics, so an organization with a production cluster footprint would get real connectors in a production zone.
+Local runs never use the shared token: the sweeper deletes every endpoint and pipeline prefixed `test-acc-` in the token's organization, which would hit an in-flight CI run.
 
-An expired token fails as `401` on the first API call, which reads as a broken test rather than a lapsed credential — check the expiry before debugging a suite that was green yesterday. To rotate, mint a replacement in the QA console and overwrite the secret; no workflow edit needed.
+Either organization must be lab-only with exactly one registered cluster, in `US-LAB-01A`. A pipeline creates one connector per source Kafka cluster holding the stream's topics, so a production footprint would get real connectors in a production zone; no registration at all fails `CreatePipeline`'s precondition. Access is granted rather than self-served — ask in the team's internal channel.
 
-Local runs need a token for the same organization: the sweeper deletes every endpoint and pipeline prefixed `test-acc-` in whatever organization the token belongs to. They also hold no `acceptance-test-<suite>` lock, so check for an in-flight manual or release run first.
+An expired token fails as `401` on the first API call, which reads as a broken test rather than a lapsed credential.
 
 Confirm an organization is lab-only by listing its streams and checking every `zones_active`:
 
