@@ -125,7 +125,7 @@ Run the non-blocking group separately:
 make testacc-nonblocking SUITES=cks TEST_ACC_PARALLEL=1 TEST_ACC_TIMEOUT=60m
 ```
 
-The target sets `TF_ACC=1`, adds `-tags=nonblocking`, selects `^TestNonBlockingAcceptance$`, and writes Go JSON to `.test-results/nonblocking-acceptance/[SUITE].json`, where `[SUITE]` is the suite name. It disables Go result caching with `-count=1`. To change the output directory, override `NONBLOCKING_RESULTS_DIR`. It retains failure status while running every selected suite. A package without the group reports no tests to run and passes. Unit-level cases in a suite package use the same group and job.
+The target requires Bash and Node.js. It sets `TF_ACC=1`, adds `-tags=nonblocking`, selects `^TestNonBlockingAcceptance$`, and streams readable test output while saving Go JSON to `.test-results/nonblocking-acceptance/[SUITE].json`, where `[SUITE]` is the suite name. It disables Go result caching with `-count=1`. To change the output directory, override `NONBLOCKING_RESULTS_DIR`. It retains failure status while running every selected suite. A package without the group reports no tests to run and passes. Unit-level cases in a suite package use the same group and job.
 
 The CI summary identifies each marked case by package and subtest name and shows its result. A pass says: `Passing: review for inclusion in required acceptance tests.` After reviewing the results, restore the body's uppercase `Test` prefix and remove its runner registration and temporary comment. Use a normal test name without `NonBlocking`. The body stays in its original file with its assertions intact. Missing terminal results are `UNKNOWN`, not a pass.
 
