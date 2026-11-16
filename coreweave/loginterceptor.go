@@ -4,14 +4,81 @@ import (
 	"context"
 	"errors"
 	"io"
+	"strings"
 
 	"connectrpc.com/connect/v2"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"google.golang.org/protobuf/encoding/prototext"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/reflect/protoreflect"
 )
 
-const logMessageKey = "message"
+const (
+	logMessageKey  = "message"
+	logRedactedKey = "redacted"
+)
+
+const (
+	fieldSecretKey       protoreflect.Name = "secret_key"
+	fieldSecretAccessKey protoreflect.Name = "secret_access_key"
+	// Session token: the third part of the credential triple, usable on its own.
+	fieldToken protoreflect.Name = "token"
+)
+
+// redactedFields names the fields cleared before a message is logged. Anything
+// unlisted is logged verbatim: prototext serializes everything, and Sensitive
+// and WriteOnly never reach tflog fields. Registered, not detected.
+var redactedFields = map[protoreflect.FullName][]protoreflect.Name{
+	"coreweave.telemetryrelay.svc.cluster.v1beta1.CreateEndpointRequest": {"kafka", "prometheus", "s3", "https"},
+	"coreweave.telemetryrelay.svc.cluster.v1beta1.UpdateEndpointRequest": {"kafka", "prometheus", "s3", "https"},
+
+	"coreweave.cwobject.v1.CreateAccessKeyFromJWTResponse":            {fieldSecretKey},
+	"coreweave.cwobject.v1.CreateAccessKeyFromApiTokenResponse":       {fieldSecretAccessKey, fieldToken},
+	"coreweave.cwobject.v1.CreateAccessKeyFromSAMLResponse":           {fieldSecretKey},
+	"coreweave.cwobject.v1.CreateAccessKeyFromContainerCredsResponse": {fieldSecretAccessKey, fieldToken},
+	"coreweave.cwobject.v1.CreateAccessKeyFromOIDCResponse":           {fieldSecretKey},
+}
+
+// redactCredentials copies because the message is on its way to the wire.
+func redactCredentials(message proto.Message) (proto.Message, []string) {
+	descriptor := message.ProtoReflect().Descriptor()
+	names, registered := redactedFields[descriptor.FullName()]
+	if !registered {
+		return message, nil
+	}
+
+	clone := proto.Clone(message)
+	reflected := clone.ProtoReflect()
+	fields := descriptor.Fields()
+
+	var cleared []string
+	for _, name := range names {
+		field := fields.ByName(name)
+		if field == nil || !reflected.Has(field) {
+			continue
+		}
+		reflected.Clear(field)
+		cleared = append(cleared, string(name))
+	}
+	if len(cleared) == 0 {
+		return message, nil
+	}
+
+	return clone, cleared
+}
+
+func logMessageFields(fields map[string]any, msg any) {
+	message, ok := msg.(proto.Message)
+	if !ok {
+		return
+	}
+
+	redacted, cleared := redactCredentials(message)
+	fields[logMessageKey] = logFormatMessage(redacted)
+	if len(cleared) > 0 {
+		fields[logRedactedKey] = strings.Join(cleared, ",")
+	}
+}
 
 func tfLogBaseFields(info *connect.CallInfo) map[string]any {
 	return map[string]any{
@@ -31,9 +98,7 @@ func logFormatMessage(message proto.Message) string {
 
 func tfLogRequest(ctx context.Context, info *connect.CallInfo, msg any) {
 	fields := tfLogBaseFields(info)
-	if message, ok := msg.(proto.Message); ok {
-		fields[logMessageKey] = logFormatMessage(message)
-	}
+	logMessageFields(fields, msg)
 	tflog.Debug(ctx, "sending API request", fields)
 }
 
@@ -44,9 +109,7 @@ func tfLogResponse(ctx context.Context, info *connect.CallInfo, msg any, err err
 		tflog.Debug(ctx, "got nil or invalid API response", fields)
 		return
 	}
-	if message, ok := msg.(proto.Message); ok {
-		fields[logMessageKey] = logFormatMessage(message)
-	}
+	logMessageFields(fields, msg)
 	tflog.Debug(ctx, "received API response", fields)
 }
 

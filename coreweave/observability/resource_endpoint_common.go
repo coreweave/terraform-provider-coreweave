@@ -1,0 +1,431 @@
+package observability
+
+import (
+	"context"
+	"fmt"
+	"time"
+
+	clusterv1beta1 "buf.build/gen/go/coreweave/telemetry-relay/protocolbuffers/go/coreweave/telemetryrelay/svc/cluster/v1beta1"
+	typesv1beta1 "buf.build/gen/go/coreweave/telemetry-relay/protocolbuffers/go/coreweave/telemetryrelay/types/v1beta1"
+	"connectrpc.com/connect/v2"
+	"github.com/coreweave/terraform-provider-coreweave/coreweave"
+	"github.com/coreweave/terraform-provider-coreweave/coreweave/observability/internal/model"
+	"github.com/coreweave/terraform-provider-coreweave/internal/coretf"
+	"github.com/hashicorp/terraform-plugin-framework-timeouts/resource/timeouts"
+	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
+	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/path"
+	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
+	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/retry"
+)
+
+const (
+	// Default deadline for an endpoint CRUD operation. Readiness depends on the
+	// customer's destination accepting traffic, so operators can override this
+	// per resource through the `timeouts` attribute.
+	endpointTimeout = 5 * time.Minute
+)
+
+func commonEndpointSchema(ctx context.Context) map[string]schema.Attribute {
+	return map[string]schema.Attribute{
+		"slug": schema.StringAttribute{
+			MarkdownDescription: "The slug of the forwarding endpoint. Used as a unique identifier. Must be 3-32 characters, start with an alphanumeric character, and contain only alphanumeric characters and hyphens.",
+			Required:            true,
+			PlanModifiers: []planmodifier.String{
+				stringplanmodifier.RequiresReplace(),
+			},
+			Validators: []validator.String{
+				stringvalidator.LengthBetween(slugMinLength, endpointSlugMaxLength),
+				stringvalidator.RegexMatches(slugPattern, slugPatternDetail),
+			},
+		},
+		"display_name": schema.StringAttribute{
+			MarkdownDescription: "The display name of the forwarding endpoint. " +
+				"`UpdateEndpoint` currently rejects a change as immutable, so renaming an existing endpoint fails at apply.",
+			Required: true,
+			Validators: []validator.String{
+				stringvalidator.LengthBetween(1, displayNameMaxLength),
+			},
+		},
+		"created_at": schema.StringAttribute{
+			MarkdownDescription: "The creation time of the forwarding endpoint.",
+			Computed:            true,
+			CustomType:          timetypes.RFC3339Type{},
+			PlanModifiers: []planmodifier.String{
+				// created_at is fixed for the life of the endpoint, so pinning it to
+				// state keeps it out of every plan. The volatile status attributes below
+				// deliberately have no such modifier.
+				stringplanmodifier.UseStateForUnknown(),
+			},
+		},
+		"updated_at": schema.StringAttribute{
+			MarkdownDescription: "The last update time of the forwarding endpoint.",
+			Computed:            true,
+			CustomType:          timetypes.RFC3339Type{},
+		},
+		// state and state_message are observed, not desired: the server moves them
+		// independently of config (a healthy endpoint can go CONNECTED -> ERROR with
+		// no plan in sight). UseStateForUnknown() here would make the plan assert they
+		// cannot change, so Terraform would report a value it has no basis for. Leave
+		// them unpinned and let each plan show `(known after apply)`.
+		"state": schema.StringAttribute{
+			MarkdownDescription: fmt.Sprintf("The state of the forwarding endpoint. One of: %s.", coreweave.EnumMarkdownValues(typesv1beta1.ForwardingEndpointState_name, true)),
+			Computed:            true,
+		},
+		"state_message": schema.StringAttribute{
+			MarkdownDescription: "Additional context about the current state, most useful when `state` is `FORWARDING_ENDPOINT_STATE_ERROR`.",
+			Computed:            true,
+		},
+		"credentials_version": schema.Int64Attribute{
+			MarkdownDescription: "Rotation counter for `credentials`. Credential attributes are write-only, so they are null in both plan and state and cannot produce a diff on their own. " +
+				"Increment this whenever you change a credential value; the next apply then sends the new credentials. " +
+				"**Changing a credential without incrementing this is a silent no-op** — the stored credentials are left as they are.",
+			Optional: true,
+			Validators: []validator.Int64{
+				int64validator.AtLeast(0),
+			},
+		},
+		// Deliberately not pinned with UseStateForUnknown: CLEAR flips this to
+		// false during apply, and a pinned true would fail the plan as an
+		// inconsistent result. Planning it unknown on every update is correct.
+		"credentials_configured": schema.BoolAttribute{
+			MarkdownDescription: "Whether credentials are currently stored for this endpoint. Does not indicate that they are valid, only that they exist.",
+			Computed:            true,
+		},
+		"credentials_updated_at": schema.StringAttribute{
+			MarkdownDescription: "When credentials were last set or replaced. Null if credentials have never been configured.",
+			Computed:            true,
+			CustomType:          timetypes.RFC3339Type{},
+		},
+		"timeouts": timeouts.Attributes(ctx, timeouts.Opts{
+			Create: true,
+			Update: true,
+			Delete: true,
+		}),
+	}
+}
+
+// carriesCredentialPayload reports whether the action may set the credentials
+// oneof. PRESERVE and CLEAR must leave it unset or the server rejects the request.
+func carriesCredentialPayload(action clusterv1beta1.UpdateEndpointRequest_CredentialAction) bool {
+	return action == clusterv1beta1.UpdateEndpointRequest_CREDENTIAL_ACTION_REPLACE
+}
+
+// planReplacesEndpoint reports whether the plan changes the slug, which
+// destroys the endpoint and creates a new one from the configuration. The
+// checks in ModifyPlan all concern updating an endpoint in place, so none of
+// them apply then. deferred means the slug is unknown and the answer is not
+// available yet.
+func planReplacesEndpoint(ctx context.Context, req resource.ModifyPlanRequest, diagnostics *diag.Diagnostics) (replacing, deferred bool) {
+	var priorSlug, plannedSlug types.String
+	diagnostics.Append(req.State.GetAttribute(ctx, path.Root("slug"), &priorSlug)...)
+	diagnostics.Append(req.Plan.GetAttribute(ctx, path.Root("slug"), &plannedSlug)...)
+	if diagnostics.HasError() {
+		return false, false
+	}
+	if priorSlug.IsUnknown() || plannedSlug.IsUnknown() {
+		return false, true
+	}
+	return !priorSlug.Equal(plannedSlug), false
+}
+
+// checkAddressChange refuses an address edit that would preserve the stored
+// credentials. The API requires them to be resent when the address changes;
+// preserving them leaves the endpoint unable to deliver.
+//
+// It defers while any input is unknown.
+func checkAddressChange(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse, address path.Path) {
+	var priorAddress, plannedAddress types.String
+	resp.Diagnostics.Append(req.State.GetAttribute(ctx, address, &priorAddress)...)
+	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, address, &plannedAddress)...)
+
+	var serverHasCredentials types.Bool
+	resp.Diagnostics.Append(req.State.GetAttribute(ctx, path.Root("credentials_configured"), &serverHasCredentials)...)
+
+	var priorCredentials, configCredentials types.Object
+	resp.Diagnostics.Append(req.State.GetAttribute(ctx, path.Root("credentials"), &priorCredentials)...)
+	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("credentials"), &configCredentials)...)
+
+	var priorVersion, configVersion types.Int64
+	resp.Diagnostics.Append(req.State.GetAttribute(ctx, path.Root("credentials_version"), &priorVersion)...)
+	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("credentials_version"), &configVersion)...)
+
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	for _, value := range []attr.Value{
+		priorAddress, plannedAddress, serverHasCredentials,
+		priorCredentials, configCredentials, priorVersion, configVersion,
+	} {
+		if value.IsUnknown() {
+			return
+		}
+	}
+
+	status := credentialStatus{
+		ConfigHasBlock:       !configCredentials.IsNull(),
+		StateHasBlock:        !priorCredentials.IsNull(),
+		ServerHasCredentials: serverHasCredentials.ValueBool(),
+		PriorVersion:         priorVersion,
+		ConfigVersion:        configVersion,
+	}
+	resp.Diagnostics.Append(addressChangeDiagnostics(address, !priorAddress.Equal(plannedAddress), status)...)
+}
+
+// addressChangeDiagnostics reports an update that would keep the stored
+// credentials while the address changes.
+func addressChangeDiagnostics(address path.Path, addressChanged bool, in credentialStatus) diag.Diagnostics {
+	var diagnostics diag.Diagnostics
+	if !addressChanged || !in.ServerHasCredentials ||
+		credentialAction(in) != clusterv1beta1.UpdateEndpointRequest_CREDENTIAL_ACTION_PRESERVE {
+		return diagnostics
+	}
+
+	remedy := "Increment credentials_version, or revert the address."
+	if !in.ConfigHasBlock {
+		remedy = "Add a credentials block, or revert the address."
+	}
+	diagnostics.AddAttributeError(address, "Credentials must be updated when the address changes", remedy)
+	return diagnostics
+}
+
+// credentialAction decides what UpdateEndpointRequest.credential_action should
+// carry. Credential values are write-only, so this reads block presence.
+//
+//	config block absent, state had one, server has them -> CLEAR (rejected for S3)
+//	config block absent                                 -> PRESERVE
+//	config block present, nothing managed or stored yet -> REPLACE
+//	config block present, counter changed               -> REPLACE
+//	config block present                                -> PRESERVE
+//
+// A block where state had none is an adoption, as after an import.
+//
+// Only REPLACE may carry a payload; the server enforces that.
+func credentialAction(in credentialStatus) clusterv1beta1.UpdateEndpointRequest_CredentialAction {
+	switch {
+	case !in.ConfigHasBlock && in.StateHasBlock && in.ServerHasCredentials:
+		return clusterv1beta1.UpdateEndpointRequest_CREDENTIAL_ACTION_CLEAR
+	case !in.ConfigHasBlock:
+		return clusterv1beta1.UpdateEndpointRequest_CREDENTIAL_ACTION_PRESERVE
+	case !in.StateHasBlock || !in.ServerHasCredentials:
+		return clusterv1beta1.UpdateEndpointRequest_CREDENTIAL_ACTION_REPLACE
+	case !in.PriorVersion.Equal(in.ConfigVersion):
+		return clusterv1beta1.UpdateEndpointRequest_CREDENTIAL_ACTION_REPLACE
+	default:
+		return clusterv1beta1.UpdateEndpointRequest_CREDENTIAL_ACTION_PRESERVE
+	}
+}
+
+// credentialStatus is everything available for choosing a credential_action,
+// such as PRESERVE or CLEAR.
+type credentialStatus struct {
+	// ConfigHasBlock reports a credentials block in the configuration.
+	ConfigHasBlock bool
+	// StateHasBlock reports one in prior state: credentials Terraform manages.
+	StateHasBlock bool
+	// ServerHasCredentials is the endpoint's credentials_configured status.
+	ServerHasCredentials bool
+	// PriorVersion and ConfigVersion are the user-owned rotation counter.
+	PriorVersion  types.Int64
+	ConfigVersion types.Int64
+}
+
+func pollForEndpointReady(ctx context.Context, client *coreweave.Client, ref *typesv1beta1.ForwardingEndpointRef) (*typesv1beta1.ForwardingEndpoint, error) {
+	pollConf := retry.StateChangeConf{
+		Pending: []string{
+			typesv1beta1.ForwardingEndpointState_FORWARDING_ENDPOINT_STATE_PENDING.String(),
+		},
+		Target: []string{
+			typesv1beta1.ForwardingEndpointState_FORWARDING_ENDPOINT_STATE_CONNECTED.String(),
+		},
+		Refresh: func() (result any, state string, err error) {
+			getResp, err := client.GetEndpoint(ctx, &clusterv1beta1.GetEndpointRequest{
+				Ref: ref,
+			})
+			if err != nil {
+				return nil, typesv1beta1.ForwardingEndpointState_FORWARDING_ENDPOINT_STATE_UNSPECIFIED.String(), err
+			}
+			endpoint := getResp.GetEndpoint()
+			status := endpoint.GetStatus()
+
+			// ERROR is terminal. Without this the poll treats it as an unrecognized
+			// state and the user gets "unexpected state" after the full timeout
+			// instead of the server's reason, now.
+			if status.GetState() == typesv1beta1.ForwardingEndpointState_FORWARDING_ENDPOINT_STATE_ERROR {
+				return endpoint, status.GetState().String(), fmt.Errorf("endpoint %q entered state %s: %s",
+					ref.GetSlug(), status.GetState().String(), endpointStateMessage(status))
+			}
+
+			return endpoint, status.GetState().String(), nil
+		},
+		Timeout: coretf.PollTimeout(ctx, endpointTimeout),
+	}
+
+	rawEndpoint, err := pollConf.WaitForStateContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	endpoint, ok := rawEndpoint.(*typesv1beta1.ForwardingEndpoint)
+	if !ok {
+		return nil, fmt.Errorf("unexpected type %T when waiting for forwarding endpoint", rawEndpoint)
+	}
+
+	return endpoint, nil
+}
+
+// endpointStateMessage returns the server's explanation for the current state,
+// or a placeholder when it supplied none.
+func endpointStateMessage(status *typesv1beta1.ForwardingEndpointStatus) string {
+	if msg := status.GetStateMessage(); msg != "" {
+		return msg
+	}
+	return "no state_message was returned by the API"
+}
+
+func readEndpoint(ctx context.Context, client *coreweave.Client, slug string, diags *diag.Diagnostics) *typesv1beta1.ForwardingEndpoint {
+	ref := &typesv1beta1.ForwardingEndpointRef{Slug: slug}
+	getResp, err := client.GetEndpoint(ctx, &clusterv1beta1.GetEndpointRequest{
+		Ref: ref,
+	})
+	if err != nil {
+		if coreweave.IsNotFoundError(err) {
+			return nil
+		}
+		coreweave.HandleAPIError(ctx, err, diags)
+		return nil
+	}
+
+	return getResp.GetEndpoint()
+}
+
+// createEndpoint issues the Create RPC and returns the server's immediate view
+// of the endpoint. It deliberately does not poll: the caller must write that
+// view to state first, so a poll failure or timeout cannot orphan an endpoint
+// the API has already accepted.
+func createEndpoint(ctx context.Context, client *coreweave.Client, req *clusterv1beta1.CreateEndpointRequest) (endpoint *typesv1beta1.ForwardingEndpoint, diagnostics diag.Diagnostics) {
+	createResp, err := client.CreateEndpoint(ctx, req)
+	if err != nil {
+		coreweave.HandleAPIError(ctx, err, &diagnostics)
+		return nil, diagnostics
+	}
+
+	return createResp.GetEndpoint(), diagnostics
+}
+
+// updateEndpoint issues the Update RPC and returns the server's immediate view
+// of the endpoint. As with createEndpoint, polling is the caller's job so that
+// state can be written in between.
+func updateEndpoint(ctx context.Context, client *coreweave.Client, req *clusterv1beta1.UpdateEndpointRequest) (endpoint *typesv1beta1.ForwardingEndpoint, diagnostics diag.Diagnostics) {
+	updateResp, err := client.UpdateEndpoint(ctx, req)
+	if err != nil {
+		coreweave.HandleAPIError(ctx, err, &diagnostics)
+		return nil, diagnostics
+	}
+
+	return updateResp.GetEndpoint(), diagnostics
+}
+
+// awaitEndpointReady polls the endpoint to a terminal state and converts the
+// outcome into diagnostics.
+func awaitEndpointReady(ctx context.Context, client *coreweave.Client, ref *typesv1beta1.ForwardingEndpointRef) (endpoint *typesv1beta1.ForwardingEndpoint, diagnostics diag.Diagnostics) {
+	endpoint, err := pollForEndpointReady(ctx, client, ref)
+	if err != nil {
+		coreweave.HandleAPIError(ctx, err, &diagnostics)
+		return nil, diagnostics
+	}
+
+	return endpoint, diagnostics
+}
+
+// validateCredentialsVersion rejects a rotation counter with nothing to rotate.
+//
+// One-directional on purpose. RequiredTogether would also reject credentials
+// without a counter, which is the shape that means PRESERVE: the block stays in
+// config at its current values and nothing is resent. Only the reverse is
+// meaningless — a counter with no credentials silently does nothing, which is
+// exactly the silent no-op the attribute exists to make visible.
+func validateCredentialsVersion(version types.Int64, credentialsPresent bool, diagnostics *diag.Diagnostics) {
+	if version.IsNull() || version.IsUnknown() || credentialsPresent {
+		return
+	}
+
+	diagnostics.AddAttributeError(
+		path.Root("credentials_version"),
+		"credentials_version without credentials",
+		"credentials_version signals that the credentials block changed, so it does nothing on its own. Add a credentials block, or remove credentials_version.",
+	)
+}
+
+// deleteEndpoint is the common Delete implementation for all forwarding endpoint resources.
+func deleteEndpoint(ctx context.Context, client *coreweave.Client, data model.Endpoint) (diagnostics diag.Diagnostics) {
+	endpointMsg, diags := data.ToMsg()
+	diagnostics.Append(diags...)
+	if diagnostics.HasError() {
+		return
+	}
+
+	if err := deleteEndpointAndWait(ctx, client, endpointMsg.GetRef()); err != nil {
+		diagnostics.AddError("Error deleting Telemetry Relay endpoint", err.Error())
+		return
+	}
+
+	return
+}
+
+func deleteEndpointAndWait(ctx context.Context, client *coreweave.Client, ref *typesv1beta1.ForwardingEndpointRef) error {
+	if _, err := client.DeleteEndpoint(ctx, &clusterv1beta1.DeleteEndpointRequest{
+		Ref: ref,
+	}); err != nil {
+		if connect.CodeOf(err) == connect.CodeNotFound {
+			return nil
+		}
+
+		return fmt.Errorf("failed to delete endpoint %q: %w", ref.Slug, err)
+	}
+
+	// Poll until the endpoint is fully deleted.
+	//
+	// Every live state is Pending: we are waiting for the record to disappear,
+	// so how healthy it is on the way out is irrelevant. Listing only PENDING
+	// made the first poll fail with "unexpected state" whenever DeleteEndpoint
+	// returned before the server had moved the endpoint off CONNECTED.
+	// An empty Target plus a nil refresh result is what signals "it is gone".
+	pollConf := retry.StateChangeConf{
+		Pending: []string{
+			typesv1beta1.ForwardingEndpointState_FORWARDING_ENDPOINT_STATE_UNSPECIFIED.String(),
+			typesv1beta1.ForwardingEndpointState_FORWARDING_ENDPOINT_STATE_PENDING.String(),
+			typesv1beta1.ForwardingEndpointState_FORWARDING_ENDPOINT_STATE_CONNECTED.String(),
+			typesv1beta1.ForwardingEndpointState_FORWARDING_ENDPOINT_STATE_ERROR.String(),
+		},
+		Target: []string{},
+		Refresh: func() (any, string, error) {
+			result, err := client.GetEndpoint(ctx, &clusterv1beta1.GetEndpointRequest{
+				Ref: ref,
+			})
+			if err != nil {
+				if coreweave.IsNotFoundError(err) {
+					return nil, "", nil
+				}
+				return nil, typesv1beta1.ForwardingEndpointState_FORWARDING_ENDPOINT_STATE_UNSPECIFIED.String(), err
+			}
+			endpoint := result.GetEndpoint()
+			return endpoint, endpoint.GetStatus().GetState().String(), nil
+		},
+		Timeout: coretf.PollTimeout(ctx, endpointTimeout),
+	}
+
+	if _, err := pollConf.WaitForStateContext(ctx); err != nil {
+		return fmt.Errorf("endpoint was not deleted: %w", err)
+	}
+
+	return nil
+}
