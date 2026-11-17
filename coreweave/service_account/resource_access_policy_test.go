@@ -114,6 +114,34 @@ func TestAccessPolicyRulesEqualIgnoresServerIDs(t *testing.T) {
 	assert.False(t, accessPolicyRulesEqual(plan, state))
 }
 
+func TestAccessPolicyFillUnknownRejectsConcurrentRuleChanges(t *testing.T) {
+	t.Parallel()
+	remote := &directoryv1alpha.AccessPolicy{
+		Name:       "organizations/a1b2c3/accessPolicies/automation",
+		Uid:        "22222222-2222-4222-8222-222222222222",
+		OrgId:      "a1b2c3",
+		PolicyType: directoryv1alpha.PolicyType_POLICY_TYPE_CUSTOM,
+		Rules: []*directoryv1alpha.AccessPolicyRule{{
+			Actions: []string{"write_auth"},
+		}},
+	}
+	plannedActions := stringSet([]string{"read_auth"})
+	model := AccessPolicyResourceModel{
+		Rules: []AccessPolicyRuleResourceModel{{
+			Actions: plannedActions, Users: stringSet(nil), Groups: stringSet(nil), ServiceAccounts: stringSet(nil),
+		}},
+	}
+
+	err := model.fillUnknownFromProto(remote)
+	require.ErrorContains(t, err, "rules changed concurrently")
+	assert.True(t, model.Rules[0].Actions.Equal(plannedActions), "known planned rules must not be replaced by remote values")
+
+	remote.Rules = append(remote.Rules, &directoryv1alpha.AccessPolicyRule{Actions: []string{"read_auth"}})
+	err = model.fillUnknownFromProto(remote)
+	require.ErrorContains(t, err, "planned 1 rules, but the API returned 2")
+	assert.True(t, model.Rules[0].Actions.Equal(plannedActions), "known planned rules must not be replaced when rule counts differ")
+}
+
 func TestParseAccessPolicyName(t *testing.T) {
 	t.Parallel()
 	organizationID, accessPolicyID, err := parseAccessPolicyName("organizations/a1b2c3/accessPolicies/automation")

@@ -85,7 +85,7 @@ func (r *AccessPolicyResource) Schema(_ context.Context, _ resource.SchemaReques
 	resp.Schema = schema.Schema{
 		MarkdownDescription: "> **Private beta:** This resource is available only to organizations enrolled in the private beta and may change before general availability. It is gated by an organization-level feature flag. Contact your CoreWeave representative or CoreWeave Support to request access for your organization.\n\n" +
 			"Creates and manages a custom CoreWeave IAM access policy. Rules bind console actions to users, groups, and service accounts.\n\n" +
-			"To avoid an interruption in permissions when changing `access_policy_id` or `organization_id`, configure `lifecycle { create_before_destroy = true }`.",
+			"When changing `access_policy_id` or `organization_id`, the replacement has a different resource name. In that case, configure `lifecycle { create_before_destroy = true }` to avoid an interruption in permissions. To force or taint-replace a policy without changing its ID, temporarily remove `create_before_destroy`, because the API cannot create two policies with the same name.",
 		Attributes: map[string]schema.Attribute{
 			"access_policy_id": schema.StringAttribute{
 				Required: true, PlanModifiers: immutable,
@@ -219,8 +219,7 @@ func (m *AccessPolicyResourceModel) fillUnknownFromProto(policy *directoryv1alph
 		m.Description = remote.Description
 	}
 	if len(m.Rules) != len(remote.Rules) {
-		m.Rules = remote.Rules
-		return nil
+		return fmt.Errorf("access policy rules changed concurrently while resolving the planned update: planned %d rules, but the API returned %d", len(m.Rules), len(remote.Rules))
 	}
 	matched := make([]bool, len(remote.Rules))
 	for i := range m.Rules {
@@ -232,8 +231,7 @@ func (m *AccessPolicyResourceModel) fillUnknownFromProto(policy *directoryv1alph
 			}
 		}
 		if remoteIndex == -1 {
-			m.Rules = remote.Rules
-			return nil
+			return fmt.Errorf("access policy rules changed concurrently while resolving the planned update: planned rule %d no longer matches any rule returned by the API", i)
 		}
 		matched[remoteIndex] = true
 		remoteRule := remote.Rules[remoteIndex]
@@ -339,16 +337,35 @@ func (r *AccessPolicyResource) Create(ctx context.Context, req resource.CreateRe
 	case created.GetName() != expectedName:
 		responseErr = fmt.Errorf("access policy name %q does not match requested name %q", created.GetName(), expectedName)
 	default:
+		plannedData := data
+		plannedData.Rules = append([]AccessPolicyRuleResourceModel(nil), data.Rules...)
 		responseErr = data.setFromProto(created)
+		if responseErr != nil {
+			data = plannedData
+		}
 	}
 	if responseErr != nil {
+		// The create request has already succeeded. Preserve its deterministic
+		// identity and planned inputs so Terraform can track the remote policy if
+		// recovery fails, while leaving values not returned by the API unresolved.
+		data.Name = types.StringValue(expectedName)
+		data.UID = types.StringNull()
+		data.PolicyType = types.StringNull()
+		data.Active = types.BoolNull()
+		data.CreatedAt = types.StringNull()
+		data.UpdatedAt = types.StringNull()
+		resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+
 		remote, readErr := r.client.Directory.GetAccessPolicy(ctx, &directoryv1alpha.GetAccessPolicyRequest{Name: expectedName})
 		if readErr != nil {
-			resp.Diagnostics.AddError("Unable to Recover Access Policy After Creation", fmt.Sprintf("The Directory API accepted the create request for %q but returned an invalid response (%s), and reading it back failed: %s. Import the policy with `terraform import <resource-address> %s` before applying again.", expectedName, responseErr, readErr, expectedName))
+			resp.Diagnostics.AddError("Unable to Recover Access Policy After Creation", fmt.Sprintf("The Directory API accepted the create request for %q but returned an invalid response (%s), and reading it back failed: %s. Terraform preserved the policy name and planned inputs in state and marked the resource tainted. To recover the existing policy, verify it remotely, run `terraform untaint <resource-address>`, then run `terraform apply -refresh-only` before the next normal apply. To replace it instead without changing its ID, temporarily remove `create_before_destroy`, because the API cannot create two policies with the same name.", expectedName, responseErr, readErr))
 			return
 		}
 		if readBackErr := data.setFromProto(remote); readBackErr != nil {
-			resp.Diagnostics.AddError("Unable to Recover Access Policy After Creation", fmt.Sprintf("The Directory API accepted the create request for %q but both the create response and subsequent read were invalid: %s. Import the policy with `terraform import <resource-address> %s` before applying again.", expectedName, readBackErr, expectedName))
+			resp.Diagnostics.AddError("Unable to Recover Access Policy After Creation", fmt.Sprintf("The Directory API accepted the create request for %q but both the create response and subsequent read were invalid: %s. Terraform preserved the policy name and planned inputs in state and marked the resource tainted. To recover the existing policy, verify it remotely, run `terraform untaint <resource-address>`, then run `terraform apply -refresh-only` before the next normal apply. To replace it instead without changing its ID, temporarily remove `create_before_destroy`, because the API cannot create two policies with the same name.", expectedName, readBackErr))
 			return
 		}
 	}

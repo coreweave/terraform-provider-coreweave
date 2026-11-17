@@ -17,6 +17,7 @@ import (
 	"connectrpc.com/connect/v2/connecthttp"
 	"github.com/coreweave/terraform-provider-coreweave/internal/provider"
 	tfresource "github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/plancheck"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -34,6 +35,7 @@ type accessPolicyTestServer struct {
 	nextRuleID            int
 	invalidCreateResponse bool
 	alreadyExistsOnCreate bool
+	notFoundNextGets      int
 }
 
 func newAccessPolicyTestServer() *accessPolicyTestServer {
@@ -92,6 +94,10 @@ func (s *accessPolicyTestServer) CreateAccessPolicy(_ context.Context, request *
 func (s *accessPolicyTestServer) GetAccessPolicy(_ context.Context, request *directoryv1alpha.GetAccessPolicyRequest) (*directoryv1alpha.AccessPolicy, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.notFoundNextGets > 0 {
+		s.notFoundNextGets--
+		return nil, connect.Errorf(connect.CodeNotFound, "access policy is not yet readable")
+	}
 	policy, exists := s.policies[request.GetName()]
 	if !exists {
 		return nil, connect.Errorf(connect.CodeNotFound, "access policy not found")
@@ -151,6 +157,12 @@ func (s *accessPolicyTestServer) returnInvalidCreateResponseOnce() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.invalidCreateResponse = true
+}
+
+func (s *accessPolicyTestServer) failNextGetWithNotFound() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.notFoundNextGets++
 }
 
 func (s *accessPolicyTestServer) returnAlreadyExistsOnCreate() {
@@ -320,6 +332,31 @@ func TestAccessPolicyResourceRecoversInvalidCreateResponse(t *testing.T) {
 				tfresource.TestCheckResourceAttr(accessPolicyResourceAddress, "uid", "22222222-2222-4222-8222-000000000001"),
 			),
 		}},
+	})
+}
+
+func TestAccessPolicyResourceTaintsWhenCreateRecoveryFails(t *testing.T) {
+	service, server := startAccessPolicyTestServer(t)
+	service.returnInvalidCreateResponseOnce()
+	service.failNextGetWithNotFound()
+	config := accessPolicyTestConfig(server.URL, "tainted-create", "Recovery failure", []string{"read_auth"}, nil)
+
+	tfresource.UnitTest(t, tfresource.TestCase{
+		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+		Steps: []tfresource.TestStep{
+			{
+				Config:      config,
+				ExpectError: regexp.MustCompile(`(?s)Terraform preserved the.*marked the resource tainted`),
+			},
+			{
+				Config: config,
+				ConfigPlanChecks: tfresource.ConfigPlanChecks{
+					PreApply: []plancheck.PlanCheck{
+						plancheck.ExpectResourceAction(accessPolicyResourceAddress, plancheck.ResourceActionDestroyBeforeCreate),
+					},
+				},
+			},
+		},
 	})
 }
 

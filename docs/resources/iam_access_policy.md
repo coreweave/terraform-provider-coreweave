@@ -5,7 +5,7 @@ subcategory: ""
 description: |-
   **Private beta:** This resource is available only to organizations enrolled in the private beta and may change before general availability. It is gated by an organization-level feature flag. Contact your CoreWeave representative or CoreWeave Support to request access for your organization.
   Creates and manages a custom CoreWeave IAM access policy. Rules bind console actions to users, groups, and service accounts.
-  To avoid an interruption in permissions when changing access_policy_id or organization_id, configure lifecycle { create_before_destroy = true }.
+  When changing access_policy_id or organization_id, the replacement has a different resource name. In that case, configure lifecycle { create_before_destroy = true } to avoid an interruption in permissions. To force or taint-replace a policy without changing its ID, temporarily remove create_before_destroy, because the API cannot create two policies with the same name.
 ---
 
 # coreweave_iam_access_policy (Resource)
@@ -14,7 +14,7 @@ description: |-
 
 Creates and manages a custom CoreWeave IAM access policy. Rules bind console actions to users, groups, and service accounts.
 
-To avoid an interruption in permissions when changing `access_policy_id` or `organization_id`, configure `lifecycle { create_before_destroy = true }`.
+When changing `access_policy_id` or `organization_id`, the replacement has a different resource name. In that case, configure `lifecycle { create_before_destroy = true }` to avoid an interruption in permissions. To force or taint-replace a policy without changing its ID, temporarily remove `create_before_destroy`, because the API cannot create two policies with the same name.
 
 ## Example Usage
 
