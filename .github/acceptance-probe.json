@@ -1,0 +1,7 @@
+{
+  "validation-result": "success",
+  "acceptance-result": "success",
+  "failure-suite": "caller_identity",
+  "nonblocking-result": "success",
+  "delay-seconds": 0
+}
