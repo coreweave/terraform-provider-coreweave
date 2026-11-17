@@ -52,7 +52,7 @@ func (r *OIDCTrustConfigResource) Schema(_ context.Context, _ resource.SchemaReq
 	computed := []planmodifier.String{stringplanmodifier.UseStateForUnknown()}
 	idValidator := []validator.String{stringvalidator.RegexMatches(resourceIDPattern, "must start with a lowercase letter, contain only lowercase letters, digits, or hyphens, end with a letter or digit, and be at most 63 characters")}
 	resp.Schema = schema.Schema{
-		MarkdownDescription: "Creates and manages an OIDC trust rule for a CoreWeave service account.",
+		MarkdownDescription: iamPrivateBetaBanner + "\n\nCreates and manages an OIDC trust rule for a CoreWeave service account.",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{Required: true, PlanModifiers: immutable, Validators: idValidator, MarkdownDescription: "The caller-chosen trust configuration ID."},
 			"organization_id": schema.StringAttribute{

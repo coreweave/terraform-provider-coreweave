@@ -79,7 +79,7 @@ func (r *ServiceAccountResource) Schema(_ context.Context, _ resource.SchemaRequ
 	immutable := []planmodifier.String{stringplanmodifier.RequiresReplace()}
 	computed := []planmodifier.String{stringplanmodifier.UseStateForUnknown()}
 	resp.Schema = schema.Schema{
-		MarkdownDescription: "Creates and manages a CoreWeave service account.",
+		MarkdownDescription: iamPrivateBetaBanner + "\n\nCreates and manages a CoreWeave service account.",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Required: true, PlanModifiers: immutable,

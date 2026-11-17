@@ -3,10 +3,13 @@
 page_title: "coreweave_iam_service_account_oidc_trust_config Resource - coreweave"
 subcategory: ""
 description: |-
+  **Private beta:** This resource is available only to organizations enrolled in the private beta and may change before general availability. It is gated by an organization-level feature flag. Contact your CoreWeave representative or CoreWeave Support to request access for your organization.
   Creates and manages an OIDC trust rule for a CoreWeave service account.
 ---
 
 # coreweave_iam_service_account_oidc_trust_config (Resource)
+
+> **Private beta:** This resource is available only to organizations enrolled in the private beta and may change before general availability. It is gated by an organization-level feature flag. Contact your CoreWeave representative or CoreWeave Support to request access for your organization.
 
 Creates and manages an OIDC trust rule for a CoreWeave service account.
 

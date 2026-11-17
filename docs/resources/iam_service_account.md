@@ -3,10 +3,13 @@
 page_title: "coreweave_iam_service_account Resource - coreweave"
 subcategory: ""
 description: |-
+  **Private beta:** This resource is available only to organizations enrolled in the private beta and may change before general availability. It is gated by an organization-level feature flag. Contact your CoreWeave representative or CoreWeave Support to request access for your organization.
   Creates and manages a CoreWeave service account.
 ---
 
 # coreweave_iam_service_account (Resource)
+
+> **Private beta:** This resource is available only to organizations enrolled in the private beta and may change before general availability. It is gated by an organization-level feature flag. Contact your CoreWeave representative or CoreWeave Support to request access for your organization.
 
 Creates and manages a CoreWeave service account.
 

@@ -9,6 +9,8 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
+const iamPrivateBetaBanner = "> **Private beta:** This resource is available only to organizations enrolled in the private beta and may change before general availability. It is gated by an organization-level feature flag. Contact your CoreWeave representative or CoreWeave Support to request access for your organization."
+
 var (
 	resourceIDPattern     = regexp.MustCompile(`^[a-z](?:[a-z0-9-]{0,61}[a-z0-9])?$`)
 	organizationIDPattern = regexp.MustCompile(`^[a-z0-9]{6}$`)
