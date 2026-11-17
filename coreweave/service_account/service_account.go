@@ -9,10 +9,13 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
+const iamPrivateBetaBanner = "> **Private beta:** This resource is available only to organizations enrolled in the private beta and may change before general availability. It is gated by an organization-level feature flag. Contact your CoreWeave representative or CoreWeave Support to request access for your organization."
+
 var (
 	resourceIDPattern     = regexp.MustCompile(`^[a-z](?:[a-z0-9-]{0,61}[a-z0-9])?$`)
 	organizationIDPattern = regexp.MustCompile(`^[a-z0-9]{6}$`)
 	oidcTrustConfigNameRE = regexp.MustCompile(`^organizations/([a-z0-9]{6})/serviceAccounts/([a-z](?:[a-z0-9-]{0,61}[a-z0-9])?)/oidcTrustConfigs/([a-z](?:[a-z0-9-]{0,61}[a-z0-9])?)$`)
+	serviceAccountNameRE  = regexp.MustCompile(`^organizations/([a-z0-9]{6})/serviceAccounts/([a-z](?:[a-z0-9-]{0,61}[a-z0-9])?)$`)
 	uuidPattern           = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$`)
 )
 
@@ -26,6 +29,14 @@ func parseOIDCTrustConfigName(name string) (string, string, string, error) {
 		return "", "", "", fmt.Errorf("expected organizations/{organization}/serviceAccounts/{service_account}/oidcTrustConfigs/{oidc_trust_config}, got %q", name)
 	}
 	return matches[1], matches[2], matches[3], nil
+}
+
+func parseServiceAccountName(name string) (string, string, error) {
+	matches := serviceAccountNameRE.FindStringSubmatch(name)
+	if matches == nil {
+		return "", "", fmt.Errorf("expected organizations/{organization}/serviceAccounts/{service_account}, got %q", name)
+	}
+	return matches[1], matches[2], nil
 }
 
 func timestampValue(timestamp *timestamppb.Timestamp) types.String {
