@@ -94,6 +94,15 @@ func TestReadBackCreatedServiceAccount(t *testing.T) {
 	})
 }
 
+func TestActivationErrorMayBeAmbiguous(t *testing.T) {
+	t.Parallel()
+
+	assert.True(t, activationErrorMayBeAmbiguous(connect.Errorf(connect.CodeUnavailable, "unavailable")))
+	assert.True(t, activationErrorMayBeAmbiguous(connect.Errorf(connect.CodeDeadlineExceeded, "deadline")))
+	assert.False(t, activationErrorMayBeAmbiguous(connect.Errorf(connect.CodePermissionDenied, "denied")))
+	assert.False(t, activationErrorMayBeAmbiguous(connect.Errorf(connect.CodeInvalidArgument, "invalid")))
+}
+
 func TestResourceSchemas(t *testing.T) {
 	t.Parallel()
 
@@ -107,7 +116,7 @@ func TestResourceSchemas(t *testing.T) {
 			resource: NewServiceAccountResource(),
 			required: []string{"id", "organization_id"},
 			computed: []string{"name", "uid", "creator", "system_managed", "active", "created_at", "updated_at"},
-			optional: []string{"display_name"},
+			optional: []string{"display_name", "active"},
 		},
 	}
 
@@ -137,7 +146,7 @@ func TestResourceSchemas(t *testing.T) {
 	systemManaged := response.Schema.Attributes["system_managed"].(resourceschema.BoolAttribute)
 	assert.Len(t, systemManaged.PlanModifiers, 1)
 	active := response.Schema.Attributes["active"].(resourceschema.BoolAttribute)
-	assert.Empty(t, active.PlanModifiers)
+	assert.Len(t, active.PlanModifiers, 1)
 }
 
 func TestServiceAccountMetadataUsesIAMNamespace(t *testing.T) {

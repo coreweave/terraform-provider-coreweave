@@ -33,11 +33,11 @@ resource "coreweave_iam_service_account" "automation" {
 
 ### Optional
 
+- `active` (Boolean) Whether the service account may authenticate. When omitted, Terraform observes but does not manage activation state. Because the create API does not accept activation state, an account created with `active = false` is briefly active before Terraform deactivates it.
 - `display_name` (String) An optional human-readable display name.
 
 ### Read-Only
 
-- `active` (Boolean) Whether the service account may authenticate.
 - `created_at` (String) The RFC 3339 creation timestamp.
 - `creator` (String) The canonical resource name of the user that created the service account.
 - `name` (String) The canonical resource name.
