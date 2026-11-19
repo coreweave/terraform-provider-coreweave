@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.30.0](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.29.0...v0.30.0) (2026-11-19)
+
+
+### Features
+
+* add service account resource ([#530](https://github.com/coreweave/terraform-provider-coreweave/issues/530)) ([df1a2ae](https://github.com/coreweave/terraform-provider-coreweave/commit/df1a2ae58fba68c02072cf09e86a912f15e6e8e5))
+* **workload-federation:** service account OIDC trust config resource ([#531](https://github.com/coreweave/terraform-provider-coreweave/issues/531)) ([d6f2e96](https://github.com/coreweave/terraform-provider-coreweave/commit/d6f2e96355feb4c3e95b1967da975194339d0a17))
+
+
+### Bug Fixes
+
+* **inference:** Complete updates once resources are applied ([#556](https://github.com/coreweave/terraform-provider-coreweave/issues/556)) ([b4fa8d8](https://github.com/coreweave/terraform-provider-coreweave/commit/b4fa8d84021341b1c68c380130fff22b0780f414))
+
 ## [0.29.0](https://github.com/coreweave/terraform-provider-coreweave/compare/v0.28.0...v0.29.0) (2026-11-06)
 
 
