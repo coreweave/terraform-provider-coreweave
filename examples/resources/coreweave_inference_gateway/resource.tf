@@ -3,7 +3,10 @@ resource "coreweave_inference_gateway" "example" {
   zones = ["US-EAST-04A"]
 
   auth = {
-    coreweave = {}
+    coreweave = {
+      # Optional: authenticate a different organization (requires API entitlement).
+      # organizations = ["abcdef"]
+    }
   }
 
   routing = {

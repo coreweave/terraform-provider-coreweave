@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
 	"time"
 
 	inferencev1 "buf.build/gen/go/coreweave/inference/protocolbuffers/go/coreweave/inference/v1alpha1"
@@ -44,7 +45,9 @@ type InferenceGatewayResource struct {
 
 // Nested model types.
 
-type CoreWeaveAuthModel struct{}
+type CoreWeaveAuthModel struct {
+	Organizations types.Set `tfsdk:"organizations"`
+}
 
 type WeightsAndBiasesAuthModel struct {
 	APIKey             types.String `tfsdk:"api_key"`
@@ -188,7 +191,20 @@ func (r *InferenceGatewayResource) Schema(_ context.Context, _ resource.SchemaRe
 					"coreweave": schema.SingleNestedAttribute{
 						Optional:            true,
 						MarkdownDescription: "Use CoreWeave IAM authentication.",
-						Attributes:          map[string]schema.Attribute{},
+						Attributes: map[string]schema.Attribute{
+							"organizations": schema.SetAttribute{
+								Optional:            true,
+								ElementType:         types.StringType,
+								MarkdownDescription: "The organization permitted to authenticate. At most one organization is supported. When omitted or empty, the gateway's owning organization is used. Setting an explicit organization requires the gatewayAllowCWIAMOrganizations feature flag for the owning organization.",
+								Validators: []validator.Set{
+									setvalidator.SizeAtMost(1),
+									setvalidator.ValueStringsAre(stringvalidator.RegexMatches(
+										regexp.MustCompile(`^(cw[a-f0-9]{4}|[sq][a-f0-9]{5}|poc[a-f0-9]{3}|[a-f0-9]{6})$`),
+										"must be a valid organization ID",
+									)),
+								},
+							},
+						},
 					},
 					"weights_and_biases": schema.SingleNestedAttribute{
 						Optional:            true,
@@ -564,6 +580,7 @@ func (r *InferenceGatewayResource) ImportState(ctx context.Context, req resource
 
 // gatewayFields holds the fields shared between CreateGatewayRequest and UpdateGatewayRequest.
 type gatewayFields struct {
+	CoreWeaveAuth         *inferencev1.CoreWeaveAuth
 	Name                  string
 	Zones                 []string
 	EndpointConfiguration *inferencev1.EndpointConfiguration
@@ -582,6 +599,17 @@ func buildGatewayFields(ctx context.Context, m *InferenceGatewayResourceModel) (
 	f := gatewayFields{
 		Name:  m.Name.ValueString(),
 		Zones: zones,
+	}
+
+	if m.Auth.CoreWeave != nil {
+		f.CoreWeaveAuth = &inferencev1.CoreWeaveAuth{}
+		organizations := m.Auth.CoreWeave.Organizations
+		if !organizations.IsNull() && !organizations.IsUnknown() {
+			diagnostics.Append(organizations.ElementsAs(ctx, &f.CoreWeaveAuth.Organizations, false)...)
+			if diagnostics.HasError() {
+				return gatewayFields{}, diagnostics
+			}
+		}
 	}
 
 	// Only attach an EndpointConfiguration when at least one of its fields is
@@ -649,7 +677,7 @@ func toCreateGatewayRequest(ctx context.Context, m *InferenceGatewayResourceMode
 	// Auth oneof
 	if m.Auth.CoreWeave != nil {
 		req.Auth = &inferencev1.CreateGatewayRequest_CoreWeaveAuth{
-			CoreWeaveAuth: &inferencev1.CoreWeaveAuth{},
+			CoreWeaveAuth: f.CoreWeaveAuth,
 		}
 	} else if m.Auth.WeightsAndBiases != nil {
 		wb := &inferencev1.WeightsAndBiasesAuth{}
@@ -711,7 +739,7 @@ func toUpdateGatewayRequest(ctx context.Context, m *InferenceGatewayResourceMode
 	// Auth oneof
 	if m.Auth.CoreWeave != nil {
 		req.Auth = &inferencev1.UpdateGatewayRequest_CoreWeaveAuth{
-			CoreWeaveAuth: &inferencev1.CoreWeaveAuth{},
+			CoreWeaveAuth: f.CoreWeaveAuth,
 		}
 	} else if m.Auth.WeightsAndBiases != nil {
 		wb := &inferencev1.WeightsAndBiasesAuth{}
@@ -810,8 +838,22 @@ func setFromGateway(m *InferenceGatewayResourceModel, gw *inferencev1.Gateway, p
 	// auth — type switch on oneof
 	switch spec.GetAuth().(type) {
 	case *inferencev1.GatewaySpec_CoreWeaveAuth:
+		var priorOrganizations types.Set
+		if m.Auth != nil && m.Auth.CoreWeave != nil {
+			priorOrganizations = m.Auth.CoreWeave.Organizations
+		}
+		organizations := emptyOrNullSet(types.StringType, priorOrganizations)
+		if values := spec.GetCoreWeaveAuth().GetOrganizations(); len(values) > 0 {
+			organizationVals := make([]attr.Value, len(values))
+			for i, value := range values {
+				organizationVals[i] = types.StringValue(value)
+			}
+			var diags diag.Diagnostics
+			organizations, diags = types.SetValue(types.StringType, organizationVals)
+			diagnostics.Append(diags...)
+		}
 		m.Auth = &GatewayAuthModel{
-			CoreWeave:        &CoreWeaveAuthModel{},
+			CoreWeave:        &CoreWeaveAuthModel{Organizations: organizations},
 			WeightsAndBiases: nil,
 		}
 	case *inferencev1.GatewaySpec_WeightsAndBiasesAuth:

@@ -18,7 +18,10 @@ resource "coreweave_inference_gateway" "example" {
   zones = ["US-EAST-04A"]
 
   auth = {
-    coreweave = {}
+    coreweave = {
+      # Optional: authenticate a different organization (requires API entitlement).
+      # organizations = ["abcdef"]
+    }
   }
 
   routing = {
@@ -63,6 +66,10 @@ Optional:
 
 <a id="nestedatt--auth--coreweave"></a>
 ### Nested Schema for `auth.coreweave`
+
+Optional:
+
+- `organizations` (Set of String) The organization permitted to authenticate. At most one organization is supported. When omitted or empty, the gateway's owning organization is used. Setting an explicit organization requires the gatewayAllowCWIAMOrganizations feature flag for the owning organization.
 
 
 <a id="nestedatt--auth--weights_and_biases"></a>
