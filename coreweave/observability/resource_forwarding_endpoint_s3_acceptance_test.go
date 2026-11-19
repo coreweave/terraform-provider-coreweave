@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"regexp"
 	"testing"
+	"time"
 
 	typesv1beta1 "buf.build/gen/go/coreweave/telemetry-relay/protocolbuffers/go/coreweave/telemetryrelay/types/v1beta1"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave/observability"
@@ -216,7 +217,7 @@ func TestForwardingEndpointS3Acceptance(t *testing.T) {
 			Credentials: fixtureS3Credentials(),
 		}
 
-		var afterCreate, afterNoopUpdate string
+		var afterCreate time.Time
 
 		resource.ParallelTest(t, resource.TestCase{
 			ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
@@ -230,7 +231,7 @@ func TestForwardingEndpointS3Acceptance(t *testing.T) {
 					ExtraChecks: []statecheck.StateCheck{
 						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("credentials").AtMapKey("secret_access_key"), knownvalue.Null()),
 						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("credentials").AtMapKey("access_key_id"), knownvalue.Null()),
-						extractCredentialsUpdatedAt(fullResourceName, &afterCreate),
+						captureCredentialsUpdatedAt(t, baseModel.Slug.ValueString(), &afterCreate),
 					},
 					ConfigPlanChecks: resource.ConfigPlanChecks{
 						PreApply: []plancheck.PlanCheck{
@@ -247,8 +248,7 @@ func TestForwardingEndpointS3Acceptance(t *testing.T) {
 						m.Region = types.StringValue("us-west-2")
 					}),
 					ExtraChecks: []statecheck.StateCheck{
-						extractCredentialsUpdatedAt(fullResourceName, &afterNoopUpdate),
-						expectUnchanged(credentialsUpdatedAtAttribute, &afterCreate, &afterNoopUpdate),
+						expectCredentialsUpdatedAt(t, baseModel.Slug.ValueString(), &afterCreate, false),
 					},
 					ConfigPlanChecks: resource.ConfigPlanChecks{
 						PreApply: []plancheck.PlanCheck{
