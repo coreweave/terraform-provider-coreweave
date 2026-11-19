@@ -7,7 +7,10 @@ import (
 	"fmt"
 	"os"
 	"testing"
+	"time"
 
+	clusterv1beta1 "buf.build/gen/go/coreweave/telemetry-relay/protocolbuffers/go/coreweave/telemetryrelay/svc/cluster/v1beta1"
+	typesv1beta1 "buf.build/gen/go/coreweave/telemetry-relay/protocolbuffers/go/coreweave/telemetryrelay/types/v1beta1"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
 	"github.com/coreweave/terraform-provider-coreweave/internal/provider"
 	"github.com/coreweave/terraform-provider-coreweave/internal/testutil"
@@ -98,9 +101,7 @@ func slugify(name, token string) string {
 	return fmt.Sprintf("%s%s-%s", AcceptanceTestPrefix, name, token)
 }
 
-// testClient builds an API client for the out-of-band operations a few
-// acceptance steps need (deleting a resource behind Terraform's back to prove
-// Read removes it from state).
+// testClient builds an API client for acceptance checks and out-of-band operations.
 func testClient(t *testing.T) *coreweave.Client {
 	t.Helper()
 
@@ -110,89 +111,44 @@ func testClient(t *testing.T) *coreweave.Client {
 	return client
 }
 
-// attributeCapture reads one root-level string attribute out of state and
-// hands it to run. Credential rotation is only observable as a change in
-// credentials_updated_at, so a step has to remember what the previous step
-// saw; the stock knownvalue checks cannot express "different from last time".
-type attributeCapture struct {
-	resourceAddress string
-	attribute       string
-	run             func(value string) error
+// credentialTimestampCheck reads the API directly because Terraform state
+// stores credential timestamps at whole-second precision.
+type credentialTimestampCheck struct {
+	t     *testing.T
+	slug  string
+	check func(time.Time) error
 }
 
-func (c attributeCapture) CheckState(_ context.Context, req statecheck.CheckStateRequest, resp *statecheck.CheckStateResponse) {
-	if req.State == nil || req.State.Values == nil || req.State.Values.RootModule == nil {
-		resp.Error = fmt.Errorf("no state to read %s from", c.attribute)
+func (c credentialTimestampCheck) CheckState(ctx context.Context, _ statecheck.CheckStateRequest, resp *statecheck.CheckStateResponse) {
+	result, err := testClient(c.t).GetEndpoint(ctx, &clusterv1beta1.GetEndpointRequest{
+		Ref: &typesv1beta1.ForwardingEndpointRef{Slug: c.slug},
+	})
+	if err != nil {
+		resp.Error = fmt.Errorf("getting endpoint %q to check credentials_updated_at: %w", c.slug, err)
 		return
 	}
-
-	for _, res := range req.State.Values.RootModule.Resources {
-		if res.Address != c.resourceAddress {
-			continue
-		}
-
-		raw, ok := res.AttributeValues[c.attribute]
-		if !ok {
-			resp.Error = fmt.Errorf("%s has no attribute %q", c.resourceAddress, c.attribute)
-			return
-		}
-		value, ok := raw.(string)
-		if !ok {
-			resp.Error = fmt.Errorf("%s.%s is %T, want string", c.resourceAddress, c.attribute, raw)
-			return
-		}
-
-		resp.Error = c.run(value)
+	timestamp := result.GetEndpoint().GetStatus().GetCredentialsUpdatedAt()
+	if err := timestamp.CheckValid(); err != nil {
+		resp.Error = fmt.Errorf("endpoint %q has an invalid or missing credentials_updated_at: %w", c.slug, err)
 		return
 	}
-
-	resp.Error = fmt.Errorf("resource %s not found in state", c.resourceAddress)
+	resp.Error = c.check(timestamp.AsTime())
 }
 
-// credentialsUpdatedAtAttribute is the only observable record that credentials
-// were replaced, so every rotation assertion is a comparison of this value
-// across two steps.
-const credentialsUpdatedAtAttribute = "credentials_updated_at"
-
-// extractCredentialsUpdatedAt stores credentials_updated_at into out, for a
-// later step to compare against.
-func extractCredentialsUpdatedAt(resourceAddress string, out *string) statecheck.StateCheck {
-	return attributeCapture{
-		resourceAddress: resourceAddress,
-		attribute:       credentialsUpdatedAtAttribute,
-		run: func(value string) error {
-			*out = value
-			return nil
-		},
-	}
-}
-
-// comparison defers an assertion over two previously captured values until
-// state-check time, by which point both pointers are populated.
-type comparison struct {
-	assert func() error
-}
-
-func (c comparison) CheckState(_ context.Context, _ statecheck.CheckStateRequest, resp *statecheck.CheckStateResponse) {
-	resp.Error = c.assert()
-}
-
-// expectUnchanged asserts the attribute holds the value a previous step
-// captured. Pair it with extractCredentialsUpdatedAt earlier in the same slice.
-func expectUnchanged(attribute string, before, after *string) statecheck.StateCheck {
-	return comparison{func() error {
-		if *before != *after {
-			return fmt.Errorf("%s changed from %q to %q, expected it to stay put", attribute, *before, *after)
-		}
+func captureCredentialsUpdatedAt(t *testing.T, slug string, out *time.Time) statecheck.StateCheck {
+	return credentialTimestampCheck{t: t, slug: slug, check: func(value time.Time) error {
+		*out = value
 		return nil
 	}}
 }
 
-// expectChanged asserts the attribute moved since a previous step.
-func expectChanged(attribute string, before, after *string) statecheck.StateCheck {
-	return comparison{func() error {
-		if *before == *after {
-			return fmt.Errorf("%s is still %q, expected it to change", attribute, *before)
+func expectCredentialsUpdatedAt(t *testing.T, slug string, before *time.Time, rotated bool) statecheck.StateCheck {
+	return credentialTimestampCheck{t: t, slug: slug, check: func(after time.Time) error {
+		if rotated && !after.After(*before) {
+			return fmt.Errorf("endpoint %q credentials_updated_at is %s, expected it to advance from %s", slug, after, *before)
+		}
+		if !rotated && !after.Equal(*before) {
+			return fmt.Errorf("endpoint %q credentials_updated_at changed from %s to %s during PRESERVE", slug, *before, after)
 		}
 		return nil
 	}}

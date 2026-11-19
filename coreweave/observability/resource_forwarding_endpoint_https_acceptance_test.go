@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"regexp"
 	"testing"
+	"time"
 
 	clusterv1beta1 "buf.build/gen/go/coreweave/telemetry-relay/protocolbuffers/go/coreweave/telemetryrelay/svc/cluster/v1beta1"
 	typesv1beta1 "buf.build/gen/go/coreweave/telemetry-relay/protocolbuffers/go/coreweave/telemetryrelay/types/v1beta1"
@@ -382,9 +383,7 @@ func TestForwardingEndpointHTTPSAcceptance(t *testing.T) {
 			},
 		}
 
-		// credentials_updated_at is the only signal a rotation happened, so each
-		// step captures it and the next asserts whether it moved.
-		var afterCreate, afterNoopUpdate, afterRotation string
+		var afterCreate time.Time
 
 		resource.ParallelTest(t, resource.TestCase{
 			ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
@@ -404,7 +403,7 @@ func TestForwardingEndpointHTTPSAcceptance(t *testing.T) {
 						// Write-only values must never reach state.
 						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("credentials").AtMapKey("basic_auth").AtMapKey("password"), knownvalue.Null()),
 						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("credentials").AtMapKey("basic_auth").AtMapKey("username"), knownvalue.Null()),
-						extractCredentialsUpdatedAt(fullResourceName, &afterCreate),
+						captureCredentialsUpdatedAt(t, baseModel.Slug.ValueString(), &afterCreate),
 					},
 				}),
 				createHTTPSEndpointTestStep(t, httpsEndpointTestStep{
@@ -433,8 +432,7 @@ func TestForwardingEndpointHTTPSAcceptance(t *testing.T) {
 						},
 					},
 					ExtraChecks: []statecheck.StateCheck{
-						extractCredentialsUpdatedAt(fullResourceName, &afterNoopUpdate),
-						expectUnchanged(credentialsUpdatedAtAttribute, &afterCreate, &afterNoopUpdate),
+						expectCredentialsUpdatedAt(t, baseModel.Slug.ValueString(), &afterCreate, false),
 					},
 				}),
 				createHTTPSEndpointTestStep(t, httpsEndpointTestStep{
@@ -455,8 +453,7 @@ func TestForwardingEndpointHTTPSAcceptance(t *testing.T) {
 						},
 					},
 					ExtraChecks: []statecheck.StateCheck{
-						extractCredentialsUpdatedAt(fullResourceName, &afterRotation),
-						expectChanged(credentialsUpdatedAtAttribute, &afterNoopUpdate, &afterRotation),
+						expectCredentialsUpdatedAt(t, baseModel.Slug.ValueString(), &afterCreate, true),
 					},
 				}),
 				createHTTPSEndpointTestStep(t, httpsEndpointTestStep{
@@ -562,7 +559,7 @@ func TestForwardingEndpointHTTPSAcceptance(t *testing.T) {
 			},
 		}
 
-		var afterCreate, afterRotation string
+		var afterCreate time.Time
 
 		resource.ParallelTest(t, resource.TestCase{
 			ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
@@ -581,7 +578,7 @@ func TestForwardingEndpointHTTPSAcceptance(t *testing.T) {
 					ExtraChecks: []statecheck.StateCheck{
 						// headers is WriteOnly, so the whole map stays out of state.
 						statecheck.ExpectKnownValue(fullResourceName, tfjsonpath.New("credentials").AtMapKey("auth_headers").AtMapKey("headers"), knownvalue.Null()),
-						extractCredentialsUpdatedAt(fullResourceName, &afterCreate),
+						captureCredentialsUpdatedAt(t, baseModel.Slug.ValueString(), &afterCreate),
 					},
 				}),
 				createHTTPSEndpointTestStep(t, httpsEndpointTestStep{
@@ -609,8 +606,7 @@ func TestForwardingEndpointHTTPSAcceptance(t *testing.T) {
 						},
 					},
 					ExtraChecks: []statecheck.StateCheck{
-						extractCredentialsUpdatedAt(fullResourceName, &afterRotation),
-						expectChanged(credentialsUpdatedAtAttribute, &afterCreate, &afterRotation),
+						expectCredentialsUpdatedAt(t, baseModel.Slug.ValueString(), &afterCreate, true),
 					},
 				}),
 			},
