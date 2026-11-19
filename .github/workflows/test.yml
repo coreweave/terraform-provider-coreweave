@@ -1,135 +1,70 @@
-# Terraform Provider testing workflow.
-name: Tests
+# Disposable approval probe. Never merge this branch.
+name: Acceptance approval probe (STUB ONLY)
 
 on:
   pull_request:
     types: [opened, synchronize, reopened]
 
-# Testing only needs permissions to read the repository contents.
-permissions:
-  contents: read
+permissions: {}
 
 jobs:
-  # Ensure project builds before running testing matrix
   build:
-    uses: ./.github/workflows/build.yml
-    with:
-      native: true
-      snapshot: false
+    runs-on: cw-static-pub-x64-4c
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - run: echo 'Harmless build stub; no build, tests, or QA commands.'
 
   lint:
-    runs-on: cw-static-pub-x64-4c
     needs: build
+    runs-on: cw-static-pub-x64-4c
+    timeout-minutes: 5
+    permissions: {}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: ./.github/actions/setup
-      - run: make lint
+      - run: echo 'Harmless lint stub; no build, tests, or QA commands.'
 
   generate:
-    runs-on: cw-static-pub-x64-4c
     needs: build
+    runs-on: cw-static-pub-x64-4c
+    timeout-minutes: 5
+    permissions: {}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: ./.github/actions/setup
-      - run: make generate
-      - name: git diff
-        run: |
-          git diff --compact-summary --exit-code || \
-            (echo; echo "Unexpected difference in directories after code generation. Run 'make generate' command and commit."; exit 1)
+      - run: echo 'Harmless generate stub; no build, tests, or QA commands.'
 
   snapshot-build:
-    uses: ./.github/workflows/build.yml
-    with:
-      snapshot: true
-      native: false
+    runs-on: cw-static-pub-x64-4c
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - run: echo 'Harmless snapshot-build stub; no build, tests, or QA commands.'
 
-  # Check module consistency and unit tests before QA acceptance
   test:
     name: Tests
     needs: build
     runs-on: cw-static-pub-x64-4c
-    timeout-minutes: 15
+    timeout-minutes: 5
+    permissions: {}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: ./.github/actions/setup
-      - run: go mod download
-      - name: Check go mod tidy
-        run: go mod tidy -diff
-      - name: Compile non-blocking acceptance tests without running them
-        run: env -u TF_ACC go test -tags=nonblocking -run '^$' ./...
-      - run: go test -v -cover ./...
-        timeout-minutes: 10
+      - run: echo 'Harmless test stub; no build, tests, or QA commands.'
 
   pr-title-format:
     name: Validate PR title
     runs-on: cw-static-pub-x64-4c
-    if: github.event_name == 'pull_request'
-    permissions:
-      contents: read
-      pull-requests: read
+    timeout-minutes: 5
+    permissions: {}
     steps:
-      - name: Ensure PR title matches conventional commits format
-        id: check_pr_title
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: |
-          PR_TITLE=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq .title)
-          re_types="build|chore|ci|deps|docs|feat|fix|perf|refactor|revert|style|test"
-          re_scope="\([[:alnum:]._\/-]+\)"
-          re_emoji="(\p{Emoji}[[:space:]]{1,2})"
-          re_message="([[:alnum:]])([[:space:][:print:]]|→)*"
-          re_full="^($re_types)($re_scope)?!?: ($re_emoji)?($re_message)$"
-          echo "Checking PR title '${PR_TITLE}' for conventional commits format..."
-          set -x
-          grep --version
-          echo "Test regex: $re_full"
-
-          tests_failed=0
-
-          function run_test() {
-            local input="${1}"
-
-            echo "Input string: ${input}"
-
-            if grep --color=always -P "$re_full" <<< "${input}"; then
-              echo "Test Passed! ✅"
-            else
-              tests_failed=$((tests_failed + 1))
-              echo "Test Failed! 🔻"
-            fi
-          }
-
-          echo "testing a PR title that renovate would make"
-          run_test 'fix(deps): update module google.golang.org/protobuf ( v1.36.10 → v1.36.11 )'
-
-          echo "testing a PR title with an emoji..."
-          run_test 'ci(test): 👷 debug grep version'
-
-          echo "testing a PR title without an emoji.."
-          run_test 'ci(test): debug grep version'
-
-          echo "testing a PR title with a major version bump change"
-          run_test 'ci(github-action)!: Update actions/cache action ( v4 → v5 )'
-
-          if [ $tests_failed -gt 0 ]; then
-            echo "One or more tests failed!"
-            exit 1
-          fi
-
-          grep --color=always -P "$re_full" <<< "${PR_TITLE}" || {
-            cat <<EOF
-          PR title does not match conventional commits format. Please update the PR title to match the format: '<type>(<scope>): <description>'"
-          See https://www.conventionalcommits.org/en/v1.0.0/ for more information.
-          Test regex: '$re_full'
-          EOF
-            exit 1
-          }
+      - run: echo 'Harmless pr-title-format stub; no build, tests, or QA commands.'
 
   select-acceptance:
     runs-on: cw-static-pub-x64-4c
+    timeout-minutes: 5
     outputs:
       suites: ${{ steps.selection.outputs.suites }}
+      validation-result: ${{ steps.selection.outputs.validation-result }}
+      acceptance-result: ${{ steps.selection.outputs.acceptance-result }}
+      failure-suite: ${{ steps.selection.outputs.failure-suite }}
+      nonblocking-result: ${{ steps.selection.outputs.nonblocking-result }}
+      delay-seconds: ${{ steps.selection.outputs.delay-seconds }}
     permissions:
       contents: read
       pull-requests: read
@@ -137,47 +72,102 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: '24.21.0'
-
-      - name: Verify suite selection behavior
-        run: node --test .github/acceptance-tests/*.test.mjs .github/release/*.test.mjs
-
-      - name: Select release acceptance suites
+      - name: Select suites and validate harmless probe inputs
         id: selection
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: |
-          selection_dir=$(mktemp -d)
-          trap 'rm -rf "$selection_dir"' EXIT
-          gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" > "$selection_dir/pr.json"
-          node .github/acceptance-tests/select-suites.mjs "$selection_dir/pr.json" "$HEAD_SHA" "$GITHUB_REPOSITORY"
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const { readFileSync } = await import('node:fs');
+            const { pathToFileURL } = await import('node:url');
+            const path = `${process.env.GITHUB_WORKSPACE}/.github/acceptance-tests/select-suites.mjs`;
+            const { selectSuites } = await import(pathToFileURL(path));
+            const requested = context.payload.pull_request;
+            const repository = `${context.repo.owner}/${context.repo.repo}`;
+            if (requested.head.ref !== 'cg/CLDAPI-1215/acceptance-approval-probe') {
+              throw new Error('This disposable probe must never run from another branch.');
+            }
+            const { data: current } = await github.rest.pulls.get({
+              ...context.repo,
+              pull_number: requested.number,
+            });
+            const suites = selectSuites(current, requested.head.sha, repository);
+            const scenario = JSON.parse(readFileSync('.github/acceptance-probe.json', 'utf8'));
+            const allowed = {
+              'validation-result': ['success', 'failure'],
+              'acceptance-result': ['success', 'failure', 'skipped'],
+              'failure-suite': suites,
+              'nonblocking-result': ['success', 'failure'],
+            };
+            for (const [key, values] of Object.entries(allowed)) {
+              if (!values.includes(scenario[key])) throw new Error(`Invalid probe input: ${key}`);
+              core.setOutput(key, scenario[key]);
+            }
+            const delay = scenario['delay-seconds'];
+            if (!Number.isInteger(delay) || delay < 0 || delay > 180) {
+              throw new Error('Probe delay must be an integer from 0 to 180 seconds.');
+            }
+            core.setOutput('delay-seconds', delay);
+            core.setOutput('suites', JSON.stringify(suites));
+            core.info('STUB ONLY: no QA environment, inherited secrets, or cloud commands.');
+
+  check-acceptance-revision:
+    name: Check acceptance revision
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: cw-static-pub-x64-4c
+    timeout-minutes: 5
+    permissions:
+      pull-requests: read
+    steps:
+      - &current-acceptance-pr
+        name: Verify current PR revision
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const requested = context.payload.pull_request;
+            const { data: current } = await github.rest.pulls.get({
+              ...context.repo,
+              pull_number: requested.number,
+            });
+            if (current?.state !== 'open' || current?.head?.sha !== requested.head.sha) {
+              throw new Error('Acceptance approval is for a closed or outdated PR revision.');
+            }
+            core.info(`Verified current PR #${requested.number} at ${requested.head.sha}.`);
+
+  approve-acceptance:
+    name: Approve acceptance
+    needs: [check-acceptance-revision]
+    runs-on: cw-static-pub-x64-4c
+    timeout-minutes: 5
+    environment: acceptance-approval
+    # Only supersede approval waits; never cancel resource commands or cleanup.
+    concurrency:
+      group: acceptance-approval-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    permissions:
+      pull-requests: read
+    steps:
+      - *current-acceptance-pr
 
   acceptance-tests:
     permissions:
-      contents: read
       pull-requests: read
-      packages: read
-      checks: write
-    needs: [select-acceptance, build, lint, test]
-    if: needs.select-acceptance.outputs.suites != '[]'
+    needs: [select-acceptance, approve-acceptance, validation]
+    # Probe-only fault injection: make the aggregate observe a skipped prerequisite.
+    if: needs.select-acceptance.outputs.acceptance-result != 'skipped'
     strategy:
-      # A failed suite must not cancel independent suites or their cleanup.
       fail-fast: false
       matrix:
         suite: ${{ fromJson(needs.select-acceptance.outputs.suites) }}
     uses: ./.github/workflows/acceptance-test.yaml
     with:
       suite: ${{ matrix.suite }}
-    secrets: inherit
+      result: ${{ needs.select-acceptance.outputs.acceptance-result == 'failure' && matrix.suite == needs.select-acceptance.outputs.failure-suite && 'failure' || 'success' }}
+      nonblocking-result: ${{ needs.select-acceptance.outputs.nonblocking-result }}
+      delay-seconds: ${{ fromJson(needs.select-acceptance.outputs.delay-seconds) }}
 
   validation:
     name: PR validation
-    needs: [build, lint, generate, snapshot-build, test, pr-title-format, select-acceptance, acceptance-tests]
+    needs: [build, lint, generate, snapshot-build, test, pr-title-format, select-acceptance]
     if: ${{ always() }}
     runs-on: cw-static-pub-x64-4c
     timeout-minutes: 5
@@ -187,24 +177,23 @@ jobs:
         uses: re-actors/alls-green@b5b5b37504aa4183270bd3d855c52a67f212be35 # v1.3.0
         with:
           jobs: ${{ toJSON(needs) }}
-          allowed-skips: ${{ needs.select-acceptance.outputs.suites == '[]' && 'acceptance-tests' || '' }}
-      - name: Summarize acceptance result
-        env:
-          SUITES: ${{ needs.select-acceptance.outputs.suites }}
-        run: |
-          if [ "$SUITES" = '[]' ]; then
-            echo 'Hosted checks passed. Acceptance: skipped for an ordinary PR.' >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo 'Hosted checks passed. All release acceptance suites passed.' >> "$GITHUB_STEP_SUMMARY"
-          fi
 
-  release-acceptance:
-    name: Release acceptance
-    needs: [select-acceptance, validation, acceptance-tests]
-    if: needs.select-acceptance.outputs.suites != '[]'
+      - name: Inject validation outcome (probe only)
+        env:
+          STUB_RESULT: ${{ needs.select-acceptance.outputs.validation-result }}
+        run: test "$STUB_RESULT" = success
+
+  pr-acceptance:
+    name: PR acceptance
+    needs: [select-acceptance, approve-acceptance, validation, acceptance-tests]
+    if: ${{ always() }}
     runs-on: cw-static-pub-x64-4c
+    timeout-minutes: 5
     permissions: {}
     steps:
-      - uses: re-actors/alls-green@b5b5b37504aa4183270bd3d855c52a67f212be35 # v1.3.0
+      - name: Require approved, successful acceptance
+        uses: re-actors/alls-green@b5b5b37504aa4183270bd3d855c52a67f212be35 # v1.3.0
         with:
           jobs: ${{ toJSON(needs) }}
+      - name: Summarize acceptance result
+        run: echo 'All six harmless stubs passed after environment approval; this is NOT live acceptance evidence.' >> "$GITHUB_STEP_SUMMARY"
