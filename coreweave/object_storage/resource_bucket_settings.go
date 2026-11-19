@@ -45,6 +45,7 @@ type BucketSettingsModel struct {
 	ArchiveEnabled             types.Bool   `tfsdk:"archive_enabled"`
 	ArchiveAfterLastAccessDays types.Int32  `tfsdk:"archive_after_last_access_days"`
 	CapacityCapBytes           types.Int64  `tfsdk:"capacity_cap_bytes"`
+	MetadataTableEnabled       types.Bool   `tfsdk:"metadata_table_enabled"`
 }
 
 // BucketSettingsResourceModel is an alias for BucketSettingsModel for consistency with other resources
@@ -79,6 +80,14 @@ func (s *BucketSettingsModel) Set(settings *cwobjectv1.CWObjectBucketSettings) {
 	} else {
 		s.CapacityCapBytes = types.Int64Null()
 	}
+
+	// The API reports false for entitled orgs that never configured it, and omits
+	// it entirely for unentitled orgs, which is the only way this is null.
+	if settings.MetadataTableEnabled != nil {
+		s.MetadataTableEnabled = types.BoolValue(settings.MetadataTableEnabled.Value)
+	} else {
+		s.MetadataTableEnabled = types.BoolNull()
+	}
 }
 
 func (s *BucketSettingsModel) ToProtoObject() *cwobjectv1.CWObjectBucketSettings {
@@ -98,6 +107,9 @@ func (s *BucketSettingsModel) ToProtoObject() *cwobjectv1.CWObjectBucketSettings
 	// Null or unknown omits the cap mutation; zero remains a valid cap.
 	if !s.CapacityCapBytes.IsNull() && !s.CapacityCapBytes.IsUnknown() {
 		settings.SetCapacityCapBytes(uint64(s.CapacityCapBytes.ValueInt64())) //nolint:gosec
+	}
+	if !s.MetadataTableEnabled.IsNull() && !s.MetadataTableEnabled.IsUnknown() {
+		settings.SetMetadataTableEnabled(wrapperspb.Bool(s.MetadataTableEnabled.ValueBool()))
 	}
 	return &settings
 }
@@ -176,6 +188,11 @@ func (b *BucketSettingsResource) Delete(ctx context.Context, req resource.Delete
 	if data.ArchiveEnabled.ValueBool() {
 		settings.ArchiveEnabled = wrapperspb.Bool(false)
 	}
+
+	// Keep the metadata table setting. State holds the server's value even when
+	// the attribute was never configured, so a true here may belong to someone
+	// else; resetting it could disable a table managed outside Terraform, or
+	// fail for callers without the metadata table permission.
 
 	// Keep the cap: it may be managed elsewhere, and bucket deletion removes it
 	// without requiring cap permission.
@@ -276,6 +293,15 @@ func (b *BucketSettingsResource) Schema(ctx context.Context, req resource.Schema
 				Validators: []validator.Int64{
 					int64validator.AtLeast(0),
 				},
+			},
+			// The API defaults this to false, but unlike audit_logging_enabled it
+			// must not get a schema default: the API rejects the field outright for
+			// unentitled orgs, so an omitted value must stay off the wire. Computed
+			// lets the server's false land in state without a diff.
+			"metadata_table_enabled": schema.BoolAttribute{
+				MarkdownDescription: "When true, CoreWeave AI Object Storage produces a metadata table for the bucket. Defaults to `false` server-side; omit to leave the current value unchanged. Removing this resource leaves the setting in place. Changing this setting requires the `cwobject:ConfigureBucketMetadataTable` action, and your organization must be entitled to configure it.",
+				Optional:            true,
+				Computed:            true,
 			},
 		},
 	}
@@ -392,6 +418,11 @@ func MustRenderBucketSettingsResource(_ context.Context, name string, settings *
 	// capacity_cap_bytes attribute
 	if !settings.CapacityCapBytes.IsNull() {
 		resourceBody.SetAttributeValue("capacity_cap_bytes", cty.NumberIntVal(settings.CapacityCapBytes.ValueInt64()))
+	}
+
+	// metadata_table_enabled attribute
+	if !settings.MetadataTableEnabled.IsNull() {
+		resourceBody.SetAttributeValue("metadata_table_enabled", cty.BoolVal(settings.MetadataTableEnabled.ValueBool()))
 	}
 
 	var buf bytes.Buffer
