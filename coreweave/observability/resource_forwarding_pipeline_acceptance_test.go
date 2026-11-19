@@ -1,16 +1,20 @@
 package observability_test
 
 import (
+	"context"
 	"fmt"
 	"regexp"
 	"testing"
+	"time"
 
 	clusterv1beta1 "buf.build/gen/go/coreweave/telemetry-relay/protocolbuffers/go/coreweave/telemetryrelay/svc/cluster/v1beta1"
 	typesv1beta1 "buf.build/gen/go/coreweave/telemetry-relay/protocolbuffers/go/coreweave/telemetryrelay/types/v1beta1"
+	"github.com/coreweave/terraform-provider-coreweave/coreweave"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave/observability/internal/model"
 	"github.com/coreweave/terraform-provider-coreweave/internal/provider"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/retry"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/knownvalue"
 	"github.com/hashicorp/terraform-plugin-testing/plancheck"
@@ -466,11 +470,27 @@ func testForwardingPipelineLifecycle(t *testing.T) {
 				{
 					PreConfig: func() {
 						t.Log("delete the pipeline behind Terraform's back")
+						const deleteTimeout = 5 * time.Minute
+						ctx, cancel := context.WithTimeout(t.Context(), deleteTimeout)
+						defer cancel()
+
 						client := testClient(t)
-						_, err := client.DeletePipeline(t.Context(), &clusterv1beta1.DeletePipelineRequest{
-							Ref: &typesv1beta1.ForwardingPipelineRef{Slug: pipelineSlug},
-						})
+						ref := &typesv1beta1.ForwardingPipelineRef{Slug: pipelineSlug}
+						_, err := client.DeletePipeline(ctx, &clusterv1beta1.DeletePipelineRequest{Ref: ref})
 						require.NoError(t, err)
+
+						// DeletePipeline starts a workflow. Wait for its result before Terraform refreshes.
+						err = retry.RetryContext(ctx, deleteTimeout, func() *retry.RetryError {
+							_, err := client.GetPipeline(ctx, &clusterv1beta1.GetPipelineRequest{Ref: ref})
+							if coreweave.IsNotFoundError(err) {
+								return nil
+							}
+							if err != nil {
+								return retry.NonRetryableError(err)
+							}
+							return retry.RetryableError(fmt.Errorf("pipeline %q still exists", pipelineSlug))
+						})
+						require.NoError(t, err, "waiting for pipeline %q to disappear", pipelineSlug)
 					},
 					Config: renderForwardingPipelineResource(t, resourceName, pipeline, endpoint),
 					ConfigPlanChecks: resource.ConfigPlanChecks{
