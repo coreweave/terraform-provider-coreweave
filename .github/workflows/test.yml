@@ -59,6 +59,13 @@ jobs:
         run: env -u TF_ACC go test -tags=nonblocking -run '^$' ./...
       - run: go test -v -cover ./...
         timeout-minutes: 10
+      - name: Test public constructor from an external Go module
+        run: |
+          cd "$(mktemp -d)"
+          cp "$GITHUB_WORKSPACE/provider/provider_test.go" .
+          go mod init example.org/provider-consumer
+          go mod edit -require=github.com/coreweave/terraform-provider-coreweave@v0.0.0 -replace=github.com/coreweave/terraform-provider-coreweave="$GITHUB_WORKSPACE"
+          go test -mod=mod .
 
   pr-title-format:
     name: Validate PR title
