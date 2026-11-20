@@ -6,7 +6,7 @@ resource "coreweave_iam_access_policy" "automation" {
   description      = "IAM administration for deployment automation"
 
   rules = [{
-    actions = data.coreweave_iam_access_policy_roles.available.roles["iam_admin"].actions
+    actions = data.coreweave_iam_access_policy_roles.available.roles["IAM Admin"]
     service_accounts = [
       "organizations/a1b2c3/serviceAccounts/ci-deployer",
     ]

@@ -4,14 +4,14 @@ page_title: "coreweave_iam_access_policy_roles Data Source - coreweave"
 subcategory: ""
 description: |-
   **Private beta:** This data source is available only to organizations enrolled in the IAM access policy private beta and may change before general availability.
-  Returns the provider-versioned catalog of customer-assignable IAM access policy roles. Role keys are stable Terraform identifiers; each role resolves to the CoreWeave console actions accepted by coreweave_iam_access_policy. System-managed actions are excluded.
+  Returns the provider-versioned catalog of customer-assignable IAM access policy roles, keyed by their customer-facing names. Each role resolves directly to the CoreWeave console actions accepted by coreweave_iam_access_policy. Keys are case- and space-sensitive. Existing keys remain available as compatibility aliases if a role is renamed. System-managed actions are excluded.
 ---
 
 # coreweave_iam_access_policy_roles (Data Source)
 
 > **Private beta:** This data source is available only to organizations enrolled in the IAM access policy private beta and may change before general availability.
 
-Returns the provider-versioned catalog of customer-assignable IAM access policy roles. Role keys are stable Terraform identifiers; each role resolves to the CoreWeave console actions accepted by `coreweave_iam_access_policy`. System-managed actions are excluded.
+Returns the provider-versioned catalog of customer-assignable IAM access policy roles, keyed by their customer-facing names. Each role resolves directly to the CoreWeave console actions accepted by `coreweave_iam_access_policy`. Keys are case- and space-sensitive. Existing keys remain available as compatibility aliases if a role is renamed. System-managed actions are excluded.
 
 ## Example Usage
 
@@ -24,7 +24,7 @@ resource "coreweave_iam_access_policy" "automation" {
   description      = "IAM administration for deployment automation"
 
   rules = [{
-    actions = data.coreweave_iam_access_policy_roles.available.roles["iam_admin"].actions
+    actions = data.coreweave_iam_access_policy_roles.available.roles["IAM Admin"]
     service_accounts = [
       "organizations/a1b2c3/serviceAccounts/ci-deployer",
     ]
@@ -37,12 +37,4 @@ resource "coreweave_iam_access_policy" "automation" {
 
 ### Read-Only
 
-- `roles` (Attributes Map) Customer-assignable roles keyed by stable Terraform identifiers. (see [below for nested schema](#nestedatt--roles))
-
-<a id="nestedatt--roles"></a>
-### Nested Schema for `roles`
-
-Read-Only:
-
-- `actions` (Set of String) Console action identifiers granted by the role. Pass this value to a `coreweave_iam_access_policy` rule's `actions` attribute.
-- `display_name` (String) The customer-facing role name.
+- `roles` (Map of Set of String) Console action sets keyed by customer-facing role names. Keys are case- and space-sensitive. Pass a selected value directly to a `coreweave_iam_access_policy` rule's `actions` attribute.
