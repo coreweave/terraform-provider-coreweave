@@ -449,9 +449,9 @@ func (r *InferenceDeploymentResource) Schema(_ context.Context, _ resource.Schem
 					},
 					"priority": schema.Int64Attribute{
 						Optional:            true,
-						MarkdownDescription: "Priority for cross-deployment scaling (0-1000). Higher values win when there is contention.",
+						MarkdownDescription: "Priority for cross-deployment scaling, from 1 to 100. Omit or set to 0 to leave unset. Higher values win when there is contention.",
 						Validators: []validator.Int64{
-							int64validator.Between(0, 1000),
+							int64validator.Between(0, 100),
 						},
 					},
 					"capacity_classes": schema.ListAttribute{
