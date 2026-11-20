@@ -46,6 +46,8 @@ type serviceAccountTestServer struct {
 	emptyCreateResponseUID   bool
 	emptyNextGetResponse     bool
 	notFoundGetResponses     int
+	staleActiveGetResponses  int
+	staleActiveValue         bool
 	emptyUpdateResponse      bool
 	emptyActivationResponse  bool
 	notFoundOnNextUpdateCall bool
@@ -88,12 +90,12 @@ func (p *serviceAccountReadBackTestProvider) Functions(ctx context.Context) []fu
 	return nil
 }
 
-func serviceAccountProviderFactoriesWithReadBackPolicy(timeout, initialDelay, maxDelay time.Duration) map[string]func() (tfprotov6.ProviderServer, error) {
+func serviceAccountProviderFactoriesWithReadBackPolicy(timeout time.Duration) map[string]func() (tfprotov6.ProviderServer, error) {
 	factory := providerserver.NewProtocol6WithError(&serviceAccountReadBackTestProvider{
 		Provider:     provider.New("test")(),
 		timeout:      timeout,
-		initialDelay: initialDelay,
-		maxDelay:     maxDelay,
+		initialDelay: time.Millisecond,
+		maxDelay:     2 * time.Millisecond,
 	})
 	return map[string]func() (tfprotov6.ProviderServer, error){"coreweave": factory}
 }
@@ -149,7 +151,12 @@ func (s *serviceAccountTestServer) GetServiceAccount(_ context.Context, request 
 	if !exists {
 		return nil, connect.Errorf(connect.CodeNotFound, "service account not found")
 	}
-	return cloneServiceAccount(account), nil
+	response := cloneServiceAccount(account)
+	if s.staleActiveGetResponses > 0 {
+		s.staleActiveGetResponses--
+		response.Active = proto.Bool(s.staleActiveValue)
+	}
+	return response, nil
 }
 
 func (s *serviceAccountTestServer) UpdateServiceAccount(_ context.Context, request *directoryv1alpha.UpdateServiceAccountRequest) (*directoryv1alpha.ServiceAccount, error) {
@@ -338,6 +345,13 @@ func (s *serviceAccountTestServer) returnNotFoundOnNextGets(count int) {
 	s.notFoundGetResponses = count
 }
 
+func (s *serviceAccountTestServer) returnStaleActiveOnNextGets(count int, active bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.staleActiveGetResponses = count
+	s.staleActiveValue = active
+}
+
 func (s *serviceAccountTestServer) returnEmptyUpdateResponse() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -420,7 +434,7 @@ resource "coreweave_iam_service_account" "test" {
 `, endpoint, displayName, active)
 }
 
-func serviceAccountTestConfigWithIgnoredActive(endpoint, displayName string, active bool) string {
+func serviceAccountTestConfigWithIgnoredActive(endpoint, displayName string) string {
 	return fmt.Sprintf(`
 provider "coreweave" {
   endpoint = %q
@@ -431,13 +445,13 @@ resource "coreweave_iam_service_account" "test" {
   id              = "ci-agent"
   organization_id = "a1b2c3"
   display_name    = %q
-  active          = %t
+  active          = true
 
   lifecycle {
     ignore_changes = [active]
   }
 }
-`, endpoint, displayName, active)
+`, endpoint, displayName)
 }
 
 func serviceAccountTestConfigWithExplicitDisplayName(endpoint, displayName string) string {
@@ -594,11 +608,49 @@ func TestServiceAccountResourceCreateActivationMismatchExplainsUntaintRecovery(t
 	service.ignoreNextActivationChange()
 
 	tfresource.UnitTest(t, tfresource.TestCase{
-		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+		ProtoV6ProviderFactories: serviceAccountProviderFactoriesWithReadBackPolicy(15 * time.Millisecond),
 		CheckDestroy:             service.checkEmpty,
 		Steps: []tfresource.TestStep{{
 			Config:      serviceAccountTestConfigWithActive(server.URL, "Deactivation mismatch", false),
 			ExpectError: regexp.MustCompile(`(?s)created.*did not apply active=false.*terraform untaint.*retry.*in place`),
+		}},
+	})
+}
+
+func TestServiceAccountResourceCreateRecoversActivationNotFound(t *testing.T) {
+	service, server := startServiceAccountTestServer(t)
+	service.returnEmptyActivationResponse()
+	service.returnNotFoundOnNextGets(1)
+
+	tfresource.UnitTest(t, tfresource.TestCase{
+		ProtoV6ProviderFactories: serviceAccountProviderFactoriesWithReadBackPolicy(100 * time.Millisecond),
+		CheckDestroy:             service.checkEmpty,
+		Steps: []tfresource.TestStep{{
+			Config: serviceAccountTestConfigWithActive(server.URL, "Eventually visible deactivation", false),
+			Check: tfresource.ComposeAggregateTestCheckFunc(
+				tfresource.TestCheckResourceAttr(serviceAccountResourceAddress, "active", "false"),
+				service.checkActivationCounts(0, 1),
+				service.checkCreateCount(1),
+			),
+		}},
+	})
+}
+
+func TestServiceAccountResourceCreateRecoversStaleActivationRead(t *testing.T) {
+	service, server := startServiceAccountTestServer(t)
+	service.returnEmptyActivationResponse()
+	service.returnStaleActiveOnNextGets(1, true)
+
+	tfresource.UnitTest(t, tfresource.TestCase{
+		ProtoV6ProviderFactories: serviceAccountProviderFactoriesWithReadBackPolicy(100 * time.Millisecond),
+		CheckDestroy:             service.checkEmpty,
+		Steps: []tfresource.TestStep{{
+			Config: serviceAccountTestConfigWithActive(server.URL, "Eventually consistent deactivation", false),
+			Check: tfresource.ComposeAggregateTestCheckFunc(
+				tfresource.TestCheckResourceAttr(serviceAccountResourceAddress, "active", "false"),
+				service.checkActivationCounts(0, 1),
+				service.checkCreateCount(1),
+			),
 		}},
 	})
 }
@@ -678,8 +730,8 @@ func TestServiceAccountResourceCorrectsManagedActivationDrift(t *testing.T) {
 
 func TestServiceAccountResourceHonorsIgnoredActivationChanges(t *testing.T) {
 	service, server := startServiceAccountTestServer(t)
-	initial := serviceAccountTestConfigWithIgnoredActive(server.URL, "Initial", true)
-	updated := serviceAccountTestConfigWithIgnoredActive(server.URL, "Updated", true)
+	initial := serviceAccountTestConfigWithIgnoredActive(server.URL, "Initial")
+	updated := serviceAccountTestConfigWithIgnoredActive(server.URL, "Updated")
 
 	tfresource.UnitTest(t, tfresource.TestCase{
 		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
@@ -695,6 +747,58 @@ func TestServiceAccountResourceHonorsIgnoredActivationChanges(t *testing.T) {
 				Check: tfresource.ComposeAggregateTestCheckFunc(
 					tfresource.TestCheckResourceAttr(serviceAccountResourceAddress, "display_name", "Updated"),
 					tfresource.TestCheckResourceAttr(serviceAccountResourceAddress, "active", "false"),
+					service.checkActivationCounts(0, 0),
+				),
+			},
+		},
+	})
+}
+
+func TestServiceAccountResourceDoesNotApplyUnplannedIgnoredActivationDrift(t *testing.T) {
+	service, server := startServiceAccountTestServer(t)
+	initial := serviceAccountTestConfigWithIgnoredActive(server.URL, "Initial")
+	updated := serviceAccountTestConfigWithIgnoredActive(server.URL, "Updated")
+
+	tfresource.UnitTest(t, tfresource.TestCase{
+		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+		CheckDestroy:             service.checkEmpty,
+		Steps: []tfresource.TestStep{
+			{Config: initial},
+			{
+				Config: updated,
+				ConfigPlanChecks: tfresource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{
+					plancheck.ExpectResourceAction(serviceAccountResourceAddress, plancheck.ResourceActionUpdate),
+					serviceAccountPlanCheck(service.deactivateAll),
+				}},
+				Check: tfresource.ComposeAggregateTestCheckFunc(
+					tfresource.TestCheckResourceAttr(serviceAccountResourceAddress, "display_name", "Updated"),
+					tfresource.TestCheckResourceAttr(serviceAccountResourceAddress, "active", "true"),
+					service.checkActivationCounts(0, 0),
+				),
+			},
+		},
+	})
+}
+
+func TestServiceAccountResourceDoesNotApplyUnplannedActivationDrift(t *testing.T) {
+	service, server := startServiceAccountTestServer(t)
+	initial := serviceAccountTestConfigWithActive(server.URL, "Initial", true)
+	updated := serviceAccountTestConfigWithActive(server.URL, "Updated", true)
+
+	tfresource.UnitTest(t, tfresource.TestCase{
+		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+		CheckDestroy:             service.checkEmpty,
+		Steps: []tfresource.TestStep{
+			{Config: initial},
+			{
+				Config:             updated,
+				ExpectNonEmptyPlan: true,
+				ConfigPlanChecks: tfresource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{
+					serviceAccountPlanCheck(service.deactivateAll),
+				}},
+				Check: tfresource.ComposeAggregateTestCheckFunc(
+					tfresource.TestCheckResourceAttr(serviceAccountResourceAddress, "display_name", "Updated"),
+					tfresource.TestCheckResourceAttr(serviceAccountResourceAddress, "active", "true"),
 					service.checkActivationCounts(0, 0),
 				),
 			},
@@ -812,7 +916,7 @@ func TestServiceAccountResourceRetriesNotFoundCreateReadBack(t *testing.T) {
 	service.returnNotFoundOnNextGets(2)
 
 	tfresource.UnitTest(t, tfresource.TestCase{
-		ProtoV6ProviderFactories: serviceAccountProviderFactoriesWithReadBackPolicy(100*time.Millisecond, time.Millisecond, 2*time.Millisecond),
+		ProtoV6ProviderFactories: serviceAccountProviderFactoriesWithReadBackPolicy(100 * time.Millisecond),
 		CheckDestroy:             service.checkEmpty,
 		Steps: []tfresource.TestStep{{
 			Config: serviceAccountTestConfig(server.URL, "Eventually visible"),
@@ -832,7 +936,7 @@ func TestServiceAccountResourceTaintsWhenCreateReadBackRemainsNotFound(t *testin
 	config := serviceAccountTestConfig(server.URL, "Create recovery")
 
 	tfresource.UnitTest(t, tfresource.TestCase{
-		ProtoV6ProviderFactories: serviceAccountProviderFactoriesWithReadBackPolicy(15*time.Millisecond, time.Millisecond, 2*time.Millisecond),
+		ProtoV6ProviderFactories: serviceAccountProviderFactoriesWithReadBackPolicy(15 * time.Millisecond),
 		CheckDestroy:             service.checkEmpty,
 		Steps: []tfresource.TestStep{
 			{

@@ -21,9 +21,9 @@ import (
 )
 
 const (
-	serviceAccountCreateReadBackTimeout      = 30 * time.Second
-	serviceAccountCreateReadBackInitialDelay = 250 * time.Millisecond
-	serviceAccountCreateReadBackMaxDelay     = 5 * time.Second
+	serviceAccountReadBackTimeout      = 30 * time.Second
+	serviceAccountReadBackInitialDelay = 250 * time.Millisecond
+	serviceAccountReadBackMaxDelay     = 5 * time.Second
 )
 
 type serviceAccountReadBackPolicy struct {
@@ -34,9 +34,9 @@ type serviceAccountReadBackPolicy struct {
 
 func defaultServiceAccountReadBackPolicy() serviceAccountReadBackPolicy {
 	return serviceAccountReadBackPolicy{
-		timeout:      serviceAccountCreateReadBackTimeout,
-		initialDelay: serviceAccountCreateReadBackInitialDelay,
-		maxDelay:     serviceAccountCreateReadBackMaxDelay,
+		timeout:      serviceAccountReadBackTimeout,
+		initialDelay: serviceAccountReadBackInitialDelay,
+		maxDelay:     serviceAccountReadBackMaxDelay,
 	}
 }
 
@@ -232,28 +232,40 @@ func (m *ServiceAccountResourceModel) createRequest() *directoryv1alpha.CreateSe
 	return request
 }
 
-// readBackCreatedServiceAccount retries only NotFound because a successful
-// create may become visible to reads shortly after the write completes. The
-// shared client owns transport retries, so other codes, including Unavailable,
-// are returned immediately.
-func readBackCreatedServiceAccount(
+type serviceAccountReady func(*directoryv1alpha.ServiceAccount) bool
+
+// readBackServiceAccount retries NotFound and visible responses that have not
+// reached the requested state. The shared client owns transport retries, so
+// other error codes are returned immediately.
+func readBackServiceAccount(
 	ctx context.Context,
 	policy serviceAccountReadBackPolicy,
 	get func(context.Context) (*directoryv1alpha.ServiceAccount, error),
+	ready serviceAccountReady,
 ) (*directoryv1alpha.ServiceAccount, error) {
 	retryCtx, cancel := context.WithTimeout(ctx, policy.timeout)
 	defer cancel()
 
 	delay := policy.initialDelay
+	var lastVisible *directoryv1alpha.ServiceAccount
+	var lastErr error
 	for {
 		account, err := get(retryCtx)
-		if err == nil {
+		if err == nil && (ready == nil || ready(account)) {
 			return account, nil
 		}
-		if retryCtx.Err() != nil {
-			return nil, readBackError(policy, err, ctx.Err(), retryCtx.Err())
+		if err == nil {
+			if account != nil {
+				lastVisible = account
+			}
+			lastErr = fmt.Errorf("service account has not reached the requested state")
+		} else {
+			lastErr = err
 		}
-		if !coreweave.IsNotFoundError(err) {
+		if retryCtx.Err() != nil {
+			return finishServiceAccountReadBack(policy, lastVisible, lastErr, ctx.Err(), retryCtx.Err())
+		}
+		if err != nil && !coreweave.IsNotFoundError(err) {
 			return nil, err
 		}
 
@@ -261,7 +273,7 @@ func readBackCreatedServiceAccount(
 		select {
 		case <-retryCtx.Done():
 			timer.Stop()
-			return nil, readBackError(policy, err, ctx.Err(), retryCtx.Err())
+			return finishServiceAccountReadBack(policy, lastVisible, lastErr, ctx.Err(), retryCtx.Err())
 		case <-timer.C:
 		}
 
@@ -272,6 +284,25 @@ func readBackCreatedServiceAccount(
 			}
 		}
 	}
+}
+
+func readBackCreatedServiceAccount(
+	ctx context.Context,
+	policy serviceAccountReadBackPolicy,
+	get func(context.Context) (*directoryv1alpha.ServiceAccount, error),
+) (*directoryv1alpha.ServiceAccount, error) {
+	return readBackServiceAccount(ctx, policy, get, nil)
+}
+
+func finishServiceAccountReadBack(
+	policy serviceAccountReadBackPolicy,
+	lastVisible *directoryv1alpha.ServiceAccount,
+	lastErr, parentErr, retryErr error,
+) (*directoryv1alpha.ServiceAccount, error) {
+	if parentErr == nil && lastVisible != nil {
+		return lastVisible, nil
+	}
+	return nil, readBackError(policy, lastErr, parentErr, retryErr)
 }
 
 func readBackError(policy serviceAccountReadBackPolicy, lastErr, parentErr, retryErr error) error {
@@ -325,7 +356,15 @@ func (r *ServiceAccountResource) recoverServiceAccountResponse(
 		responseErr = fmt.Errorf("response reported active=%t instead of active=%t", account.GetActive(), *desiredActive)
 	}
 
-	readBack, readErr := r.client.Directory.GetServiceAccount(ctx, &directoryv1alpha.GetServiceAccountRequest{Name: &name})
+	var ready serviceAccountReady
+	if desiredActive != nil {
+		ready = func(account *directoryv1alpha.ServiceAccount) bool {
+			return account != nil && account.GetActive() == *desiredActive
+		}
+	}
+	readBack, readErr := readBackServiceAccount(ctx, r.readBackPolicy, func(readCtx context.Context) (*directoryv1alpha.ServiceAccount, error) {
+		return r.client.Directory.GetServiceAccount(readCtx, &directoryv1alpha.GetServiceAccountRequest{Name: &name})
+	}, ready)
 	if readErr != nil {
 		if rpcErr != nil {
 			return nil, rpcErr
@@ -512,7 +551,8 @@ func (r *ServiceAccountResource) Update(ctx context.Context, req resource.Update
 		return
 	}
 
-	if activeIsConfigured(config.Active) && activeIsConfigured(plan.Active) && account.GetActive() != plan.Active.ValueBool() {
+	updateActive := activeIsConfigured(config.Active) && activeIsConfigured(plan.Active) && !plan.Active.Equal(state.Active)
+	if updateActive && account.GetActive() != plan.Active.ValueBool() {
 		desiredActive := plan.Active.ValueBool()
 		var applied bool
 		var updateErr error
