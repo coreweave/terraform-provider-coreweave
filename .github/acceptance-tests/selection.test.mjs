@@ -1,28 +1,46 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { mkdtempSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, readFileSync, rmSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
+import { once } from 'node:events';
 
 const root = new URL('../../', import.meta.url);
 
-function make(target) {
+const outputEvent = { Action: 'output', Package: 'fixture', Output: '=== RUN   TestNonBlockingAcceptance\n' };
+const events = [outputEvent, { Action: 'pass', Package: 'fixture' }];
+const goJSON = events.map(event => JSON.stringify(event)).join('\n') + '\n';
+
+function make(target, { suites = 'cks networking', malformed = false, unwritable = false, streaming = false, input = goJSON, asyncRun = streaming } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'acceptance-selection-'));
   const log = join(dir, 'commands');
   const results = join(dir, 'results');
+  const completion = join(dir, 'completed');
+  const eventsFile = join(dir, 'events.json');
+  writeFileSync(eventsFile, (malformed ? 'not JSON\n' : '') + input);
+  if (unwritable) mkdirSync(join(results, 'networking.json'), { recursive: true });
   writeFileSync(join(dir, 'go'), `#!/bin/sh
 case "$1" in env) echo fixture; exit 0;; esac
 printf '%s|%s\\n' "$TF_ACC" "$*" >> "$COMMAND_LOG"
-printf '%s\\n' '{"Action":"pass","Package":"fixture"}'
+cat "$EVENTS_FILE" || exit $?
+${streaming ? `node -e '
+const { existsSync } = require("node:fs");
+const deadline = setTimeout(() => process.exit(1), 5000);
+const timer = setInterval(() => {
+  if (existsSync(process.argv[1])) { clearTimeout(deadline); clearInterval(timer); }
+}, 10);
+' "$RELEASE_FILE" || exit 1` : ''}
 case "$*" in *coreweave/cks*) exit 1;; esac
+touch "$COMPLETION_FILE"
 `, { mode: 0o755 });
-  const run = spawnSync('make', [target, 'SUITES=cks networking', 'TEST_ACC_TIMEOUT=7m',
+  const run = (asyncRun ? spawn : spawnSync)('make', [target, `SUITES=${suites}`, 'TEST_ACC_TIMEOUT=7m',
     'TEST_ACC_PARALLEL=3', `NONBLOCKING_RESULTS_DIR=${results}`], {
     cwd: root, encoding: 'utf8',
-    env: { ...process.env, PATH: `${dir}:${process.env.PATH}`, COMMAND_LOG: log, TF_ACC: '' },
+    env: { PATH: `${dir}:${process.env.PATH}`, COMMAND_LOG: log, TF_ACC: '', RELEASE_FILE: join(dir, 'release'),
+      EVENTS_FILE: eventsFile, COMPLETION_FILE: completion },
   });
-  return { dir, log, results, run };
+  return { dir, log, results, completion, run };
 }
 
 for (const target of ['test', 'testacc']) {
@@ -51,7 +69,75 @@ test('non-blocking selection records JSON for every suite and propagates failure
       assert.doesNotMatch(command, /-skip/);
     }
     for (const suite of ['cks', 'networking']) {
-      assert.equal(JSON.parse(readFileSync(join(fixture.results, `${suite}.json`), 'utf8')).Action, 'pass');
+      assert.equal(readFileSync(join(fixture.results, `${suite}.json`), 'utf8'), goJSON);
     }
+    assert.equal(fixture.run.stdout, outputEvent.Output.repeat(2));
+  } finally { rmSync(fixture.dir, { recursive: true, force: true }); }
+});
+
+test('passing non-blocking suites still succeed', () => {
+  const fixture = make('testacc-nonblocking', { suites: 'networking' });
+  try {
+    assert.equal(fixture.run.status, 0, fixture.run.stderr);
+    assert.equal(fixture.run.stdout, outputEvent.Output);
+  } finally { rmSync(fixture.dir, { recursive: true, force: true }); }
+});
+
+for (const failure of ['malformed', 'unwritable']) {
+  test(`non-blocking logging failure (${failure}) fails a passing test command`, () => {
+    const fixture = make('testacc-nonblocking', { suites: 'networking', [failure]: true });
+    try {
+      assert.notEqual(fixture.run.status, 0);
+    } finally { rmSync(fixture.dir, { recursive: true, force: true }); }
+  });
+}
+
+test('non-blocking logs stream before the test command finishes', async () => {
+  const fixture = make('testacc-nonblocking', { suites: 'networking', streaming: true });
+  let stdout = '';
+  let stderr = '';
+  fixture.run.stdout.setEncoding('utf8');
+  fixture.run.stdout.on('data', chunk => {
+    stdout += chunk;
+    if (stdout.includes(outputEvent.Output)) writeFileSync(join(fixture.dir, 'release'), '');
+  });
+  fixture.run.stderr.setEncoding('utf8');
+  fixture.run.stderr.on('data', chunk => { stderr += chunk; });
+  try {
+    const [code] = await once(fixture.run, 'close');
+    assert.equal(code, 0, stderr);
+    assert.equal(stdout, outputEvent.Output);
+    assert.equal(readFileSync(join(fixture.results, 'networking.json'), 'utf8'), goJSON);
+  } finally { rmSync(fixture.dir, { recursive: true, force: true }); }
+});
+
+test('renderer failure lets the test command finish and preserves the complete JSON archive', () => {
+  const input = goJSON.repeat(20000);
+  const fixture = make('testacc-nonblocking', { suites: 'networking', malformed: true, input });
+  try {
+    assert.notEqual(fixture.run.status, 0);
+    const archived = readFileSync(join(fixture.results, 'networking.json'), 'utf8');
+    const expected = 'not JSON\n' + input;
+    assert.equal(archived.length, expected.length, 'renderer failure must not truncate the JSON archive');
+    assert.equal(archived, expected);
+    assert.equal(readFileSync(fixture.completion, 'utf8'), '');
+  } finally { rmSync(fixture.dir, { recursive: true, force: true }); }
+});
+
+test('closed log output does not interrupt the test command or truncate its archive', async () => {
+  const input = goJSON.repeat(20000);
+  const fixture = make('testacc-nonblocking', { suites: 'networking', input, asyncRun: true });
+  fixture.run.stdout.destroy();
+  let stderr = '';
+  fixture.run.stderr.setEncoding('utf8');
+  fixture.run.stderr.on('data', chunk => { stderr += chunk; });
+  try {
+    const [code] = await once(fixture.run, 'close');
+    assert.notEqual(code, 0);
+    assert.match(stderr, /EPIPE/);
+    const archived = readFileSync(join(fixture.results, 'networking.json'), 'utf8');
+    assert.equal(archived.length, input.length, 'closed log output must not truncate the JSON archive');
+    assert.equal(archived, input);
+    assert.equal(readFileSync(fixture.completion, 'utf8'), '');
   } finally { rmSync(fixture.dir, { recursive: true, force: true }); }
 });

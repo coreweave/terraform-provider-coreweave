@@ -71,10 +71,13 @@ testacc:
 		TF_ACC=1 go test -v -cover -timeout=$(TEST_ACC_TIMEOUT) $(if $(TEST_ACC_PARALLEL),-parallel=$(TEST_ACC_PARALLEL)) ./coreweave/$$suite; \
 	done
 
+testacc-nonblocking: SHELL := /bin/bash
+# Drain after renderer failure so broken pipes cannot interrupt tests or truncate the archive.
 testacc-nonblocking:
-	@set -e; mkdir -p '$(NONBLOCKING_RESULTS_DIR)'; status=0; for suite in $(SUITES); do \
-		TF_ACC=1 go test -tags=nonblocking -count=1 -run "^TestNonBlockingAcceptance$$" -json -timeout=$(TEST_ACC_TIMEOUT) $(if $(TEST_ACC_PARALLEL),-parallel=$(TEST_ACC_PARALLEL)) ./coreweave/$$suite > '$(NONBLOCKING_RESULTS_DIR)'/$$suite.json || status=1; \
-		cat '$(NONBLOCKING_RESULTS_DIR)'/$$suite.json; \
+	@set -e -o pipefail; mkdir -p '$(NONBLOCKING_RESULTS_DIR)'; status=0; for suite in $(SUITES); do \
+		TF_ACC=1 go test -tags=nonblocking -count=1 -run "^TestNonBlockingAcceptance$$" -json -timeout=$(TEST_ACC_TIMEOUT) $(if $(TEST_ACC_PARALLEL),-parallel=$(TEST_ACC_PARALLEL)) ./coreweave/$$suite \
+			| tee '$(NONBLOCKING_RESULTS_DIR)'/$$suite.json \
+			| (node .github/acceptance-tests/test-output.mjs || { renderer_status=$$?; cat >/dev/null; exit $$renderer_status; }) || status=1; \
 	done; exit $$status
 
 .PHONY: debug fmt lint test testacc testacc-nonblocking testacc-sweep build install generate clean
