@@ -257,6 +257,30 @@ func (s *serviceAccountTestServer) checkActivationCounts(activates, deactivates 
 	}
 }
 
+func (s *serviceAccountTestServer) checkUpdatedAtMatchesRemote(address string) tfresource.TestCheckFunc {
+	return func(state *terraform.State) error {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		resourceState, exists := state.RootModule().Resources[address]
+		if !exists {
+			return fmt.Errorf("resource %q is missing from state", address)
+		}
+		name := resourceState.Primary.Attributes["name"]
+		account, exists := s.accounts[name]
+		if !exists {
+			return fmt.Errorf("service account %q is missing from the fake server", name)
+		}
+		if account.GetUpdateTime() == nil {
+			return fmt.Errorf("service account %q has no remote update time", name)
+		}
+		want := account.GetUpdateTime().AsTime().Format(time.RFC3339)
+		if got := resourceState.Primary.Attributes["updated_at"]; got != want {
+			return fmt.Errorf("updated_at does not match the remote service account: got %q, want %q", got, want)
+		}
+		return nil
+	}
+}
+
 func (s *serviceAccountTestServer) checkUpdateCount(expected int) tfresource.TestCheckFunc {
 	return func(*terraform.State) error {
 		s.mu.Lock()
@@ -279,6 +303,14 @@ func (s *serviceAccountTestServer) deactivateAll() {
 	defer s.mu.Unlock()
 	for _, account := range s.accounts {
 		account.Active = proto.Bool(false)
+	}
+}
+
+func (s *serviceAccountTestServer) setAllDisplayNames(displayName string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, account := range s.accounts {
+		account.DisplayName = proto.String(displayName)
 	}
 }
 
@@ -384,6 +416,26 @@ resource "coreweave_iam_service_account" "test" {
   organization_id = "a1b2c3"
   display_name    = %q
   active          = %t
+}
+`, endpoint, displayName, active)
+}
+
+func serviceAccountTestConfigWithIgnoredActive(endpoint, displayName string, active bool) string {
+	return fmt.Sprintf(`
+provider "coreweave" {
+  endpoint = %q
+  token    = "test-token"
+}
+
+resource "coreweave_iam_service_account" "test" {
+  id              = "ci-agent"
+  organization_id = "a1b2c3"
+  display_name    = %q
+  active          = %t
+
+  lifecycle {
+    ignore_changes = [active]
+  }
 }
 `, endpoint, displayName, active)
 }
@@ -618,6 +670,59 @@ func TestServiceAccountResourceCorrectsManagedActivationDrift(t *testing.T) {
 				Check: tfresource.ComposeAggregateTestCheckFunc(
 					tfresource.TestCheckResourceAttr(serviceAccountResourceAddress, "active", "true"),
 					service.checkActivationCounts(1, 0),
+				),
+			},
+		},
+	})
+}
+
+func TestServiceAccountResourceHonorsIgnoredActivationChanges(t *testing.T) {
+	service, server := startServiceAccountTestServer(t)
+	initial := serviceAccountTestConfigWithIgnoredActive(server.URL, "Initial", true)
+	updated := serviceAccountTestConfigWithIgnoredActive(server.URL, "Updated", true)
+
+	tfresource.UnitTest(t, tfresource.TestCase{
+		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+		CheckDestroy:             service.checkEmpty,
+		Steps: []tfresource.TestStep{
+			{Config: initial},
+			{
+				Config:    updated,
+				PreConfig: service.deactivateAll,
+				ConfigPlanChecks: tfresource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{
+					plancheck.ExpectResourceAction(serviceAccountResourceAddress, plancheck.ResourceActionUpdate),
+				}},
+				Check: tfresource.ComposeAggregateTestCheckFunc(
+					tfresource.TestCheckResourceAttr(serviceAccountResourceAddress, "display_name", "Updated"),
+					tfresource.TestCheckResourceAttr(serviceAccountResourceAddress, "active", "false"),
+					service.checkActivationCounts(0, 0),
+				),
+			},
+		},
+	})
+}
+
+func TestServiceAccountResourcePreservesPlannedDisplayNameDuringActivation(t *testing.T) {
+	service, server := startServiceAccountTestServer(t)
+	initial := serviceAccountTestConfigWithActive(server.URL, "Planned display name", true)
+	deactivated := serviceAccountTestConfigWithActive(server.URL, "Planned display name", false)
+
+	tfresource.UnitTest(t, tfresource.TestCase{
+		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+		CheckDestroy:             service.checkEmpty,
+		Steps: []tfresource.TestStep{
+			{Config: initial},
+			{
+				Config:             deactivated,
+				ExpectNonEmptyPlan: true,
+				ConfigPlanChecks: tfresource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{
+					serviceAccountPlanCheck(func() { service.setAllDisplayNames("Remote drift after planning") }),
+				}},
+				Check: tfresource.ComposeAggregateTestCheckFunc(
+					tfresource.TestCheckResourceAttr(serviceAccountResourceAddress, "display_name", "Planned display name"),
+					tfresource.TestCheckResourceAttr(serviceAccountResourceAddress, "active", "false"),
+					service.checkActivationCounts(0, 1),
+					service.checkUpdatedAtMatchesRemote(serviceAccountResourceAddress),
 				),
 			},
 		},

@@ -293,6 +293,7 @@ func (r *ServiceAccountResource) setActive(ctx context.Context, name string, act
 }
 
 func activationErrorMayBeAmbiguous(err error) bool {
+	//nolint:exhaustive // Unlisted Connect codes are definitive for this recovery decision.
 	switch connect.CodeOf(err) {
 	case connect.CodeCanceled, connect.CodeUnknown, connect.CodeDeadlineExceeded, connect.CodeInternal, connect.CodeUnavailable:
 		return true
@@ -480,7 +481,6 @@ func (r *ServiceAccountResource) Update(ctx context.Context, req resource.Update
 	}
 	name := state.Name.ValueString()
 	updateDisplayName := !plan.DisplayName.Equal(state.DisplayName) && !plan.DisplayName.IsUnknown()
-	plannedActive := plan.Active
 
 	var account *directoryv1alpha.ServiceAccount
 	var err error
@@ -506,28 +506,25 @@ func (r *ServiceAccountResource) Update(ctx context.Context, req resource.Update
 		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
 		return
 	}
-	if err := plan.setFromProto(account); err != nil {
+	var confirmed ServiceAccountResourceModel
+	if err := confirmed.setFromProto(account); err != nil {
 		resp.Diagnostics.AddError("Unexpected API Response", fmt.Sprintf("The Directory API returned an invalid service account after update: %s.", err))
 		return
 	}
-	if !activeIsConfigured(config.Active) && !plannedActive.IsUnknown() {
-		// An unmanaged activation change that happens after planning cannot be
-		// returned from Update because it was not part of the plan. The next
-		// refresh observes it without asking Terraform to correct it.
-		plan.Active = plannedActive
-	}
 
-	if activeIsConfigured(config.Active) && account.GetActive() != config.Active.ValueBool() {
-		desiredActive := config.Active.ValueBool()
-		account, applied, updateErr := r.applyActive(ctx, account, desiredActive)
-		if stateErr := plan.setFromProto(account); stateErr != nil {
+	if activeIsConfigured(config.Active) && activeIsConfigured(plan.Active) && account.GetActive() != plan.Active.ValueBool() {
+		desiredActive := plan.Active.ValueBool()
+		var applied bool
+		var updateErr error
+		account, applied, updateErr = r.applyActive(ctx, account, desiredActive)
+		if stateErr := confirmed.setFromProto(account); stateErr != nil {
 			resp.Diagnostics.AddError("Unexpected API Response", fmt.Sprintf("The Directory API returned an invalid service account after changing its activation state: %s.", stateErr))
 			return
 		}
 		if updateErr != nil {
 			// A display-name update may already have succeeded. Persist the latest
 			// confirmed representation before reporting the lifecycle failure.
-			resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
+			resp.Diagnostics.Append(resp.State.Set(ctx, &confirmed)...)
 			if resp.Diagnostics.HasError() {
 				return
 			}
@@ -535,13 +532,19 @@ func (r *ServiceAccountResource) Update(ctx context.Context, req resource.Update
 			return
 		}
 		if !applied {
-			resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
+			resp.Diagnostics.Append(resp.State.Set(ctx, &confirmed)...)
 			if resp.Diagnostics.HasError() {
 				return
 			}
 			resp.Diagnostics.AddError("Unexpected API Response", "The Directory API did not apply the requested service account activation state.")
 			return
 		}
+	}
+	// Successful updates must preserve every known planned value. API responses
+	// only resolve attributes that Terraform left unknown in the plan.
+	if err := plan.fillUnknownFromProto(account); err != nil {
+		resp.Diagnostics.AddError("Unexpected API Response", fmt.Sprintf("The Directory API returned an invalid service account after update: %s.", err))
+		return
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
