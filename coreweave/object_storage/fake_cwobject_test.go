@@ -18,6 +18,7 @@ import (
 var (
 	errMissingBucketSettings   = errors.New("bucket settings are required")
 	errFeatureNotEntitled      = errors.New("organization is not entitled to feature(s): BucketArchive")
+	errMetadataNotEntitled     = errors.New("organization is not entitled to feature(s): BucketMetadataTable")
 	errArchiveDaysRequired     = errors.New("invalid archive settings: archive_after_last_access_days is required when archive is enabled")
 	errArchiveDaysBelowMinimum = errors.New("invalid archive settings: archive_after_last_access_days must be >= 60")
 	errNotFound                = errors.New("not found")
@@ -31,8 +32,9 @@ type fakeCWObject struct {
 
 	mu sync.Mutex
 
-	archiveEntitled bool
-	archiveMinDays  int32
+	archiveEntitled       bool
+	metadataTableEntitled bool
+	archiveMinDays        int32
 
 	// buckets holds the persisted settings, keyed by bucket name.
 	buckets map[string]*fakeBucketSettings
@@ -45,19 +47,22 @@ type fakeBucketSettings struct {
 	archiveEnabled             *bool
 	archiveAfterLastAccessDays *int32
 	capacityCapBytes           *uint64
+	metadataTableEnabled       *bool
 }
 
 const fakeArchiveMinDays int32 = 60
 
 // newFakeCWObject starts a fake service holding a single pre-existing bucket
 // and returns its base URL. archiveEntitled selects which population the
-// caller's organization belongs to.
+// caller's organization belongs to. The metadata table entitlement starts out
+// matching it; use setMetadataTableEntitled to vary the two independently.
 func newFakeCWObject(t *testing.T, bucketName string, archiveEntitled bool) (string, *fakeCWObject) {
 	t.Helper()
 
 	fake := &fakeCWObject{
-		archiveEntitled: archiveEntitled,
-		archiveMinDays:  fakeArchiveMinDays,
+		archiveEntitled:       archiveEntitled,
+		metadataTableEntitled: archiveEntitled,
+		archiveMinDays:        fakeArchiveMinDays,
 		buckets: map[string]*fakeBucketSettings{
 			bucketName: {},
 		},
@@ -109,6 +114,21 @@ func (f *fakeCWObject) setStoredCapacityCap(capacityCapBytes uint64) {
 	f.buckets[testBucketName].capacityCapBytes = &value
 }
 
+func (f *fakeCWObject) setStoredMetadataTable(enabled bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	value := enabled
+	f.buckets[testBucketName].metadataTableEnabled = &value
+}
+
+func (f *fakeCWObject) setMetadataTableEntitled(entitled bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	f.metadataTableEntitled = entitled
+}
+
 func hasArchiveFields(settings *cwobjectv1.CWObjectBucketSettings) bool {
 	if settings == nil {
 		return false
@@ -117,22 +137,25 @@ func hasArchiveFields(settings *cwobjectv1.CWObjectBucketSettings) bool {
 	return settings.GetArchiveEnabled() != nil || settings.GetArchiveAfterLastAccessDays() != nil
 }
 
+// sanitizeForOrg withholds each entitlement-gated field from organizations not
+// entitled to it. The cap stays visible regardless, matching thoth's
+// sanitizeCWObjectBucketSettingsForOrg. settings is always a fresh message from
+// toProto, so it is modified in place.
 func (f *fakeCWObject) sanitizeForOrg(settings *cwobjectv1.CWObjectBucketSettings) *cwobjectv1.CWObjectBucketSettings {
-	if settings == nil || f.archiveEntitled {
-		return settings
+	if settings == nil {
+		return nil
 	}
 
-	out := &cwobjectv1.CWObjectBucketSettings{
-		AuditLoggingEnabled: settings.GetAuditLoggingEnabled(),
+	if !f.archiveEntitled {
+		settings.ClearArchiveEnabled()
+		settings.ClearArchiveAfterLastAccessDays()
 	}
 
-	// The cap stays visible regardless of archive entitlement, matching thoth's
-	// sanitizeCWObjectBucketSettingsForOrg.
-	if configured := settings.GetConfiguredCapacityCapBytes(); configured != nil {
-		out.SetConfiguredCapacityCapBytes(configured)
+	if !f.metadataTableEntitled {
+		settings.ClearMetadataTableEnabled()
 	}
 
-	return out
+	return settings
 }
 
 func (b *fakeBucketSettings) toProto() *cwobjectv1.CWObjectBucketSettings {
@@ -155,6 +178,11 @@ func (b *fakeBucketSettings) toProto() *cwobjectv1.CWObjectBucketSettings {
 		out.SetConfiguredCapacityCapBytes(wrapperspb.UInt64(*b.capacityCapBytes))
 	}
 
+	// Unlike the other settings, the service reports a concrete false for a
+	// bucket whose metadata table was never configured (sanitizeForOrg still
+	// withholds it from unentitled orgs).
+	out.MetadataTableEnabled = wrapperspb.Bool(b.metadataTableEnabled != nil && *b.metadataTableEnabled)
+
 	return out
 }
 
@@ -174,6 +202,11 @@ func (f *fakeCWObject) SetBucketSettings(
 
 	if hasArchiveFields(settings) && !f.archiveEntitled {
 		return nil, connect.NewError(connect.CodePermissionDenied, errFeatureNotEntitled.Error()).WithCause(errFeatureNotEntitled)
+	}
+
+	// Like archive, the gate keys on the field's presence, not its value.
+	if settings.HasMetadataTableEnabled() && !f.metadataTableEntitled {
+		return nil, connect.NewError(connect.CodePermissionDenied, errMetadataNotEntitled.Error()).WithCause(errMetadataNotEntitled)
 	}
 
 	if hasArchiveFields(settings) {
@@ -222,6 +255,11 @@ func (f *fakeCWObject) persist(stored *fakeBucketSettings, settings *cwobjectv1.
 		stored.capacityCapBytes = &value
 	case settings.HasClearCapacityCap():
 		stored.capacityCapBytes = nil
+	}
+
+	if metadataTable := settings.GetMetadataTableEnabled(); metadataTable != nil {
+		value := metadataTable.GetValue()
+		stored.metadataTableEnabled = &value
 	}
 
 	enabled := settings.GetArchiveEnabled()

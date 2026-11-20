@@ -108,6 +108,7 @@ type bucketSettingsConfig struct {
 	archiveEnabled             *bool
 	archiveAfterLastAccessDays *int32
 	capacityCapBytes           *int64
+	metadataTableEnabled       *bool
 }
 
 // value builds the configuration object.
@@ -140,6 +141,7 @@ func (c bucketSettingsConfig) value(objectType tftypes.Type) tftypes.Value {
 		"archive_enabled":                boolValue(c.archiveEnabled),
 		"archive_after_last_access_days": daysValue,
 		"capacity_cap_bytes":             capValue,
+		"metadata_table_enabled":         boolValue(c.metadataTableEnabled),
 	})
 }
 
@@ -821,4 +823,210 @@ func TestBucketSettingsCapacityCapSurvivesDestroy(t *testing.T) {
 		require.NotNil(t, stored.capacityCapBytes, "destroy must leave an out-of-band cap in place")
 		assert.Equal(t, uint64(2048), *stored.capacityCapBytes)
 	})
+}
+
+// TestBucketSettingsMetadataTableUnentitledOrgIsUnaffected is the metadata
+// table counterpart of the archive entitlement regression tests: an org without
+// the entitlement must be able to create, converge and destroy as long as its
+// configuration never mentions metadata_table_enabled, which requires the
+// field to stay off the wire on every request.
+func TestBucketSettingsMetadataTableUnentitledOrgIsUnaffected(t *testing.T) {
+	ctx := t.Context()
+	// Archive-entitled but not metadata-table-entitled, so this pins the two
+	// gates as independent.
+	h := newBucketSettingsHarness(ctx, t, true)
+	h.fake.setMetadataTableEntitled(false)
+
+	config := bucketSettingsConfig{
+		bucket:              testBucketName,
+		auditLoggingEnabled: boolPtr(true),
+	}
+
+	state, diags := h.create(ctx, config)
+	requireNoDiagErrors(t, diags, "create")
+
+	refreshed := h.refresh(ctx, state)
+	replanned, diags := h.plan(ctx, config, refreshed)
+	requireNoDiagErrors(t, diags, "re-plan")
+	assert.True(t, replanned.Equal(refreshed),
+		"plan after apply must be empty\n refreshed state: %s\n planned state:   %s", refreshed, replanned)
+
+	_, diags = h.apply(ctx, bucketSettingsConfig{
+		bucket:              testBucketName,
+		auditLoggingEnabled: boolPtr(false),
+	}, refreshed)
+	requireNoDiagErrors(t, diags, "update")
+
+	diags = h.destroy(ctx, refreshed)
+	requireNoDiagErrors(t, diags, "destroy")
+
+	for i, sent := range h.fake.setRequestSettings() {
+		assert.False(t, sent.HasMetadataTableEnabled(),
+			"request %d: a config that never mentions the metadata table must not send metadata_table_enabled", i)
+	}
+}
+
+// TestBucketSettingsMetadataTableUnentitledOrgRejectedWhenEnabling checks that
+// asking for the feature without the entitlement surfaces the API's error.
+func TestBucketSettingsMetadataTableUnentitledOrgRejectedWhenEnabling(t *testing.T) {
+	ctx := t.Context()
+	h := newBucketSettingsHarness(ctx, t, true)
+	h.fake.setMetadataTableEntitled(false)
+
+	_, diags := h.create(ctx, bucketSettingsConfig{
+		bucket:               testBucketName,
+		metadataTableEnabled: boolPtr(true),
+	})
+
+	require.True(t, diagsHaveErrors(diags), "enabling the metadata table without entitlement must fail")
+	assert.Contains(t, diagText(diags), "BucketMetadataTable")
+}
+
+// TestBucketSettingsMetadataTableLifecycle walks an entitled org through
+// enabling, disabling and then no longer managing the metadata table, requiring
+// an empty plan after each step. The last step is one reason the attribute is
+// Computed: the API always reports a concrete false to entitled orgs, which a
+// merely Optional attribute would plan to null forever.
+func TestBucketSettingsMetadataTableLifecycle(t *testing.T) {
+	ctx := t.Context()
+	h := newBucketSettingsHarness(ctx, t, true)
+
+	state := h.nullValue()
+	for _, step := range []struct {
+		name   string
+		config bucketSettingsConfig
+		stored *bool
+	}{
+		{
+			name:   "enable",
+			config: bucketSettingsConfig{bucket: testBucketName, metadataTableEnabled: boolPtr(true)},
+			stored: boolPtr(true),
+		},
+		{
+			name:   "disable",
+			config: bucketSettingsConfig{bucket: testBucketName, metadataTableEnabled: boolPtr(false)},
+			stored: boolPtr(false),
+		},
+		{
+			name:   "remove from config",
+			config: bucketSettingsConfig{bucket: testBucketName},
+			stored: boolPtr(false),
+		},
+	} {
+		var diags []*tfprotov6.Diagnostic
+		state, diags = h.apply(ctx, step.config, state)
+		requireNoDiagErrors(t, diags, step.name)
+
+		stored := h.fake.storedSettings()
+		require.NotNil(t, stored.metadataTableEnabled, "%s: metadata table setting must be persisted", step.name)
+		assert.Equal(t, *step.stored, *stored.metadataTableEnabled, step.name)
+
+		refreshed := h.refresh(ctx, state)
+		replanned, diags := h.plan(ctx, step.config, refreshed)
+		requireNoDiagErrors(t, diags, step.name+": re-plan")
+		assert.True(t, replanned.Equal(refreshed),
+			"%s: plan after apply must be empty\n refreshed state: %s\n planned state:   %s",
+			step.name, refreshed, replanned)
+
+		state = refreshed
+	}
+}
+
+// TestBucketSettingsMetadataTableSurvivesDestroy pins that destroy never sends
+// metadata_table_enabled and leaves the stored value as it was. State carries
+// the server's value even when the attribute is omitted, so the out-of-band
+// case is the regression: an audit-only resource must not switch off a table
+// enabled outside Terraform, nor need metadata table permission to be removed.
+func TestBucketSettingsMetadataTableSurvivesDestroy(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		configured *bool
+		outOfBand  *bool
+		expected   bool
+	}{
+		{name: "enabled by terraform", configured: boolPtr(true), expected: true},
+		{name: "disabled by terraform", configured: boolPtr(false), expected: false},
+		{name: "enabled outside terraform with attribute omitted", outOfBand: boolPtr(true), expected: true},
+		{name: "never configured", expected: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := t.Context()
+			h := newBucketSettingsHarness(ctx, t, true)
+
+			state, diags := h.create(ctx, bucketSettingsConfig{
+				bucket:               testBucketName,
+				auditLoggingEnabled:  boolPtr(true),
+				metadataTableEnabled: tc.configured,
+			})
+			requireNoDiagErrors(t, diags, "create")
+
+			if tc.outOfBand != nil {
+				h.fake.setStoredMetadataTable(*tc.outOfBand)
+				state = h.refresh(ctx, state)
+			}
+
+			diags = h.destroy(ctx, state)
+			requireNoDiagErrors(t, diags, "destroy")
+
+			requests := h.fake.setRequestSettings()
+			require.NotEmpty(t, requests)
+			assert.False(t, requests[len(requests)-1].HasMetadataTableEnabled(),
+				"destroy must not send metadata_table_enabled")
+
+			stored := h.fake.storedSettings()
+			require.NotNil(t, stored)
+			assert.Equal(t, tc.expected, stored.metadataTableEnabled != nil && *stored.metadataTableEnabled,
+				"destroy must leave the metadata table setting in place")
+		})
+	}
+}
+
+// TestBucketSettingsMetadataTableServerDefault pins how the API's server-side
+// default reaches state: an entitled org that never mentions the attribute
+// sends nothing, yet ends up with a concrete false from the response, and the
+// plan converges. An unentitled org has it withheld, so state holds null.
+func TestBucketSettingsMetadataTableServerDefault(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		entitled bool
+		expected tftypes.Value
+	}{
+		{name: "entitled org gets false", entitled: true, expected: tftypes.NewValue(tftypes.Bool, false)},
+		{name: "unentitled org gets null", entitled: false, expected: tftypes.NewValue(tftypes.Bool, nil)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := t.Context()
+			h := newBucketSettingsHarness(ctx, t, true)
+			h.fake.setMetadataTableEntitled(tc.entitled)
+
+			config := bucketSettingsConfig{bucket: testBucketName, auditLoggingEnabled: boolPtr(true)}
+
+			state, diags := h.create(ctx, config)
+			requireNoDiagErrors(t, diags, "create")
+
+			requests := h.fake.setRequestSettings()
+			require.Len(t, requests, 1)
+			assert.False(t, requests[0].HasMetadataTableEnabled(),
+				"the server default must come from the response, not be sent")
+
+			for _, step := range []struct {
+				name  string
+				value tftypes.Value
+			}{
+				{name: "applied", value: state},
+				{name: "refreshed", value: h.refresh(ctx, state)},
+			} {
+				var attrs map[string]tftypes.Value
+				require.NoError(t, step.value.As(&attrs))
+				assert.True(t, attrs["metadata_table_enabled"].Equal(tc.expected),
+					"%s state: expected %s, got %s", step.name, tc.expected, attrs["metadata_table_enabled"])
+			}
+
+			refreshed := h.refresh(ctx, state)
+			replanned, diags := h.plan(ctx, config, refreshed)
+			requireNoDiagErrors(t, diags, "re-plan")
+			assert.True(t, replanned.Equal(refreshed),
+				"plan after apply must be empty\n refreshed state: %s\n planned state:   %s", refreshed, replanned)
+		})
+	}
 }

@@ -30,6 +30,10 @@ resource "coreweave_object_storage_bucket_settings" "default" {
   # entitled to configure archive settings before enabling this.
   archive_enabled                = true
   archive_after_last_access_days = 60
+
+  # Produce a metadata table for the bucket. Your organization must be entitled
+  # to configure metadata tables before enabling this.
+  metadata_table_enabled = true
 }
 ```
 
@@ -46,6 +50,7 @@ resource "coreweave_object_storage_bucket_settings" "default" {
 - `archive_enabled` (Boolean) When true, idle STANDARD objects are archived to STANDARD_IA after `archive_after_last_access_days` without access. Your organization must be entitled to configure this setting.
 - `audit_logging_enabled` (Boolean) Whether audit logging is enabled for the bucket. Contact support to enable audit logging for your organization before enabling this setting.
 - `capacity_cap_bytes` (Number) Maximum number of STANDARD-class bytes the bucket may store. New STANDARD writes are rejected once bucket usage would exceed this cap; `0` is a valid cap that blocks all new STANDARD writes. Omit to leave the cap unchanged. Removing this resource leaves any cap in place; the cap is cleared when the bucket itself is deleted. Your organization must be entitled to configure this setting.
+- `metadata_table_enabled` (Boolean) When true, CoreWeave AI Object Storage produces a metadata table for the bucket. Defaults to `false` server-side; omit to leave the current value unchanged. Removing this resource leaves the setting in place. Changing this setting requires the `cwobject:ConfigureBucketMetadataTable` action, and your organization must be entitled to configure it.
 
 ## Import
 
