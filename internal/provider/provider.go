@@ -249,6 +249,7 @@ func (p *CoreweaveProvider) Resources(ctx context.Context) []func() resource.Res
 		inference.NewInferenceCapacityClaimResource,
 		inference.NewInferenceGatewayResource,
 		workloadfederation.NewOIDCConfigResource,
+		serviceaccount.NewAccessPolicyResource,
 		serviceaccount.NewOIDCTrustConfigResource,
 		serviceaccount.NewServiceAccountResource,
 		containerregistry.NewNamespaceResource,

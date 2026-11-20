@@ -14,6 +14,8 @@ const iamPrivateBetaBanner = "> **Private beta:** This resource is available onl
 var (
 	resourceIDPattern     = regexp.MustCompile(`^[a-z](?:[a-z0-9-]{0,61}[a-z0-9])?$`)
 	organizationIDPattern = regexp.MustCompile(`^[a-z0-9]{6}$`)
+	accessPolicyNameRE    = regexp.MustCompile(`^organizations/([a-z0-9]{6})/accessPolicies/([a-z](?:[a-z0-9-]{0,61}[a-z0-9])?)$`)
+	uuidV4Pattern         = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$`)
 	oidcTrustConfigNameRE = regexp.MustCompile(`^organizations/([a-z0-9]{6})/serviceAccounts/([a-z](?:[a-z0-9-]{0,61}[a-z0-9])?)/oidcTrustConfigs/([a-z](?:[a-z0-9-]{0,61}[a-z0-9])?)$`)
 	serviceAccountNameRE  = regexp.MustCompile(`^organizations/([a-z0-9]{6})/serviceAccounts/([a-z](?:[a-z0-9-]{0,61}[a-z0-9])?)$`)
 	uuidPattern           = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$`)
@@ -21,6 +23,14 @@ var (
 
 func serviceAccountName(organizationID, serviceAccountID string) string {
 	return fmt.Sprintf("organizations/%s/serviceAccounts/%s", organizationID, serviceAccountID)
+}
+
+func parseAccessPolicyName(name string) (string, string, error) {
+	matches := accessPolicyNameRE.FindStringSubmatch(name)
+	if matches == nil {
+		return "", "", fmt.Errorf("expected organizations/{organization}/accessPolicies/{access_policy_id}, got %q", name)
+	}
+	return matches[1], matches[2], nil
 }
 
 func parseOIDCTrustConfigName(name string) (string, string, string, error) {
