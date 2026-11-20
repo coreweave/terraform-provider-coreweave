@@ -104,7 +104,7 @@ Optional:
 
 - `capacity_classes` (List of String) Ordered preference list of [capacity classes](https://docs.coreweave.com/products/inference/scaling#capacity-claims) to use. Order is significant: the first satisfiable class wins. Allowed values: `CAPACITY_CLASS_RESERVED`, `CAPACITY_CLASS_ON_DEMAND`.
 - `concurrency` (Number) Concurrency per instance target (≥1). Controls latency vs throughput tradeoffs.
-- `priority` (Number) Priority for cross-deployment scaling (0-1000). Higher values win when there is contention.
+- `priority` (Number) Priority for cross-deployment scaling, from 1 to 100. Omit or set to 0 to leave unset. Higher values win when there is contention.
 
 
 <a id="nestedatt--model"></a>
