@@ -17,6 +17,7 @@ require (
 	buf.build/gen/go/coreweave/networking/protocolbuffers/go v1.36.12-20261021202238-84a5f410acc9.2
 	buf.build/gen/go/coreweave/sandbox/connectrpc/go/v2 v2.0.1-20261015202918-7074ae5be483.1
 	buf.build/gen/go/coreweave/sandbox/protocolbuffers/go v1.36.12-20261015202918-7074ae5be483.2
+	buf.build/gen/go/coreweave/telemetry-relay/protocolbuffers/go v1.36.12-20261020165954-9af87285dbd8.2
 	buf.build/gen/go/coreweave/workload-federation/connectrpc/go/v2 v2.0.0-20261013191007-c36df30df3ed.1
 	buf.build/gen/go/coreweave/workload-federation/protocolbuffers/go v1.36.12-20261013191007-c36df30df3ed.2
 	buf.build/go/protovalidate v1.4.0
@@ -34,6 +35,7 @@ require (
 	github.com/hashicorp/terraform-plugin-framework-jsontypes v0.2.0
 	github.com/hashicorp/terraform-plugin-framework-nettypes v0.3.0
 	github.com/hashicorp/terraform-plugin-framework-timeouts v0.7.0
+	github.com/hashicorp/terraform-plugin-framework-timetypes v0.5.0
 	github.com/hashicorp/terraform-plugin-framework-validators v0.19.0
 	github.com/hashicorp/terraform-plugin-go v0.31.0
 	github.com/hashicorp/terraform-plugin-log v0.11.0
