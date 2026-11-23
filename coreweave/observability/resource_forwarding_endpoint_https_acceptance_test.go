@@ -8,6 +8,8 @@ import (
 
 	clusterv1beta1 "buf.build/gen/go/coreweave/telemetry-relay/protocolbuffers/go/coreweave/telemetryrelay/svc/cluster/v1beta1"
 	typesv1beta1 "buf.build/gen/go/coreweave/telemetry-relay/protocolbuffers/go/coreweave/telemetryrelay/types/v1beta1"
+	"connectrpc.com/connect/v2"
+	"connectrpc.com/connect/v2/connectproto"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave/observability"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave/observability/internal/model"
 	"github.com/coreweave/terraform-provider-coreweave/internal/provider"
@@ -18,6 +20,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-testing/statecheck"
 	"github.com/hashicorp/terraform-plugin-testing/tfjsonpath"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/genproto/googleapis/rpc/errdetails"
 )
 
 func TestForwardingEndpointHTTPSAcceptance(t *testing.T) {
@@ -383,6 +386,10 @@ func TestForwardingEndpointHTTPSAcceptance(t *testing.T) {
 			},
 		}
 
+		const newURL = "https://192.0.2.1/ingest-v2"
+		changedURL := with(baseModel, func(m *model.ForwardingEndpointHTTPS) {
+			m.Endpoint = types.StringValue(newURL)
+		})
 		var afterCreate time.Time
 
 		resource.ParallelTest(t, resource.TestCase{
@@ -436,9 +443,52 @@ func TestForwardingEndpointHTTPSAcceptance(t *testing.T) {
 					},
 				}),
 				createHTTPSEndpointTestStep(t, httpsEndpointTestStep{
-					TestName:     "bumping credentials_version rotates the secret (REPLACE)",
+					TestName:     "reject a URL change without a credentials version bump at plan time",
 					ResourceName: resourceName,
-					Model: with(baseModel, func(m *model.ForwardingEndpointHTTPS) {
+					Model:        changedURL,
+					Options:      []testStepOption{testStepOptionPlanOnly(true)},
+					ExpectError:  regexp.MustCompile(`Credentials must be updated when the address changes`),
+				}),
+				createHTTPSEndpointTestStep(t, httpsEndpointTestStep{
+					TestName:     "change the URL and rotate the secret with a credentials version bump (REPLACE)",
+					ResourceName: resourceName,
+					PreConfig: func() {
+						// Send PRESERVE directly because the Terraform plan never reaches UpdateEndpoint.
+						ctx := t.Context()
+						client := testClient(t)
+						ref := &typesv1beta1.ForwardingEndpointRef{Slug: baseModel.Slug.ValueString()}
+						spec := &typesv1beta1.ForwardingEndpointSpec{DisplayName: baseModel.DisplayName.ValueString()}
+						spec.SetHttps(&typesv1beta1.HTTPSConfig{Endpoint: newURL})
+
+						_, err := client.UpdateEndpoint(ctx, &clusterv1beta1.UpdateEndpointRequest{
+							Ref:              ref,
+							Spec:             spec,
+							CredentialAction: clusterv1beta1.UpdateEndpointRequest_CREDENTIAL_ACTION_PRESERVE,
+						})
+						var apiErr *connect.Error
+						require.ErrorAs(t, err, &apiErr)
+						require.Equal(t, connect.CodeInvalidArgument, apiErr.Code())
+
+						var fields []string
+						for _, detail := range apiErr.Details() {
+							value, err := connectproto.UnmarshalErrorDetail(detail)
+							require.NoError(t, err)
+							if badRequest, ok := value.(*errdetails.BadRequest); ok {
+								for _, violation := range badRequest.GetFieldViolations() {
+									fields = append(fields, violation.GetField())
+								}
+							}
+						}
+						require.Contains(t, fields, "spec.config")
+
+						response, err := client.GetEndpoint(ctx, &clusterv1beta1.GetEndpointRequest{Ref: ref})
+						require.NoError(t, err)
+						endpoint := response.GetEndpoint()
+						require.Equal(t, testHTTPSEndpointURL, endpoint.GetSpec().GetHttps().GetEndpoint())
+						require.True(t, endpoint.GetStatus().GetCredentialsConfigured())
+						require.Equal(t, afterCreate, endpoint.GetStatus().GetCredentialsUpdatedAt().AsTime())
+					},
+					Model: with(changedURL, func(m *model.ForwardingEndpointHTTPS) {
 						m.CredentialsVersion = types.Int64Value(2)
 						m.Credentials = &model.HTTPSCredentials{
 							BasicAuth: &model.BasicAuthCredentials{
@@ -461,7 +511,7 @@ func TestForwardingEndpointHTTPSAcceptance(t *testing.T) {
 					// refused while planning. The next two steps clear and reconfigure.
 					TestName:     "switching auth method in place is refused",
 					ResourceName: resourceName,
-					Model: with(baseModel, func(m *model.ForwardingEndpointHTTPS) {
+					Model: with(changedURL, func(m *model.ForwardingEndpointHTTPS) {
 						m.CredentialsVersion = types.Int64Value(3)
 						m.Credentials = &model.HTTPSCredentials{
 							AuthHeaders: &model.AuthHeadersCredentials{
@@ -476,7 +526,7 @@ func TestForwardingEndpointHTTPSAcceptance(t *testing.T) {
 					// report success while basic auth stayed live.
 					TestName:     "switching auth method without a version bump is refused",
 					ResourceName: resourceName,
-					Model: with(baseModel, func(m *model.ForwardingEndpointHTTPS) {
+					Model: with(changedURL, func(m *model.ForwardingEndpointHTTPS) {
 						// The last applied step set 2; baseModel carries 1.
 						m.CredentialsVersion = types.Int64Value(2)
 						m.Credentials = &model.HTTPSCredentials{
@@ -492,7 +542,7 @@ func TestForwardingEndpointHTTPSAcceptance(t *testing.T) {
 					// S3). credentials_configured flips to false.
 					TestName:     "removing the credentials block clears them (CLEAR)",
 					ResourceName: resourceName,
-					Model: with(baseModel, func(m *model.ForwardingEndpointHTTPS) {
+					Model: with(changedURL, func(m *model.ForwardingEndpointHTTPS) {
 						m.Credentials = nil
 						m.CredentialsVersion = types.Int64Null()
 					}),
@@ -511,7 +561,7 @@ func TestForwardingEndpointHTTPSAcceptance(t *testing.T) {
 					// rather than about header auth being unusable.
 					TestName:     "adding credentials back with the other method (REPLACE)",
 					ResourceName: resourceName,
-					Model: with(baseModel, func(m *model.ForwardingEndpointHTTPS) {
+					Model: with(changedURL, func(m *model.ForwardingEndpointHTTPS) {
 						m.CredentialsVersion = types.Int64Value(3)
 						m.Credentials = &model.HTTPSCredentials{
 							AuthHeaders: &model.AuthHeadersCredentials{
