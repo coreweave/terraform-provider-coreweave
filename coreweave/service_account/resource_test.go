@@ -92,6 +92,61 @@ func TestReadBackCreatedServiceAccount(t *testing.T) {
 		assert.ErrorContains(t, err, "could not be read back within 5ms")
 		assert.ErrorContains(t, err, "get deadline reached")
 	})
+
+	t.Run("retries visible accounts until ready", func(t *testing.T) {
+		t.Parallel()
+		calls := 0
+		account, err := readBackServiceAccount(t.Context(), serviceAccountReadBackPolicy{
+			timeout: 100 * time.Millisecond, initialDelay: time.Millisecond, maxDelay: 2 * time.Millisecond,
+		}, func(context.Context) (*directoryv1alpha.ServiceAccount, error) {
+			calls++
+			return &directoryv1alpha.ServiceAccount{Active: proto.Bool(calls >= 3)}, nil
+		}, func(account *directoryv1alpha.ServiceAccount) bool {
+			return account != nil && account.GetActive()
+		})
+		require.NoError(t, err)
+		require.True(t, account.GetActive())
+		assert.Equal(t, 3, calls)
+	})
+
+	t.Run("returns the last visible account at timeout", func(t *testing.T) {
+		t.Parallel()
+		account, err := readBackServiceAccount(t.Context(), serviceAccountReadBackPolicy{
+			timeout: 10 * time.Millisecond, initialDelay: time.Millisecond, maxDelay: 2 * time.Millisecond,
+		}, func(context.Context) (*directoryv1alpha.ServiceAccount, error) {
+			return &directoryv1alpha.ServiceAccount{Active: proto.Bool(true)}, nil
+		}, func(account *directoryv1alpha.ServiceAccount) bool {
+			return account != nil && !account.GetActive()
+		})
+		require.NoError(t, err)
+		require.NotNil(t, account)
+		assert.True(t, account.GetActive())
+	})
+
+	t.Run("parent cancellation does not return a stale account", func(t *testing.T) {
+		t.Parallel()
+		ctx, cancel := context.WithCancel(t.Context())
+		account, err := readBackServiceAccount(ctx, serviceAccountReadBackPolicy{
+			timeout: 30 * time.Second, initialDelay: time.Millisecond, maxDelay: 2 * time.Millisecond,
+		}, func(context.Context) (*directoryv1alpha.ServiceAccount, error) {
+			cancel()
+			return &directoryv1alpha.ServiceAccount{Active: proto.Bool(true)}, nil
+		}, func(account *directoryv1alpha.ServiceAccount) bool {
+			return account != nil && !account.GetActive()
+		})
+		require.Error(t, err)
+		assert.Nil(t, account)
+		assert.ErrorIs(t, err, context.Canceled)
+	})
+}
+
+func TestActivationErrorMayBeAmbiguous(t *testing.T) {
+	t.Parallel()
+
+	assert.True(t, activationErrorMayBeAmbiguous(connect.Errorf(connect.CodeUnavailable, "unavailable")))
+	assert.True(t, activationErrorMayBeAmbiguous(connect.Errorf(connect.CodeDeadlineExceeded, "deadline")))
+	assert.False(t, activationErrorMayBeAmbiguous(connect.Errorf(connect.CodePermissionDenied, "denied")))
+	assert.False(t, activationErrorMayBeAmbiguous(connect.Errorf(connect.CodeInvalidArgument, "invalid")))
 }
 
 func TestResourceSchemas(t *testing.T) {
@@ -107,7 +162,7 @@ func TestResourceSchemas(t *testing.T) {
 			resource: NewServiceAccountResource(),
 			required: []string{"id", "organization_id"},
 			computed: []string{"name", "uid", "creator", "system_managed", "active", "created_at", "updated_at"},
-			optional: []string{"display_name"},
+			optional: []string{"display_name", "active"},
 		},
 	}
 
@@ -137,7 +192,7 @@ func TestResourceSchemas(t *testing.T) {
 	systemManaged := response.Schema.Attributes["system_managed"].(resourceschema.BoolAttribute)
 	assert.Len(t, systemManaged.PlanModifiers, 1)
 	active := response.Schema.Attributes["active"].(resourceschema.BoolAttribute)
-	assert.Empty(t, active.PlanModifiers)
+	assert.Len(t, active.PlanModifiers, 1)
 }
 
 func TestServiceAccountMetadataUsesIAMNamespace(t *testing.T) {

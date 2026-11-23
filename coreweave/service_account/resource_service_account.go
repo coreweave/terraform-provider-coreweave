@@ -6,6 +6,7 @@ import (
 	"time"
 
 	directoryv1alpha "buf.build/gen/go/coreweave/directory/protocolbuffers/go/coreweave/directory/v1alpha"
+	"connectrpc.com/connect/v2"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -20,9 +21,9 @@ import (
 )
 
 const (
-	serviceAccountCreateReadBackTimeout      = 30 * time.Second
-	serviceAccountCreateReadBackInitialDelay = 250 * time.Millisecond
-	serviceAccountCreateReadBackMaxDelay     = 5 * time.Second
+	serviceAccountReadBackTimeout      = 30 * time.Second
+	serviceAccountReadBackInitialDelay = 250 * time.Millisecond
+	serviceAccountReadBackMaxDelay     = 5 * time.Second
 )
 
 type serviceAccountReadBackPolicy struct {
@@ -33,9 +34,9 @@ type serviceAccountReadBackPolicy struct {
 
 func defaultServiceAccountReadBackPolicy() serviceAccountReadBackPolicy {
 	return serviceAccountReadBackPolicy{
-		timeout:      serviceAccountCreateReadBackTimeout,
-		initialDelay: serviceAccountCreateReadBackInitialDelay,
-		maxDelay:     serviceAccountCreateReadBackMaxDelay,
+		timeout:      serviceAccountReadBackTimeout,
+		initialDelay: serviceAccountReadBackInitialDelay,
+		maxDelay:     serviceAccountReadBackMaxDelay,
 	}
 }
 
@@ -104,8 +105,10 @@ func (r *ServiceAccountResource) Schema(_ context.Context, _ resource.SchemaRequ
 				PlanModifiers:       []planmodifier.Bool{boolplanmodifier.UseStateForUnknown()},
 			},
 			"active": schema.BoolAttribute{
+				Optional:            true,
 				Computed:            true,
-				MarkdownDescription: "Whether the service account may authenticate.",
+				MarkdownDescription: "Whether the service account may authenticate. When omitted, Terraform observes but does not manage activation state. Because the create API does not accept activation state, an account created with `active = false` is briefly active before Terraform deactivates it.",
+				PlanModifiers:       []planmodifier.Bool{boolplanmodifier.UseStateForUnknown()},
 			},
 			"created_at": schema.StringAttribute{Computed: true, MarkdownDescription: "The RFC 3339 creation timestamp.", PlanModifiers: computed},
 			"updated_at": schema.StringAttribute{Computed: true, MarkdownDescription: "The RFC 3339 last-update timestamp."},
@@ -229,28 +232,40 @@ func (m *ServiceAccountResourceModel) createRequest() *directoryv1alpha.CreateSe
 	return request
 }
 
-// readBackCreatedServiceAccount retries only NotFound because a successful
-// create may become visible to reads shortly after the write completes. The
-// shared client owns transport retries, so other codes, including Unavailable,
-// are returned immediately.
-func readBackCreatedServiceAccount(
+type serviceAccountReady func(*directoryv1alpha.ServiceAccount) bool
+
+// readBackServiceAccount retries NotFound and visible responses that have not
+// reached the requested state. The shared client owns transport retries, so
+// other error codes are returned immediately.
+func readBackServiceAccount(
 	ctx context.Context,
 	policy serviceAccountReadBackPolicy,
 	get func(context.Context) (*directoryv1alpha.ServiceAccount, error),
+	ready serviceAccountReady,
 ) (*directoryv1alpha.ServiceAccount, error) {
 	retryCtx, cancel := context.WithTimeout(ctx, policy.timeout)
 	defer cancel()
 
 	delay := policy.initialDelay
+	var lastVisible *directoryv1alpha.ServiceAccount
+	var lastErr error
 	for {
 		account, err := get(retryCtx)
-		if err == nil {
+		if err == nil && (ready == nil || ready(account)) {
 			return account, nil
 		}
-		if retryCtx.Err() != nil {
-			return nil, readBackError(policy, err, ctx.Err(), retryCtx.Err())
+		if err == nil {
+			if account != nil {
+				lastVisible = account
+			}
+			lastErr = fmt.Errorf("service account has not reached the requested state")
+		} else {
+			lastErr = err
 		}
-		if !coreweave.IsNotFoundError(err) {
+		if retryCtx.Err() != nil {
+			return finishServiceAccountReadBack(policy, lastVisible, lastErr, ctx.Err(), retryCtx.Err())
+		}
+		if err != nil && !coreweave.IsNotFoundError(err) {
 			return nil, err
 		}
 
@@ -258,7 +273,7 @@ func readBackCreatedServiceAccount(
 		select {
 		case <-retryCtx.Done():
 			timer.Stop()
-			return nil, readBackError(policy, err, ctx.Err(), retryCtx.Err())
+			return finishServiceAccountReadBack(policy, lastVisible, lastErr, ctx.Err(), retryCtx.Err())
 		case <-timer.C:
 		}
 
@@ -271,6 +286,25 @@ func readBackCreatedServiceAccount(
 	}
 }
 
+func readBackCreatedServiceAccount(
+	ctx context.Context,
+	policy serviceAccountReadBackPolicy,
+	get func(context.Context) (*directoryv1alpha.ServiceAccount, error),
+) (*directoryv1alpha.ServiceAccount, error) {
+	return readBackServiceAccount(ctx, policy, get, nil)
+}
+
+func finishServiceAccountReadBack(
+	policy serviceAccountReadBackPolicy,
+	lastVisible *directoryv1alpha.ServiceAccount,
+	lastErr, parentErr, retryErr error,
+) (*directoryv1alpha.ServiceAccount, error) {
+	if parentErr == nil && lastVisible != nil {
+		return lastVisible, nil
+	}
+	return nil, readBackError(policy, lastErr, parentErr, retryErr)
+}
+
 func readBackError(policy serviceAccountReadBackPolicy, lastErr, parentErr, retryErr error) error {
 	if parentErr != nil {
 		return fmt.Errorf("service account read-back was canceled (last error: %w): %w", lastErr, parentErr)
@@ -278,9 +312,95 @@ func readBackError(policy serviceAccountReadBackPolicy, lastErr, parentErr, retr
 	return fmt.Errorf("service account could not be read back within %s (last error: %w): %w", policy.timeout, lastErr, retryErr)
 }
 
+func activeIsConfigured(active types.Bool) bool {
+	return !active.IsNull() && !active.IsUnknown()
+}
+
+func (r *ServiceAccountResource) setActive(ctx context.Context, name string, active bool) (*directoryv1alpha.ServiceAccount, error) {
+	if active {
+		return r.client.Directory.ActivateServiceAccount(ctx, &directoryv1alpha.ActivateServiceAccountRequest{Name: &name})
+	}
+	return r.client.Directory.DeactivateServiceAccount(ctx, &directoryv1alpha.DeactivateServiceAccountRequest{Name: &name})
+}
+
+func activationErrorMayBeAmbiguous(err error) bool {
+	//nolint:exhaustive // Unlisted Connect codes are definitive for this recovery decision.
+	switch connect.CodeOf(err) {
+	case connect.CodeCanceled, connect.CodeUnknown, connect.CodeDeadlineExceeded, connect.CodeInternal, connect.CodeUnavailable:
+		return true
+	default:
+		return false
+	}
+}
+
+// recoverServiceAccountResponse reads the account when a mutating RPC returns
+// an unusable response. It also reconciles ambiguous RPC errors when the
+// requested activation state reached the service despite the error.
+func (r *ServiceAccountResource) recoverServiceAccountResponse(
+	ctx context.Context,
+	name string,
+	account *directoryv1alpha.ServiceAccount,
+	rpcErr error,
+	desiredActive *bool,
+) (*directoryv1alpha.ServiceAccount, error) {
+	if rpcErr != nil && !activationErrorMayBeAmbiguous(rpcErr) {
+		return nil, rpcErr
+	}
+
+	var responseModel ServiceAccountResourceModel
+	responseErr := responseModel.setFromProto(account)
+	if rpcErr == nil && responseErr == nil && (desiredActive == nil || account.GetActive() == *desiredActive) {
+		return account, nil
+	}
+	if responseErr == nil && desiredActive != nil && account.GetActive() != *desiredActive {
+		responseErr = fmt.Errorf("response reported active=%t instead of active=%t", account.GetActive(), *desiredActive)
+	}
+
+	var ready serviceAccountReady
+	if desiredActive != nil {
+		ready = func(account *directoryv1alpha.ServiceAccount) bool {
+			return account != nil && account.GetActive() == *desiredActive
+		}
+	}
+	readBack, readErr := readBackServiceAccount(ctx, r.readBackPolicy, func(readCtx context.Context) (*directoryv1alpha.ServiceAccount, error) {
+		return r.client.Directory.GetServiceAccount(readCtx, &directoryv1alpha.GetServiceAccountRequest{Name: &name})
+	}, ready)
+	if readErr != nil {
+		if rpcErr != nil {
+			return nil, rpcErr
+		}
+		return nil, fmt.Errorf("the mutation response was invalid (%w) and the subsequent read failed: %w", responseErr, readErr)
+	}
+	if err := responseModel.setFromProto(readBack); err != nil {
+		if rpcErr != nil {
+			return nil, rpcErr
+		}
+		return nil, fmt.Errorf("the mutation response was invalid (%w) and the subsequent read returned an invalid service account: %w", responseErr, err)
+	}
+	if rpcErr != nil && (desiredActive == nil || readBack.GetActive() != *desiredActive) {
+		return nil, rpcErr
+	}
+	return readBack, nil
+}
+
+func (r *ServiceAccountResource) applyActive(
+	ctx context.Context,
+	account *directoryv1alpha.ServiceAccount,
+	desiredActive bool,
+) (*directoryv1alpha.ServiceAccount, bool, error) {
+	name := account.GetName()
+	updated, rpcErr := r.setActive(ctx, name, desiredActive)
+	updated, err := r.recoverServiceAccountResponse(ctx, name, updated, rpcErr, &desiredActive)
+	if err != nil {
+		return account, false, err
+	}
+	return updated, updated.GetActive() == desiredActive, nil
+}
+
 func (r *ServiceAccountResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
-	var data ServiceAccountResourceModel
+	var data, config ServiceAccountResourceModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+	resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -289,15 +409,17 @@ func (r *ServiceAccountResource) Create(ctx context.Context, req resource.Create
 		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
 		return
 	}
-	if responseErr := data.setFromProto(account); responseErr != nil {
+	responseErr := data.setFromProto(account)
+	responseValid := responseErr == nil
+	if !responseValid {
 		name := fmt.Sprintf("organizations/%s/serviceAccounts/%s", data.OrganizationID.ValueString(), data.ID.ValueString())
 		readBack, readErr := readBackCreatedServiceAccount(ctx, r.readBackPolicy, func(readCtx context.Context) (*directoryv1alpha.ServiceAccount, error) {
 			return r.client.Directory.GetServiceAccount(readCtx, &directoryv1alpha.GetServiceAccountRequest{Name: &name})
 		})
 		if readErr == nil {
 			if recoveryErr := data.setFromProto(readBack); recoveryErr == nil {
-				resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
-				return
+				account = readBack
+				responseValid = true
 			} else {
 				responseErr = fmt.Errorf("create response was invalid (%w) and the subsequent read returned an invalid service account (%w)", responseErr, recoveryErr)
 			}
@@ -305,24 +427,62 @@ func (r *ServiceAccountResource) Create(ctx context.Context, req resource.Create
 			responseErr = fmt.Errorf("create response was invalid (%w) and the subsequent read failed (%w)", responseErr, readErr)
 		}
 
-		// Preserve the deterministic identity so Terraform can refresh or destroy
-		// the successfully created account even when both API responses are invalid.
-		data.Name = types.StringValue(name)
-		data.UID = types.StringNull()
-		data.Creator = types.StringNull()
-		data.SystemManaged = types.BoolNull()
-		data.Active = types.BoolNull()
-		data.CreatedAt = types.StringNull()
-		data.UpdatedAt = types.StringNull()
-		resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
-		if resp.Diagnostics.HasError() {
+		if !responseValid {
+			// Preserve the deterministic identity so Terraform can refresh or destroy
+			// the successfully created account even when both API responses are invalid.
+			data.Name = types.StringValue(name)
+			data.UID = types.StringNull()
+			data.Creator = types.StringNull()
+			data.SystemManaged = types.BoolNull()
+			data.Active = types.BoolNull()
+			data.CreatedAt = types.StringNull()
+			data.UpdatedAt = types.StringNull()
+			resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+			if resp.Diagnostics.HasError() {
+				return
+			}
+			resp.Diagnostics.AddError(
+				"Unable to Read Service Account After Creation",
+				fmt.Sprintf("The Directory API created %q, but Terraform could not read it back into a usable state during the %s recovery window: %s. Terraform preserved the canonical name in state, but the error marks the resource as tainted, so the next apply will delete and recreate it. To keep the existing account, run `terraform untaint <resource-address>` and then `terraform apply -refresh-only` to recover its computed attributes before continuing.", name, r.readBackPolicy.timeout, responseErr),
+			)
 			return
 		}
-		resp.Diagnostics.AddError(
-			"Unable to Read Service Account After Creation",
-			fmt.Sprintf("The Directory API created %q, but Terraform could not read it back into a usable state during the %s recovery window: %s. Terraform preserved the canonical name in state, but the error marks the resource as tainted, so the next apply will delete and recreate it. To keep the existing account, run `terraform untaint <resource-address>` and then `terraform apply -refresh-only` to recover its computed attributes before continuing.", name, r.readBackPolicy.timeout, responseErr),
-		)
-		return
+	}
+
+	if activeIsConfigured(config.Active) && account.GetActive() != config.Active.ValueBool() {
+		name := account.GetName()
+		desiredActive := config.Active.ValueBool()
+		account, applied, updateErr := r.applyActive(ctx, account, desiredActive)
+		if stateErr := data.setFromProto(account); stateErr != nil {
+			resp.Diagnostics.AddError("Unexpected API Response", fmt.Sprintf("The Directory API returned an invalid service account after changing its activation state: %s.", stateErr))
+			return
+		}
+		if updateErr != nil {
+			resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+			if resp.Diagnostics.HasError() {
+				return
+			}
+			action := "activate"
+			if !desiredActive {
+				action = "deactivate"
+			}
+			resp.Diagnostics.AddError(
+				"Unable to Set Service Account Activation State",
+				fmt.Sprintf("The Directory API created %q, but Terraform could not %s it: %s. Terraform saved the account in state, but this error marks it as tainted. To preserve its UID, run `terraform untaint <resource-address>`; the next `terraform apply` will retry the %s operation in place instead of deleting and recreating the account.", name, action, updateErr, action),
+			)
+			return
+		}
+		if !applied {
+			resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+			if resp.Diagnostics.HasError() {
+				return
+			}
+			resp.Diagnostics.AddError(
+				"Unable to Set Service Account Activation State",
+				fmt.Sprintf("The Directory API created %q but did not apply active=%t. Terraform saved the account in state, but this error marks it as tainted. To preserve its UID, run `terraform untaint <resource-address>`; the next `terraform apply` will retry the activation change in place instead of deleting and recreating the account.", name, desiredActive),
+			)
+			return
+		}
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
@@ -351,49 +511,80 @@ func (r *ServiceAccountResource) Read(ctx context.Context, req resource.ReadRequ
 }
 
 func (r *ServiceAccountResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	var plan, state ServiceAccountResourceModel
+	var plan, state, config ServiceAccountResourceModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+	resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 	name := state.Name.ValueString()
 	updateDisplayName := !plan.DisplayName.Equal(state.DisplayName) && !plan.DisplayName.IsUnknown()
-	if !updateDisplayName {
-		account, err := r.client.Directory.GetServiceAccount(ctx, &directoryv1alpha.GetServiceAccountRequest{Name: &name})
+
+	var account *directoryv1alpha.ServiceAccount
+	var err error
+	if updateDisplayName {
+		updated := &directoryv1alpha.ServiceAccount{Name: name}
+		if !plan.DisplayName.IsNull() {
+			updated.SetDisplayName(plan.DisplayName.ValueString())
+		}
+		account, err = r.client.Directory.UpdateServiceAccount(ctx, &directoryv1alpha.UpdateServiceAccountRequest{
+			ServiceAccount: updated, UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"display_name"}},
+		})
 		if err != nil {
 			coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
 			return
 		}
-		if err := plan.fillUnknownFromProto(account); err != nil {
-			resp.Diagnostics.AddError("Unexpected API Response", fmt.Sprintf("The Directory API returned an invalid service account after a no-op update: %s.", err))
-			return
-		}
-		resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
-		return
+		account, err = r.recoverServiceAccountResponse(ctx, name, account, nil, nil)
+	} else {
+		// The read resolves computed values that Terraform marks unknown during
+		// an update, even when all configured values resolve to a no-op.
+		account, err = r.client.Directory.GetServiceAccount(ctx, &directoryv1alpha.GetServiceAccountRequest{Name: &name})
 	}
-
-	updated := &directoryv1alpha.ServiceAccount{Name: name}
-	if !plan.DisplayName.IsNull() {
-		updated.SetDisplayName(plan.DisplayName.ValueString())
-	}
-	account, err := r.client.Directory.UpdateServiceAccount(ctx, &directoryv1alpha.UpdateServiceAccountRequest{
-		ServiceAccount: updated, UpdateMask: &fieldmaskpb.FieldMask{Paths: []string{"display_name"}},
-	})
 	if err != nil {
 		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
 		return
 	}
-	if err := plan.setFromProto(account); err != nil {
-		readBack, readErr := r.client.Directory.GetServiceAccount(ctx, &directoryv1alpha.GetServiceAccountRequest{Name: &name})
-		if readErr != nil {
-			coreweave.HandleAPIError(ctx, readErr, &resp.Diagnostics)
+	var confirmed ServiceAccountResourceModel
+	if err := confirmed.setFromProto(account); err != nil {
+		resp.Diagnostics.AddError("Unexpected API Response", fmt.Sprintf("The Directory API returned an invalid service account after update: %s.", err))
+		return
+	}
+
+	updateActive := activeIsConfigured(config.Active) && activeIsConfigured(plan.Active) && !plan.Active.Equal(state.Active)
+	if updateActive && account.GetActive() != plan.Active.ValueBool() {
+		desiredActive := plan.Active.ValueBool()
+		var applied bool
+		var updateErr error
+		account, applied, updateErr = r.applyActive(ctx, account, desiredActive)
+		if stateErr := confirmed.setFromProto(account); stateErr != nil {
+			resp.Diagnostics.AddError("Unexpected API Response", fmt.Sprintf("The Directory API returned an invalid service account after changing its activation state: %s.", stateErr))
 			return
 		}
-		if readBackErr := plan.setFromProto(readBack); readBackErr != nil {
-			resp.Diagnostics.AddError("Unexpected API Response", fmt.Sprintf("The Directory API returned an invalid service account after update and the subsequent read could not recover it: %s.", readBackErr))
+		if updateErr != nil {
+			// A display-name update may already have succeeded. Persist the latest
+			// confirmed representation before reporting the lifecycle failure.
+			resp.Diagnostics.Append(resp.State.Set(ctx, &confirmed)...)
+			if resp.Diagnostics.HasError() {
+				return
+			}
+			coreweave.HandleAPIError(ctx, updateErr, &resp.Diagnostics)
 			return
 		}
+		if !applied {
+			resp.Diagnostics.Append(resp.State.Set(ctx, &confirmed)...)
+			if resp.Diagnostics.HasError() {
+				return
+			}
+			resp.Diagnostics.AddError("Unexpected API Response", "The Directory API did not apply the requested service account activation state.")
+			return
+		}
+	}
+	// Successful updates must preserve every known planned value. API responses
+	// only resolve attributes that Terraform left unknown in the plan.
+	if err := plan.fillUnknownFromProto(account); err != nil {
+		resp.Diagnostics.AddError("Unexpected API Response", fmt.Sprintf("The Directory API returned an invalid service account after update: %s.", err))
+		return
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }

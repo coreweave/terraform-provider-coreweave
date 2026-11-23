@@ -15,7 +15,7 @@ import (
 func TestAccIAMServiceAccountResource(t *testing.T) {
 	id := acctest.RandomWithPrefix("tf-acc-sa")
 	var firstUID string
-	configWith := func(displayName string) string {
+	configWith := func(displayName string, active bool) string {
 		return fmt.Sprintf(`
 data "coreweave_caller_identity" "current" {}
 
@@ -23,10 +23,13 @@ resource "coreweave_iam_service_account" "test" {
   id              = %q
   organization_id = data.coreweave_caller_identity.current.organization_id
   display_name    = %q
+  active          = %t
 }
-`, id, displayName)
+`, id, displayName, active)
 	}
-	configUpdated := configWith("tf acc updated")
+	configInitial := configWith("tf acc initial", true)
+	configUpdated := configWith("tf acc updated", true)
+	configDeactivated := configWith("tf acc updated", false)
 
 	// Service account deletion must complete before the same caller-chosen ID
 	// can be recreated, so keep this lifecycle test sequential.
@@ -36,7 +39,7 @@ resource "coreweave_iam_service_account" "test" {
 		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
-				Config: configWith("tf acc initial"),
+				Config: configInitial,
 				Check: resource.ComposeAggregateTestCheckFunc(
 					resource.TestCheckResourceAttr(serviceAccountResourceAddress, "display_name", "tf acc initial"),
 					resource.TestCheckResourceAttr(serviceAccountResourceAddress, "active", "true"),
@@ -70,6 +73,36 @@ resource "coreweave_iam_service_account" "test" {
 					}
 					return nil
 				},
+			},
+			{
+				Config: configDeactivated,
+				ConfigPlanChecks: resource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{
+					plancheck.ExpectResourceAction(serviceAccountResourceAddress, plancheck.ResourceActionUpdate),
+				}},
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr(serviceAccountResourceAddress, "active", "false"),
+					func(state *terraform.State) error {
+						if got := state.RootModule().Resources[serviceAccountResourceAddress].Primary.Attributes["uid"]; got != firstUID {
+							return fmt.Errorf("UID changed during deactivation: %q -> %q", firstUID, got)
+						}
+						return nil
+					},
+				),
+			},
+			{
+				Config: configUpdated,
+				ConfigPlanChecks: resource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{
+					plancheck.ExpectResourceAction(serviceAccountResourceAddress, plancheck.ResourceActionUpdate),
+				}},
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr(serviceAccountResourceAddress, "active", "true"),
+					func(state *terraform.State) error {
+						if got := state.RootModule().Resources[serviceAccountResourceAddress].Primary.Attributes["uid"]; got != firstUID {
+							return fmt.Errorf("UID changed during activation: %q -> %q", firstUID, got)
+						}
+						return nil
+					},
+				),
 			},
 			{
 				Config: configUpdated,
