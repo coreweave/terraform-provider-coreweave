@@ -21,7 +21,7 @@ jobs:
       contents: read
       pull-requests: read
       packages: read
-    container: ghcr.io/coreweave/github-actions-images/github-base-runner:1.21.0
+    container: docker.artifacts.coreweave.com/cw-github-actions-images-oci/github-base-runner:v1.22.0
     environment: QA
     env:
       COREWEAVE_API_ENDPOINT: ${{ inputs.suite == 'object_storage' && secrets.COREWEAVE_OBJS_API_ENDPOINT || vars.COREWEAVE_API_ENDPOINT }}
@@ -59,7 +59,7 @@ jobs:
   test:
     runs-on: cw
     permissions: *acceptance-permissions
-    container: ghcr.io/coreweave/github-actions-images/github-base-runner:1.21.0
+    container: docker.artifacts.coreweave.com/cw-github-actions-images-oci/github-base-runner:v1.22.0
     environment: QA
     needs: [sweep]
     env:
@@ -91,7 +91,7 @@ jobs:
       pull-requests: read
       packages: read
       checks: write
-    container: ghcr.io/coreweave/github-actions-images/github-base-runner:1.21.0
+    container: docker.artifacts.coreweave.com/cw-github-actions-images-oci/github-base-runner:v1.22.0
     environment: QA
     needs: [sweep]
     env:
