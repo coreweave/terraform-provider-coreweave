@@ -1,0 +1,162 @@
+package observability
+
+import (
+	"context"
+	"fmt"
+
+	clusterv1beta1 "buf.build/gen/go/coreweave/telemetry-relay/protocolbuffers/go/coreweave/telemetryrelay/svc/cluster/v1beta1"
+	typesv1beta1 "buf.build/gen/go/coreweave/telemetry-relay/protocolbuffers/go/coreweave/telemetryrelay/types/v1beta1"
+	"buf.build/go/protovalidate"
+
+	"github.com/coreweave/terraform-provider-coreweave/coreweave"
+	"github.com/coreweave/terraform-provider-coreweave/coreweave/observability/internal/model"
+	"github.com/coreweave/terraform-provider-coreweave/internal/coretf"
+	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
+	"github.com/hashicorp/terraform-plugin-framework/datasource"
+	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
+)
+
+var (
+	_ datasource.DataSourceWithConfigure      = &TelemetryStreamDataSource{}
+	_ datasource.DataSourceWithValidateConfig = &TelemetryStreamDataSource{}
+)
+
+func NewTelemetryStreamDataSource() datasource.DataSource {
+	return &TelemetryStreamDataSource{}
+}
+
+type TelemetryStreamDataSource struct {
+	coretf.CoreDataSource
+}
+
+func (s *TelemetryStreamDataSource) ValidateConfig(ctx context.Context, req datasource.ValidateConfigRequest, resp *datasource.ValidateConfigResponse) {
+	// An unknown slug becomes "" in ToRef, which protovalidate rejects instead
+	// of letting Terraform defer the read.
+	if !req.Config.Raw.IsFullyKnown() {
+		return
+	}
+
+	var data model.TelemetryStreamDataSource
+
+	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	msg := &clusterv1beta1.GetStreamRequest{
+		Ref: data.ToRef(),
+	}
+
+	if err := protovalidate.Validate(msg); err != nil {
+		resp.Diagnostics.AddError("Validation Error", err.Error())
+	}
+}
+
+func (s *TelemetryStreamDataSource) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
+	resp.TypeName = req.ProviderTypeName + "_observability_telemetry_relay_stream"
+}
+
+func (s *TelemetryStreamDataSource) Schema(ctx context.Context, req datasource.SchemaRequest, resp *datasource.SchemaResponse) {
+	resp.Schema = schema.Schema{
+		MarkdownDescription: "CoreWeave Telemetry Relay stream data source. Streams are platform-defined categories of telemetry, such as Kubernetes API audit logs; they cannot be created or modified, only read and referenced from a pipeline. `zones_active` reports where the stream currently has data.",
+		Attributes: map[string]schema.Attribute{
+			// Ref fields
+			"slug": schema.StringAttribute{
+				MarkdownDescription: "The slug of the stream. Used as a unique identifier.",
+				Required:            true,
+			},
+			// Spec fields
+			//
+			// No filter: the spec's LabelSelector is platform-defined and not
+			// something a pipeline can act on, so exposing it would publish an
+			// internal shape the provider would then have to keep.
+			"display_name": schema.StringAttribute{
+				MarkdownDescription: "The display name of the stream.",
+				Computed:            true,
+			},
+			"kind": schema.StringAttribute{
+				// Generated from the proto enum rather than hardcoded. The previous
+				// text promised "metrics, logs"; the provider stores
+				// STREAM_KIND_LOGS.
+				MarkdownDescription: fmt.Sprintf("The kind of telemetry the stream carries. One of: %s.",
+					coreweave.EnumMarkdownValues(typesv1beta1.StreamKind_name, true)),
+				Computed: true,
+			},
+			// Status fields
+			"created_at": schema.StringAttribute{
+				MarkdownDescription: "The time the stream was created.",
+				Computed:            true,
+				CustomType:          timetypes.RFC3339Type{},
+			},
+			"updated_at": schema.StringAttribute{
+				MarkdownDescription: "The time the stream was last updated.",
+				Computed:            true,
+				CustomType:          timetypes.RFC3339Type{},
+			},
+			// No state_code: it is the raw proto enum ordinal, duplicates `state`,
+			// and publishing it would commit the provider to the enum numbering.
+			"state": schema.StringAttribute{
+				MarkdownDescription: fmt.Sprintf("The current state of the stream. One of: %s.",
+					coreweave.EnumMarkdownValues(typesv1beta1.TelemetryStreamState_name, true)),
+				Computed: true,
+			},
+			"state_message": schema.StringAttribute{
+				MarkdownDescription: "Additional information about the current stream state.",
+				Computed:            true,
+			},
+			"zones_active": schema.MapNestedAttribute{
+				MarkdownDescription: "The zones active for the stream.",
+				Computed:            true,
+				NestedObject: schema.NestedAttributeObject{
+					Attributes: map[string]schema.Attribute{
+						"clusters": schema.ListNestedAttribute{
+							MarkdownDescription: "The clusters active for the zone.",
+							Computed:            true,
+							NestedObject: schema.NestedAttributeObject{
+								Attributes: map[string]schema.Attribute{
+									"id": schema.StringAttribute{
+										MarkdownDescription: "The ID of the cluster.",
+										Computed:            true,
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+func (s *TelemetryStreamDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
+	var data model.TelemetryStreamDataSource
+
+	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	getReq := &clusterv1beta1.GetStreamRequest{
+		Ref: data.ToRef(),
+	}
+
+	getResp, err := s.Client.GetStream(ctx, getReq)
+	if err != nil {
+		if coreweave.IsNotFoundError(err) {
+			resp.Diagnostics.AddError(
+				"Stream Not Found",
+				fmt.Sprintf("The specified stream with slug %q was not found.", getReq.Ref.Slug),
+			)
+			return
+		}
+		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
+		return
+	}
+
+	resp.Diagnostics.Append(data.Set(ctx, getResp.Stream)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+}
