@@ -10,6 +10,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	fwresource "github.com/hashicorp/terraform-plugin-framework/resource"
 	fwschema "github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/knownvalue"
@@ -66,6 +67,45 @@ func TestInferenceDeployment_Schema(t *testing.T) {
 	}
 	if !weightAttr.Computed {
 		t.Error("traffic.weight: expected computed")
+	}
+}
+
+func TestInferenceDeployment_PriorityValidation(t *testing.T) {
+	t.Parallel()
+
+	var schemaResp fwresource.SchemaResponse
+	inference.NewInferenceDeploymentResource().Schema(t.Context(), fwresource.SchemaRequest{}, &schemaResp)
+	if schemaResp.Diagnostics.HasError() {
+		t.Fatalf("schema returned errors: %v", schemaResp.Diagnostics)
+	}
+	autoscaling := schemaResp.Schema.Attributes["autoscaling"].(fwschema.SingleNestedAttribute)
+	priority := autoscaling.Attributes["priority"].(fwschema.Int64Attribute)
+
+	for _, tc := range []struct {
+		name    string
+		value   types.Int64
+		wantErr bool
+	}{
+		{name: "omitted", value: types.Int64Null()},
+		{name: "unknown", value: types.Int64Unknown()},
+		{name: "unset", value: types.Int64Value(0)},
+		{name: "minimum priority", value: types.Int64Value(1)},
+		{name: "maximum priority", value: types.Int64Value(100)},
+		{name: "negative", value: types.Int64Value(-1), wantErr: true},
+		{name: "above maximum", value: types.Int64Value(101), wantErr: true},
+		{name: "old maximum", value: types.Int64Value(1000), wantErr: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			var resp validator.Int64Response
+			for _, v := range priority.Validators {
+				v.ValidateInt64(t.Context(), validator.Int64Request{ConfigValue: tc.value}, &resp)
+			}
+			if resp.Diagnostics.HasError() != tc.wantErr {
+				t.Fatalf("priority %v: want error %t, got diagnostics: %v", tc.value, tc.wantErr, resp.Diagnostics)
+			}
+		})
 	}
 }
 
