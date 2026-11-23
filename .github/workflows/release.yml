@@ -1,8 +1,7 @@
 name: Release
 
 on:
-  pull_request_target:
-    types: [closed]
+  push:
     branches: [main]
   workflow_dispatch:
     inputs:
@@ -16,11 +15,7 @@ permissions:
 
 jobs:
   validation:
-    if: >-
-      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
-      (github.event_name == 'pull_request_target' && github.event.pull_request.merged &&
-       github.event.pull_request.head.ref == 'release-please--branches--main' &&
-       github.event.pull_request.head.repo.full_name == github.repository)
+    if: github.ref == 'refs/heads/main'
     runs-on: cw-static-pub-x64-4c
     timeout-minutes: 15
     permissions:
@@ -29,6 +24,7 @@ jobs:
       actions: read
     outputs:
       commit: ${{ steps.verify.outputs.commit }}
+      pr-number: ${{ steps.verify.outputs.pr-number }}
     steps:
       # The gate runs from the trusted base, before any candidate code or signing secrets.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -39,7 +35,7 @@ jobs:
         id: verify
         env:
           GH_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ github.event.pull_request.number || inputs.release-pr }}
+          PR_NUMBER: ${{ inputs.release-pr }}
         run: bash .github/release/verify.sh
 
   goreleaser:
@@ -48,6 +44,7 @@ jobs:
       queue: max
       cancel-in-progress: false
     needs: validation
+    if: needs.validation.outputs.commit != ''
     runs-on: cw-static-pub-x64-4c
     permissions:
       contents: write
@@ -90,7 +87,7 @@ jobs:
       - name: Mark release PR as tagged
         env:
           GH_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ github.event.pull_request.number || inputs.release-pr }}
+          PR_NUMBER: ${{ needs.validation.outputs.pr-number }}
         run: |
           gh pr edit "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --remove-label 'autorelease: pending' --add-label 'autorelease: tagged'
       - name: Refresh release PR
