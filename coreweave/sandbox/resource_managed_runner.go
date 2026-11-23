@@ -298,7 +298,10 @@ func (r *ManagedRunnerResource) Create(ctx context.Context, req resource.CreateR
 		resp.Diagnostics.AddError("Unable to Generate Request ID", err.Error())
 		return
 	}
-	created, err := r.client.SandboxRunnerManagement.CreateManagedRunner(ctx, &sandboxv1.CreateManagedRunnerRequest{ManagedRunner: runner, RequestId: requestID})
+	created, err := r.client.SandboxRunnerManagement.CreateManagedRunner(coreweave.WithIdempotentCreate(ctx), &sandboxv1.CreateManagedRunnerRequest{
+		ManagedRunner: runner,
+		RequestId:     requestID,
+	})
 	if err != nil {
 		coreweave.HandleAPIError(ctx, err, &resp.Diagnostics)
 		return

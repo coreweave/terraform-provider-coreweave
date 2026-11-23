@@ -147,7 +147,7 @@ func (r *NamespaceResource) namespaceCreate(ctx context.Context, a *NamespaceRes
 	if err := saveRecovery(ctx, p, rec); err != nil {
 		return false, err
 	}
-	res, e := r.client.CreateRegistryNamespace(ctx, q)
+	res, e := r.client.CreateRegistryNamespace(coreweave.WithIdempotentCreate(ctx), q)
 	if e != nil {
 		return false, fmt.Errorf("create %s: %w; if the response was lost, inspect server operations and explicitly import the verified namespace; an existing name is not proof of ownership", name, e)
 	}

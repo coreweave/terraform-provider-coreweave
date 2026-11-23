@@ -8,7 +8,9 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"strings"
 
+	"connectrpc.com/connect/v2"
 	"github.com/coreweave/terraform-provider-coreweave/internal/auth"
 )
 
@@ -99,6 +101,39 @@ type withoutRetriesKey struct{}
 // outcome cannot be recovered after a lost response.
 func WithoutRetries(ctx context.Context) context.Context {
 	return context.WithValue(ctx, withoutRetriesKey{}, true)
+}
+
+type idempotentCreateKey struct{}
+
+// WithIdempotentCreate preserves the normal retry policy for a create request
+// protected by a server-supported idempotency token. Use it for that RPC only.
+func WithIdempotentCreate(ctx context.Context) context.Context {
+	return context.WithValue(ctx, idempotentCreateKey{}, true)
+}
+
+func connectRetryPolicyInterceptor() connect.ClientInterceptor {
+	return func(next connect.ClientFunc) connect.ClientFunc {
+		return func(ctx context.Context, spec connect.Spec) (connect.ClientStream, error) {
+			idempotent, _ := ctx.Value(idempotentCreateKey{}).(bool)
+			if !idempotent && spec.StreamType == connect.StreamTypeUnary && isNonIdempotentCreate(spec) {
+				ctx = WithoutRetries(ctx)
+			}
+			return next(ctx, spec)
+		}
+	}
+}
+
+func isNonIdempotentCreate(spec connect.Spec) bool {
+	method := spec.Procedure
+	if separator := strings.LastIndexByte(method, '/'); separator >= 0 {
+		method = method[separator+1:]
+	}
+	if !strings.HasPrefix(method, "Create") {
+		return false
+	}
+
+	return spec.IdempotencyLevel != connect.IdempotencyNoSideEffects &&
+		spec.IdempotencyLevel != connect.IdempotencyIdempotent
 }
 
 func RetryPolicy(ctx context.Context, resp *http.Response, err error) (bool, error) {
