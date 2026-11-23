@@ -57,6 +57,7 @@ func createBucketSettingsTestStep(ctx context.Context, t *testing.T, opts bucket
 		ArchiveEnabled:             opts.settings.ArchiveEnabled,
 		ArchiveAfterLastAccessDays: opts.settings.ArchiveAfterLastAccessDays,
 		CapacityCapBytes:           opts.settings.CapacityCapBytes,
+		MetadataTableEnabled:       opts.settings.MetadataTableEnabled,
 	})
 	config := bucketHCL + settingsHCL
 
@@ -74,6 +75,9 @@ func createBucketSettingsTestStep(ctx context.Context, t *testing.T, opts bucket
 	}
 	if !opts.settings.CapacityCapBytes.IsNull() {
 		checks = append(checks, statecheck.ExpectKnownValue(rs, tfjsonpath.New("capacity_cap_bytes"), knownvalue.Int64Exact(opts.settings.CapacityCapBytes.ValueInt64())))
+	}
+	if !opts.settings.MetadataTableEnabled.IsNull() {
+		checks = append(checks, statecheck.ExpectKnownValue(rs, tfjsonpath.New("metadata_table_enabled"), knownvalue.Bool(opts.settings.MetadataTableEnabled.ValueBool())))
 	}
 
 	return resource.TestStep{

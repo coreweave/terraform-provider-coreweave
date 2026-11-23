@@ -15,4 +15,8 @@ resource "coreweave_object_storage_bucket_settings" "default" {
   # entitled to configure archive settings before enabling this.
   archive_enabled                = true
   archive_after_last_access_days = 60
+
+  # Produce a metadata table for the bucket. Your organization must be entitled
+  # to configure metadata tables before enabling this.
+  metadata_table_enabled = true
 }
