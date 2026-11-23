@@ -67,6 +67,39 @@ func TestAccessPolicyModelRoundTrip(t *testing.T) {
 	assert.ElementsMatch(t, policy.GetRules()[0].GetServiceAccounts(), roundTrip.GetRules()[0].GetServiceAccounts())
 }
 
+func TestAccessPolicyModelDeduplicatesRemoteSetsAndRules(t *testing.T) {
+	t.Parallel()
+	rule := &directoryv1alpha.AccessPolicyRule{
+		Id:              "33333333-3333-4333-8333-333333333333",
+		Actions:         []string{"read_auth", "read_auth"},
+		Users:           []string{"organizations/a1b2c3/users/user-1", "organizations/a1b2c3/users/user-1"},
+		Groups:          []string{"organizations/a1b2c3/groups/group-1", "organizations/a1b2c3/groups/group-1"},
+		ServiceAccounts: []string{"organizations/a1b2c3/serviceAccounts/ci-deployer", "organizations/a1b2c3/serviceAccounts/ci-deployer"},
+	}
+	duplicateRule := &directoryv1alpha.AccessPolicyRule{
+		Id:              "44444444-4444-4444-8444-444444444444",
+		Actions:         append([]string(nil), rule.GetActions()...),
+		Users:           append([]string(nil), rule.GetUsers()...),
+		Groups:          append([]string(nil), rule.GetGroups()...),
+		ServiceAccounts: append([]string(nil), rule.GetServiceAccounts()...),
+	}
+	policy := &directoryv1alpha.AccessPolicy{
+		Name:       "organizations/a1b2c3/accessPolicies/automation",
+		Uid:        "22222222-2222-4222-8222-222222222222",
+		OrgId:      "a1b2c3",
+		PolicyType: directoryv1alpha.PolicyType_POLICY_TYPE_CUSTOM,
+		Rules:      []*directoryv1alpha.AccessPolicyRule{rule, duplicateRule},
+	}
+
+	var model AccessPolicyResourceModel
+	require.NoError(t, model.setFromProto(policy))
+	require.Len(t, model.Rules, 1)
+	assert.Len(t, model.Rules[0].Actions.Elements(), 1)
+	assert.Len(t, model.Rules[0].Users.Elements(), 1)
+	assert.Len(t, model.Rules[0].Groups.Elements(), 1)
+	assert.Len(t, model.Rules[0].ServiceAccounts.Elements(), 1)
+}
+
 func TestAccessPolicyModelRejectsUnmanageableResponses(t *testing.T) {
 	t.Parallel()
 	var model AccessPolicyResourceModel

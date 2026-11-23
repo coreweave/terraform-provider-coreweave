@@ -19,6 +19,7 @@ import (
 	tfresource "github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/plancheck"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
+	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -171,6 +172,39 @@ func (s *accessPolicyTestServer) returnAlreadyExistsOnCreate() {
 	s.alreadyExistsOnCreate = true
 }
 
+func (s *accessPolicyTestServer) duplicateFirstRuleValues(t *testing.T) {
+	t.Helper()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	require.Len(t, s.policies, 1)
+	for _, policy := range s.policies {
+		require.Len(t, policy.GetRules(), 1)
+		rule := policy.GetRules()[0]
+		require.NotEmpty(t, rule.GetActions())
+		require.NotEmpty(t, rule.GetUsers())
+		require.NotEmpty(t, rule.GetGroups())
+		require.NotEmpty(t, rule.GetServiceAccounts())
+		rule.Actions = append(rule.Actions, rule.Actions[0])
+		rule.Users = append(rule.Users, rule.Users[0])
+		rule.Groups = append(rule.Groups, rule.Groups[0])
+		rule.ServiceAccounts = append(rule.ServiceAccounts, rule.ServiceAccounts[0])
+	}
+}
+
+func (s *accessPolicyTestServer) duplicateFirstRule(t *testing.T) {
+	t.Helper()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	require.Len(t, s.policies, 1)
+	for _, policy := range s.policies {
+		require.Len(t, policy.GetRules(), 1)
+		duplicate := cloneAccessPolicyRule(policy.GetRules()[0])
+		s.nextRuleID++
+		duplicate.Id = fmt.Sprintf("33333333-3333-4333-8333-%012d", s.nextRuleID)
+		policy.Rules = append(policy.Rules, duplicate)
+	}
+}
+
 func (s *accessPolicyTestServer) checkRule(expectedActions, expectedServiceAccounts []string) tfresource.TestCheckFunc {
 	return func(*terraform.State) error {
 		s.mu.Lock()
@@ -296,6 +330,47 @@ func TestAccessPolicyResourceLifecycle(t *testing.T) {
 			},
 		},
 	})
+}
+
+func TestAccessPolicyResourceNormalizesDuplicateRemoteSets(t *testing.T) {
+	tests := map[string]func(*testing.T, *accessPolicyTestServer){
+		"set values": func(t *testing.T, service *accessPolicyTestServer) {
+			t.Helper()
+			service.duplicateFirstRuleValues(t)
+		},
+		"rules": func(t *testing.T, service *accessPolicyTestServer) {
+			t.Helper()
+			service.duplicateFirstRule(t)
+		},
+	}
+
+	for name, mutate := range tests {
+		t.Run(name, func(t *testing.T) {
+			service, server := startAccessPolicyTestServer(t)
+			config := accessPolicyTestConfig(
+				server.URL,
+				"duplicate-normalization",
+				"Duplicate normalization test",
+				[]string{"read_auth"},
+				[]string{"organizations/a1b2c3/serviceAccounts/ci-deployer"},
+			)
+
+			tfresource.UnitTest(t, tfresource.TestCase{
+				ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+				CheckDestroy:             service.checkEmpty,
+				Steps: []tfresource.TestStep{
+					{Config: config},
+					{
+						Config:    config,
+						PreConfig: func() { mutate(t, service) },
+						ConfigPlanChecks: tfresource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{
+							plancheck.ExpectEmptyPlan(),
+						}},
+					},
+				},
+			})
+		})
+	}
 }
 
 func TestAccessPolicyResourceNotFoundRemovesState(t *testing.T) {

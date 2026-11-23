@@ -52,9 +52,10 @@ resource "coreweave_iam_access_policy" "test" {
 				),
 			},
 			{
-				ResourceName:      accessPolicyResourceAddress,
-				ImportState:       true,
-				ImportStateVerify: true,
+				ResourceName:                         accessPolicyResourceAddress,
+				ImportState:                          true,
+				ImportStateVerify:                    true,
+				ImportStateVerifyIdentifierAttribute: "access_policy_id",
 				ImportStateIdFunc: func(state *terraform.State) (string, error) {
 					return state.RootModule().Resources[accessPolicyResourceAddress].Primary.Attributes["name"], nil
 				},

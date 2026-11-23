@@ -154,11 +154,23 @@ func (r *AccessPolicyResource) Configure(_ context.Context, req resource.Configu
 }
 
 func stringSet(values []string) types.Set {
+	seen := make(map[string]struct{}, len(values))
 	elements := make([]attr.Value, 0, len(values))
 	for _, value := range values {
+		if _, duplicate := seen[value]; duplicate {
+			continue
+		}
+		seen[value] = struct{}{}
 		elements = append(elements, types.StringValue(value))
 	}
 	return types.SetValueMust(types.StringType, elements)
+}
+
+func accessPolicyRuleEqual(left, right AccessPolicyRuleResourceModel) bool {
+	return left.Actions.Equal(right.Actions) &&
+		left.Users.Equal(right.Users) &&
+		left.Groups.Equal(right.Groups) &&
+		left.ServiceAccounts.Equal(right.ServiceAccounts)
 }
 
 func (m *AccessPolicyResourceModel) setFromProto(policy *directoryv1alpha.AccessPolicy) error {
@@ -190,12 +202,22 @@ func (m *AccessPolicyResourceModel) setFromProto(policy *directoryv1alpha.Access
 		if rule == nil {
 			return fmt.Errorf("access policy contains a missing rule")
 		}
-		m.Rules = append(m.Rules, AccessPolicyRuleResourceModel{
+		model := AccessPolicyRuleResourceModel{
 			Actions:         stringSet(rule.GetActions()),
 			Users:           stringSet(rule.GetUsers()),
 			Groups:          stringSet(rule.GetGroups()),
 			ServiceAccounts: stringSet(rule.GetServiceAccounts()),
-		})
+		}
+		duplicate := false
+		for _, existing := range m.Rules {
+			if accessPolicyRuleEqual(existing, model) {
+				duplicate = true
+				break
+			}
+		}
+		if !duplicate {
+			m.Rules = append(m.Rules, model)
+		}
 	}
 	m.CreatedAt = timestampValue(policy.GetCreateTime())
 	m.UpdatedAt = timestampValue(policy.GetUpdateTime())
