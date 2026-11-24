@@ -160,10 +160,29 @@ func (s *accessPolicyTestServer) returnInvalidCreateResponseOnce() {
 	s.invalidCreateResponse = true
 }
 
-func (s *accessPolicyTestServer) failNextGetWithNotFound() {
+func (s *accessPolicyTestServer) returnNotFoundOnNextGets(count int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.notFoundNextGets++
+	s.notFoundNextGets = count
+}
+
+func (s *accessPolicyTestServer) deactivateAll() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, policy := range s.policies {
+		policy.Active = false
+	}
+}
+
+func (s *accessPolicyTestServer) checkCreateCount(expected int) tfresource.TestCheckFunc {
+	return func(*terraform.State) error {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		if s.nextPolicyID != expected {
+			return fmt.Errorf("expected %d access policy create calls, got %d", expected, s.nextPolicyID)
+		}
+		return nil
+	}
 }
 
 func (s *accessPolicyTestServer) returnAlreadyExistsOnCreate() {
@@ -410,26 +429,82 @@ func TestAccessPolicyResourceRecoversInvalidCreateResponse(t *testing.T) {
 	})
 }
 
-func TestAccessPolicyResourceTaintsWhenCreateRecoveryFails(t *testing.T) {
+func TestAccessPolicyResourceRetriesNotFoundCreateReadBack(t *testing.T) {
 	service, server := startAccessPolicyTestServer(t)
 	service.returnInvalidCreateResponseOnce()
-	service.failNextGetWithNotFound()
+	service.returnNotFoundOnNextGets(2)
+	config := accessPolicyTestConfig(server.URL, "eventually-visible", "Eventually visible", []string{"read_auth"}, nil)
+
+	tfresource.UnitTest(t, tfresource.TestCase{
+		ProtoV6ProviderFactories: providerFactoriesWithReadBackTimeout(10 * time.Second),
+		CheckDestroy:             service.checkEmpty,
+		Steps: []tfresource.TestStep{{
+			Config: config,
+			Check: tfresource.ComposeAggregateTestCheckFunc(
+				tfresource.TestCheckResourceAttr(accessPolicyResourceAddress, "name", "organizations/a1b2c3/accessPolicies/eventually-visible"),
+				tfresource.TestCheckResourceAttr(accessPolicyResourceAddress, "uid", "22222222-2222-4222-8222-000000000001"),
+				service.checkCreateCount(1),
+			),
+		}},
+	})
+}
+
+func TestAccessPolicyResourceTaintsWhenCreateReadBackRemainsNotFound(t *testing.T) {
+	service, server := startAccessPolicyTestServer(t)
+	service.returnInvalidCreateResponseOnce()
+	service.returnNotFoundOnNextGets(1_000)
 	config := accessPolicyTestConfig(server.URL, "tainted-create", "Recovery failure", []string{"read_auth"}, nil)
 
 	tfresource.UnitTest(t, tfresource.TestCase{
-		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+		ProtoV6ProviderFactories: providerFactoriesWithReadBackTimeout(15 * time.Millisecond),
+		CheckDestroy:             service.checkEmpty,
 		Steps: []tfresource.TestStep{
 			{
 				Config:      config,
-				ExpectError: regexp.MustCompile(`(?s)Terraform preserved the.*marked the resource tainted`),
+				ExpectError: regexp.MustCompile(`(?s)reading it back\s+failed:.*could\s+not\s+be\s+read\s+back\s+within\s+15ms.*Terraform preserved the.*marked\s+the resource tainted`),
 			},
 			{
-				Config: config,
+				Config:    config,
+				PreConfig: func() { service.returnNotFoundOnNextGets(0) },
 				ConfigPlanChecks: tfresource.ConfigPlanChecks{
 					PreApply: []plancheck.PlanCheck{
 						plancheck.ExpectResourceAction(accessPolicyResourceAddress, plancheck.ResourceActionDestroyBeforeCreate),
 					},
 				},
+				Check: tfresource.ComposeAggregateTestCheckFunc(
+					tfresource.TestCheckResourceAttr(accessPolicyResourceAddress, "name", "organizations/a1b2c3/accessPolicies/tainted-create"),
+					tfresource.TestCheckResourceAttr(accessPolicyResourceAddress, "uid", "22222222-2222-4222-8222-000000000002"),
+					service.checkCreateCount(2),
+				),
+			},
+		},
+	})
+}
+
+func TestAccessPolicyResourceAcceptsActivationDriftDuringUpdate(t *testing.T) {
+	service, server := startAccessPolicyTestServer(t)
+	initial := accessPolicyTestConfig(server.URL, "activation-drift", "Initial", []string{"read_auth"}, nil)
+	updated := accessPolicyTestConfig(server.URL, "activation-drift", "Updated", []string{"read_auth"}, nil)
+
+	tfresource.UnitTest(t, tfresource.TestCase{
+		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+		CheckDestroy:             service.checkEmpty,
+		Steps: []tfresource.TestStep{
+			{
+				Config: initial,
+				Check:  tfresource.TestCheckResourceAttr(accessPolicyResourceAddress, "active", "true"),
+			},
+			{
+				// Deactivate after the plan is computed so the update response
+				// disagrees with the active value held in prior state.
+				Config: updated,
+				ConfigPlanChecks: tfresource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{
+					planCheckFunc(service.deactivateAll),
+				}},
+				Check: tfresource.ComposeAggregateTestCheckFunc(
+					tfresource.TestCheckResourceAttr(accessPolicyResourceAddress, "description", "Updated"),
+					tfresource.TestCheckResourceAttr(accessPolicyResourceAddress, "active", "false"),
+				),
 			},
 		},
 	})

@@ -47,47 +47,54 @@ type serviceAccountTestServer struct {
 	notFoundOnNextUpdateCall bool
 }
 
-type serviceAccountPlanCheck func()
+type planCheckFunc func()
 
-func (check serviceAccountPlanCheck) CheckPlan(_ context.Context, _ plancheck.CheckPlanRequest, _ *plancheck.CheckPlanResponse) {
+func (check planCheckFunc) CheckPlan(_ context.Context, _ plancheck.CheckPlanRequest, _ *plancheck.CheckPlanResponse) {
 	check()
 }
 
-type serviceAccountReadBackTestProvider struct {
+// Recovery tests retry quickly so that only the recovery window differs
+// between a read-back that eventually succeeds and one that is exhausted.
+const (
+	testReadBackInitialDelay = time.Millisecond
+	testReadBackMaxDelay     = 2 * time.Millisecond
+)
+
+type readBackTestProvider struct {
 	frameworkprovider.Provider
-	timeout      time.Duration
-	initialDelay time.Duration
-	maxDelay     time.Duration
+	timeout time.Duration
 }
 
-var _ frameworkprovider.ProviderWithFunctions = &serviceAccountReadBackTestProvider{}
+var _ frameworkprovider.ProviderWithFunctions = &readBackTestProvider{}
 
-func (p *serviceAccountReadBackTestProvider) Resources(ctx context.Context) []func() frameworkresource.Resource {
+func (p *readBackTestProvider) Resources(ctx context.Context) []func() frameworkresource.Resource {
 	resources := p.Provider.Resources(ctx)
 	for index, factory := range resources {
-		if _, ok := factory().(*serviceaccount.ServiceAccountResource); ok {
+		switch factory().(type) {
+		case *serviceaccount.ServiceAccountResource:
 			resources[index] = func() frameworkresource.Resource {
-				return serviceaccount.NewServiceAccountResourceWithReadBackPolicy(p.timeout, p.initialDelay, p.maxDelay)
+				return serviceaccount.NewServiceAccountResourceWithReadBackPolicy(p.timeout, testReadBackInitialDelay, testReadBackMaxDelay)
 			}
-			break
+		case *serviceaccount.AccessPolicyResource:
+			resources[index] = func() frameworkresource.Resource {
+				return serviceaccount.NewAccessPolicyResourceWithReadBackPolicy(p.timeout, testReadBackInitialDelay, testReadBackMaxDelay)
+			}
 		}
 	}
 	return resources
 }
 
-func (p *serviceAccountReadBackTestProvider) Functions(ctx context.Context) []func() frameworkfunction.Function {
+func (p *readBackTestProvider) Functions(ctx context.Context) []func() frameworkfunction.Function {
 	if providerWithFunctions, ok := p.Provider.(frameworkprovider.ProviderWithFunctions); ok {
 		return providerWithFunctions.Functions(ctx)
 	}
 	return nil
 }
 
-func serviceAccountProviderFactoriesWithReadBackPolicy(timeout, initialDelay, maxDelay time.Duration) map[string]func() (tfprotov6.ProviderServer, error) {
-	factory := providerserver.NewProtocol6WithError(&serviceAccountReadBackTestProvider{
-		Provider:     provider.New("test")(),
-		timeout:      timeout,
-		initialDelay: initialDelay,
-		maxDelay:     maxDelay,
+func providerFactoriesWithReadBackTimeout(timeout time.Duration) map[string]func() (tfprotov6.ProviderServer, error) {
+	factory := providerserver.NewProtocol6WithError(&readBackTestProvider{
+		Provider: provider.New("test")(),
+		timeout:  timeout,
 	})
 	return map[string]func() (tfprotov6.ProviderServer, error){"coreweave": factory}
 }
@@ -457,7 +464,7 @@ func TestServiceAccountResourceRetriesNotFoundCreateReadBack(t *testing.T) {
 	service.returnNotFoundOnNextGets(2)
 
 	tfresource.UnitTest(t, tfresource.TestCase{
-		ProtoV6ProviderFactories: serviceAccountProviderFactoriesWithReadBackPolicy(100*time.Millisecond, time.Millisecond, 2*time.Millisecond),
+		ProtoV6ProviderFactories: providerFactoriesWithReadBackTimeout(100 * time.Millisecond),
 		CheckDestroy:             service.checkEmpty,
 		Steps: []tfresource.TestStep{{
 			Config: serviceAccountTestConfig(server.URL, "Eventually visible"),
@@ -477,7 +484,7 @@ func TestServiceAccountResourceTaintsWhenCreateReadBackRemainsNotFound(t *testin
 	config := serviceAccountTestConfig(server.URL, "Create recovery")
 
 	tfresource.UnitTest(t, tfresource.TestCase{
-		ProtoV6ProviderFactories: serviceAccountProviderFactoriesWithReadBackPolicy(15*time.Millisecond, time.Millisecond, 2*time.Millisecond),
+		ProtoV6ProviderFactories: providerFactoriesWithReadBackTimeout(15 * time.Millisecond),
 		CheckDestroy:             service.checkEmpty,
 		Steps: []tfresource.TestStep{
 			{
@@ -542,7 +549,7 @@ func TestServiceAccountResourceAcceptsActivationDriftDuringUpdate(t *testing.T) 
 			{
 				Config: updated,
 				ConfigPlanChecks: tfresource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{
-					serviceAccountPlanCheck(service.deactivateAll),
+					planCheckFunc(service.deactivateAll),
 				}},
 				Check: tfresource.ComposeAggregateTestCheckFunc(
 					tfresource.TestCheckResourceAttr(serviceAccountResourceAddress, "display_name", "Updated"),

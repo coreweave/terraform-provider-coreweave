@@ -15,7 +15,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/setdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
@@ -39,7 +38,8 @@ var accessPolicyRuleAttributeTypes = map[string]attr.Type{
 }
 
 type AccessPolicyResource struct {
-	client *coreweave.Client
+	client         *coreweave.Client
+	readBackPolicy createReadBackPolicy
 }
 
 type AccessPolicyResourceModel struct {
@@ -62,7 +62,13 @@ type AccessPolicyRuleResourceModel struct {
 	ServiceAccounts types.Set `tfsdk:"service_accounts"`
 }
 
-func NewAccessPolicyResource() resource.Resource { return &AccessPolicyResource{} }
+func NewAccessPolicyResource() resource.Resource {
+	return newAccessPolicyResource(defaultCreateReadBackPolicy())
+}
+
+func newAccessPolicyResource(policy createReadBackPolicy) resource.Resource {
+	return &AccessPolicyResource{readBackPolicy: policy}
+}
 
 func (r *AccessPolicyResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + "_iam_access_policy"
@@ -104,8 +110,10 @@ func (r *AccessPolicyResource) Schema(_ context.Context, _ resource.SchemaReques
 				MarkdownDescription: "An optional description of the policy. Defaults to an empty string.",
 			},
 			"policy_type": schema.StringAttribute{Computed: true, PlanModifiers: computed, MarkdownDescription: "The API policy classification. Terraform-created policies are `POLICY_TYPE_CUSTOM`."},
+			// active can change outside Terraform, so it has no UseStateForUnknown:
+			// an update must be free to report the value the API returns.
 			"active": schema.BoolAttribute{
-				Computed: true, PlanModifiers: []planmodifier.Bool{boolplanmodifier.UseStateForUnknown()},
+				Computed:            true,
 				MarkdownDescription: "Whether the policy is active.",
 			},
 			"rules": schema.SetNestedAttribute{
@@ -224,19 +232,38 @@ func (m *AccessPolicyResourceModel) setFromProto(policy *directoryv1alpha.Access
 	return nil
 }
 
+// fillUnknownFromProto resolves only attributes that remain unknown in the
+// plan. It is used when an update request resolves to a no-op so that remote
+// drift cannot overwrite values Terraform already planned to preserve.
 func (m *AccessPolicyResourceModel) fillUnknownFromProto(policy *directoryv1alpha.AccessPolicy) error {
 	var remote AccessPolicyResourceModel
 	if err := remote.setFromProto(policy); err != nil {
 		return err
 	}
-	m.OrganizationID = remote.OrganizationID
-	m.AccessPolicyID = remote.AccessPolicyID
-	m.Name = remote.Name
-	m.UID = remote.UID
-	m.PolicyType = remote.PolicyType
-	m.Active = remote.Active
-	m.CreatedAt = remote.CreatedAt
-	m.UpdatedAt = remote.UpdatedAt
+	if m.OrganizationID.IsUnknown() {
+		m.OrganizationID = remote.OrganizationID
+	}
+	if m.AccessPolicyID.IsUnknown() {
+		m.AccessPolicyID = remote.AccessPolicyID
+	}
+	if m.Name.IsUnknown() {
+		m.Name = remote.Name
+	}
+	if m.UID.IsUnknown() {
+		m.UID = remote.UID
+	}
+	if m.PolicyType.IsUnknown() {
+		m.PolicyType = remote.PolicyType
+	}
+	if m.Active.IsUnknown() {
+		m.Active = remote.Active
+	}
+	if m.CreatedAt.IsUnknown() {
+		m.CreatedAt = remote.CreatedAt
+	}
+	if m.UpdatedAt.IsUnknown() {
+		m.UpdatedAt = remote.UpdatedAt
+	}
 	if m.Description.IsUnknown() {
 		m.Description = remote.Description
 	}
@@ -370,6 +397,8 @@ func (r *AccessPolicyResource) Create(ctx context.Context, req resource.CreateRe
 		// The create request has already succeeded. Preserve its deterministic
 		// identity and planned inputs so Terraform can track the remote policy if
 		// recovery fails, while leaving values not returned by the API unresolved.
+		// The read-back retries NotFound for a bounded window because the new
+		// policy may not be visible to reads immediately.
 		data.Name = types.StringValue(expectedName)
 		data.UID = types.StringNull()
 		data.PolicyType = types.StringNull()
@@ -381,7 +410,9 @@ func (r *AccessPolicyResource) Create(ctx context.Context, req resource.CreateRe
 			return
 		}
 
-		remote, readErr := r.client.Directory.GetAccessPolicy(ctx, &directoryv1alpha.GetAccessPolicyRequest{Name: expectedName})
+		remote, readErr := readBackCreated(ctx, r.readBackPolicy, "access policy", func(readCtx context.Context) (*directoryv1alpha.AccessPolicy, error) {
+			return r.client.Directory.GetAccessPolicy(readCtx, &directoryv1alpha.GetAccessPolicyRequest{Name: expectedName})
+		})
 		if readErr != nil {
 			resp.Diagnostics.AddError("Unable to Recover Access Policy After Creation", fmt.Sprintf("The Directory API accepted the create request for %q but returned an invalid response (%s), and reading it back failed: %s. Terraform preserved the policy name and planned inputs in state and marked the resource tainted. To recover the existing policy, verify it remotely, run `terraform untaint <resource-address>`, then run `terraform apply -refresh-only` before the next normal apply. To replace it instead without changing its ID, temporarily remove `create_before_destroy`, because the API cannot create two policies with the same name.", expectedName, responseErr, readErr))
 			return

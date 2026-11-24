@@ -8,7 +8,7 @@ import (
 
 // NewServiceAccountResourceWithReadBackPolicy exposes recovery timing only to tests.
 func NewServiceAccountResourceWithReadBackPolicy(timeout, initialDelay, maxDelay time.Duration) resource.Resource {
-	return newServiceAccountResource(serviceAccountReadBackPolicy{
+	return newServiceAccountResource(createReadBackPolicy{
 		timeout:      timeout,
 		initialDelay: initialDelay,
 		maxDelay:     maxDelay,

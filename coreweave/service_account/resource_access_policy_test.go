@@ -6,6 +6,8 @@ import (
 
 	directoryv1alpha "buf.build/gen/go/coreweave/directory/protocolbuffers/go/coreweave/directory/v1alpha"
 	frameworkresource "github.com/hashicorp/terraform-plugin-framework/resource"
+	resourceschema "github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -25,6 +27,12 @@ func TestAccessPolicySchema(t *testing.T) {
 	assert.True(t, response.Schema.Attributes["uid"].IsComputed())
 	assert.True(t, response.Schema.Attributes["description"].IsOptional())
 	assert.True(t, response.Schema.Attributes["rules"].IsOptional())
+
+	// active can be changed outside Terraform, so an update must not plan the
+	// prior state value for it.
+	active := response.Schema.Attributes["active"].(resourceschema.BoolAttribute)
+	assert.True(t, active.IsComputed())
+	assert.Empty(t, active.PlanModifiers)
 }
 
 func TestAccessPolicyModelRoundTrip(t *testing.T) {
@@ -173,6 +181,83 @@ func TestAccessPolicyFillUnknownRejectsConcurrentRuleChanges(t *testing.T) {
 	err = model.fillUnknownFromProto(remote)
 	require.ErrorContains(t, err, "planned 1 rules, but the API returned 2")
 	assert.True(t, model.Rules[0].Actions.Equal(plannedActions), "known planned rules must not be replaced when rule counts differ")
+}
+
+func TestAccessPolicyFillUnknownFromProtoPreservesKnownValues(t *testing.T) {
+	t.Parallel()
+	remoteCreatedAt := time.Date(2026, time.November, 20, 9, 0, 0, 0, time.UTC)
+	remoteUpdatedAt := remoteCreatedAt.Add(time.Hour)
+	remote := &directoryv1alpha.AccessPolicy{
+		Name:        "organizations/a1b2c3/accessPolicies/automation",
+		Uid:         "99999999-9999-4999-8999-999999999999",
+		OrgId:       "a1b2c3",
+		Description: "Remote description",
+		PolicyType:  directoryv1alpha.PolicyType_POLICY_TYPE_CUSTOM,
+		Active:      false,
+		Rules:       []*directoryv1alpha.AccessPolicyRule{{Actions: []string{"read_auth"}}},
+		CreateTime:  timestamppb.New(remoteCreatedAt),
+		UpdateTime:  timestamppb.New(remoteUpdatedAt),
+	}
+	model := AccessPolicyResourceModel{
+		OrganizationID: types.StringValue("planned-org"),
+		AccessPolicyID: types.StringValue("planned-id"),
+		Name:           types.StringValue("organizations/planned-org/accessPolicies/planned-id"),
+		UID:            types.StringValue("22222222-2222-4222-8222-222222222222"),
+		Description:    types.StringValue("Planned description"),
+		PolicyType:     types.StringValue("PLANNED_POLICY_TYPE"),
+		Active:         types.BoolUnknown(),
+		Rules: []AccessPolicyRuleResourceModel{{
+			Actions: stringSet([]string{"read_auth"}), Users: stringSet(nil), Groups: stringSet(nil), ServiceAccounts: stringSet(nil),
+		}},
+		CreatedAt: types.StringValue("2026-11-13T10:00:00Z"),
+		UpdatedAt: types.StringUnknown(),
+	}
+
+	require.NoError(t, model.fillUnknownFromProto(remote))
+
+	assert.Equal(t, "planned-org", model.OrganizationID.ValueString())
+	assert.Equal(t, "planned-id", model.AccessPolicyID.ValueString())
+	assert.Equal(t, "organizations/planned-org/accessPolicies/planned-id", model.Name.ValueString())
+	assert.Equal(t, "22222222-2222-4222-8222-222222222222", model.UID.ValueString())
+	assert.Equal(t, "Planned description", model.Description.ValueString())
+	assert.Equal(t, "PLANNED_POLICY_TYPE", model.PolicyType.ValueString())
+	assert.Equal(t, "2026-11-13T10:00:00Z", model.CreatedAt.ValueString())
+
+	require.False(t, model.Active.IsUnknown())
+	assert.False(t, model.Active.ValueBool(), "unknown active must resolve to the remote value")
+	assert.Equal(t, timestampValue(remote.GetUpdateTime()), model.UpdatedAt, "unknown updated_at must resolve to the remote value")
+}
+
+func TestAccessPolicyFillUnknownFromProtoResolvesUnknownValues(t *testing.T) {
+	t.Parallel()
+	remote := &directoryv1alpha.AccessPolicy{
+		Name:        "organizations/a1b2c3/accessPolicies/automation",
+		Uid:         "22222222-2222-4222-8222-222222222222",
+		OrgId:       "a1b2c3",
+		Description: "Remote description",
+		PolicyType:  directoryv1alpha.PolicyType_POLICY_TYPE_CUSTOM,
+		Active:      true,
+		CreateTime:  timestamppb.New(time.Date(2026, time.November, 13, 10, 0, 0, 0, time.UTC)),
+		UpdateTime:  timestamppb.New(time.Date(2026, time.November, 13, 10, 1, 0, 0, time.UTC)),
+	}
+	model := AccessPolicyResourceModel{
+		OrganizationID: types.StringUnknown(),
+		AccessPolicyID: types.StringUnknown(),
+		Name:           types.StringUnknown(),
+		UID:            types.StringUnknown(),
+		Description:    types.StringUnknown(),
+		PolicyType:     types.StringUnknown(),
+		Active:         types.BoolUnknown(),
+		Rules:          []AccessPolicyRuleResourceModel{},
+		CreatedAt:      types.StringUnknown(),
+		UpdatedAt:      types.StringUnknown(),
+	}
+
+	require.NoError(t, model.fillUnknownFromProto(remote))
+
+	var expected AccessPolicyResourceModel
+	require.NoError(t, expected.setFromProto(remote))
+	assert.Equal(t, expected, model)
 }
 
 func TestParseAccessPolicyName(t *testing.T) {

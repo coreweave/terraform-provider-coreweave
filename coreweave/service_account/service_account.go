@@ -1,13 +1,37 @@
 package serviceaccount
 
 import (
+	"context"
 	"fmt"
 	"regexp"
 	"time"
 
+	"github.com/coreweave/terraform-provider-coreweave/coreweave"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
+
+const (
+	createReadBackTimeout      = 30 * time.Second
+	createReadBackInitialDelay = 250 * time.Millisecond
+	createReadBackMaxDelay     = 5 * time.Second
+)
+
+// createReadBackPolicy bounds how long a resource waits for an object it just
+// created to become readable.
+type createReadBackPolicy struct {
+	timeout      time.Duration
+	initialDelay time.Duration
+	maxDelay     time.Duration
+}
+
+func defaultCreateReadBackPolicy() createReadBackPolicy {
+	return createReadBackPolicy{
+		timeout:      createReadBackTimeout,
+		initialDelay: createReadBackInitialDelay,
+		maxDelay:     createReadBackMaxDelay,
+	}
+}
 
 const iamPrivateBetaBanner = "> **Private beta:** This resource is available only to organizations enrolled in the private beta and may change before general availability. It is gated by an organization-level feature flag. Contact your CoreWeave representative or CoreWeave Support to request access for your organization."
 
@@ -47,6 +71,57 @@ func parseServiceAccountName(name string) (string, string, error) {
 		return "", "", fmt.Errorf("expected organizations/{organization}/serviceAccounts/{service_account}, got %q", name)
 	}
 	return matches[1], matches[2], nil
+}
+
+// readBackCreated retries only NotFound because a successful create may become
+// visible to reads shortly after the write completes. The shared client owns
+// transport retries, so other codes, including Unavailable, are returned
+// immediately. kind names the resource in errors, for example "access policy".
+func readBackCreated[T any](
+	ctx context.Context,
+	policy createReadBackPolicy,
+	kind string,
+	get func(context.Context) (T, error),
+) (T, error) {
+	var zero T
+	retryCtx, cancel := context.WithTimeout(ctx, policy.timeout)
+	defer cancel()
+
+	delay := policy.initialDelay
+	for {
+		value, err := get(retryCtx)
+		if err == nil {
+			return value, nil
+		}
+		if retryCtx.Err() != nil {
+			return zero, readBackError(policy, kind, err, ctx.Err(), retryCtx.Err())
+		}
+		if !coreweave.IsNotFoundError(err) {
+			return zero, err
+		}
+
+		timer := time.NewTimer(delay)
+		select {
+		case <-retryCtx.Done():
+			timer.Stop()
+			return zero, readBackError(policy, kind, err, ctx.Err(), retryCtx.Err())
+		case <-timer.C:
+		}
+
+		if delay < policy.maxDelay {
+			delay *= 2
+			if delay > policy.maxDelay {
+				delay = policy.maxDelay
+			}
+		}
+	}
+}
+
+func readBackError(policy createReadBackPolicy, kind string, lastErr, parentErr, retryErr error) error {
+	if parentErr != nil {
+		return fmt.Errorf("%s read-back was canceled (last error: %w): %w", kind, lastErr, parentErr)
+	}
+	return fmt.Errorf("%s could not be read back within %s (last error: %w): %w", kind, policy.timeout, lastErr, retryErr)
 }
 
 func timestampValue(timestamp *timestamppb.Timestamp) types.String {
