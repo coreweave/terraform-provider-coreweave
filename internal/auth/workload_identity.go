@@ -9,7 +9,7 @@ import (
 	descartesauth "github.com/coreweave/terraform-provider-coreweave/auth"
 )
 
-const TerraformCloudWorkloadIdentityTokenEnvVar = "TFC_WORKLOAD_IDENTITY_TOKEN"
+const TerraformCloudWorkloadIdentityTokenEnvVar = "TFC_WORKLOAD_IDENTITY_TOKEN" //nolint:gosec
 
 // OIDCTokenSource supplies the external assertion exchanged for a CoreWeave
 // service-account token.

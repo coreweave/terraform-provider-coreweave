@@ -90,7 +90,7 @@ func (p *CoreweaveProvider) ConfigValidators(context.Context) []provider.ConfigV
 func (p *CoreweaveProvider) Schema(ctx context.Context, req provider.SchemaRequest, resp *provider.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		Attributes: map[string]schema.Attribute{
-			"org_id": schema.StringAttribute{
+			orgIDAttributeName: schema.StringAttribute{
 				MarkdownDescription: fmt.Sprintf("The target organization for resource operations. This is separate from the organization owning an authenticating service account and can also be set with `%s`.", CoreweaveOrgIDEnvVar),
 				Optional:            true,
 			},
@@ -196,8 +196,6 @@ func resolveHTTPTimeouts(ctx context.Context, configured types.String) (time.Dur
 // service-account authentication. Existing endpoint, S3 endpoint, timeout, and
 // static-token environment precedence is preserved. Explicit service-account
 // authentication takes precedence over an ambient static token.
-//
-//nolint:staticcheck
 func BuildClient(ctx context.Context, model CoreweaveProviderModel, tfVersion, providerVersion string) (*coreweave.Client, error) {
 	endpoint := model.Endpoint.ValueString()
 	s3Endpoint := model.S3Endpoint.ValueString()

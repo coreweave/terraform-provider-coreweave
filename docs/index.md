@@ -18,8 +18,41 @@ variable "coreweave_api_token" {
   description = "CoreWeave API token in the form `CW-SECRET-[secret]`. Can also be set via the COREWEAVE_API_TOKEN environment variable."
 }
 
+variable "coreweave_org_id" {
+  type        = string
+  description = "CoreWeave organization targeted by resource operations."
+}
+
+variable "service_account_id" {
+  type        = string
+  description = "UID of the CoreWeave service account used for authentication."
+}
+
+variable "service_account_org_id" {
+  type        = string
+  description = "Organization that owns the authenticating service account."
+}
+
+variable "service_account_token_file" {
+  type        = string
+  description = "Path to the external OIDC assertion. Omit token_file in the provider block to use TFC_WORKLOAD_IDENTITY_TOKEN instead."
+}
+
 provider "coreweave" {
   token = var.coreweave_api_token
+}
+
+provider "coreweave" {
+  alias  = "service_account"
+  org_id = var.coreweave_org_id
+
+  authentication = {
+    service_account_uid = {
+      id         = var.service_account_id
+      org_id     = var.service_account_org_id
+      token_file = var.service_account_token_file
+    }
+  }
 }
 ```
 
@@ -28,7 +61,25 @@ provider "coreweave" {
 
 ### Optional
 
+- `authentication` (Attributes) Authentication settings. Configure `service_account_uid` to exchange an external OIDC assertion for short-lived CoreWeave credentials. (see [below for nested schema](#nestedatt--authentication))
 - `endpoint` (String) CoreWeave API Endpoint. This can also be set via the COREWEAVE_API_ENDPOINT environment variable, which takes precedence. Defaults to `https://api.coreweave.com/`
 - `http_timeout` (String) Timeout for each CoreWeave API and Object Storage S3 HTTP attempt. This can also be set via the COREWEAVE_HTTP_TIMEOUT environment variable, which takes precedence. When unset, CoreWeave API attempts default to 10 seconds and S3 attempts default to 30 seconds. Values near or below service latency can cause request timeouts.
+- `org_id` (String) The target organization for resource operations. This is separate from the organization owning an authenticating service account and can also be set with `COREWEAVE_ORG_ID`.
 - `s3_endpoint` (String) CoreWeave S3 Endpoint, used for CoreWeave Object Storage. This can also be set via the COREWEAVE_S3_ENDPOINT environment variable, which takes precedence. Defaults to `https://cwobject.com`
-- `token` (String, Sensitive) CoreWeave API Token in the form `CW-SECRET-<secret>`. This can also be set via the COREWEAVE_API_TOKEN environment variable, which takes precedence.
+- `token` (String, Sensitive) CoreWeave API Token in the form `CW-SECRET-<secret>`. This can also be set via the COREWEAVE_API_TOKEN environment variable, which takes precedence when service-account authentication is not explicitly configured.
+
+<a id="nestedatt--authentication"></a>
+### Nested Schema for `authentication`
+
+Optional:
+
+- `service_account_uid` (Attributes) Authenticate as a CoreWeave service account. Explicit configuration selects this mode even when `COREWEAVE_API_TOKEN` is present. (see [below for nested schema](#nestedatt--authentication--service_account_uid))
+
+<a id="nestedatt--authentication--service_account_uid"></a>
+### Nested Schema for `authentication.service_account_uid`
+
+Optional:
+
+- `id` (String) The service-account UID. Defaults to `COREWEAVE_SERVICE_ACCOUNT_ID` when omitted.
+- `org_id` (String) The organization that owns the authenticating service account. Defaults to `COREWEAVE_SERVICE_ACCOUNT_ORG_ID` when omitted and is independent from the provider's target `org_id`.
+- `token_file` (String) Path to a file containing the external OIDC assertion. Defaults to `COREWEAVE_SERVICE_ACCOUNT_TOKEN_FILE`; when neither is set, `TFC_WORKLOAD_IDENTITY_TOKEN` is used.

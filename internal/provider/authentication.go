@@ -21,7 +21,8 @@ const (
 	CoreweaveOrgIDEnvVar                   = "COREWEAVE_ORG_ID"
 	CoreweaveServiceAccountIDEnvVar        = "COREWEAVE_SERVICE_ACCOUNT_ID"
 	CoreweaveServiceAccountOrgIDEnvVar     = "COREWEAVE_SERVICE_ACCOUNT_ORG_ID"
-	CoreweaveServiceAccountTokenFileEnvVar = "COREWEAVE_SERVICE_ACCOUNT_TOKEN_FILE"
+	CoreweaveServiceAccountTokenFileEnvVar = "COREWEAVE_SERVICE_ACCOUNT_TOKEN_FILE" //nolint:gosec
+	orgIDAttributeName                     = "org_id"
 )
 
 type AuthenticationProviderModel struct {
@@ -47,7 +48,7 @@ func authenticationSchema() schema.Attribute {
 						Optional:            true,
 						MarkdownDescription: fmt.Sprintf("The service-account UID. Defaults to `%s` when omitted.", CoreweaveServiceAccountIDEnvVar),
 					},
-					"org_id": schema.StringAttribute{
+					orgIDAttributeName: schema.StringAttribute{
 						Optional:            true,
 						MarkdownDescription: fmt.Sprintf("The organization that owns the authenticating service account. Defaults to `%s` when omitted and is independent from the provider's target `org_id`.", CoreweaveServiceAccountOrgIDEnvVar),
 					},
@@ -100,7 +101,7 @@ func checkAuthenticationKnown(ctx context.Context, config tfsdk.Config) diag.Dia
 		path  path.Path
 		title string
 	}{
-		{path.Root("org_id"), "Unknown organization ID"},
+		{path.Root(orgIDAttributeName), "Unknown organization ID"},
 		{path.Root("token"), "Unknown API token"},
 	}
 	for _, check := range checks {
@@ -143,7 +144,7 @@ func checkAuthenticationKnown(ctx context.Context, config tfsdk.Config) diag.Dia
 		return diagnostics
 	}
 
-	for _, name := range []string{"id", "org_id", "token_file"} {
+	for _, name := range []string{"id", orgIDAttributeName, "token_file"} {
 		attributePath := serviceAccountPath.AtName(name)
 		var value types.String
 		diagnostics.Append(config.GetAttribute(ctx, attributePath, &value)...)
