@@ -16,12 +16,11 @@ concurrency:
 
 jobs:
   sweep:
-    runs-on: cw
+    runs-on: cw-static-pub-x64-4c
     permissions: &acceptance-permissions
       contents: read
       pull-requests: read
       packages: read
-    container: docker.artifacts.coreweave.com/cw-github-actions-images-oci/github-base-runner:v1.22.0
     environment: QA
     env:
       COREWEAVE_API_ENDPOINT: ${{ inputs.suite == 'object_storage' && secrets.COREWEAVE_OBJS_API_ENDPOINT || vars.COREWEAVE_API_ENDPOINT }}
@@ -57,9 +56,8 @@ jobs:
         run: make testacc-sweep SUITES='${{ inputs.suite }}'
 
   test:
-    runs-on: cw
+    runs-on: cw-static-pub-x64-4c
     permissions: *acceptance-permissions
-    container: docker.artifacts.coreweave.com/cw-github-actions-images-oci/github-base-runner:v1.22.0
     environment: QA
     needs: [sweep]
     env:
@@ -85,13 +83,12 @@ jobs:
   nonblocking:
     name: Non-blocking acceptance runner (${{ inputs.suite }})
     continue-on-error: true
-    runs-on: cw
+    runs-on: cw-static-pub-x64-4c
     permissions:
       contents: read
       pull-requests: read
       packages: read
       checks: write
-    container: docker.artifacts.coreweave.com/cw-github-actions-images-oci/github-base-runner:v1.22.0
     environment: QA
     needs: [sweep]
     env:
