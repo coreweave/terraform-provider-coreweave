@@ -3,6 +3,9 @@ on:
     branches:
       - main # running from the default branch makes the go build cache available to PRs.
 
+permissions:
+  contents: read
+
 jobs:
   build:
     uses: ./.github/workflows/build.yml
