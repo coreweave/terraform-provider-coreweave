@@ -17,15 +17,15 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-func TestReadBackCreatedServiceAccount(t *testing.T) {
+func TestReadBackCreated(t *testing.T) {
 	t.Parallel()
 
 	t.Run("retries NotFound until visible", func(t *testing.T) {
 		t.Parallel()
 		calls := 0
-		account, err := readBackCreatedServiceAccount(t.Context(), serviceAccountReadBackPolicy{
+		account, err := readBackCreated(t.Context(), createReadBackPolicy{
 			timeout: 100 * time.Millisecond, initialDelay: time.Millisecond, maxDelay: 2 * time.Millisecond,
-		}, func(context.Context) (*directoryv1alpha.ServiceAccount, error) {
+		}, "service account", func(context.Context) (*directoryv1alpha.ServiceAccount, error) {
 			calls++
 			if calls < 3 {
 				return nil, connect.Errorf(connect.CodeNotFound, "not visible")
@@ -41,9 +41,9 @@ func TestReadBackCreatedServiceAccount(t *testing.T) {
 		t.Parallel()
 		calls := 0
 		permanentErr := connect.Errorf(connect.CodePermissionDenied, "denied")
-		_, err := readBackCreatedServiceAccount(t.Context(), serviceAccountReadBackPolicy{
+		_, err := readBackCreated(t.Context(), createReadBackPolicy{
 			timeout: 100 * time.Millisecond, initialDelay: time.Millisecond, maxDelay: 2 * time.Millisecond,
-		}, func(context.Context) (*directoryv1alpha.ServiceAccount, error) {
+		}, "service account", func(context.Context) (*directoryv1alpha.ServiceAccount, error) {
 			calls++
 			return nil, permanentErr
 		})
@@ -54,9 +54,9 @@ func TestReadBackCreatedServiceAccount(t *testing.T) {
 
 	t.Run("stops at timeout", func(t *testing.T) {
 		t.Parallel()
-		_, err := readBackCreatedServiceAccount(t.Context(), serviceAccountReadBackPolicy{
+		_, err := readBackCreated(t.Context(), createReadBackPolicy{
 			timeout: 10 * time.Millisecond, initialDelay: time.Millisecond, maxDelay: 2 * time.Millisecond,
-		}, func(context.Context) (*directoryv1alpha.ServiceAccount, error) {
+		}, "service account", func(context.Context) (*directoryv1alpha.ServiceAccount, error) {
 			return nil, connect.Errorf(connect.CodeNotFound, "not visible")
 		})
 		require.Error(t, err)
@@ -68,9 +68,9 @@ func TestReadBackCreatedServiceAccount(t *testing.T) {
 		t.Parallel()
 		ctx, cancel := context.WithCancel(t.Context())
 		cancel()
-		_, err := readBackCreatedServiceAccount(ctx, serviceAccountReadBackPolicy{
+		_, err := readBackCreated(ctx, createReadBackPolicy{
 			timeout: 30 * time.Second, initialDelay: time.Millisecond, maxDelay: 2 * time.Millisecond,
-		}, func(context.Context) (*directoryv1alpha.ServiceAccount, error) {
+		}, "service account", func(context.Context) (*directoryv1alpha.ServiceAccount, error) {
 			return nil, connect.Errorf(connect.CodeNotFound, "not visible")
 		})
 		require.Error(t, err)
@@ -81,9 +81,9 @@ func TestReadBackCreatedServiceAccount(t *testing.T) {
 
 	t.Run("normalizes a deadline reached during get", func(t *testing.T) {
 		t.Parallel()
-		_, err := readBackCreatedServiceAccount(t.Context(), serviceAccountReadBackPolicy{
+		_, err := readBackCreated(t.Context(), createReadBackPolicy{
 			timeout: 5 * time.Millisecond, initialDelay: time.Millisecond, maxDelay: 2 * time.Millisecond,
-		}, func(ctx context.Context) (*directoryv1alpha.ServiceAccount, error) {
+		}, "service account", func(ctx context.Context) (*directoryv1alpha.ServiceAccount, error) {
 			<-ctx.Done()
 			return nil, connect.Errorf(connect.CodeDeadlineExceeded, "get deadline reached")
 		})
@@ -91,6 +91,18 @@ func TestReadBackCreatedServiceAccount(t *testing.T) {
 		assert.ErrorIs(t, err, context.DeadlineExceeded)
 		assert.ErrorContains(t, err, "could not be read back within 5ms")
 		assert.ErrorContains(t, err, "get deadline reached")
+	})
+
+	t.Run("names the resource kind for any response type", func(t *testing.T) {
+		t.Parallel()
+		_, err := readBackCreated(t.Context(), createReadBackPolicy{
+			timeout: 5 * time.Millisecond, initialDelay: time.Millisecond, maxDelay: 2 * time.Millisecond,
+		}, "access policy", func(context.Context) (*directoryv1alpha.AccessPolicy, error) {
+			return nil, connect.Errorf(connect.CodeNotFound, "not visible")
+		})
+		require.Error(t, err)
+		assert.ErrorIs(t, err, context.DeadlineExceeded)
+		assert.ErrorContains(t, err, "access policy could not be read back within 5ms")
 	})
 }
 

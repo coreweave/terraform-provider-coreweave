@@ -3,7 +3,6 @@ package serviceaccount
 import (
 	"context"
 	"fmt"
-	"time"
 
 	directoryv1alpha "buf.build/gen/go/coreweave/directory/protocolbuffers/go/coreweave/directory/v1alpha"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
@@ -19,26 +18,6 @@ import (
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 )
 
-const (
-	serviceAccountCreateReadBackTimeout      = 30 * time.Second
-	serviceAccountCreateReadBackInitialDelay = 250 * time.Millisecond
-	serviceAccountCreateReadBackMaxDelay     = 5 * time.Second
-)
-
-type serviceAccountReadBackPolicy struct {
-	timeout      time.Duration
-	initialDelay time.Duration
-	maxDelay     time.Duration
-}
-
-func defaultServiceAccountReadBackPolicy() serviceAccountReadBackPolicy {
-	return serviceAccountReadBackPolicy{
-		timeout:      serviceAccountCreateReadBackTimeout,
-		initialDelay: serviceAccountCreateReadBackInitialDelay,
-		maxDelay:     serviceAccountCreateReadBackMaxDelay,
-	}
-}
-
 var (
 	_ resource.Resource                = &ServiceAccountResource{}
 	_ resource.ResourceWithConfigure   = &ServiceAccountResource{}
@@ -47,7 +26,7 @@ var (
 
 type ServiceAccountResource struct {
 	client         *coreweave.Client
-	readBackPolicy serviceAccountReadBackPolicy
+	readBackPolicy createReadBackPolicy
 }
 
 type ServiceAccountResourceModel struct {
@@ -64,10 +43,10 @@ type ServiceAccountResourceModel struct {
 }
 
 func NewServiceAccountResource() resource.Resource {
-	return newServiceAccountResource(defaultServiceAccountReadBackPolicy())
+	return newServiceAccountResource(defaultCreateReadBackPolicy())
 }
 
-func newServiceAccountResource(policy serviceAccountReadBackPolicy) resource.Resource {
+func newServiceAccountResource(policy createReadBackPolicy) resource.Resource {
 	return &ServiceAccountResource{readBackPolicy: policy}
 }
 
@@ -229,55 +208,6 @@ func (m *ServiceAccountResourceModel) createRequest() *directoryv1alpha.CreateSe
 	return request
 }
 
-// readBackCreatedServiceAccount retries only NotFound because a successful
-// create may become visible to reads shortly after the write completes. The
-// shared client owns transport retries, so other codes, including Unavailable,
-// are returned immediately.
-func readBackCreatedServiceAccount(
-	ctx context.Context,
-	policy serviceAccountReadBackPolicy,
-	get func(context.Context) (*directoryv1alpha.ServiceAccount, error),
-) (*directoryv1alpha.ServiceAccount, error) {
-	retryCtx, cancel := context.WithTimeout(ctx, policy.timeout)
-	defer cancel()
-
-	delay := policy.initialDelay
-	for {
-		account, err := get(retryCtx)
-		if err == nil {
-			return account, nil
-		}
-		if retryCtx.Err() != nil {
-			return nil, readBackError(policy, err, ctx.Err(), retryCtx.Err())
-		}
-		if !coreweave.IsNotFoundError(err) {
-			return nil, err
-		}
-
-		timer := time.NewTimer(delay)
-		select {
-		case <-retryCtx.Done():
-			timer.Stop()
-			return nil, readBackError(policy, err, ctx.Err(), retryCtx.Err())
-		case <-timer.C:
-		}
-
-		if delay < policy.maxDelay {
-			delay *= 2
-			if delay > policy.maxDelay {
-				delay = policy.maxDelay
-			}
-		}
-	}
-}
-
-func readBackError(policy serviceAccountReadBackPolicy, lastErr, parentErr, retryErr error) error {
-	if parentErr != nil {
-		return fmt.Errorf("service account read-back was canceled (last error: %w): %w", lastErr, parentErr)
-	}
-	return fmt.Errorf("service account could not be read back within %s (last error: %w): %w", policy.timeout, lastErr, retryErr)
-}
-
 func (r *ServiceAccountResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var data ServiceAccountResourceModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
@@ -291,7 +221,7 @@ func (r *ServiceAccountResource) Create(ctx context.Context, req resource.Create
 	}
 	if responseErr := data.setFromProto(account); responseErr != nil {
 		name := fmt.Sprintf("organizations/%s/serviceAccounts/%s", data.OrganizationID.ValueString(), data.ID.ValueString())
-		readBack, readErr := readBackCreatedServiceAccount(ctx, r.readBackPolicy, func(readCtx context.Context) (*directoryv1alpha.ServiceAccount, error) {
+		readBack, readErr := readBackCreated(ctx, r.readBackPolicy, "service account", func(readCtx context.Context) (*directoryv1alpha.ServiceAccount, error) {
 			return r.client.Directory.GetServiceAccount(readCtx, &directoryv1alpha.GetServiceAccountRequest{Name: &name})
 		})
 		if readErr == nil {
