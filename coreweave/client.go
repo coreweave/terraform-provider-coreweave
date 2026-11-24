@@ -29,7 +29,8 @@ import (
 )
 
 type ClientOptions struct {
-	S3AttemptTimeout time.Duration
+	S3AttemptTimeout       time.Duration
+	ResourceOrganizationID string
 }
 
 var nextClientIdentity atomic.Uint64
@@ -97,12 +98,13 @@ func NewClientWithOptions(
 			CapacityClaimServiceClient: inferencev1alpha1connect.NewCapacityClaimServiceClient(rpcClient),
 			GatewayServiceClient:       inferencev1alpha1connect.NewGatewayServiceClient(rpcClient),
 		},
-		apiEndpoint:      endpoint,
-		httpClient:       c,
-		s3Endpoint:       s3Endpoint,
-		s3AttemptTimeout: options.S3AttemptTimeout,
-		s3CacheIdentity:  tokenSourceCacheIdentity(tokenSource),
-		userAgent:        userAgent,
+		apiEndpoint:            endpoint,
+		resourceOrganizationID: options.ResourceOrganizationID,
+		httpClient:             c,
+		s3Endpoint:             s3Endpoint,
+		s3AttemptTimeout:       options.S3AttemptTimeout,
+		s3CacheIdentity:        tokenSourceCacheIdentity(tokenSource),
+		userAgent:              userAgent,
 	}, nil
 }
 
@@ -125,15 +127,22 @@ type Client struct {
 	SandboxRunnerManagement sandboxv1connect.RunnerManagementServiceClient
 	Directory               directoryv1alphaconnect.DirectoryServiceClient
 
-	apiEndpoint      string
-	httpClient       *http.Client
-	s3Endpoint       string
-	s3AttemptTimeout time.Duration
-	s3HTTPTransport  http.RoundTripper
-	s3Retryer        func() aws.Retryer
-	s3Now            func() time.Time
-	s3CacheIdentity  string
-	userAgent        string
+	apiEndpoint            string
+	resourceOrganizationID string
+	httpClient             *http.Client
+	s3Endpoint             string
+	s3AttemptTimeout       time.Duration
+	s3HTTPTransport        http.RoundTripper
+	s3Retryer              func() aws.Retryer
+	s3Now                  func() time.Time
+	s3CacheIdentity        string
+	userAgent              string
+}
+
+// ResourceOrganizationID returns the provider's target organization context.
+// Individual resources continue to control whether and how they use it.
+func (c *Client) ResourceOrganizationID() string {
+	return c.resourceOrganizationID
 }
 
 func IsNotFoundError(err error) bool {
