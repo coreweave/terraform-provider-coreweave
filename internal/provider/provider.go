@@ -217,7 +217,7 @@ func BuildClient(ctx context.Context, model CoreweaveProviderModel, tfVersion, p
 	tflog.Debug(ctx, fmt.Sprintf("using http client timeout: %v", timeout))
 	userAgent := fmt.Sprintf("Terraform/%s terraform-provider-coreweave/%s (+https://github.com/coreweave/terraform-provider-coreweave)", tfVersion, providerVersion)
 
-	tokenSource, err := resolveAccessTokenSource(model, endpoint, userAgent, timeout)
+	tokenSource, err := resolveAccessTokenSource(model, endpoint, timeout)
 	if err != nil {
 		return nil, err
 	}

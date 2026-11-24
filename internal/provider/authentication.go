@@ -22,6 +22,7 @@ const (
 	CoreweaveServiceAccountIDEnvVar        = "COREWEAVE_SERVICE_ACCOUNT_ID"
 	CoreweaveServiceAccountOrgIDEnvVar     = "COREWEAVE_SERVICE_ACCOUNT_ORG_ID"
 	CoreweaveServiceAccountTokenFileEnvVar = "COREWEAVE_SERVICE_ACCOUNT_TOKEN_FILE" //nolint:gosec
+	CoreweaveServiceAccountTokenCmdEnvVar  = "COREWEAVE_SERVICE_ACCOUNT_TOKEN_CMD"  //nolint:gosec
 	orgIDAttributeName                     = "org_id"
 )
 
@@ -33,6 +34,7 @@ type ServiceAccountAuthenticationProviderModel struct {
 	ID        types.String `tfsdk:"id"`
 	OrgID     types.String `tfsdk:"org_id"`
 	TokenFile types.String `tfsdk:"token_file"`
+	TokenCmd  types.String `tfsdk:"token_cmd"`
 }
 
 func authenticationSchema() schema.Attribute {
@@ -54,7 +56,11 @@ func authenticationSchema() schema.Attribute {
 					},
 					"token_file": schema.StringAttribute{
 						Optional:            true,
-						MarkdownDescription: fmt.Sprintf("Path to a file containing the external OIDC assertion. Defaults to `%s`; when neither is set, `%s` is used.", CoreweaveServiceAccountTokenFileEnvVar, auth.TerraformCloudWorkloadIdentityTokenEnvVar),
+						MarkdownDescription: fmt.Sprintf("Path to a file containing the external OIDC assertion. Defaults to `%s`. Exactly one of `token_file` and `token_cmd` may be configured; when neither source is set, `%s` is used.", CoreweaveServiceAccountTokenFileEnvVar, auth.TerraformCloudWorkloadIdentityTokenEnvVar),
+					},
+					"token_cmd": schema.StringAttribute{
+						Optional:            true,
+						MarkdownDescription: fmt.Sprintf("Command that prints the external OIDC assertion to stdout. Defaults to `%s`. The command is split into an executable and arguments without invoking a shell. Exactly one of `token_cmd` and `token_file` may be configured.", CoreweaveServiceAccountTokenCmdEnvVar),
 					},
 				},
 			},
@@ -69,7 +75,7 @@ func (conflictingAuthenticationValidator) Description(ctx context.Context) strin
 }
 
 func (conflictingAuthenticationValidator) MarkdownDescription(context.Context) string {
-	return "Ensures that `token` and `authentication.service_account_uid` are not both configured."
+	return "Ensures authentication methods and service-account token sources are mutually exclusive."
 }
 
 func (conflictingAuthenticationValidator) ValidateProvider(ctx context.Context, req provider.ValidateConfigRequest, resp *provider.ValidateConfigResponse) {
@@ -80,14 +86,30 @@ func (conflictingAuthenticationValidator) ValidateProvider(ctx context.Context, 
 	serviceAccountPath := path.Root("authentication").AtName("service_account_uid")
 	var serviceAccount types.Object
 	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, serviceAccountPath, &serviceAccount)...)
-	if resp.Diagnostics.HasError() || !staticTokenConfigured(token) || serviceAccount.IsNull() || serviceAccount.IsUnknown() {
+	if resp.Diagnostics.HasError() || serviceAccount.IsNull() || serviceAccount.IsUnknown() {
 		return
 	}
 
+	if staticTokenConfigured(token) {
+		resp.Diagnostics.AddAttributeError(
+			tokenPath,
+			"Invalid Attribute Combination",
+			fmt.Sprintf("%q cannot be configured together with %q.", tokenPath, serviceAccountPath),
+		)
+	}
+
+	tokenFilePath := serviceAccountPath.AtName("token_file")
+	tokenCmdPath := serviceAccountPath.AtName("token_cmd")
+	var tokenFile, tokenCmd types.String
+	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, tokenFilePath, &tokenFile)...)
+	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, tokenCmdPath, &tokenCmd)...)
+	if resp.Diagnostics.HasError() || !staticTokenConfigured(tokenFile) || !staticTokenConfigured(tokenCmd) {
+		return
+	}
 	resp.Diagnostics.AddAttributeError(
-		tokenPath,
+		tokenCmdPath,
 		"Invalid Attribute Combination",
-		fmt.Sprintf("%q cannot be configured together with %q.", tokenPath, serviceAccountPath),
+		fmt.Sprintf("%q cannot be configured together with %q.", tokenCmdPath, tokenFilePath),
 	)
 }
 
@@ -144,7 +166,7 @@ func checkAuthenticationKnown(ctx context.Context, config tfsdk.Config) diag.Dia
 		return diagnostics
 	}
 
-	for _, name := range []string{"id", orgIDAttributeName, "token_file"} {
+	for _, name := range []string{"id", orgIDAttributeName, "token_file", "token_cmd"} {
 		attributePath := serviceAccountPath.AtName(name)
 		var value types.String
 		diagnostics.Append(config.GetAttribute(ctx, attributePath, &value)...)
@@ -174,7 +196,6 @@ func resolveResourceOrganizationID(model CoreweaveProviderModel) string {
 func resolveAccessTokenSource(
 	model CoreweaveProviderModel,
 	endpoint string,
-	userAgent string,
 	httpTimeout time.Duration,
 ) (coreweave.AccessTokenSource, error) {
 	explicitServiceAccount := model.Authentication != nil && model.Authentication.ServiceAccountUID != nil
@@ -183,7 +204,7 @@ func resolveAccessTokenSource(
 	}
 
 	if explicitServiceAccount {
-		return newServiceAccountTokenSource(*model.Authentication.ServiceAccountUID, endpoint, userAgent, httpTimeout)
+		return newServiceAccountTokenSource(*model.Authentication.ServiceAccountUID, endpoint, httpTimeout)
 	}
 
 	token := knownString(model.Token)
@@ -195,7 +216,7 @@ func resolveAccessTokenSource(
 	}
 
 	if serviceAccountEnvironmentConfigured() {
-		return newServiceAccountTokenSource(ServiceAccountAuthenticationProviderModel{}, endpoint, userAgent, httpTimeout)
+		return newServiceAccountTokenSource(ServiceAccountAuthenticationProviderModel{}, endpoint, httpTimeout)
 	}
 
 	return nil, fmt.Errorf("token is required when service-account authentication is not configured")
@@ -204,12 +225,11 @@ func resolveAccessTokenSource(
 func newServiceAccountTokenSource(
 	model ServiceAccountAuthenticationProviderModel,
 	endpoint string,
-	userAgent string,
 	httpTimeout time.Duration,
 ) (coreweave.AccessTokenSource, error) {
 	serviceAccountID := explicitOrEnvironment(knownString(model.ID), CoreweaveServiceAccountIDEnvVar)
 	serviceAccountOrgID := explicitOrEnvironment(knownString(model.OrgID), CoreweaveServiceAccountOrgIDEnvVar)
-	tokenFile := explicitOrEnvironment(knownString(model.TokenFile), CoreweaveServiceAccountTokenFileEnvVar)
+	tokenFile, tokenCmd := resolveServiceAccountTokenSource(model)
 
 	var problems []string
 	if serviceAccountID == "" {
@@ -219,10 +239,14 @@ func newServiceAccountTokenSource(
 		problems = append(problems, fmt.Sprintf("authentication.service_account_uid.org_id or %s is required", CoreweaveServiceAccountOrgIDEnvVar))
 	}
 
+	if tokenFile != "" && tokenCmd != "" {
+		problems = append(problems, fmt.Sprintf("configure only one of authentication.service_account_uid.token_file and authentication.service_account_uid.token_cmd (or %s and %s)", CoreweaveServiceAccountTokenFileEnvVar, CoreweaveServiceAccountTokenCmdEnvVar))
+	}
+
 	var tokenSource auth.OIDCTokenSource
-	if tokenFile == "" {
+	if tokenFile == "" && tokenCmd == "" {
 		if environmentString(auth.TerraformCloudWorkloadIdentityTokenEnvVar) == "" {
-			problems = append(problems, fmt.Sprintf("authentication.service_account_uid.token_file, %s, or %s is required", CoreweaveServiceAccountTokenFileEnvVar, auth.TerraformCloudWorkloadIdentityTokenEnvVar))
+			problems = append(problems, fmt.Sprintf("authentication.service_account_uid.token_file, authentication.service_account_uid.token_cmd, %s, %s, or %s is required", CoreweaveServiceAccountTokenFileEnvVar, CoreweaveServiceAccountTokenCmdEnvVar, auth.TerraformCloudWorkloadIdentityTokenEnvVar))
 		} else {
 			tokenSource = auth.NewEnvironmentOIDCTokenSource(auth.TerraformCloudWorkloadIdentityTokenEnvVar)
 		}
@@ -237,10 +261,19 @@ func newServiceAccountTokenSource(
 		ServiceAccountID:    serviceAccountID,
 		ServiceAccountOrgID: serviceAccountOrgID,
 		TokenFile:           tokenFile,
+		TokenCommand:        tokenCmd,
 		TokenSource:         tokenSource,
 		ExchangeTimeout:     exchangeTimeout,
-		UserAgent:           userAgent,
 	})
+}
+
+func resolveServiceAccountTokenSource(model ServiceAccountAuthenticationProviderModel) (string, string) {
+	explicitFile := knownString(model.TokenFile)
+	explicitCmd := knownString(model.TokenCmd)
+	if explicitFile != "" || explicitCmd != "" {
+		return explicitFile, explicitCmd
+	}
+	return environmentString(CoreweaveServiceAccountTokenFileEnvVar), environmentString(CoreweaveServiceAccountTokenCmdEnvVar)
 }
 
 func serviceAccountEnvironmentConfigured() bool {
@@ -248,6 +281,7 @@ func serviceAccountEnvironmentConfigured() bool {
 		CoreweaveServiceAccountIDEnvVar,
 		CoreweaveServiceAccountOrgIDEnvVar,
 		CoreweaveServiceAccountTokenFileEnvVar,
+		CoreweaveServiceAccountTokenCmdEnvVar,
 		auth.TerraformCloudWorkloadIdentityTokenEnvVar,
 	} {
 		if environmentString(name) != "" {

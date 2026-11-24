@@ -35,7 +35,7 @@ variable "service_account_org_id" {
 
 variable "service_account_token_file" {
   type        = string
-  description = "Path to the external OIDC assertion. Omit token_file in the provider block to use TFC_WORKLOAD_IDENTITY_TOKEN instead."
+  description = "Path to the external OIDC assertion. Use token_cmd instead when an executable obtains the assertion, or omit both to use TFC_WORKLOAD_IDENTITY_TOKEN."
 }
 
 provider "coreweave" {
@@ -51,6 +51,7 @@ provider "coreweave" {
       id         = var.service_account_id
       org_id     = var.service_account_org_id
       token_file = var.service_account_token_file
+      # token_cmd = "/path/to/print-oidc-token" # Alternative to token_file.
     }
   }
 }
@@ -82,4 +83,5 @@ Optional:
 
 - `id` (String) The service-account UID. Defaults to `COREWEAVE_SERVICE_ACCOUNT_ID` when omitted.
 - `org_id` (String) The organization that owns the authenticating service account. Defaults to `COREWEAVE_SERVICE_ACCOUNT_ORG_ID` when omitted and is independent from the provider's target `org_id`.
-- `token_file` (String) Path to a file containing the external OIDC assertion. Defaults to `COREWEAVE_SERVICE_ACCOUNT_TOKEN_FILE`; when neither is set, `TFC_WORKLOAD_IDENTITY_TOKEN` is used.
+- `token_cmd` (String) Command that prints the external OIDC assertion to stdout. Defaults to `COREWEAVE_SERVICE_ACCOUNT_TOKEN_CMD`. The command is split into an executable and arguments without invoking a shell. Exactly one of `token_cmd` and `token_file` may be configured.
+- `token_file` (String) Path to a file containing the external OIDC assertion. Defaults to `COREWEAVE_SERVICE_ACCOUNT_TOKEN_FILE`. Exactly one of `token_file` and `token_cmd` may be configured; when neither source is set, `TFC_WORKLOAD_IDENTITY_TOKEN` is used.

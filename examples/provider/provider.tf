@@ -21,7 +21,7 @@ variable "service_account_org_id" {
 
 variable "service_account_token_file" {
   type        = string
-  description = "Path to the external OIDC assertion. Omit token_file in the provider block to use TFC_WORKLOAD_IDENTITY_TOKEN instead."
+  description = "Path to the external OIDC assertion. Use token_cmd instead when an executable obtains the assertion, or omit both to use TFC_WORKLOAD_IDENTITY_TOKEN."
 }
 
 provider "coreweave" {
@@ -37,6 +37,7 @@ provider "coreweave" {
       id         = var.service_account_id
       org_id     = var.service_account_org_id
       token_file = var.service_account_token_file
+      # token_cmd = "/path/to/print-oidc-token" # Alternative to token_file.
     }
   }
 }

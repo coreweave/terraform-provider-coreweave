@@ -23,7 +23,11 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-const testOIDCAssertion = "e30.e30.c2lnbmF0dXJl"
+const (
+	testOIDCAssertion              = "e30.e30.c2lnbmF0dXJl"
+	authenticationAttributeName    = "authentication"
+	serviceAccountUIDAttributeName = "service_account_uid"
+)
 
 type tokenExchangeServer struct {
 	authv1alphaconnect.UnimplementedTokenServiceHandler
@@ -86,9 +90,10 @@ func TestBuildClientUsesExplicitServiceAccountAuthentication(t *testing.T) {
 	t.Setenv(provider.CoreweaveApiEndpointEnvVar, server.URL)
 
 	client, err := provider.BuildClient(t.Context(), provider.CoreweaveProviderModel{
-		OrgID:      types.StringValue("resource-org"),
-		Endpoint:   types.StringValue(server.URL),
-		S3Endpoint: types.StringValue("https://objects.example.test"),
+		OrgID:       types.StringValue("resource-org"),
+		Endpoint:    types.StringValue(server.URL),
+		S3Endpoint:  types.StringValue("https://objects.example.test"),
+		HTTPTimeout: types.StringValue("30s"),
 		Authentication: &provider.AuthenticationProviderModel{
 			ServiceAccountUID: &provider.ServiceAccountAuthenticationProviderModel{
 				ID:    types.StringValue("service-account-id"),
@@ -126,8 +131,9 @@ func TestBuildClientUsesEnvironmentServiceAccountAuthenticationAndTokenFile(t *t
 	t.Setenv(provider.CoreweaveApiEndpointEnvVar, server.URL)
 
 	client, err := provider.BuildClient(t.Context(), provider.CoreweaveProviderModel{
-		Endpoint:   types.StringValue(server.URL),
-		S3Endpoint: types.StringValue("https://objects.example.test"),
+		Endpoint:    types.StringValue(server.URL),
+		S3Endpoint:  types.StringValue("https://objects.example.test"),
+		HTTPTimeout: types.StringValue("30s"),
 	}, "1.14.0", "test")
 	require.NoError(t, err)
 
@@ -140,11 +146,40 @@ func TestBuildClientUsesEnvironmentServiceAccountAuthenticationAndTokenFile(t *t
 	assert.Equal(t, "resource-org-env", client.ResourceOrganizationID())
 }
 
+func TestBuildClientUsesEnvironmentServiceAccountAuthenticationAndTokenCommand(t *testing.T) {
+	clearProviderEnv(t)
+	t.Setenv(provider.CoreweaveServiceAccountIDEnvVar, "service-account-command")
+	t.Setenv(provider.CoreweaveServiceAccountOrgIDEnvVar, "principal-org-command")
+	command := filepath.Join(t.TempDir(), "print-token")
+	require.NoError(t, os.WriteFile(command, []byte("#!/bin/sh\nprintf '%s\\n' '"+testOIDCAssertion+"'\n"), 0o700))
+	t.Setenv(provider.CoreweaveServiceAccountTokenCmdEnvVar, command)
+
+	service := &tokenExchangeServer{wantAPIToken: "command-exchanged-token"}
+	server := httptest.NewServer(service.handler())
+	t.Cleanup(server.Close)
+	t.Setenv(provider.CoreweaveApiEndpointEnvVar, server.URL)
+
+	client, err := provider.BuildClient(t.Context(), provider.CoreweaveProviderModel{
+		Endpoint:    types.StringValue(server.URL),
+		S3Endpoint:  types.StringValue("https://objects.example.test"),
+		HTTPTimeout: types.StringValue("30s"),
+	}, "1.14.0", "test")
+	require.NoError(t, err)
+
+	_, err = client.GetCallerIdentity(t.Context())
+	require.NoError(t, err)
+	request := service.request(t)
+	assert.Equal(t, "service-account-command", request.GetServiceAccountUid())
+	assert.Equal(t, "principal-org-command", request.GetOrgUid())
+	assert.Equal(t, testOIDCAssertion, request.GetOidcToken())
+}
+
 func TestBuildClientRejectsInvalidServiceAccountAuthentication(t *testing.T) {
 	clearProviderEnv(t)
 
 	tests := map[string]struct {
 		model   provider.CoreweaveProviderModel
+		env     map[string]string
 		wantErr []string
 	}{
 		"static token conflict": {
@@ -166,10 +201,26 @@ func TestBuildClientRejectsInvalidServiceAccountAuthentication(t *testing.T) {
 				providerauth.TerraformCloudWorkloadIdentityTokenEnvVar,
 			},
 		},
+		"conflicting environment token sources": {
+			model: provider.CoreweaveProviderModel{},
+			env: map[string]string{
+				provider.CoreweaveServiceAccountIDEnvVar:        "service-account-id",
+				provider.CoreweaveServiceAccountOrgIDEnvVar:     "principal-org",
+				provider.CoreweaveServiceAccountTokenFileEnvVar: "/token/file",
+				provider.CoreweaveServiceAccountTokenCmdEnvVar:  "/token/command",
+			},
+			wantErr: []string{
+				provider.CoreweaveServiceAccountTokenFileEnvVar,
+				provider.CoreweaveServiceAccountTokenCmdEnvVar,
+			},
+		},
 	}
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
+			for key, value := range test.env {
+				t.Setenv(key, value)
+			}
 			client, err := provider.BuildClient(t.Context(), test.model, "", "")
 			require.Error(t, err)
 			assert.Nil(t, client)
@@ -187,11 +238,12 @@ func TestProviderRejectsStaticTokenWithServiceAccountAuthentication(t *testing.T
 	authenticationType := providerAuthenticationType(providerType)
 	config := providerDynamicConfig(t, providerType, map[string]tftypes.Value{
 		"token": tftypes.NewValue(tftypes.String, "static-token"),
-		"authentication": tftypes.NewValue(authenticationType, map[string]tftypes.Value{
-			"service_account_uid": tftypes.NewValue(serviceAccountType, map[string]tftypes.Value{
+		authenticationAttributeName: tftypes.NewValue(authenticationType, map[string]tftypes.Value{
+			serviceAccountUIDAttributeName: tftypes.NewValue(serviceAccountType, map[string]tftypes.Value{
 				"id":         tftypes.NewValue(tftypes.String, "service-account-id"),
 				"org_id":     tftypes.NewValue(tftypes.String, "principal-org"),
 				"token_file": tftypes.NewValue(tftypes.String, nil),
+				"token_cmd":  tftypes.NewValue(tftypes.String, nil),
 			}),
 		}),
 	})
@@ -202,13 +254,35 @@ func TestProviderRejectsStaticTokenWithServiceAccountAuthentication(t *testing.T
 	assert.Contains(t, response.Diagnostics[0].Detail, "cannot be configured together")
 }
 
+func TestProviderRejectsTokenFileWithTokenCommand(t *testing.T) {
+	clearProviderEnv(t)
+	server, providerType := newProviderProtocolServer(t)
+	serviceAccountType := serviceAccountAuthenticationType(providerType)
+	authenticationType := providerAuthenticationType(providerType)
+	config := providerDynamicConfig(t, providerType, map[string]tftypes.Value{
+		authenticationAttributeName: tftypes.NewValue(authenticationType, map[string]tftypes.Value{
+			serviceAccountUIDAttributeName: tftypes.NewValue(serviceAccountType, map[string]tftypes.Value{
+				"id":         tftypes.NewValue(tftypes.String, "service-account-id"),
+				"org_id":     tftypes.NewValue(tftypes.String, "principal-org"),
+				"token_file": tftypes.NewValue(tftypes.String, "/token/file"),
+				"token_cmd":  tftypes.NewValue(tftypes.String, "/token/command"),
+			}),
+		}),
+	})
+
+	response, err := server.ValidateProviderConfig(t.Context(), &tfprotov6.ValidateProviderConfigRequest{Config: &config})
+	require.NoError(t, err)
+	require.Len(t, response.Diagnostics, 1)
+	assert.Contains(t, response.Diagnostics[0].Detail, "cannot be configured together")
+}
+
 func TestProviderConfigureRejectsUnknownServiceAccountAuthentication(t *testing.T) {
 	clearProviderEnv(t)
 	server, providerType := newProviderProtocolServer(t)
 	authenticationType := providerAuthenticationType(providerType)
 	config := providerDynamicConfig(t, providerType, map[string]tftypes.Value{
-		"authentication": tftypes.NewValue(authenticationType, map[string]tftypes.Value{
-			"service_account_uid": tftypes.NewValue(serviceAccountAuthenticationType(providerType), tftypes.UnknownValue),
+		authenticationAttributeName: tftypes.NewValue(authenticationType, map[string]tftypes.Value{
+			serviceAccountUIDAttributeName: tftypes.NewValue(serviceAccountAuthenticationType(providerType), tftypes.UnknownValue),
 		}),
 	})
 
@@ -229,11 +303,11 @@ func newProviderProtocolServer(t *testing.T) (tfprotov6.ProviderServer, tftypes.
 }
 
 func providerAuthenticationType(providerType tftypes.Object) tftypes.Object {
-	return providerType.AttributeTypes["authentication"].(tftypes.Object)
+	return providerType.AttributeTypes[authenticationAttributeName].(tftypes.Object)
 }
 
 func serviceAccountAuthenticationType(providerType tftypes.Object) tftypes.Object {
-	return providerAuthenticationType(providerType).AttributeTypes["service_account_uid"].(tftypes.Object)
+	return providerAuthenticationType(providerType).AttributeTypes[serviceAccountUIDAttributeName].(tftypes.Object)
 }
 
 func providerDynamicConfig(t *testing.T, providerType tftypes.Object, overrides map[string]tftypes.Value) tfprotov6.DynamicValue {

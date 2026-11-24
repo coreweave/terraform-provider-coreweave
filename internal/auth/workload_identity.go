@@ -4,16 +4,18 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
+	"os"
+	"strings"
 	"time"
 
-	descartesauth "github.com/coreweave/terraform-provider-coreweave/auth"
+	serviceaccount "github.com/coreweave/terraform-provider-coreweave/auth/providers/service_account"
 )
 
 const TerraformCloudWorkloadIdentityTokenEnvVar = "TFC_WORKLOAD_IDENTITY_TOKEN" //nolint:gosec
 
 // OIDCTokenSource supplies the external assertion exchanged for a CoreWeave
 // service-account token.
-type OIDCTokenSource = descartesauth.OIDCTokenSource
+type OIDCTokenSource func(context.Context) (string, error)
 
 // WorkloadIdentityConfig contains the provider-owned inputs passed to the
 // reusable authentication client.
@@ -22,31 +24,39 @@ type WorkloadIdentityConfig struct {
 	ServiceAccountID    string
 	ServiceAccountOrgID string
 	TokenFile           string
+	TokenCommand        string
 	TokenSource         OIDCTokenSource
 	ExchangeTimeout     time.Duration
-	UserAgent           string
 }
 
-// WorkloadIdentityTokenSource adapts the reusable Descartes authentication
-// client to the token source consumed by the CoreWeave API client.
+// WorkloadIdentityTokenSource adapts the reusable authentication client to the
+// token source consumed by the CoreWeave API client.
 type WorkloadIdentityTokenSource struct {
-	provider      *descartesauth.Provider
+	provider      *serviceaccount.Provider
 	cacheIdentity string
 }
 
 // NewWorkloadIdentityTokenSource constructs a lazy, refreshable token source.
 // No network request is made until Token is first called.
 func NewWorkloadIdentityTokenSource(config WorkloadIdentityConfig) (*WorkloadIdentityTokenSource, error) {
-	provider, err := descartesauth.New(descartesauth.Config{
-		Mode:             descartesauth.ModeWorkloadIdentity,
-		Endpoint:         config.Endpoint,
-		ServiceAccountID: config.ServiceAccountID,
-		OrganizationID:   config.ServiceAccountOrgID,
-		TokenFile:        config.TokenFile,
-		TokenSource:      config.TokenSource,
-		ExchangeTimeout:  config.ExchangeTimeout,
-		UserAgent:        config.UserAgent,
-	})
+	options := serviceaccount.Options{
+		Endpoint:          config.Endpoint,
+		ServiceAccountID:  config.ServiceAccountID,
+		OrganizationID:    config.ServiceAccountOrgID,
+		TokenSource:       config.TokenSource,
+		ExchangeTimeout:   config.ExchangeTimeout,
+		RequestedLifetime: time.Hour,
+	}
+	switch {
+	case config.TokenFile != "":
+		options.Source = &serviceaccount.OIDCSource{File: config.TokenFile}
+	case config.TokenCommand != "":
+		options.Source = &serviceaccount.OIDCSource{
+			Command: &serviceaccount.OIDCCommand{Args: strings.Fields(config.TokenCommand)},
+		}
+	}
+
+	provider, err := serviceaccount.New(options)
 	if err != nil {
 		return nil, fmt.Errorf("configure service-account authentication: %w", err)
 	}
@@ -61,12 +71,18 @@ func NewWorkloadIdentityTokenSource(config WorkloadIdentityConfig) (*WorkloadIde
 // NewEnvironmentOIDCTokenSource reads a rotating assertion from name whenever
 // the reusable client needs to exchange or refresh a credential.
 func NewEnvironmentOIDCTokenSource(name string) OIDCTokenSource {
-	return descartesauth.EnvTokenSource{Name: name}
+	return func(context.Context) (string, error) {
+		return strings.TrimSpace(os.Getenv(name)), nil
+	}
 }
 
 // Token returns a cached CoreWeave credential or performs a shared exchange.
 func (s *WorkloadIdentityTokenSource) Token(ctx context.Context) (string, error) {
-	return s.provider.Token(ctx)
+	credential, err := s.provider.Retrieve(ctx)
+	if err != nil {
+		return "", err
+	}
+	return credential.Token, nil
 }
 
 // CacheIdentity partitions derived S3 clients by the non-secret workload
@@ -75,8 +91,7 @@ func (s *WorkloadIdentityTokenSource) CacheIdentity() string {
 	return s.cacheIdentity
 }
 
-// Close releases exchange-client resources. It is primarily exposed for
-// callers and tests that own a bounded token-source lifecycle.
-func (s *WorkloadIdentityTokenSource) Close() error {
-	return s.provider.Close()
+// Close releases exchange-client resources.
+func (s *WorkloadIdentityTokenSource) Close() {
+	s.provider.Close()
 }

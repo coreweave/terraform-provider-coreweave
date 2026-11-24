@@ -25,6 +25,7 @@ func clearProviderEnv(t *testing.T) {
 		provider.CoreweaveServiceAccountIDEnvVar,
 		provider.CoreweaveServiceAccountOrgIDEnvVar,
 		provider.CoreweaveServiceAccountTokenFileEnvVar,
+		provider.CoreweaveServiceAccountTokenCmdEnvVar,
 		auth.TerraformCloudWorkloadIdentityTokenEnvVar,
 	} {
 		t.Setenv(name, "")
