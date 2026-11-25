@@ -267,6 +267,7 @@ func (p *CoreweaveProvider) DataSources(ctx context.Context) []func() datasource
 		inference.NewCapacityClaimParametersDataSource,
 		inference.NewGatewayParametersDataSource,
 		workloadfederation.NewOIDCConfigDataSource,
+		serviceaccount.NewServiceAccountDataSource,
 		containerregistry.NewNamespaceDataSource,
 		containerregistry.NewNamespacesDataSource,
 		containerregistry.NewZonesDataSource,
