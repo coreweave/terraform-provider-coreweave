@@ -2,7 +2,6 @@ package provider
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"time"
@@ -18,7 +17,6 @@ import (
 	"github.com/coreweave/terraform-provider-coreweave/coreweave/sandbox"
 	serviceaccount "github.com/coreweave/terraform-provider-coreweave/coreweave/service_account"
 	workloadfederation "github.com/coreweave/terraform-provider-coreweave/coreweave/workload_federation"
-	"github.com/coreweave/terraform-provider-coreweave/internal/auth"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/function"
 	"github.com/hashicorp/terraform-plugin-framework/provider"
@@ -57,8 +55,9 @@ var TestProtoV6ProviderFactories = map[string]func() (tfprotov6.ProviderServer, 
 
 // Ensure CoreweaveProvider satisfies various provider interfaces.
 var (
-	_ provider.Provider              = &CoreweaveProvider{}
-	_ provider.ProviderWithFunctions = &CoreweaveProvider{}
+	_ provider.Provider                     = &CoreweaveProvider{}
+	_ provider.ProviderWithConfigValidators = &CoreweaveProvider{}
+	_ provider.ProviderWithFunctions        = &CoreweaveProvider{}
 )
 
 // CoreweaveProvider defines the provider implementation.
@@ -71,10 +70,12 @@ type CoreweaveProvider struct {
 
 // CoreweaveProviderModel describes the provider data model.
 type CoreweaveProviderModel struct {
-	Endpoint    types.String `tfsdk:"endpoint"`
-	S3Endpoint  types.String `tfsdk:"s3_endpoint"`
-	Token       types.String `tfsdk:"token"`
-	HTTPTimeout types.String `tfsdk:"http_timeout"`
+	OrgID          types.String                 `tfsdk:"org_id"`
+	Endpoint       types.String                 `tfsdk:"endpoint"`
+	S3Endpoint     types.String                 `tfsdk:"s3_endpoint"`
+	Token          types.String                 `tfsdk:"token"`
+	HTTPTimeout    types.String                 `tfsdk:"http_timeout"`
+	Authentication *AuthenticationProviderModel `tfsdk:"authentication"`
 }
 
 func (p *CoreweaveProvider) Metadata(ctx context.Context, req provider.MetadataRequest, resp *provider.MetadataResponse) {
@@ -82,9 +83,18 @@ func (p *CoreweaveProvider) Metadata(ctx context.Context, req provider.MetadataR
 	resp.Version = p.version
 }
 
+func (p *CoreweaveProvider) ConfigValidators(context.Context) []provider.ConfigValidator {
+	return []provider.ConfigValidator{conflictingAuthenticationValidator{}}
+}
+
 func (p *CoreweaveProvider) Schema(ctx context.Context, req provider.SchemaRequest, resp *provider.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		Attributes: map[string]schema.Attribute{
+			orgIDAttributeName: schema.StringAttribute{
+				MarkdownDescription: fmt.Sprintf("The target organization for resource operations. This is separate from the organization owning an authenticating service account and can also be set with `%s`.", CoreweaveOrgIDEnvVar),
+				Optional:            true,
+			},
+			"authentication": authenticationSchema(),
 			"endpoint": schema.StringAttribute{
 				MarkdownDescription: fmt.Sprintf("CoreWeave API Endpoint. This can also be set via the %s environment variable, which takes precedence. Defaults to `%s`", CoreweaveApiEndpointEnvVar, CoreweaveApiEndpointDefault),
 				Optional:            true,
@@ -100,7 +110,7 @@ func (p *CoreweaveProvider) Schema(ctx context.Context, req provider.SchemaReque
 				},
 			},
 			"token": schema.StringAttribute{
-				MarkdownDescription: fmt.Sprintf("CoreWeave API Token in the form `CW-SECRET-<secret>`. This can also be set via the %s environment variable, which takes precedence.", CoreweaveApiTokenEnvVar),
+				MarkdownDescription: fmt.Sprintf("CoreWeave API Token in the form `CW-SECRET-<secret>`. This can also be set via the %s environment variable, which takes precedence when service-account authentication is not explicitly configured.", CoreweaveApiTokenEnvVar),
 				Optional:            true,
 				Sensitive:           true,
 			},
@@ -116,6 +126,11 @@ func (p *CoreweaveProvider) Schema(ctx context.Context, req provider.SchemaReque
 }
 
 func (p *CoreweaveProvider) Configure(ctx context.Context, req provider.ConfigureRequest, resp *provider.ConfigureResponse) {
+	resp.Diagnostics.Append(checkAuthenticationKnown(ctx, req.Config)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
 	var data CoreweaveProviderModel
 
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
@@ -177,28 +192,20 @@ func resolveHTTPTimeouts(ctx context.Context, configured types.String) (time.Dur
 	return connectTimeout, s3Timeout
 }
 
-// Builds a CW client using the provided model, including any defaults or environment variables.
-// Returns an error if the token is not provided.
-// Variable precedence: 1) env, 2) config, 3) default/error.
-//
-//nolint:staticcheck
+// BuildClient constructs a CoreWeave client using static-token or
+// service-account authentication. Existing endpoint, S3 endpoint, timeout, and
+// static-token environment precedence is preserved. Explicit service-account
+// authentication takes precedence over an ambient static token.
 func BuildClient(ctx context.Context, model CoreweaveProviderModel, tfVersion, providerVersion string) (*coreweave.Client, error) {
 	endpoint := model.Endpoint.ValueString()
 	s3Endpoint := model.S3Endpoint.ValueString()
-	token := model.Token.ValueString()
 	timeout, s3Timeout := resolveHTTPTimeouts(ctx, model.HTTPTimeout)
 
-	if tokenFromEnv, ok := os.LookupEnv(CoreweaveApiTokenEnvVar); ok {
-		token = tokenFromEnv
-	}
 	if endpointFromEnv, ok := os.LookupEnv(CoreweaveApiEndpointEnvVar); ok {
 		endpoint = endpointFromEnv
 	}
 	if s3EndpointFrmEnv, ok := os.LookupEnv(CoreWeaveS3EndpointEnvVar); ok {
 		s3Endpoint = s3EndpointFrmEnv
-	}
-	if token == "" {
-		return nil, errors.New("token is required for coreweave client instantiation")
 	}
 	if endpoint == "" {
 		endpoint = CoreweaveApiEndpointDefault
@@ -210,7 +217,10 @@ func BuildClient(ctx context.Context, model CoreweaveProviderModel, tfVersion, p
 	tflog.Debug(ctx, fmt.Sprintf("using http client timeout: %v", timeout))
 	userAgent := fmt.Sprintf("Terraform/%s terraform-provider-coreweave/%s (+https://github.com/coreweave/terraform-provider-coreweave)", tfVersion, providerVersion)
 
-	tokenSource := auth.NewStaticTokenSource(token)
+	tokenSource, err := resolveAccessTokenSource(model, endpoint, timeout)
+	if err != nil {
+		return nil, err
+	}
 	userAgentInterceptor := func(next connect.ClientFunc) connect.ClientFunc {
 		return func(ctx context.Context, spec connect.Spec) (connect.ClientStream, error) {
 			info, _ := connect.CallInfoForClientContext(ctx)
@@ -225,7 +235,10 @@ func BuildClient(ctx context.Context, model CoreweaveProviderModel, tfVersion, p
 		timeout,
 		tokenSource,
 		userAgent,
-		coreweave.ClientOptions{S3AttemptTimeout: s3Timeout},
+		coreweave.ClientOptions{
+			S3AttemptTimeout:       s3Timeout,
+			ResourceOrganizationID: resolveResourceOrganizationID(model),
+		},
 		userAgentInterceptor,
 		coreweave.TFLogInterceptor(),
 	)

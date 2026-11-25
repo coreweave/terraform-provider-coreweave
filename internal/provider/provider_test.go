@@ -3,6 +3,7 @@ package provider_test
 import (
 	"testing"
 
+	"github.com/coreweave/terraform-provider-coreweave/internal/auth"
 	"github.com/coreweave/terraform-provider-coreweave/internal/provider"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -20,6 +21,12 @@ func clearProviderEnv(t *testing.T) {
 		provider.CoreweaveApiEndpointEnvVar,
 		provider.CoreWeaveS3EndpointEnvVar,
 		provider.CoreweaveHTTPTimeoutEnvVar,
+		provider.CoreweaveOrgIDEnvVar,
+		provider.CoreweaveServiceAccountIDEnvVar,
+		provider.CoreweaveServiceAccountOrgIDEnvVar,
+		provider.CoreweaveServiceAccountTokenFileEnvVar,
+		provider.CoreweaveServiceAccountTokenCmdEnvVar,
+		auth.TerraformCloudWorkloadIdentityTokenEnvVar,
 	} {
 		t.Setenv(name, "")
 	}

@@ -115,14 +115,15 @@ func RetryPolicy(ctx context.Context, resp *http.Response, err error) (bool, err
 		return true, ctx.Err()
 	}
 
-	// Retry an attempt-level timeout with a freshly resolved token.
-	if errors.Is(err, context.DeadlineExceeded) {
-		return true, err
-	}
-
-	// Token sources own their retry policy; do not retry their other failures.
+	// Token sources own their retry policy and budget, including any deadline.
+	// Retrying here would multiply the source's complete exchange sequence.
 	if auth.IsTokenSourceError(err) {
 		return false, err
+	}
+
+	// Retry an attempt-level timeout in the API request itself.
+	if errors.Is(err, context.DeadlineExceeded) {
+		return true, err
 	}
 
 	return baseRetryPolicy(resp, err)

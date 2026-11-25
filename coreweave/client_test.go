@@ -166,33 +166,26 @@ func TestClientPreservesTokenSourceCancellation(t *testing.T) {
 	assert.Equal(t, 1, calls, "a canceled request must not be retried")
 }
 
-// A deadline belongs to a single attempt, so a token refresh that runs out of
-// time gets another one -- unlike every other token source failure, which means
-// the source itself gave up.
-func TestClientRetriesTokenSourceDeadline(t *testing.T) {
+// A refreshable source owns its retry policy and total exchange budget. A
+// deadline from it is therefore final; retrying here would repeat the source's
+// complete exchange sequence.
+func TestClientDoesNotRetryTokenSourceDeadline(t *testing.T) {
 	t.Parallel()
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"principal":{"uid":"principal-123","orgUid":"org-456"}}`))
-	}))
-	t.Cleanup(server.Close)
 
 	calls := 0
 	source := accessTokenSourceFunc(func(context.Context) (string, error) {
 		calls++
-		if calls == 1 {
-			return "", context.DeadlineExceeded
-		}
-		return "token", nil
+		return "", context.DeadlineExceeded
 	})
-	client, err := coreweave.NewClient(server.URL, "https://objects.example.test", time.Second, source, "test-user-agent")
+	client, err := coreweave.NewClient("https://api.example.test", "https://objects.example.test", time.Second, source, "test-user-agent")
 	require.NoError(t, err)
 
-	identity, err := client.GetCallerIdentity(t.Context())
-	require.NoError(t, err)
-	assert.Equal(t, "principal-123", identity.PrincipalID)
-	assert.Equal(t, 2, calls, "the attempt that ran out of time must be retried")
+	_, err = client.GetCluster(t.Context(), &cksv1beta1.GetClusterRequest{})
+	require.Error(t, err)
+	assert.Equal(t, 1, calls)
+	var connectErr *connect.Error
+	require.ErrorAs(t, err, &connectErr)
+	assert.Equal(t, connect.CodeDeadlineExceeded, connectErr.Code())
 }
 
 func TestClientRefreshesTokenForRawHTTPRetry(t *testing.T) {
