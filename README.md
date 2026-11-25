@@ -81,6 +81,25 @@ $ make build
 
 ## Using the provider
 
+### Embedding the provider in Go
+
+Go applications can import the provider and run it in-process. Pin a release
+that includes the public `provider` package, replacing `vX.Y.Z` with its tag:
+
+```shell
+go get github.com/coreweave/terraform-provider-coreweave/provider@vX.Y.Z
+```
+
+```go
+import cwprovider "github.com/coreweave/terraform-provider-coreweave/provider"
+
+// Inside your application, pass the pinned provider version without the leading v.
+p := cwprovider.New("X.Y.Z")
+```
+
+Each call returns a fresh Terraform Plugin Framework provider. Reading its
+metadata or schema requires no credentials.
+
 ### HotLoad acceptance tests
 
 `TestInferenceHotLoadAcceptance` uses real Terraform against staging and consumes

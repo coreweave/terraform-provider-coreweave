@@ -5,7 +5,8 @@ import (
 	"flag"
 	"log"
 
-	"github.com/coreweave/terraform-provider-coreweave/internal/provider"
+	"github.com/coreweave/terraform-provider-coreweave/provider"
+	fwprovider "github.com/hashicorp/terraform-plugin-framework/provider"
 	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 )
 
@@ -27,7 +28,9 @@ func main() {
 		Debug:   debug,
 	}
 
-	err := providerserver.Serve(context.Background(), provider.New(version), opts)
+	err := providerserver.Serve(context.Background(), func() fwprovider.Provider {
+		return provider.New(version)
+	}, opts)
 	if err != nil {
 		log.Fatal(err.Error())
 	}
