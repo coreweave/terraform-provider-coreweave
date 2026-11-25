@@ -1,6 +1,6 @@
 module github.com/coreweave/terraform-provider-coreweave
 
-go 1.27.2
+go 1.27.3
 
 require (
 	buf.build/gen/go/coreweave/cks/connectrpc/go/v2 v2.0.2-20261014193236-69d4f39faca7.1
@@ -9,8 +9,9 @@ require (
 	buf.build/gen/go/coreweave/container-registry-api/protocolbuffers/go v1.36.12-20261009031350-4d1490e50ed8.2
 	buf.build/gen/go/coreweave/cwobject/connectrpc/go/v2 v2.0.0-20260831154917-08064e55742b.1
 	buf.build/gen/go/coreweave/cwobject/protocolbuffers/go v1.36.12-20260831154917-08064e55742b.2
+	buf.build/gen/go/coreweave/directory/connectrpc/go v1.21.1-20261118205230-30da2832e4bb.1
 	buf.build/gen/go/coreweave/directory/connectrpc/go/v2 v2.0.1-20261022011331-2af0c9345d0d.1
-	buf.build/gen/go/coreweave/directory/protocolbuffers/go v1.36.12-20261022011331-2af0c9345d0d.2
+	buf.build/gen/go/coreweave/directory/protocolbuffers/go v1.36.12-20261118205230-30da2832e4bb.2
 	buf.build/gen/go/coreweave/inference/connectrpc/go/v2 v2.0.2-20261016211223-a1f4fb425137.1
 	buf.build/gen/go/coreweave/inference/protocolbuffers/go v1.36.12-20261016211223-a1f4fb425137.2
 	buf.build/gen/go/coreweave/networking/connectrpc/go/v2 v2.0.2-20261021202238-84a5f410acc9.1
@@ -21,11 +22,13 @@ require (
 	buf.build/gen/go/coreweave/workload-federation/protocolbuffers/go v1.36.12-20261013191007-c36df30df3ed.2
 	buf.build/go/protovalidate v1.4.0
 	cloud.google.com/go/longrunning v1.3.0
+	connectrpc.com/connect v1.21.1
 	connectrpc.com/connect/v2 v2.0.2
 	github.com/aws/aws-sdk-go-v2 v1.47.3
 	github.com/aws/aws-sdk-go-v2/credentials v1.20.9
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.114.3
 	github.com/aws/smithy-go v1.28.5
+	github.com/google/go-cmp v0.7.0
 	github.com/hashicorp/go-cleanhttp v0.5.2
 	github.com/hashicorp/go-retryablehttp v0.7.8
 	github.com/hashicorp/go-uuid v1.0.4
@@ -41,7 +44,7 @@ require (
 	github.com/hashicorp/terraform-plugin-testing v1.16.0
 	github.com/stretchr/testify v1.12.1
 	github.com/zclconf/go-cty v1.19.0
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20260819154853-08b0e4226688
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20261118221215-c8830f628b3f
 	google.golang.org/protobuf v1.36.12
 )
 
@@ -67,7 +70,6 @@ require (
 	github.com/cloudflare/circl v1.6.3 // indirect
 	github.com/fatih/color v1.18.0 // indirect
 	github.com/golang/protobuf v1.5.4 // indirect
-	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/go-checkpoint v0.5.0 // indirect
 	github.com/hashicorp/go-cty v1.5.0 // indirect
@@ -93,7 +95,7 @@ require (
 	github.com/vmihailenco/msgpack v4.0.4+incompatible // indirect
 	github.com/vmihailenco/msgpack/v5 v5.4.1 // indirect
 	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
-	go.yaml.in/yaml/v3 v3.0.5 // indirect
+	go.yaml.in/yaml/v3 v3.0.6 // indirect
 	golang.org/x/crypto v0.55.0 // indirect
 	golang.org/x/exp v0.0.0-20260820142414-ca536658362e // indirect
 	golang.org/x/mod v0.39.0 // indirect
@@ -103,6 +105,6 @@ require (
 	golang.org/x/text v0.41.0 // indirect
 	golang.org/x/tools v0.49.0 // indirect
 	google.golang.org/appengine v1.6.8 // indirect
-	google.golang.org/genproto/googleapis/api v0.0.0-20260819154853-08b0e4226688 // indirect
-	google.golang.org/grpc v1.83.2 // indirect
+	google.golang.org/genproto/googleapis/api v0.0.0-20261118221215-c8830f628b3f // indirect
+	google.golang.org/grpc v1.84.0 // indirect
 )
