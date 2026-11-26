@@ -37,6 +37,7 @@ type oidcTrustConfigTestServer struct {
 	omitCreateDescription    bool
 	emptyUpdateResponse      bool
 	notFoundOnNextUpdateCall bool
+	trimCEL                  bool
 }
 
 func newOIDCTrustConfigTestServer() *oidcTrustConfigTestServer {
@@ -57,9 +58,13 @@ func (s *oidcTrustConfigTestServer) CreateServiceAccountOidcTrustConfig(_ contex
 	}
 	now := timestamppb.Now()
 	input := request.GetServiceAccountOidcTrustConfig()
+	cel := input.GetCel()
+	if s.trimCEL {
+		cel = strings.TrimSpace(cel)
+	}
 	config := &directoryv1alpha.ServiceAccountOidcTrustConfig{
 		Name: name, Uid: proto.String("74931f1b-b5cc-48d4-9a97-24073d43fd82"), Description: proto.String(input.GetDescription()),
-		Cel: input.Cel, WorkloadFederationOidcConfigUid: input.WorkloadFederationOidcConfigUid,
+		Cel: proto.String(cel), WorkloadFederationOidcConfigUid: input.WorkloadFederationOidcConfigUid,
 		CreateTime: now, UpdateTime: now,
 	}
 	s.configs[name] = config
@@ -112,7 +117,11 @@ func (s *oidcTrustConfigTestServer) UpdateServiceAccountOidcTrustConfig(_ contex
 		case "description":
 			config.Description = proto.String(input.GetDescription())
 		case "cel":
-			config.Cel = input.Cel
+			cel := input.GetCel()
+			if s.trimCEL {
+				cel = strings.TrimSpace(cel)
+			}
+			config.Cel = proto.String(cel)
 		case "workload_federation_oidc_config_uid":
 			config.WorkloadFederationOidcConfigUid = input.WorkloadFederationOidcConfigUid
 		}
@@ -185,6 +194,12 @@ func (s *oidcTrustConfigTestServer) returnNotFoundOnNextUpdate() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.notFoundOnNextUpdateCall = true
+}
+
+func (s *oidcTrustConfigTestServer) trimCELWhitespace() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.trimCEL = true
 }
 
 func (s *oidcTrustConfigTestServer) checkUpdatedAtMatchesRemote(state *terraform.State) error {
@@ -342,6 +357,38 @@ func TestOIDCTrustConfigResourceLifecycle(t *testing.T) {
 					tfresource.TestCheckResourceAttr(oidcTrustConfigResourceAddress, "workload_federation_oidc_config_id", "e3bb1892-f89e-4258-9495-427ed5ace8c7"),
 					service.checkUpdatedAtMatchesRemote,
 				),
+			},
+		},
+	})
+}
+
+func TestOIDCTrustConfigResourcePreservesCELFormattingNormalizedByAPI(t *testing.T) {
+	service, server := startOIDCTrustConfigTestServer(t)
+	service.trimCELWhitespace()
+	initialCEL := "  token.sub == \"user@example.com\"\n"
+	updatedCEL := "\ntoken.sub == \"updated@example.com\"  \n"
+	initial := oidcTrustConfigTestConfig(server.URL, "", initialCEL, "8d39f431-715c-4c6c-916a-849292f97920")
+	updated := oidcTrustConfigTestConfig(server.URL, "", updatedCEL, "8d39f431-715c-4c6c-916a-849292f97920")
+
+	tfresource.UnitTest(t, tfresource.TestCase{
+		ProtoV6ProviderFactories: provider.TestProtoV6ProviderFactories,
+		CheckDestroy:             service.checkEmpty,
+		Steps: []tfresource.TestStep{
+			{
+				Config: initial,
+				Check:  tfresource.TestCheckResourceAttr(oidcTrustConfigResourceAddress, "cel", initialCEL),
+			},
+			{
+				Config:   initial,
+				PlanOnly: true,
+			},
+			{
+				Config: updated,
+				Check:  tfresource.TestCheckResourceAttr(oidcTrustConfigResourceAddress, "cel", updatedCEL),
+			},
+			{
+				Config:   updated,
+				PlanOnly: true,
 			},
 		},
 	})

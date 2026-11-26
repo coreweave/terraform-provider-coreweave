@@ -3,6 +3,7 @@ package serviceaccount
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	directoryv1alpha "buf.build/gen/go/coreweave/directory/protocolbuffers/go/coreweave/directory/v1alpha"
 	"github.com/coreweave/terraform-provider-coreweave/coreweave"
@@ -104,7 +105,13 @@ func (m *OIDCTrustConfigResourceModel) setFromProto(config *directoryv1alpha.Ser
 	// API stores the field as a non-null string. Keep that canonical value even
 	// if an older or malformed response omits the optional proto field.
 	m.Description = types.StringValue(config.GetDescription())
-	m.CEL = types.StringValue(config.GetCel())
+	// Preserve the configured representation when it is semantically equivalent so a
+	// heredoc's trailing newline does not cause an inconsistent result after
+	// apply or perpetual drift on refresh.
+	remoteCEL := config.GetCel()
+	if m.CEL.IsNull() || m.CEL.IsUnknown() || strings.TrimSpace(m.CEL.ValueString()) != strings.TrimSpace(remoteCEL) {
+		m.CEL = types.StringValue(remoteCEL)
+	}
 	m.WorkloadFederationOIDCConfigID = types.StringValue(config.GetWorkloadFederationOidcConfigUid())
 	m.CreatedAt = timestampValue(config.GetCreateTime())
 	m.UpdatedAt = timestampValue(config.GetUpdateTime())
