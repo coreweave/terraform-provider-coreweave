@@ -68,6 +68,25 @@ func TestOIDCTrustConfigSetFromProto(t *testing.T) {
 	assert.Equal(t, "true", model.CEL.ValueString())
 }
 
+func TestOIDCTrustConfigSetFromProtoPreservesEquivalentCELFormatting(t *testing.T) {
+	t.Parallel()
+	configuredCEL := "\n  token.sub == \"user@example.com\"\n"
+	model := OIDCTrustConfigResourceModel{CEL: types.StringValue(configuredCEL)}
+	config := &directoryv1alpha.ServiceAccountOidcTrustConfig{
+		Name:                            "organizations/a1b2c3/serviceAccounts/ci-agent/oidcTrustConfigs/main-repo",
+		Uid:                             proto.String("e3bb1892-f89e-4258-9495-427ed5ace8c7"),
+		Cel:                             proto.String(`token.sub == "user@example.com"`),
+		WorkloadFederationOidcConfigUid: proto.String("8d39f431-715c-4c6c-916a-849292f97920"),
+	}
+
+	require.NoError(t, model.setFromProto(config))
+	assert.Equal(t, configuredCEL, model.CEL.ValueString())
+
+	config.SetCel(`token.sub == "different@example.com"`)
+	require.NoError(t, model.setFromProto(config))
+	assert.Equal(t, `token.sub == "different@example.com"`, model.CEL.ValueString())
+}
+
 func TestOIDCTrustConfigFillUnknownFromProtoPreservesPlannedValues(t *testing.T) {
 	t.Parallel()
 	model := OIDCTrustConfigResourceModel{
